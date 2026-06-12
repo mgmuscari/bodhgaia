@@ -1,3 +1,56 @@
+# Bodhitropolis
+
+A dharmapunk browser city-builder — a deterministic, procedurally-generated
+world atop the GPL-3 the old simulator lineage (the open-sourced the classic city-builder Classic by
+the original designer / classic). This repository hosts the modern TypeScript engine in
+the root `src/` / `tests/`; the original the old simulator ports live in their legacy
+subtrees (`legacy-activity/`, `LegacyCore/`, `legacy-java/`) and
+are reference-only.
+
+## Quickstart
+
+```bash
+npm install        # install the toolchain (Vite + TypeScript + Vitest)
+npm run dev        # serve the app at http://localhost:5173
+npx vitest run     # run the test suite
+npm run build      # production build (tsc typecheck + vite bundle)
+npm run typecheck  # type check only (tsc --noEmit)
+```
+
+Open `http://localhost:5173/?seed=<anything>` to generate a specific world.
+The same seed always produces the same world — reload to confirm.
+
+## Architecture
+
+Code is split into three layers with a strict, test-enforced purity rule
+(`tests/architecture.test.ts`):
+
+- **`src/engine/`** — the deterministic simulation core: a seeded PRNG
+  (`rng.ts`, sfc32 with `fork`-by-label streams), a fixed-tick loop
+  (`loop.ts`), and the layered typed-array tile map (`map.ts`). Imports
+  nothing from `worldgen` or `ui`.
+- **`src/worldgen/`** — value noise / fBm (`noise.ts`), the staged generation
+  pipeline (`pipeline.ts`), and the terrain stage (`terrain.ts`: elevation,
+  ocean/lake/river, moisture, biomes). May import `engine`.
+- **`src/ui/`** — a Canvas2D pixel-art renderer, pan/zoom camera, and input.
+  Only this layer and `src/main.ts` touch the DOM.
+
+**Determinism is load-bearing.** `engine` and `worldgen` use only integer math
+and exactly-rounded float ops (`+ - * / sqrt`, `Math.imul/floor`) — no
+transcendental `Math` (`exp`/`pow`/`log`/`sin`/`cos`/`tan`) and no
+`Math.random`, because their results vary across JS engines and would break
+"same seed → same world" between browsers. The seeded `rng` is the only
+randomness source. This is what makes shared-seed worlds (and the planned
+historical simulation) reproducible.
+
+## Methodology
+
+This project is built with the Dialectic development methodology. See
+[`dialectic.md`](dialectic.md) for the methodology spec and `CLAUDE.md` for
+project conventions.
+
+---
+
 # Open Source the old simulator, based on the original the classic city-builder Classic from classic, by the original designer. #
 
 This is the source code for the old simulator (based on [the classic city-builder](http://en.wikipedia.org/wiki/the classic city-builder_(1989_video_game))), released under the GPL. the old simulator is based on the original the classic city-builder from the original publisher / classic, and designed and written by the original designer.
