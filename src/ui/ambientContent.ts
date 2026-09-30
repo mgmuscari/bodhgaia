@@ -524,7 +524,11 @@ const opposite = (d: number): number => (d + 2) % 4;
 /** Lane half-width in tile units: how far a car is drawn off its tile centre, to the
  *  RIGHT of its heading, so opposing flows ride opposite sides of a road. Cosmetic —
  *  read only by the renderer's sprite draw; live-pass tuned. */
-const LANE = 0.22;
+const LANE = 0.16;
+
+/** A car's body footprint (tile units) — the bounding box parking and lanes are laid out to clear. */
+export const CAR_LENGTH = 0.44;
+export const CAR_WIDTH = 0.24;
 /** The car lane offset (exported for tests / pace maths). */
 export const LANE_OFFSET = LANE;
 
@@ -571,7 +575,7 @@ export function pedCurbOffset(dir: number): { dx: number; dy: number } {
 /**
  * How much faster a mover's current sim leg should run so its DRAWN path keeps its pace: a leg's pose
  * crosses one tile (moverPose), a unit line when straight but a quarter-arc of radius 0.5 ∓ lateral at
- * a turn — only ~0.44 tiles on a right turn. With every leg taking the same sim time, a turning car
+ * a turn — only ~0.53 tiles on a right turn. With every leg taking the same sim time, a turning car
  * visibly crawled round the corner (Maddy 2026-09-30). Returns straight/arc length (1 when straight).
  */
 export function legPaceFactor(m: Mover, lateral: number): number {
@@ -783,7 +787,8 @@ export function ambientAlpha(state: AmbientState): number {
  *  before the latest substep (1 = no interpolation). */
 export function carPose(c: Car, alpha = 1): Pose {
   if (c.parked) {
-    const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
+    // kerb-parked: parallel to the kerb; in a lot bay: east-west, the way the bays are laid out
+    const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.lotIdx !== undefined ? 1 : c.dir;
     return { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! };
   }
   const now = moverPose(c, LANE);
@@ -1443,8 +1448,8 @@ export function isParkable(map: GameMap, x: number, y: number): boolean {
  *  it sits at the kerb, not stranded in the middle of a wide road/avenue lane (Maddy: "cars parking in
  *  the middle of the street"). A tile ringed by drivable road on all four sides (a lane interior) has
  *  no shoulder and is not a valid street park. */
-const KERB_PULL = 0.34; // a curb stall sits this far from the tile centre toward its kerb edge
-const STALL_ALONG = 0.18; // the two stalls on a kerb side sit this far either way ALONG the kerb
+const KERB_PULL = 0.4; // a curb stall sits this far toward its kerb edge — a car width clear of the lane (LANE)
+const STALL_ALONG = 0.25; // the two stalls on a kerb side sit this far either way ALONG it — a car length apart
 
 /**
  * The curb-parking STALLS of a road tile — up to 4 discrete kerb slots, an offset (from the tile
@@ -1663,8 +1668,8 @@ function assignSerials(state: AmbientState, movers: readonly Mover[]): void {
  *  (STUCK_REPATH) and, failing that, the one-off squeeze (STUCK_ESCAPE) in advanceMover. */
 // `gap` (centre-to-centre) must cover BOTH sprites' length (≈0.58) PLUS the max per-substep step
 // (freeway ≈0.24) so a car STOPS before its front overshoots into the car ahead. `halfWidth` stays below
-// the oncoming-lane separation (2·LANE ≈ 0.44).
-export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover, gap = 0.85, halfWidth = 0.34): boolean {
+// the oncoming-lane separation (2·LANE ≈ 0.32) and at least a car width (CAR_WIDTH).
+export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover, gap = 0.85, halfWidth = 0.28): boolean {
   const fdx = DIR_DX[m.dir]!;
   const fdy = DIR_DY[m.dir]!;
   const mlo = laneOffset(m.dir);

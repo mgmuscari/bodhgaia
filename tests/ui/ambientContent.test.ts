@@ -11,7 +11,7 @@ import { createCivicState } from '../../src/civic/state';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { simTick, type SimDeps } from '../../src/civic/compose';
-import { parkingLots, parkingStalls, STALLS_PER_AXIS } from '../../src/ui/parkingContent';
+import { parkingLots, parkingStalls, STALLS_PER_TILE } from '../../src/ui/parkingContent';
 import { layField, decayField } from '../../src/citizens/field';
 import { StopCategory } from '../../src/citizens/itinerary';
 import { TravelMode } from '../../src/citizens/modes';
@@ -67,6 +67,8 @@ import {
   spawnCruisers,
   stepCruisers,
   nextPatrolStep,
+  CAR_LENGTH,
+  CAR_WIDTH,
   rerouteIfStuck,
   spaceClear,
   STUCK_REPATH,
@@ -1925,7 +1927,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
       for (const n of perLot.values()) maxPerLot = Math.max(maxPerLot, n);
     }
     expect(anyLot).toBe(true);
-    expect(maxPerLot).toBeLessThanOrEqual(STALLS_PER_AXIS * STALLS_PER_AXIS); // <= 9 per 1x1 lot tile
+    expect(maxPerLot).toBeLessThanOrEqual(STALLS_PER_TILE); // <= the stalls of a 1x1 lot tile
   });
 
   it('binds a pedestrian to the parked car that walks to the destination building', () => {
@@ -3418,5 +3420,33 @@ describe('gridlock relief (Maddy 2026-09-30: traffic gridlocked — cars must re
     const grid = buildMoverGrid([{ x: 5, y: 5, dir: 1, tx: 6, ty: 5 } as Mover], 16);
     expect(spaceClear(grid, 16, 5, 5)).toBe(false);
     expect(spaceClear(grid, 16, 8, 5)).toBe(true);
+  });
+});
+
+describe('kerb parking + lanes leave room for whole cars (Maddy 2026-09-30)', () => {
+  it('kerb stalls on a street never overlap each other, within a tile or with the next tile along', () => {
+    const map = new GameMap(12, 5);
+    for (let x = 0; x < 12; x++) map.setBuilt(x, 2, BuiltKind.RoadStreet); // kerbs north + south
+    const at = (tx: number) => curbStallOffsets(map, tx, 2).map((o) => ({ x: tx + o.dx, y: 2 + o.dy }));
+    const cars = [...at(5), ...at(6)]; // parked E-W (parallel to the kerb)
+    for (let i = 0; i < cars.length; i++) {
+      for (let j = i + 1; j < cars.length; j++) {
+        const a = cars[i]!;
+        const b = cars[j]!;
+        expect(Math.abs(a.x - b.x) < CAR_LENGTH && Math.abs(a.y - b.y) < CAR_WIDTH, `${a.x},${a.y} vs ${b.x},${b.y}`).toBe(false);
+      }
+    }
+  });
+
+  it('a car passing in its lane clears a kerb-parked car on the same side', () => {
+    const map = new GameMap(12, 5);
+    for (let x = 0; x < 12; x++) map.setBuilt(x, 2, BuiltKind.RoadStreet);
+    const kerbSouth = curbStallOffsets(map, 5, 2).find((o) => o.dir === 2)!; // the south kerb
+    const eastbound = laneOffset(1); // eastbound rides the south side
+    expect(Math.abs(kerbSouth.dy - eastbound.dy)).toBeGreaterThanOrEqual(CAR_WIDTH);
+  });
+
+  it('opposing lanes still pass each other cleanly', () => {
+    expect(Math.abs(laneOffset(1).dy - laneOffset(3).dy)).toBeGreaterThanOrEqual(CAR_WIDTH);
   });
 });
