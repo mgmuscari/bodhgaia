@@ -144,25 +144,21 @@ function median(axis: 'h' | 'v'): Pixels {
   return p;
 }
 
-// Poles stand at the CURB — north side of an E-W run, west side of an N-S run — as a 3/4-view wooden
-// mast with a crossarm; the wire leaves the crossarm and runs along the curb to the next pole four tiles
-// on, sagging a pixel mid-span. Wire tiles are indexed by their position k (0..3) along the span.
-const WIRE_H = [1, 2, 2, 1];
-const WIRE_V = [3, 4, 4, 3];
+// Poles stand ON THE SIDEWALK — the north curb of an E-W run, the west curb of an N-S run — seen from
+// above: a crossarm across the sidewalk strip with the mast-top at its middle and insulators at its
+// tips, never reaching into the carriageway. The wire leaves the crossarm and runs along the sidewalk
+// to the next pole four tiles on, sagging two pixels mid-span; wire tiles are indexed by span position.
+const WIRE_H = [1, 2, 3, 2];
+const WIRE_V = [1, 2, 3, 2];
 
 function pole(axis: 'h' | 'v'): Pixels {
   const p = blank(T, T);
-  if (axis === 'h') {
-    rect(p, 6, 1, 5, 1, C.roofBrown); // crossarm (the wire's anchor row)
-    rect(p, 8, 2, 1, 4, C.roofBrownLo); // mast down to the kerb
-    px(p, 6, 0, C.paveHi); // insulators
-    px(p, 10, 0, C.paveHi);
-  } else {
-    rect(p, 1, 3, 5, 1, C.roofBrown);
-    rect(p, 3, 4, 1, 4, C.roofBrownLo);
-    px(p, 1, 2, C.paveHi);
-    px(p, 5, 2, C.paveHi);
-  }
+  const put = (a: number, d: number, c: RGB): void => (axis === 'h' ? px(p, a, d, c) : px(p, d, a, c));
+  for (let a = 6; a <= 10; a++) put(a, 1, C.roofBrown); // crossarm, along the curb
+  put(8, 1, C.roofBrownLo); // mast top
+  put(8, 2, C.roofBrownLo);
+  put(6, 0, C.paveHi); // insulators
+  put(10, 0, C.paveHi);
   outline(p, C.ink);
   return p;
 }

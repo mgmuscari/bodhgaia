@@ -345,6 +345,7 @@ describe('snes tileset — road paint + street furniture on the art grid', () =>
     const t = tiles.get('@road/pole/h')!;
     expect(hasInk(t)).toBe(true);
     expect(t.data[(8 * BASE_TILE + 8) * 4 + 3]).toBe(0); // the tile centre (road middle) is clear
+    for (let y = 5; y < BASE_TILE; y++) for (let x = 0; x < BASE_TILE; x++) expect(t.data[(y * BASE_TILE + x) * 4 + 3], `(${x},${y})`).toBe(0); // stays on the sidewalk strip
   });
 
   it('the four wire spans along a run sag in the middle (a catenary, 1 art px thick)', () => {
