@@ -30,7 +30,7 @@ import {
 } from './renderKey';
 import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
-import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roadPaintKind } from './decoration';
+import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask } from './decoration';
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { laneOffset, pedCurbOffset, dirVector } from './ambientContent';
@@ -1143,6 +1143,8 @@ export class Renderer {
             const curb = roadCurbMask(map, tx, ty);
             const corners = this.roadInk.size > 0 ? innerCornerMask(map, tx, ty) : 0;
             if (corners !== 0) ink(`@road/curbCorner/${corners}`, dx, dy); // block corners the curbs miss
+            const zebras = this.roadInk.size > 0 ? crosswalkMask(map, tx, ty) : 0;
+            if (zebras !== 0) ink(`@road/zebra/${zebras}`, dx, dy); // crossings on the approaches to a junction
             if (curb !== 0 && !ink(`@road/curb/${curb}`, dx, dy)) {
               const sw = Math.max(1, Math.round(ts * 0.16));
               const walk = '#b0aa9c'; // warm concrete sidewalk (distinct from the white barrier)

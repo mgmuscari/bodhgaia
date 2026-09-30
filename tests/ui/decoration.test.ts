@@ -201,7 +201,7 @@ describe('wideRoadAt mixed-kind boundary (street abutting an avenue band reads w
   });
 });
 
-import { curbPoleAt, innerCornerMask, roadPaintKind } from '../../src/ui/decoration';
+import { curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask } from '../../src/ui/decoration';
 
 // A period-4 street grid (the common worldgen shape): streets on x ≡ 0 and y ≡ 0 (mod 4), blocks between.
 function streetGrid(size = 17): GameMap {
@@ -304,5 +304,23 @@ describe('roadPaintKind — a street tile that only links highways wears highway
     const map = new GameMap(6, 6);
     hline(map, BuiltKind.RoadAvenue, 2, 0, 5);
     expect(roadPaintKind(map, 2, 2)).toBe(BuiltKind.RoadAvenue);
+  });
+});
+
+describe('crosswalkMask — zebra crossings on local-street approaches to a junction', () => {
+  it('a street tile next to a street junction gets a crossing on the junction side', () => {
+    const map = streetGrid();
+    expect(crosswalkMask(map, 3, 4)).toBe(2); // E side: the junction at (4,4)
+    expect(crosswalkMask(map, 5, 4)).toBe(8); // W side
+    expect(crosswalkMask(map, 4, 3)).toBe(4); // S side (a vertical approach)
+    expect(crosswalkMask(map, 2, 4)).toBe(0); // mid-block
+    expect(crosswalkMask(map, 4, 4)).toBe(0); // the junction box itself
+  });
+
+  it('highways and wide slabs get no zebras', () => {
+    const map = new GameMap(12, 12);
+    hline(map, BuiltKind.RoadHighway, 4, 0, 11);
+    vline(map, BuiltKind.RoadHighway, 6, 0, 11);
+    expect(crosswalkMask(map, 5, 4)).toBe(0);
   });
 });
