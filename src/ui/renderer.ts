@@ -1272,7 +1272,7 @@ export class Renderer {
                 const lit = this.skinEmission.get(base + sfx);
                 const blink = this.skinEmission.get(`${base}/blink${sfx}`);
                 if (lit || blink) this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: base, kind: pp.kind, lit, blink });
-              } else {
+              } else if (this.profile.bakedLightMaps) {
                 const form = pp.width === 1 && pp.height === 1 ? 'c' : `${pp.width}x${pp.height}`;
                 const ekey = `building/b-${pp.kind}-${form}`;
                 if (this.ambientSprites?.emission[ekey]) {

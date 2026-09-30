@@ -119,6 +119,7 @@ describe('tileset render profiles', () => {
       shaderLife: true,
       marks: 'flat',
       tileWashes: true,
+      bakedLightMaps: true,
     });
   });
 });
@@ -144,6 +145,11 @@ describe('the snes tileset (code-painted)', () => {
     const p = tilesetDef('snes').profile;
     expect(p.marks).toBe('icons');
     expect(p.tileWashes).toBe(false);
+  });
+
+  it('only the satellite skin uses the baked diffusion light maps (they were made for its art)', () => {
+    expect(tilesetDef(PROCEDURAL).profile.bakedLightMaps).toBe(false);
+    expect(tilesetDef('snes').profile.bakedLightMaps).toBe(false);
   });
 
   it('procedural keeps flat marks and the data washes', () => {

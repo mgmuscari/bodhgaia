@@ -51,6 +51,9 @@ export interface RenderProfile {
   /** Translucent per-tile data washes over the map (land value on zones, smog on roads). Pixel art
    *  keeps its colours; the same signals stay in the overlays and Inspect. */
   tileWashes: boolean;
+  /** Use the baked (diffusion) building light maps from the ambient sprite set. They were made for the
+   *  satellite art; other skins either paint their own @emit maps or stay unlit. */
+  bakedLightMaps: boolean;
 }
 
 /** The procedural look: no skin effects, bold labels. Also the renderer's profile when no skin loaded. */
@@ -64,6 +67,7 @@ export const PROCEDURAL_PROFILE: RenderProfile = {
   shaderLife: true,
   marks: 'flat',
   tileWashes: true,
+  bakedLightMaps: false,
 };
 
 export interface TilesetDef {
@@ -182,6 +186,7 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
       shaderLife: true,
       marks: 'flat',
       tileWashes: true,
+      bakedLightMaps: true,
     },
   },
   {
@@ -200,6 +205,7 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
       shaderLife: false,
       marks: 'icons',
       tileWashes: false,
+      bakedLightMaps: false,
     },
   },
 ];
