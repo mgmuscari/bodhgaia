@@ -67,11 +67,12 @@ export function poleWireDirs(map: GameMap, x: number, y: number): ReadonlyArray<
   return out;
 }
 
-// ── Curb-side power lines (skin path) ──────────────────────────────────────────────────────────────
-// Lines run along the OUTER edge of a street — the north curb of an E-W run, the west curb of an N-S
-// run — and continue across junctions; poles stand mid-block on that curb, never in a junction box and
-// never mid-road on a multi-row avenue. Independent of how the street grid happens to align with the
-// pole spacing (the old centre-line poles fell exactly on the intersections of a period-4 grid).
+// ── Curb-side power poles (skin path) ──────────────────────────────────────────────────────────────
+// Poles are PROPS (no wires — Maddy 2026-09-30: wires were clutter) standing on the OUTER curb of a
+// street — the north curb of an E-W run, the west curb of an N-S run — mid-block, never mid-road on a
+// multi-row avenue, and tucked into the tile corner where they land on a T. Independent of how the
+// street grid happens to align with the pole spacing (the old centre-line poles fell exactly on the
+// intersections of a period-4 grid).
 
 /** A street or avenue tile (the kinds that carry distribution lines — not highways, not transit). */
 function lineRoadAt(map: GameMap, x: number, y: number): boolean {
@@ -88,21 +89,9 @@ function vRun(map: GameMap, x: number, y: number): boolean {
   return lineRoadAt(map, x, y) && (roadAt(map, x, y + 1) || roadAt(map, x, y - 1));
 }
 
-/** Span position 0..POLE_SPACING-1 along a run; 0 is where a pole stands (mid-block on a period-4 grid). */
+/** Position 0..POLE_SPACING-1 along a run; 0 is where a pole stands (mid-block on a period-4 grid). */
 function spanPos(t: number): number {
   return (((t - 2) % POLE_SPACING) + POLE_SPACING) % POLE_SPACING;
-}
-
-/**
- * The wire spans crossing tile (x, y): an 'h' span on the outer (north) edge of an E-W run whose north
- * neighbour isn't another lane of that run, a 'v' span on the outer (west) edge of an N-S run likewise.
- * A junction carries both. `k` is the span position (0 at a pole) for the sag.
- */
-export function curbWiresAt(map: GameMap, x: number, y: number): ReadonlyArray<{ axis: 'h' | 'v'; k: number }> {
-  const out: Array<{ axis: 'h' | 'v'; k: number }> = [];
-  if (hRun(map, x, y) && !hRun(map, x, y - 1)) out.push({ axis: 'h', k: spanPos(x) });
-  if (vRun(map, x, y) && !vRun(map, x - 1, y)) out.push({ axis: 'v', k: spanPos(y) });
-  return out;
 }
 
 /**
@@ -139,4 +128,68 @@ export function innerCornerMask(map: GameMap, x: number, y: number): number {
   if (s && w && !roadAt(map, x - 1, y + 1)) m |= 64;
   if (n && w && !roadAt(map, x - 1, y - 1)) m |= 128;
   return m;
+}
+
+/** Road-like tiles for the paint-link walk: the classic roads plus quiet streets and ramps. */
+function roadish(map: GameMap, x: number, y: number): boolean {
+  if (!map.inBounds(x, y)) return false;
+  const k = map.getBuilt(x, y);
+  return isRoadKind(k) || k === BuiltKind.QuietStreet || k === BuiltKind.RoadRamp;
+}
+
+/** A connector kind worldgen uses to join highway runs (plain street, or a ramp tile at a bend). */
+function isLinkKind(k: number): boolean {
+  return k === BuiltKind.RoadStreet || k === BuiltKind.RoadRamp;
+}
+
+const DIRS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+function roadNeighbours(map: GameMap, x: number, y: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const [dx, dy] of DIRS) if (roadish(map, x + dx, y + dy)) out.push([x + dx, y + dy]);
+  return out;
+}
+
+/** Longest connector chain followed when deciding whether a link tile belongs to a highway. */
+const LINK_WALK = 8;
+
+/**
+ * The road class a tile should be PAINTED as. Worldgen joins the straight runs of a country highway
+ * with connector tiles at every bend — plain streets, or RAMP tiles, sometimes a staircase of two or
+ * three. A connector that is not a junction (≤ 2 road neighbours), on a chain of such connectors whose
+ * BOTH ends reach highway, is a link in that highway: it wears highway paint (and, with the curved lane
+ * geometry, the bend reads as one road). A chain touching a street or a dead end keeps its own paint.
+ * Cosmetic only — traffic still treats each tile as the kind it is.
+ */
+export function roadPaintKind(map: GameMap, x: number, y: number): number {
+  const self = map.getBuilt(x, y);
+  if (!isLinkKind(self)) return self;
+  const start = roadNeighbours(map, x, y);
+  if (start.length === 0 || start.length > 2) return self;
+  for (const first of start) {
+    // walk away from (x, y) along degree-≤2 connectors until something else
+    let px = x;
+    let py = y;
+    let [cx, cy] = first;
+    let ok = false;
+    for (let step = 0; step < LINK_WALK; step++) {
+      const k = map.getBuilt(cx, cy);
+      if (k === BuiltKind.RoadHighway) {
+        ok = true;
+        break;
+      }
+      if (!isLinkKind(k)) break;
+      const next = roadNeighbours(map, cx, cy).filter(([nx, ny]) => nx !== px || ny !== py);
+      if (next.length !== 1) break; // a junction or a dead end
+      [px, py] = [cx, cy];
+      [cx, cy] = next[0]!;
+    }
+    if (!ok) return self;
+  }
+  return start.length === 2 ? BuiltKind.RoadHighway : self; // a dead-end connector keeps its own paint
 }

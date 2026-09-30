@@ -322,7 +322,6 @@ describe('snes tileset — road paint + street furniture on the art grid', () =>
       ...Array.from({ length: 15 }, (_, i) => `@road/divider/${i + 1}`),
       ...Array.from({ length: 15 }, (_, i) => `@road/xing/${i + 1}`),
       '@road/pole/h', '@road/pole/v',
-      ...[0, 1, 2, 3].flatMap((k) => [`@road/wire/h${k}`, `@road/wire/v${k}`]),
       '@road/flane/h', '@road/flane/v', '@road/flaneEdge/2', '@road/flaneEdge/4', '@road/flaneEdge/6',
       '@road/turn/h', '@road/turn/v', '@road/median/h', '@road/median/v',
     ];
@@ -348,15 +347,6 @@ describe('snes tileset — road paint + street furniture on the art grid', () =>
     for (let y = 5; y < BASE_TILE; y++) for (let x = 0; x < BASE_TILE; x++) expect(t.data[(y * BASE_TILE + x) * 4 + 3], `(${x},${y})`).toBe(0); // stays on the sidewalk strip
   });
 
-  it('the four wire spans along a run sag in the middle (a catenary, 1 art px thick)', () => {
-    const row = (k: number): number => {
-      const t = tiles.get(`@road/wire/h${k}`)!;
-      for (let y = 0; y < BASE_TILE; y++) if (t.data[(y * BASE_TILE + 8) * 4 + 3] === 255) return y;
-      return -1;
-    };
-    expect(row(1)).toBeGreaterThan(row(0));
-    expect(row(2)).toBeGreaterThanOrEqual(row(1));
-  });
 });
 
 describe('snes roads — lines follow the road through turns, and every class shares one asphalt', () => {
@@ -454,6 +444,12 @@ describe('snes roads — lines follow the road through turns, and every class sh
   it('a junction pole is drawn tucked into the tile corner', () => {
     const t = tiles.get('@road/pole/nw')!;
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (t.data[(y * 16 + x) * 4 + 3]) expect(x < 7 && y < 7, `(${x},${y})`).toBe(true);
+  });
+});
+
+describe('snes roads — poles are props, no wires', () => {
+  it('paints no wire tiles', () => {
+    expect([...tiles.keys()].some((k) => k.startsWith('@road/wire/'))).toBe(false);
   });
 });
 

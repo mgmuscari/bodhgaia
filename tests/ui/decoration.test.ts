@@ -201,7 +201,7 @@ describe('wideRoadAt mixed-kind boundary (street abutting an avenue band reads w
   });
 });
 
-import { curbPoleAt, curbWiresAt, innerCornerMask } from '../../src/ui/decoration';
+import { curbPoleAt, innerCornerMask, roadPaintKind } from '../../src/ui/decoration';
 
 // A period-4 street grid (the common worldgen shape): streets on x ≡ 0 and y ≡ 0 (mod 4), blocks between.
 function streetGrid(size = 17): GameMap {
@@ -228,25 +228,12 @@ describe('curb-side power lines (Maddy 2026-09-30: at the sides, not only at int
     expect(poles).toBeGreaterThanOrEqual(20);
   });
 
-  it('wires run along every tile of a run, continuous through the junctions', () => {
-    const map = streetGrid();
-    for (let x = 0; x < 17; x++) expect(curbWiresAt(map, x, 4).some((w) => w.axis === 'h'), `x=${x}`).toBe(true);
-  });
-
-  it('on a two-row avenue only the outer (north) row carries the line — never mid-road', () => {
+  it('on a two-row avenue only the outer (north) row gets poles — never mid-road', () => {
     const map = new GameMap(16, 8);
     hline(map, BuiltKind.RoadAvenue, 3, 0, 15);
     hline(map, BuiltKind.RoadAvenue, 4, 0, 15);
-    expect(curbWiresAt(map, 5, 3).some((w) => w.axis === 'h')).toBe(true);
-    expect(curbWiresAt(map, 5, 4).some((w) => w.axis === 'h')).toBe(false);
     expect(curbPoleAt(map, 6, 4)).toBe(null);
-    expect(curbPoleAt(map, 6, 3)).toBe('h'); // the outer row still gets its poles
-  });
-
-  it("each wire tile knows its span position k (0 at a pole) so the line sags between poles", () => {
-    const map = streetGrid();
-    expect(curbWiresAt(map, 2, 4).find((w) => w.axis === 'h')!.k).toBe(0);
-    expect(curbWiresAt(map, 3, 4).find((w) => w.axis === 'h')!.k).toBe(1);
+    expect(curbPoleAt(map, 6, 3)).toBe('h');
   });
 
   it('highways carry no poles', () => {
@@ -271,5 +258,51 @@ describe('junction poles + inner curb corners (Maddy 2026-09-30: poles on the co
     // the junction (4,4): all four diagonals are block corners
     expect(innerCornerMask(map, 4, 4)).toBe(16 | 32 | 64 | 128);
     expect(innerCornerMask(map, 2, 4)).toBe(0); // a straight run has none
+  });
+});
+
+describe('roadPaintKind — a street tile that only links highways wears highway paint', () => {
+  it('the street tile at a bend of a country highway paints as highway', () => {
+    const map = new GameMap(12, 12);
+    hline(map, BuiltKind.RoadHighway, 2, 0, 5);
+    map.built[map.idx(6, 2)] = BuiltKind.RoadStreet; // the worldgen connector at the bend
+    vline(map, BuiltKind.RoadHighway, 6, 3, 10);
+    expect(roadPaintKind(map, 6, 2)).toBe(BuiltKind.RoadHighway);
+  });
+
+  it('a street among streets, or a street crossing a highway, keeps street paint', () => {
+    const map = new GameMap(12, 12);
+    hline(map, BuiltKind.RoadStreet, 4, 0, 11);
+    vline(map, BuiltKind.RoadHighway, 6, 0, 3);
+    vline(map, BuiltKind.RoadHighway, 6, 5, 11);
+    expect(roadPaintKind(map, 2, 4)).toBe(BuiltKind.RoadStreet);
+    expect(roadPaintKind(map, 6, 4)).toBe(BuiltKind.RoadStreet); // street neighbours too → a crossing
+  });
+
+  it('a staircase of RAMP tiles at a bend (the country highway, seen live) paints as highway', () => {
+    // live seed "lotus" around (74..84, 19..25): highway, ramp bend, highway, ramp, ramp, highway
+    const map = new GameMap(12, 8);
+    vline(map, BuiltKind.RoadHighway, 2, 0, 3);
+    map.built[map.idx(2, 4)] = BuiltKind.RoadRamp;
+    hline(map, BuiltKind.RoadHighway, 4, 3, 6);
+    map.built[map.idx(7, 4)] = BuiltKind.RoadRamp;
+    map.built[map.idx(7, 5)] = BuiltKind.RoadRamp;
+    hline(map, BuiltKind.RoadHighway, 5, 8, 11);
+    expect(roadPaintKind(map, 2, 4)).toBe(BuiltKind.RoadHighway);
+    expect(roadPaintKind(map, 7, 4)).toBe(BuiltKind.RoadHighway);
+    expect(roadPaintKind(map, 7, 5)).toBe(BuiltKind.RoadHighway);
+  });
+
+  it('a chain that ends in a dead end or a street keeps its own paint', () => {
+    const map = new GameMap(12, 4);
+    hline(map, BuiltKind.RoadHighway, 1, 0, 3);
+    hline(map, BuiltKind.RoadStreet, 1, 4, 6); // highway → street stub, ends nowhere
+    expect(roadPaintKind(map, 5, 1)).toBe(BuiltKind.RoadStreet);
+  });
+
+  it('non-street kinds are returned unchanged', () => {
+    const map = new GameMap(6, 6);
+    hline(map, BuiltKind.RoadAvenue, 2, 0, 5);
+    expect(roadPaintKind(map, 2, 2)).toBe(BuiltKind.RoadAvenue);
   });
 });
