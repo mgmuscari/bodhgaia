@@ -75,6 +75,7 @@ import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
 import { computePowerGrid, plantOutput, isPowerConsumer, plantPollution } from './growth/power';
+import { gameClock } from './ui/lighting';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -261,10 +262,15 @@ export function main(): void {
   // capacity vs demand → which consumers are powered). Recomputed on placement + the
   // civic cadence; published to the renderer (unpowered consumers get a red pip) and
   // read by inspect. Derived from the hashed built layer → never hashed itself.
-  let powerGrid = computePowerGrid(world.map, world.parcels);
+  let powerGrid = computePowerGrid(world.map, world.parcels, gameClock(performance.now() / 1000));
   let powerSig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
+  // The grid is solved for the current in-game hour (time-varying demand + rolling blackouts), and
+  // re-solved every in-game hour from the frame loop below.
+  let powerSlot = gameClock(performance.now() / 1000).slot;
   const recomputePower = (): boolean => {
-    powerGrid = computePowerGrid(world.map, world.parcels);
+    const clock = gameClock(performance.now() / 1000);
+    powerSlot = clock.slot;
+    powerGrid = computePowerGrid(world.map, world.parcels, clock);
     renderer.setPowerGrid(powerGrid.poweredAnchors);
     const sig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
     const changed = sig !== powerSig;
@@ -978,6 +984,8 @@ export function main(): void {
   let last = performance.now();
   let lastBaseRefresh = 0;
   const frame = (now: number): void => {
+    // a new in-game hour: demand re-draws and the blackout may roll to another block
+    if (gameClock(now / 1000).slot !== powerSlot && recomputePower()) markDirty();
     // Sim path is VERBATIM today's — two independent clocks (YP3): `last` drives the
     // sim (its FixedTickLoop clamp owns catch-up); never fold the ambient dt into it.
     sim.advance(now - last);
