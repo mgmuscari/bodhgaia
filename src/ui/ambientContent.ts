@@ -35,7 +35,7 @@ import type { LiveCaps } from './settings';
 export const AMBIENT_MAX_FRAME_MS = 1000;
 
 /** Fixed substep size — the simulation cadence for ambient motion. */
-const SUBSTEP_MS = 50;
+export const SUBSTEP_MS = 50;
 
 // Live agent/render perf ceilings — the "fast PC vs slow PC" knob, mutated at runtime by the settings
 // menu (main wires applyLiveCaps from the persisted store; settings.ts owns the shape/presets/clamp).
@@ -566,6 +566,193 @@ export function pedCurbOffset(dir: number): { dx: number; dy: number } {
   return { dx: -DIR_DY[dir]! * PED_CURB, dy: DIR_DX[dir]! * PED_CURB };
 }
 
+/** Commit a mover to a new heading, remembering the one it turned from (for moverPose's turn arc). */
+export function commitHeading(m: Mover, nd: number): void {
+  m.prevDir = m.dir;
+  m.dir = nd;
+}
+
+/** A sprite's draw pose: world position of its centre (tile units, +0.5 already applied) + a unit
+ *  heading vector (screen y-down; the renderer turns it into a rotation). */
+export interface Pose {
+  x: number;
+  y: number;
+  hx: number;
+  hy: number;
+}
+
+/**
+ * Where to DRAW a grid-following mover, and which way it faces — smooth through turns (Maddy
+ * 2026-09-30: "i like your approach to turning center lines"). Each leg runs centre-to-centre; the pose
+ * is drawn half a tile BEHIND the sim position, so over one leg it crosses the leg's start tile from its
+ * entry edge (the side it came in on, via `prevDir`) to its exit edge (via `dir`): a straight line, or a
+ * quarter-circle round the tile corner between those edges at a 90° turn — the same geometry the SNES
+ * lane lines use. `lateral` is the right-of-heading offset (car lane, ped kerb), carried round the arc
+ * as the radius (0.5 − lateral on a right turn, 0.5 + lateral on a left), so a turning car never
+ * jumps across the road. Leg ends meet exactly, so motion is continuous. Pure, no trig (nlerp + sqrt).
+ */
+export interface LateralProfile {
+  /** Right-of-heading offset at the tile's entry edge, centre, and exit edge. */
+  entry: number;
+  mid: number;
+  exit: number;
+}
+
+export function moverPose(m: Mover, lateral: number | LateralProfile): Pose {
+  const prof = typeof lateral === 'number' ? { entry: lateral, mid: lateral, exit: lateral } : lateral;
+  const latAt = (p: number): number => (p < 0.5 ? prof.entry + (prof.mid - prof.entry) * p * 2 : prof.mid + (prof.exit - prof.mid) * (p * 2 - 1));
+  const d = m.dir;
+  const dx = DIR_DX[d]!;
+  const dy = DIR_DY[d]!;
+  const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
+  if (!onLeg) {
+    // idle / off-grid: the plain tile-centre pose
+    return { x: m.x + 0.5 - dy * prof.mid, y: m.y + 0.5 + dx * prof.mid, hx: dx, hy: dy };
+  }
+  const p = Math.min(1, Math.max(0, 1 - (Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y))));
+  const pd = m.prevDir ?? d;
+  const pdx = DIR_DX[pd]!;
+  const pdy = DIR_DY[pd]!;
+  const cx = m.tx - dx + 0.5; // centre of the tile being crossed
+  const cy = m.ty - dy + 0.5;
+  const turn = pdx * dy - pdy * dx; // +1 right (clockwise, y-down), −1 left, 0 straight / U-turn
+  const lat = latAt(p);
+  if (turn === 0 && pd === d) {
+    // straight through
+    const bx = cx + dx * (p - 0.5);
+    const by = cy + dy * (p - 0.5);
+    return { x: bx - dy * lat, y: by + dx * lat, hx: dx, hy: dy };
+  }
+  if (turn === 0) {
+    // U-turn: in along pd to the centre and back out, the heading sweeping round through its right-hand
+    // side in two nlerp halves (pd → right(pd) → d) — never a 180° flip
+    const rx = -pdy;
+    const ry = pdx;
+    const t = p < 0.5 ? p * 2 : p * 2 - 1;
+    const [ax, ay, bx2, by2] = p < 0.5 ? [pdx, pdy, rx, ry] : [rx, ry, dx, dy];
+    let hx = ax + (bx2 - ax) * t;
+    let hy = ay + (by2 - ay) * t;
+    const hl = Math.sqrt(hx * hx + hy * hy);
+    hx /= hl;
+    hy /= hl;
+    const along = p < 0.5 ? p - 0.5 : 0.5 - p; // toward the centre, then back out
+    const bx = cx + pdx * along;
+    const by = cy + pdy * along;
+    return { x: bx - hy * lat, y: by + hx * lat, hx, hy };
+  }
+  // quarter-circle round corner K between the entry edge (−pd side) and the exit edge (+d side)
+  const kx = cx - pdx * 0.5 + dx * 0.5;
+  const ky = cy - pdy * 0.5 + dy * 0.5;
+  // unit radials from K to the entry point (= −d) and to the exit point (= +pd); nlerp between them
+  const vx0 = -dx * (1 - p) + pdx * p;
+  const vy0 = -dy * (1 - p) + pdy * p;
+  const len = Math.sqrt(vx0 * vx0 + vy0 * vy0);
+  const vx = vx0 / len;
+  const vy = vy0 / len;
+  const r = 0.5 - turn * lat; // right turn: the right-hand lane is the inside of the curve
+  // heading = the radial rotated ±90° (so it starts along pd and ends along d)
+  const hx = turn > 0 ? -vy : vy;
+  const hy = turn > 0 ? vx : -vx;
+  return { x: kx + vx * r, y: ky + vy * r, hx, hy };
+}
+
+/** Blend two poses (position lerp, heading nlerp). A jump over 1.5 tiles — a spawn, a park, a
+ *  re-route snap — is a teleport: take the newer pose rather than slide across the map. */
+function blendPose(a: Pose, b: Pose, t: number): Pose {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (dx * dx + dy * dy > 2.25) return b;
+  let hx = a.hx + (b.hx - a.hx) * t;
+  let hy = a.hy + (b.hy - a.hy) * t;
+  const l = Math.sqrt(hx * hx + hy * hy);
+  if (l < 1e-6) {
+    hx = b.hx;
+    hy = b.hy;
+  } else {
+    hx /= l;
+    hy /= l;
+  }
+  return { x: a.x + dx * t, y: a.y + dy * t, hx, hy };
+}
+
+/** The pose of a mover as it stood before the latest substep (its snapshot), or null if none. */
+function snapPose(m: Mover, lateral: number | ((mv: Mover) => LateralProfile)): Pose | null {
+  const sn = m.snap;
+  if (!sn) return null;
+  const mv = { ...m, x: sn.x, y: sn.y, dir: sn.dir, prevDir: sn.prevDir, tx: sn.tx, ty: sn.ty };
+  return moverPose(mv, typeof lateral === 'number' ? lateral : lateral(mv));
+}
+
+/**
+ * Record every mover's leg state before a substep runs, so the renderer can draw it `alpha` of the way
+ * from that state to the next (render interpolation — the 50 ms substeps otherwise show as 20 Hz hops
+ * on a 60–120 Hz display). Cosmetic state only; the world hash never sees it.
+ */
+export function snapshotMovers(state: AmbientState): void {
+  for (const list of [state.cars, state.cruisers, state.peds]) {
+    for (const m of list) {
+      const sn = (m.snap ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 });
+      sn.x = m.x;
+      sn.y = m.y;
+      sn.dir = m.dir;
+      sn.prevDir = m.prevDir;
+      sn.tx = m.tx;
+      sn.ty = m.ty;
+    }
+  }
+}
+
+/** How far (0..1) the display is between the last substep and the next — the interpolation factor. */
+export function ambientAlpha(state: AmbientState): number {
+  return Math.min(1, Math.max(0, state.accMs / SUBSTEP_MS));
+}
+
+/** A car's draw pose. Parked: on its stall/kerb spot, a kerb-parked car lying parallel to the kerb.
+ *  Moving: {@link moverPose} in its right-hand lane, interpolated `alpha` of the way from its pose
+ *  before the latest substep (1 = no interpolation). */
+export function carPose(c: Car, alpha = 1): Pose {
+  if (c.parked) {
+    const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
+    return { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! };
+  }
+  const now = moverPose(c, LANE);
+  const before = alpha < 1 ? snapPose(c, LANE) : null;
+  return before ? blendPose(before, now, alpha) : now;
+}
+
+/**
+ * A pedestrian's kerb offset across the tile its leg crosses: PED_CURB on a road tile, 0 on open ground,
+ * averaged at each edge with the neighbour across it — so a walker slides onto/off the kerb instead of
+ * jumping as it steps between a road and a lot.
+ */
+function pedLateral(m: Mover, onRoadAt: (x: number, y: number) => boolean): LateralProfile {
+  const lat = (x: number, y: number): number => (onRoadAt(x, y) ? PED_CURB : 0);
+  const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
+  if (!onLeg) {
+    const here = lat(Math.round(m.x), Math.round(m.y));
+    return { entry: here, mid: here, exit: here };
+  }
+  const d = m.dir;
+  const pd = m.prevDir ?? d;
+  const tx = m.tx - DIR_DX[d]!;
+  const ty = m.ty - DIR_DY[d]!;
+  const mid = lat(tx, ty);
+  return {
+    entry: (lat(tx - DIR_DX[pd]!, ty - DIR_DY[pd]!) + mid) / 2,
+    mid,
+    exit: (mid + lat(m.tx, m.ty)) / 2,
+  };
+}
+
+/** A pedestrian's draw pose: on the kerb along a road, down the middle elsewhere, easing between the
+ *  two across a tile edge — smooth through turns ({@link moverPose}; `walkTo` is only the trip's
+ *  destination, walkers still follow grid legs) and interpolated between substeps like {@link carPose}. */
+export function pedPose(p: Ped, onRoadAt: (x: number, y: number) => boolean, alpha = 1): Pose {
+  const now = moverPose(p, pedLateral(p, onRoadAt));
+  const before = alpha < 1 ? snapPose(p, (mv) => pedLateral(mv, onRoadAt)) : null;
+  return before ? blendPose(before, now, alpha) : now;
+}
+
 /** A grid-following sprite: float world position + heading + committed target tile. */
 export interface Mover {
   /** Float world position in tile units. */
@@ -573,6 +760,12 @@ export interface Mover {
   y: number;
   /** Current travel direction (0=N, 1=E, 2=S, 3=W). */
   dir: number;
+  /** The heading of the PREVIOUS leg (set by commitHeading) — cosmetic, read only by moverPose to draw
+   *  a turn as a smooth arc. Undefined ⇒ same as `dir` (no turn). */
+  prevDir?: number;
+  /** The mover's leg state as it stood BEFORE the latest substep (snapshotMovers) — cosmetic, read only
+   *  by the pose functions to interpolate between 50 ms substeps at the display's frame rate. */
+  snap?: { x: number; y: number; dir: number; prevDir?: number; tx: number; ty: number };
   /** Committed target tile (integer tile coords) — the end of the current leg. */
   tx: number;
   ty: number;
@@ -1432,7 +1625,7 @@ function advanceMover(
     const fromDir = opposite(m.dir);
     const nd = pickNext(m.tx, m.ty, fromDir, recent);
     if (nd < 0) return false; // isolated, or boxed in by its own path → despawn
-    m.dir = nd;
+    commitHeading(m, nd);
     m.tx = m.x + DIR_DX[nd]!;
     m.ty = m.y + DIR_DY[nd]!;
   } else {
@@ -2049,7 +2242,7 @@ export function routeToParking(state: AmbientState, map: GameMap, car: Car): boo
   car.y = p0y;
   car.tx = p1x;
   car.ty = p1y;
-  car.dir = p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0;
+  commitHeading(car, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
   car.path = path;
   car.leg = 2;
   car.parked = false;
@@ -3413,7 +3606,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
             p.y = p0y;
             p.tx = p1x;
             p.ty = p1y;
-            p.dir = p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0;
+            commitHeading(p, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
             p.path = route;
             p.leg = 2; // route[0]=start, route[1]=committed next; pathStep targets route[2] onward
             p.pathGoal = goalIdx;
@@ -3483,7 +3676,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
         car.y = p0y;
         car.tx = p1x;
         car.ty = p1y;
-        car.dir = p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0;
+        commitHeading(car, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
         car.path = path;
         car.leg = 2; // path[0]=start, path[1]=the committed next tile; pathStep targets path[2] next
         car.parked = false;
@@ -4048,6 +4241,7 @@ export function stepAmbient(state: AmbientState, map: GameMap, rng: Rng, dtMs: n
   state.accMs += Math.min(dtMs, AMBIENT_MAX_FRAME_MS);
   while (state.accMs >= SUBSTEP_MS) {
     state.accMs -= SUBSTEP_MS;
+    snapshotMovers(state); // the "before" pose the renderer interpolates from
     substep(state, map, rng);
   }
 }

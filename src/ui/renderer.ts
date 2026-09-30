@@ -33,7 +33,7 @@ import { tileCategory, tileTiling, exportTileName, type TileCategory } from './t
 import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask } from './decoration';
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
-import { laneOffset, pedCurbOffset, dirVector } from './ambientContent';
+import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
 import type { AmbientState } from './ambientContent';
 import type { AmbientSprites } from './ambientSprites';
 import { makeWaterFrames, makeGrassSheen, cloudFbm, buildWaterSloshFlipbook, WATER_SLOSH_ROTS, WATER_SLOSH_FRAMES } from './waterAnimation';
@@ -1479,6 +1479,8 @@ export class Renderer {
   /** Draw the ambient sprites (cars / pedestrians / bird flocks) + the live building-health
    *  glow at the DPR transform, culled to the viewport. Cosmetic shell — live-pass tuned. */
   private drawSprites(world: WorldState, camera: Camera, ambient: AmbientState): void {
+    const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
+    const onRoadAt = (x: number, y: number): boolean => world.map.inBounds(x, y) && isRoadKind(world.map.built[world.map.idx(x, y)]!);
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const ts = camera.tileSize;
@@ -1710,16 +1712,15 @@ export class Renderer {
       // A PARKED car (lot bay or kerb slot) carries its exact stall position in c.x/c.y, so it draws
       // ON the stall (+0.5) — never warped to the lane centre. A MOVING car rides its lane (laneOffset,
       // right of heading) so opposing traffic separates. Parked cars use the smaller size.
-      const off = c.parked ? { dx: 0, dy: 0 } : laneOffset(c.dir);
-      const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
+      // carPose: a moving car rides its lane smoothly round turns (moverPose); a parked one sits on its
+      // stall, a kerb-parked one parallel to the kerb
+      const pose = carPose(c, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const size = c.parked ? parkedSize : carSize;
       if (carSprites && carSprites.length > 0) {
         const img = carSprites[(c.tint ?? 0) % carSprites.length]!;
-        // A curb-PARKED car sits PARALLEL to the curb: its long axis runs along the road, i.e.
-        // perpendicular to curbDir (N/S curb → E-W car; E/W curb → N-S car). Moving cars face travel.
-        const headingDir = c.parked && c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
-        const hv = dirVector(headingDir);
+        const hv = { dx: pose.hx, dy: pose.hy };
         const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate CW to the heading
         const ss = size * 1.7;
         ctx.save();
@@ -1758,11 +1759,11 @@ export class Renderer {
     const policeSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.police : undefined;
     for (const c of ambient.cruisers) {
       if (this.gpuMode) break; // cruisers rendered on GPU in gpuMode
-      const off = laneOffset(c.dir);
-      const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
+      const pose = carPose(c, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       if (policeSprites && policeSprites.length > 0) {
-        const hv = dirVector(c.dir);
+        const hv = { dx: pose.hx, dy: pose.hy };
         const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate to heading (like cars)
         const ss = ts * 0.55;
         ctx.save();
@@ -1837,14 +1838,8 @@ export class Renderer {
     for (const p of ambient.peds) {
       if (this.gpuMode) break; // peds/cyclists rendered on GPU in gpuMode
       if (p.phase === 'inside' || p.phase === 'driving') continue; // inside a building, or riding its car
-      let ox = 0.5;
-      let oy = 0.5;
-      if (isRoadKind(world.map.built[world.map.idx(Math.round(p.x), Math.round(p.y))]!)) {
-        const o = pedCurbOffset(p.dir);
-        ox += o.dx;
-        oy += o.dy;
-      }
-      const { sx, sy } = camera.worldToScreen(p.x + ox, p.y + oy);
+      const pose = pedPose(p, onRoadAt, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
       const set = isBike ? cyclistSprites : pedSprites;
@@ -1852,7 +1847,7 @@ export class Renderer {
         // a STABLE per-ped pick (its household/car id) → one consistent person, never cycling
         const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
         const img = set[(Math.imul(seed, 2654435761) >>> 0) % set.length]!;
-        const hv = dirVector(p.dir);
+        const hv = { dx: pose.hx, dy: pose.hy };
         const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate CW to heading (like cars)
         const ss = ts * (isBike ? 0.46 : 0.4);
         ctx.save();
@@ -2001,11 +1996,11 @@ export class Renderer {
     const HALF = 8, SRCH = 16; // the light map is the 16px sprite grid
     for (const c of ambient.cruisers) {
       if (this.gpuMode) break; // cruiser emission rendered on GPU in gpuMode
-      const off = laneOffset(c.dir);
-      const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
+      const pose = carPose(c, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       if (cruiserLights) {
-        const hv = dirVector(c.dir);
+        const hv = { dx: pose.hx, dy: pose.hy };
         const angle = Math.atan2(hv.dx, -hv.dy); // match the body sprite's heading rotation
         const ss = ts * 0.55;
         ctx.save();
@@ -2044,12 +2039,11 @@ export class Renderer {
         if (c.parked) continue; // a parked car is OFF — no headlights/taillights (Maddy)
         const li = carLights[(c.tint ?? 0) % carLights.length];
         if (!li) continue;
-        const off = laneOffset(c.dir);
-        const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
+        const pose = carPose(c, alpha);
+        const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
         if (!onScreen(sx, sy)) continue;
         const size = c.parked ? parkedSize : carSize;
-        const headingDir = c.parked && c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
-        const hv = dirVector(headingDir);
+        const hv = { dx: pose.hx, dy: pose.hy };
         const angle = Math.atan2(hv.dx, -hv.dy);
         const ss = size * 1.7;
         ctx.save();
@@ -2072,16 +2066,10 @@ export class Renderer {
         const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
         const li = cyclistLights[(Math.imul(seed, 2654435761) >>> 0) % cyclistLights.length];
         if (!li) continue;
-        let ox = 0.5;
-        let oy = 0.5;
-        if (isRoadKind(world.map.built[world.map.idx(Math.round(p.x), Math.round(p.y))]!)) {
-          const o = pedCurbOffset(p.dir);
-          ox += o.dx;
-          oy += o.dy;
-        }
-        const { sx, sy } = camera.worldToScreen(p.x + ox, p.y + oy);
+        const pose = pedPose(p, onRoadAt, alpha);
+        const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
         if (!onScreen(sx, sy)) continue;
-        const hv = dirVector(p.dir);
+        const hv = { dx: pose.hx, dy: pose.hy };
         const angle = Math.atan2(hv.dx, -hv.dy);
         const ss = ts * 0.46;
         ctx.save();
