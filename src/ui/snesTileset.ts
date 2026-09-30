@@ -9,10 +9,10 @@
 // procedural painter, so the set can grow increment by increment.
 
 import { BASE_TILE } from './camera';
-import { blank, fill, hash2, outline, px, slice, type Pixels, type RGB } from './pixelArt';
+import { blank, disc, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
 import { BUILDING_PAINTERS, paintBuilding } from './snesBuildings';
-import { builtRenderKey, footprintCellKey } from './renderKey';
+import { builtRenderKey, footprintCellKey, edgeKey, BLOB, BLOB_MASKS } from './renderKey';
 
 const T = BASE_TILE;
 
@@ -178,6 +178,117 @@ function buildingTiles(out: Map<string, Pixels>): void {
   }
 }
 
+// ── Terrain edges ────────────────────────────────────────────────────────────────────────────────
+// Transparent overlays keyed by blob mask (renderKey.blobMask) that soften the square terrain steps:
+// SHORE on a water cell beside land (sand, a broken foam line, then chop), CANOPY on open land beside
+// forest (scalloped crowns hanging in from the forest side, with their shadow on the grass).
+
+/** Distance (px) from (x, y) to the nearest edge in `mask` — sides are straight, corners roundish. */
+function edgeDistance(mask: number, x: number, y: number): number {
+  const L = T - 1;
+  let d = 99;
+  if (mask & BLOB.N) d = Math.min(d, y);
+  if (mask & BLOB.S) d = Math.min(d, L - y);
+  if (mask & BLOB.W) d = Math.min(d, x);
+  if (mask & BLOB.E) d = Math.min(d, L - x);
+  const corner = (dx: number, dy: number): number => (dx + dy + Math.max(dx, dy)) >> 1;
+  if (mask & BLOB.NE) d = Math.min(d, corner(L - x, y));
+  if (mask & BLOB.SE) d = Math.min(d, corner(L - x, L - y));
+  if (mask & BLOB.SW) d = Math.min(d, corner(x, L - y));
+  if (mask & BLOB.NW) d = Math.min(d, corner(x, y));
+  // inside corners (land on two adjacent sides) are chamfered at 45° — with the land-side `coast`
+  // chamfer on the convex corners, a stair-stepped coastline reads as a diagonal
+  const chamfer = (a: number, b: number): number => a + b - (T >> 1) + 1;
+  if ((mask & BLOB.N) && (mask & BLOB.W)) d = Math.min(d, chamfer(x, y));
+  if ((mask & BLOB.N) && (mask & BLOB.E)) d = Math.min(d, chamfer(L - x, y));
+  if ((mask & BLOB.S) && (mask & BLOB.W)) d = Math.min(d, chamfer(x, L - y));
+  if ((mask & BLOB.S) && (mask & BLOB.E)) d = Math.min(d, chamfer(L - x, L - y));
+  return d;
+}
+
+function shore(mask: number): Pixels {
+  const p = blank(T, T);
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      const wobble = hash2(x * 3 + y, x + y * 5, 77) % 3 === 0 ? 1 : 0; // beaches aren't ruler-straight
+      const d = edgeDistance(mask, x, y) - wobble;
+      if (d <= 0) px(p, x, y, C.dirtHi);
+      else if (d === 1) px(p, x, y, hash2(x, y, 78) % 5 === 0 ? C.dirt : C.dirtHi);
+      else if (d === 2) {
+        if (hash2(x, y, 79) % 4 !== 0) px(p, x, y, C.foam); // surf line, broken
+      } else if (d === 4 && hash2(x, y, 80) % 5 === 0) px(p, x, y, C.wave); // chop just offshore
+    }
+  }
+  return p;
+}
+
+function canopy(mask: number): Pixels {
+  const crowns = blank(T, T);
+  const L = T - 1;
+  // two crowns per side at different depths (a deep one and a shallow one), so the forest's edge
+  // scallops into the clearing instead of drawing a hedge line along it
+  const along: ReadonlyArray<readonly [number, number]> = [
+    [3, 2],
+    [11, 1],
+  ];
+  const centres: Array<[number, number]> = [];
+  if (mask & BLOB.N) for (const [a, o] of along) centres.push([a, -o]);
+  if (mask & BLOB.S) for (const [a, o] of along) centres.push([L - a, L + o]);
+  if (mask & BLOB.W) for (const [a, o] of along) centres.push([-o, L - a]);
+  if (mask & BLOB.E) for (const [a, o] of along) centres.push([L + o, a]);
+  if (mask & BLOB.NE) centres.push([L + 2, -2]);
+  if (mask & BLOB.SE) centres.push([L + 2, L + 2]);
+  if (mask & BLOB.SW) centres.push([-2, L + 2]);
+  if (mask & BLOB.NW) centres.push([-2, -2]);
+  for (const [cx, cy] of centres) disc(crowns, cx, cy, 4, C.leafDk);
+  for (const [cx, cy] of centres) disc(crowns, cx, cy - 1, 3, C.leafLo);
+  for (const [cx, cy] of centres) disc(crowns, cx - 1, cy - 2, 2, C.leaf);
+  for (const [cx, cy] of centres) px(crowns, cx - 2, cy - 3, C.leafHi);
+  // the crowns' shadow falls one pixel down-right onto the open ground
+  const p = blank(T, T);
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) if (isOpaque(crowns, x - 1, y - 1) && !isOpaque(crowns, x, y)) px(p, x, y, C.grassLo);
+  }
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      const [r, g, b, a] = getPx(crowns, x, y);
+      if (a) px(p, x, y, [r, g, b]);
+    }
+  }
+  return p;
+}
+
+/** COAST, on a land cell with water on two adjacent sides: round that convex corner off into a sandy
+ *  point (sand only — no water pixels, so it can never mismatch the sea's own shade). */
+function coast(mask: number): Pixels | null {
+  const L = T - 1;
+  const corners: Array<(x: number, y: number) => number> = [];
+  if ((mask & BLOB.N) && (mask & BLOB.E)) corners.push((x, y) => L - x + y);
+  if ((mask & BLOB.S) && (mask & BLOB.E)) corners.push((x, y) => L - x + (L - y));
+  if ((mask & BLOB.S) && (mask & BLOB.W)) corners.push((x, y) => x + (L - y));
+  if ((mask & BLOB.N) && (mask & BLOB.W)) corners.push((x, y) => x + y);
+  if (corners.length === 0) return null;
+  const p = blank(T, T);
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      const d = Math.min(...corners.map((f) => f(x, y)));
+      if (d <= 5) px(p, x, y, hash2(x, y, 82) % 5 === 0 ? C.dirt : C.dirtHi);
+      else if (d === 6 && hash2(x, y, 83) % 2 === 0) px(p, x, y, C.dirt); // ragged inland lip
+    }
+  }
+  return p;
+}
+
+function edgeTiles(out: Map<string, Pixels>): void {
+  for (const m of BLOB_MASKS) {
+    if (m === 0) continue;
+    out.set(edgeKey('shore', m), shore(m));
+    out.set(edgeKey('canopy', m), canopy(m));
+    const c = coast(m);
+    if (c) out.set(edgeKey('coast', m), c);
+  }
+}
+
 // ── Status icons ─────────────────────────────────────────────────────────────────────────────────
 // 8×8 badges on a transparent ground, drawn as 6×6 glyphs then ink-outlined: the blinking lightning bolt
 // of an unpowered zone (straight out of the SNES original), a heart for a thriving home, a raincloud for
@@ -209,6 +320,7 @@ export function paintSnesTileset(): Map<string, Pixels> {
   const out = new Map<string, Pixels>();
   terrainTiles(out);
   buildingTiles(out);
+  edgeTiles(out);
   for (const name of Object.keys(ICONS)) out.set(`@icon/${name}`, icon(name));
   return out;
 }

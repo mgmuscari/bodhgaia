@@ -136,6 +136,8 @@ export function iconKey(name: string): string {
   return `@icon/${name}`;
 }
 
+export { edgeKey } from './renderKey';
+
 // ── The satellite tileset ──────────────────────────────────────────────────────────────────
 // Google-Maps-inspired top-down patchwork (see docs/art/satellite-tileset.md): a slightly
 // cartoonish, black-outlined, SimCity-2000-era look with Oakland, CA architectural cues —

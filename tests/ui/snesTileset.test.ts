@@ -164,3 +164,50 @@ describe('snes tileset — status icons', () => {
     expect(s3.size).toBe(3);
   });
 });
+
+describe('snes tileset — terrain edge overlays', () => {
+  it('paints a shore and a canopy overlay for every non-empty blob mask', async () => {
+    const { BLOB_MASKS } = await import('../../src/ui/renderKey');
+    const { edgeKey } = await import('../../src/ui/tileset');
+    for (const family of ['shore', 'canopy']) {
+      for (const m of BLOB_MASKS.filter((m) => m !== 0)) {
+        const t = tiles.get(edgeKey(family, m));
+        expect(t, `${family}/${m}`).toBeDefined();
+        let opaquePx = 0;
+        for (let i = 3; i < t!.data.length; i += 4) if (t!.data[i] === 255) opaquePx++;
+        expect(opaquePx, `${family}/${m} draws something`).toBeGreaterThan(0);
+        expect(opaquePx, `${family}/${m} is an overlay, not a tile`).toBeLessThan(BASE_TILE * BASE_TILE);
+      }
+    }
+  });
+
+  it('a shore on the north edge sits along the top rows only', async () => {
+    const { BLOB } = await import('../../src/ui/renderKey');
+    const t = tiles.get(`@edge/shore/${BLOB.N}`)!;
+    for (let y = 8; y < BASE_TILE; y++) for (let x = 0; x < BASE_TILE; x++) expect(t.data[(y * BASE_TILE + x) * 4 + 3]).toBe(0);
+  });
+});
+
+describe('snes tileset — diagonal coasts', () => {
+  it('a land cell with water on two adjacent sides gets a sandy point on that corner', async () => {
+    const { BLOB } = await import('../../src/ui/renderKey');
+    const t = tiles.get(`@edge/coast/${BLOB.N | BLOB.E}`)!;
+    expect(t).toBeDefined();
+    const at = (x: number, y: number): number[] => Array.from(t.data.slice((y * BASE_TILE + x) * 4, (y * BASE_TILE + x) * 4 + 4));
+    expect([[...C.dirtHi, 255], [...C.dirt, 255]]).toContainEqual(at(BASE_TILE - 1, 0)); // sand at the NE point
+    expect(at(0, BASE_TILE - 1)[3]).toBe(0); // the far corner is untouched land
+  });
+
+  it('no coast overlay where water touches only one side (the water-side shore handles that)', async () => {
+    const { BLOB } = await import('../../src/ui/renderKey');
+    expect(tiles.has(`@edge/coast/${BLOB.N}`)).toBe(false);
+  });
+
+  it('a water cell with land on two adjacent sides fills that inside corner with sand', async () => {
+    const { BLOB } = await import('../../src/ui/renderKey');
+    const t = tiles.get(`@edge/shore/${BLOB.N | BLOB.W}`)!;
+    const a = (x: number, y: number): number => t.data[(y * BASE_TILE + x) * 4 + 3]!;
+    expect(a(3, 3)).toBe(255); // well inside the wedge
+    expect(a(12, 12)).toBe(0);
+  });
+});

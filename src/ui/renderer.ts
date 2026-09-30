@@ -20,6 +20,8 @@ import {
   surfaceVariantIndex,
   variantCounts,
   pickVariantKey,
+  blobMask,
+  edgeKey,
   terrainTileTransform,
   waterTileTransform,
   type FootprintPos,
@@ -675,6 +677,8 @@ export class Renderer {
   private tileVariants: ReadonlyMap<string, number> = new Map();
   // Skin-drawn status icons (`@icon/unpowered`, …) for profile.marks === 'icons'; empty otherwise.
   private icons = new Map<string, AtlasImage>();
+  // Skin terrain edge overlays (`@edge/shore/<mask>`, `@edge/canopy/<mask>`); empty = square steps.
+  private edges = new Map<string, AtlasImage>();
   // Unpowered parcel footprints (WORLD coords) from the last base pass — drawn per frame as a blinking
   // icon when the skin supplies one (the base is cached, so a blink can't live there).
   private unpoweredFootprints: { x: number; y: number; w: number }[] = [];
@@ -752,6 +756,7 @@ export class Renderer {
     this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
     this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
+    this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -787,6 +792,7 @@ export class Renderer {
     this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
     this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
+    this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -978,6 +984,30 @@ export class Renderer {
         }
 
         const built = map.built[i]!;
+
+        // TERRAIN EDGES (skins that paint them): a shoreline on water beside land, and forest canopy
+        // spilling onto open, unbuilt land — soft edges instead of square steps. Drawn over the
+        // terrain, under anything built. Out-of-map neighbours count as "same", so no edge there.
+        if (this.edges.size > 0) {
+          const nb = (dx: number, dy: number, test: (k: string) => boolean): boolean =>
+            map.inBounds(tx + dx, ty + dy) && test(kindOf(map, map.idx(tx + dx, ty + dy)));
+          const around = (test: (k: string) => boolean): number =>
+            blobMask({
+              n: nb(0, -1, test), e: nb(1, 0, test), s: nb(0, 1, test), w: nb(-1, 0, test),
+              ne: nb(1, -1, test), se: nb(1, 1, test), sw: nb(-1, 1, test), nw: nb(-1, -1, test),
+            });
+          const waterK = (k: string): boolean => k === 'ocean' || k === 'lake' || k === 'river';
+          const draw = (family: string, m: number): void => {
+            const edge = m !== 0 ? this.edges.get(edgeKey(family, m)) : undefined;
+            if (edge) ctx.drawImage(edge, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+          };
+          if (isWater) draw('shore', around((k) => !waterK(k)));
+          else {
+            if (built === 0 && tkind !== 'forest') draw('canopy', around((k) => k === 'forest'));
+            draw('coast', around(waterK)); // convex land corners cut back to water (diagonal coasts)
+          }
+        }
+
         if (built !== 0) {
           // The kind-dispatch is a single pure call (renderKey.ts); transport keys
           // on the connection mask, buildings on footprint position + condition tier.

@@ -345,3 +345,33 @@ describe('variantCounts / pickVariantKey (hash-cycled tile variants)', () => {
     expect(pickVariantKey('lake-0', 3, 5, counts)).toBe('lake-0'); // no variants → base
   });
 });
+
+import { blobMask, BLOB_MASKS, BLOB } from '../../src/ui/renderKey';
+
+describe('blobMask — 8-neighbour edge masks for terrain edge overlays', () => {
+  const none = { n: false, e: false, s: false, w: false, ne: false, se: false, sw: false, nw: false };
+
+  it('encodes sides as N=1 E=2 S=4 W=8', () => {
+    expect(blobMask({ ...none, n: true })).toBe(BLOB.N);
+    expect(blobMask({ ...none, n: true, e: true, s: true, w: true })).toBe(BLOB.N | BLOB.E | BLOB.S | BLOB.W);
+  });
+
+  it('keeps a corner only when both of its sides are clear (a lone diagonal contact)', () => {
+    expect(blobMask({ ...none, ne: true })).toBe(BLOB.NE);
+    expect(blobMask({ ...none, ne: true, n: true })).toBe(BLOB.N); // the N edge already covers NE
+    expect(blobMask({ ...none, sw: true, n: true })).toBe(BLOB.N | BLOB.SW);
+  });
+
+  it('there are exactly 47 normalized masks, all distinct, and every blobMask result is one of them', () => {
+    expect(BLOB_MASKS.length).toBe(47);
+    expect(new Set(BLOB_MASKS).size).toBe(47);
+    const all = new Set(BLOB_MASKS);
+    for (let raw = 0; raw < 256; raw++) {
+      const m = blobMask({
+        n: !!(raw & 1), e: !!(raw & 2), s: !!(raw & 4), w: !!(raw & 8),
+        ne: !!(raw & 16), se: !!(raw & 32), sw: !!(raw & 64), nw: !!(raw & 128),
+      });
+      expect(all.has(m), `raw ${raw} → ${m}`).toBe(true);
+    }
+  });
+});
