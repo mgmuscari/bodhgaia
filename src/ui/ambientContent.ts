@@ -658,6 +658,78 @@ export function uTurnIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<numb
   return true;
 }
 
+/**
+ * Put a citizen in its owned car and commit the car to a least-cost route to a free parking spot near
+ * the citizen's leg destination (`building`, else `homeDest`): the car snaps onto the route's first tile
+ * and the citizen rides ('driving'). Returns false (touching nothing) when there's no destination or
+ * no road route.
+ */
+function boardOwnedCar(state: AmbientState, p: Ped, map: GameMap, car: Car): boolean {
+  const dest = p.building ?? p.homeDest;
+  if (!dest) return false;
+  const spot = findParkingNear(state, map, dest.x, dest.y) ?? dest;
+  const path = roadPath(map, Math.round(car.x), Math.round(car.y), spot.x, spot.y, state.traffic);
+  if (!path || path.length < 2) return false;
+  // Board: snap onto the route's first tile and commit to following it (cars=committed paths).
+  const p0x = path[0]! % map.width;
+  const p0y = (path[0]! - p0x) / map.width;
+  const p1x = path[1]! % map.width;
+  const p1y = (path[1]! - p1x) / map.width;
+  car.x = p0x;
+  car.y = p0y;
+  car.tx = p1x;
+  car.ty = p1y;
+  commitHeading(car, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
+  car.path = path;
+  car.leg = 2; // path[0]=start, path[1]=the committed next tile; pathStep targets path[2] next
+  car.parked = false;
+  car.curbSlot = undefined; // it has left its stall
+  car.lotIdx = undefined;
+  car.stallIdx = undefined;
+  car.recent = undefined;
+  car.stuck = 0;
+  p.parkAt = spot;
+  p.phase = 'driving';
+  return true;
+}
+
+/** No drive possible: finish the current leg on foot (to its building, or home). */
+function walkLegInstead(p: Ped): void {
+  p.phase = p.homeDest ? 'to-home' : 'to-building';
+  p.walkTo = p.homeDest ?? p.building ?? { x: Math.round(p.x), y: Math.round(p.y) };
+  p.mode = TravelMode.Walk;
+  p.tx = Math.round(p.x);
+  p.ty = Math.round(p.y);
+  p.recent = undefined;
+}
+
+/** Park an owned car right where it stands — at a free kerb stall of its tile if there is one — so it is
+ *  never left standing in a traffic lane when its driver has to walk on. */
+function parkInPlace(state: AmbientState, map: GameMap, car: Car): void {
+  const tx = Math.round(car.x);
+  const ty = Math.round(car.y);
+  const taken = new Set(
+    state.cars.filter((o) => o !== car && o.parked && o.curbSlot !== undefined && Math.round(o.x) === tx && Math.round(o.y) === ty).map((o) => o.curbSlot!),
+  );
+  const stalls = curbStallOffsets(map, tx, ty);
+  const slot = stalls.findIndex((_, i) => !taken.has(i));
+  if (slot >= 0) {
+    const st = stalls[slot]!;
+    car.x = tx + st.dx;
+    car.y = ty + st.dy;
+    car.curbDir = st.dir;
+    car.curbSlot = slot;
+  } else {
+    car.x = tx;
+    car.y = ty;
+  }
+  car.tx = tx;
+  car.ty = ty;
+  car.parked = true;
+  car.path = undefined;
+  car.stuck = 0;
+}
+
 /** Send a citizen home: drive its owned car home to park it if it has one out, else walk. */
 function headHome(state: AmbientState, p: Ped, map: GameMap): void {
   const hx = p.homeTile! % map.width;
@@ -680,8 +752,15 @@ export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void 
   if (p.homeTile !== undefined) depositHealth(state, p.homeTile, -JAM_SKIP_PENALTY);
   const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
   if (car) car.stuck = 0;
-  if (p.itinerary !== undefined && advanceItinerary(state, p, map)) return;
-  if (p.homeTile !== undefined) headHome(state, p, map);
+  if (!(p.itinerary !== undefined && advanceItinerary(state, p, map)) && p.homeTile !== undefined) headHome(state, p, map);
+  // the driver is IN its car: don't dismount and walk back to it — re-route the car straight on; if no
+  // route exists, park it right here (never left standing in a lane) and walk the rest
+  if (car && !car.parked && p.phase === 'to-vehicle') {
+    if (!boardOwnedCar(state, p, map, car)) {
+      parkInPlace(state, map, car);
+      walkLegInstead(p);
+    }
+  }
 }
 
 /** True when no moving vehicle's centre sits within `r` of (x, y) — a departure point is free to pull
@@ -3822,40 +3901,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
         // wait in the stall until the way out is clear — cars leaving a lot at once all materialised on
         // the lot tile's centre, stacked on top of each other
         if (car && car.parked && !spaceClear(moverGrid, map.width, Math.round(car.x), Math.round(car.y))) return true;
-        const dest = p.building ?? p.homeDest;
-        const spot = car && dest ? findParkingNear(state, map, dest.x, dest.y) ?? dest : undefined;
-        const path =
-          car && spot
-            ? roadPath(map, Math.round(car.x), Math.round(car.y), spot.x, spot.y, state.traffic)
-            : null;
-        if (!car || !path || path.length < 2) {
-          p.phase = p.homeDest ? 'to-home' : 'to-building';
-          p.walkTo = p.homeDest ?? p.building ?? { x: Math.round(p.x), y: Math.round(p.y) };
-          p.mode = TravelMode.Walk;
-          p.tx = Math.round(p.x);
-          p.ty = Math.round(p.y);
-          p.recent = undefined;
-          return true;
-        }
-        // Board: snap onto the route's first tile and commit to following it (cars=committed paths).
-        const p0x = path[0]! % map.width;
-        const p0y = (path[0]! - p0x) / map.width;
-        const p1x = path[1]! % map.width;
-        const p1y = (path[1]! - p1x) / map.width;
-        car.x = p0x;
-        car.y = p0y;
-        car.tx = p1x;
-        car.ty = p1y;
-        commitHeading(car, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
-        car.path = path;
-        car.leg = 2; // path[0]=start, path[1]=the committed next tile; pathStep targets path[2] next
-        car.parked = false;
-        car.curbSlot = undefined; // it has left its stall
-        car.lotIdx = undefined;
-        car.stallIdx = undefined;
-        car.recent = undefined;
-        p.parkAt = spot;
-        p.phase = 'driving';
+        if (!car || !boardOwnedCar(state, p, map, car)) walkLegInstead(p);
         return true;
       }
       if (p.phase === 'to-building') {
