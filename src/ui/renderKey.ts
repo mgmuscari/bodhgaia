@@ -264,3 +264,62 @@ export function pickVariantKey(base: string, x: number, y: number, counts: Reado
   const v = surfaceVariantIndex(x, y, n);
   return v === 0 ? base : variantKey(base, v);
 }
+
+/** Blob-mask bits: sides N/E/S/W, then corners NE/SE/SW/NW. */
+export const BLOB = { N: 1, E: 2, S: 4, W: 8, NE: 16, SE: 32, SW: 64, NW: 128 } as const;
+
+/** Which of the 8 neighbours match the edge predicate (e.g. "is land" for a water cell's shore). */
+export interface Neighbours {
+  n: boolean;
+  e: boolean;
+  s: boolean;
+  w: boolean;
+  ne: boolean;
+  se: boolean;
+  sw: boolean;
+  nw: boolean;
+}
+
+/**
+ * The normalized 8-neighbour edge mask of a cell for terrain edge overlays (shorelines, canopy
+ * overhang). A corner counts only when BOTH of its sides are clear — a lone diagonal contact — because
+ * a side edge already covers its own corners. That folds the 256 raw neighbourhoods into the 47
+ * {@link BLOB_MASKS} a skin paints. Pure integer ops.
+ */
+export function blobMask(nb: Neighbours): number {
+  let m = (nb.n ? BLOB.N : 0) | (nb.e ? BLOB.E : 0) | (nb.s ? BLOB.S : 0) | (nb.w ? BLOB.W : 0);
+  if (nb.ne && !nb.n && !nb.e) m |= BLOB.NE;
+  if (nb.se && !nb.s && !nb.e) m |= BLOB.SE;
+  if (nb.sw && !nb.s && !nb.w) m |= BLOB.SW;
+  if (nb.nw && !nb.n && !nb.w) m |= BLOB.NW;
+  return m;
+}
+
+/** Every normalized blob mask (47, including 0 = no edge), ascending. */
+export const BLOB_MASKS: readonly number[] = (() => {
+  const out = new Set<number>();
+  for (let raw = 0; raw < 256; raw++) {
+    out.add(
+      blobMask({
+        n: (raw & 1) !== 0,
+        e: (raw & 2) !== 0,
+        s: (raw & 4) !== 0,
+        w: (raw & 8) !== 0,
+        ne: (raw & 16) !== 0,
+        se: (raw & 32) !== 0,
+        sw: (raw & 64) !== 0,
+        nw: (raw & 128) !== 0,
+      }),
+    );
+  }
+  return [...out].sort((a, b) => a - b);
+})();
+
+/**
+ * Reserved key namespace for terrain EDGE overlays: a transparent tile drawn over a cell's terrain,
+ * keyed by an edge `family` (`shore` — water meeting land; `canopy` — forest spilling onto open land)
+ * and the cell's normalized blob mask (renderKey.blobMask). Soft edges instead of square steps.
+ */
+export function edgeKey(family: string, mask: number): string {
+  return `@edge/${family}/${mask}`;
+}
