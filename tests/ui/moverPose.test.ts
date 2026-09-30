@@ -94,7 +94,7 @@ describe('render interpolation between 50 ms sim substeps (no 20 Hz stutter at 1
     snapshotMovers(s); // the pose at progress 0.2…
     Object.assign(c, at(c, 0.4)); // …then one substep moves it to 0.4
     const mid = carPose(c, 0.5);
-    const want = moverPose(at(c, 0.3), 0.22);
+    const want = moverPose(at(c, 0.3), LANE_OFFSET);
     expect(mid.x).toBeCloseTo(want.x, 6);
     expect(mid.y).toBeCloseTo(want.y, 6);
   });
@@ -106,7 +106,7 @@ describe('render interpolation between 50 ms sim substeps (no 20 Hz stutter at 1
     snapshotMovers(s);
     Object.assign(c, at(mover(40, 40, 1, 1), 0.2));
     const q = carPose(c, 0.5);
-    expect(q.x).toBeCloseTo(moverPose(c, 0.22).x, 6);
+    expect(q.x).toBeCloseTo(moverPose(c, LANE_OFFSET).x, 6);
   });
 });
 
