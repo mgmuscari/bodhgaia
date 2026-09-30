@@ -177,3 +177,24 @@ describe('Camera centerOn (zoom-to-location API)', () => {
     expect(cam.y).toBeCloseTo(cam.mapHeight - cam.viewportHeight / ts, 6);
   });
 });
+
+describe('Camera.tileOrigin — seamless tile placement', () => {
+  it('consecutive tiles abut exactly (no 1-px background seams from float error)', () => {
+    const cam = new Camera({ mapWidth: 128, mapHeight: 128, viewportWidth: 1512, viewportHeight: 716, zoom: 3 });
+    // a camera offset whose products land a hair either side of integers (seen live: y = 6.5416…)
+    cam.centerOn(45, 14, 3);
+    (cam as unknown as { y: number }).y = 6.541666666666667;
+    (cam as unknown as { x: number }).x = 29.25;
+    const ts = cam.tileSize;
+    for (let t = 0; t < 40; t++) {
+      expect(cam.tileOrigin(t + 1, t + 1).dy - cam.tileOrigin(t, t).dy, `row ${t}`).toBe(ts);
+      expect(cam.tileOrigin(t + 1, t + 1).dx - cam.tileOrigin(t, t).dx, `col ${t}`).toBe(ts);
+    }
+  });
+
+  it('matches floor(worldToScreen) away from float noise', () => {
+    const cam = new Camera({ mapWidth: 64, mapHeight: 64, viewportWidth: 800, viewportHeight: 600, zoom: 2 });
+    const { sx, sy } = cam.worldToScreen(10, 7);
+    expect(cam.tileOrigin(10, 7)).toEqual({ dx: Math.floor(sx), dy: Math.floor(sy) });
+  });
+});
