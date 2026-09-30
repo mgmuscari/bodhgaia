@@ -30,7 +30,7 @@ import {
 } from './renderKey';
 import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
-import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, curbWiresAt } from './decoration';
+import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, curbWiresAt, innerCornerMask } from './decoration';
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { laneOffset, pedCurbOffset, dirVector } from './ambientContent';
@@ -960,7 +960,7 @@ export class Renderer {
     // Skin power lines, drawn AFTER the tile loop (wire spans, then masts) so later tiles can't paint over
     // them: `wires` holds each tile's span overlay key, `poles` each curb pole.
     const wires: { x: number; y: number; key: string }[] = [];
-    const poles: { x: number; y: number; axis: 'h' | 'v' }[] = [];
+    const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
         const i = map.idx(tx, ty);
@@ -1139,6 +1139,8 @@ export class Renderer {
             // or open land), a light sidewalk strip with a dark gutter line on its road-facing side.
             // Turns the "field of asphalt" into a street with edges. Per-tile (neighbour-dependent).
             const curb = roadCurbMask(map, tx, ty);
+            const corners = this.roadInk.size > 0 ? innerCornerMask(map, tx, ty) : 0;
+            if (corners !== 0) ink(`@road/curbCorner/${corners}`, dx, dy); // block corners the curbs miss
             if (curb !== 0 && !ink(`@road/curb/${curb}`, dx, dy)) {
               const sw = Math.max(1, Math.round(ts * 0.16));
               const walk = '#b0aa9c'; // warm concrete sidewalk (distinct from the white barrier)

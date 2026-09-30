@@ -358,3 +358,107 @@ describe('snes tileset — road paint + street furniture on the art grid', () =>
     expect(row(2)).toBeGreaterThanOrEqual(row(1));
   });
 });
+
+describe('snes roads — lines follow the road through turns, and every class shares one asphalt', () => {
+  const colourAt = (p: Pixels, x: number, y: number): number[] => Array.from(p.data.slice((y * 16 + x) * 4, (y * 16 + x) * 4 + 3));
+  const is = (p: Pixels, x: number, y: number, c: readonly number[]): boolean => colourAt(p, x, y).join() === c.join();
+  const any = (p: Pixels, c: readonly number[], f: (x: number, y: number) => boolean): boolean => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (f(x, y) && is(p, x, y, c)) return true;
+    return false;
+  };
+  const mode = (p: Pixels): string => {
+    const n = new Map<string, number>();
+    for (let i = 0; i < p.data.length; i += 4) {
+      const k = `${p.data[i]},${p.data[i + 1]},${p.data[i + 2]}`;
+      n.set(k, (n.get(k) ?? 0) + 1);
+    }
+    return [...n].sort((a, b) => b[1] - a[1])[0]![0];
+  };
+
+  it('an avenue turn (E+S) carries its double yellow round the bend to BOTH connected edges', () => {
+    const t = tiles.get('road-2-6')!;
+    expect(any(t, C.lineYellow, (x) => x === 15)).toBe(true); // reaches the east edge
+    expect(any(t, C.lineYellow, (_x, y) => y === 15)).toBe(true); // reaches the south edge
+    expect(any(t, C.lineYellow, (x, y) => x < 4 && y < 4)).toBe(false); // nothing out in the far corner
+  });
+
+  it('…and each of its two yellow lines is ONE continuous stroke round the bend (no gaps, no crossings)', () => {
+    const t = tiles.get('road-2-6')!;
+    const on = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < 16 && y < 16 && is(t, x, y, C.lineYellow);
+    const seen = new Set<number>();
+    let strokes = 0;
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        if (!on(x, y) || seen.has(y * 16 + x)) continue;
+        strokes++;
+        const stack = [[x, y]];
+        seen.add(y * 16 + x);
+        while (stack.length) {
+          const [cx, cy] = stack.pop()!;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nx = cx! + dx;
+              const ny = cy! + dy;
+              if (on(nx, ny) && !seen.has(ny * 16 + nx)) {
+                seen.add(ny * 16 + nx);
+                stack.push([nx, ny]);
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(strokes).toBe(2);
+  });
+
+  it('a single-lane highway turn curves its edge lines too (no crossing stubs)', () => {
+    const t = tiles.get('road-3-6')!;
+    expect(any(t, C.line, (x) => x === 15)).toBe(true);
+    expect(any(t, C.line, (_x, y) => y === 15)).toBe(true);
+    expect(is(t, 1, 1, C.line)).toBe(false); // the old straight edge-stub corner is gone
+  });
+
+  it('streets, avenues and highways share one asphalt — no patchwork at junctions', () => {
+    expect(mode(tiles.get('road-3-5')!)).toBe(mode(tiles.get('road-1-5')!));
+    expect(mode(tiles.get('road-2-15')!)).toBe(mode(tiles.get('road-1-15')!));
+  });
+
+  it('a two-row avenue paints its centre double yellow along the seam between its rows', () => {
+    const top = tiles.get('road-2-14-w')!; // E|S|W: the north row, partner to the south
+    const bottom = tiles.get('road-2-11-w')!; // N|E|W: the south row
+    let topSeam = 0;
+    let bottomSeam = 0;
+    for (let x = 0; x < 16; x++) {
+      if (is(top, x, 14, C.lineYellow)) topSeam++;
+      if (is(bottom, x, 1, C.lineYellow)) bottomSeam++;
+    }
+    expect(topSeam).toBeGreaterThan(12);
+    expect(bottomSeam).toBeGreaterThan(12);
+    expect(any(top, C.lineYellow, (_x, y) => y < 10)).toBe(false);
+  });
+
+  it('wide interiors / junctions and freeway slabs stay clear (freeway lanes come from the overlays)', () => {
+    expect(any(tiles.get('road-2-15-w')!, C.lineYellow, () => true)).toBe(false);
+    expect(any(tiles.get('road-3-14-w')!, C.lineYellow, () => true)).toBe(false);
+  });
+
+  it('curbs round their outer corner and fill the inner block corner', () => {
+    const outer = tiles.get('@road/curb/9')!; // N|W
+    expect(outer.data[(3 * 16 + 3) * 4 + 3]).toBe(255); // the chamfer bulges into the corner
+    expect(tiles.get('@road/curb/1')!.data[(3 * 16 + 3) * 4 + 3]).toBe(0);
+    const inner = tiles.get('@road/curbCorner/16')!; // NE diagonal is the block corner
+    expect(inner.data[(0 * 16 + 15) * 4 + 3]).toBe(255);
+    expect(inner.data[(15 * 16 + 0) * 4 + 3]).toBe(0);
+  });
+
+  it('a junction pole is drawn tucked into the tile corner', () => {
+    const t = tiles.get('@road/pole/nw')!;
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (t.data[(y * 16 + x) * 4 + 3]) expect(x < 7 && y < 7, `(${x},${y})`).toBe(true);
+  });
+});
+
+describe('snes roads — every variant key the renderer asks for is ours', () => {
+  it('road surface variant #0 is painted too (the renderer requests road-…#0, not the bare key)', () => {
+    for (const k of ['road-1-6#0', 'road-2-10#0', 'road-3-5#0', 'road-2-14-w#0']) expect(tiles.has(k), k).toBe(true);
+  });
+});
