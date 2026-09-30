@@ -138,3 +138,31 @@ describe('pedestrian edge cases — U-turns and stepping on/off the road stay sm
     expect(onKerb.y).toBeGreaterThan(5.8);
   });
 });
+
+import { legPaceFactor, LANE_OFFSET } from '../../src/ui/ambientContent';
+
+describe('turning keeps pace (Maddy 2026-09-30: cars turning corners way too slow)', () => {
+  it('a straight leg runs at normal pace', () => {
+    expect(legPaceFactor(mover(5, 5, 1, 1), LANE_OFFSET)).toBeCloseTo(1, 9);
+  });
+
+  it('a right turn (short inner arc) runs its sim leg faster by straight/arc length, a left turn slower', () => {
+    const right = legPaceFactor(mover(5, 5, 1, 0), LANE_OFFSET);
+    const left = legPaceFactor(mover(5, 5, 3, 0), LANE_OFFSET);
+    expect(right).toBeCloseTo(1 / ((Math.PI / 2) * (0.5 - LANE_OFFSET)), 6);
+    expect(left).toBeCloseTo(1 / ((Math.PI / 2) * (0.5 + LANE_OFFSET)), 6);
+  });
+
+  it('the arc is traversed at near-constant speed (no crawl at the start and end of the bend)', () => {
+    const m = mover(5, 5, 1, 0);
+    const steps: number[] = [];
+    let prev = moverPose(at(m, 0), LANE_OFFSET);
+    for (let i = 1; i <= 20; i++) {
+      const q = moverPose(at(m, i / 20), LANE_OFFSET);
+      steps.push(Math.hypot(q.x - prev.x, q.y - prev.y));
+      prev = q;
+    }
+    const mean = steps.reduce((a, b) => a + b, 0) / steps.length;
+    for (const s of steps) expect(Math.abs(s - mean) / mean).toBeLessThan(0.08);
+  });
+});

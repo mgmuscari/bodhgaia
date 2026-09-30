@@ -525,6 +525,8 @@ const opposite = (d: number): number => (d + 2) % 4;
  *  RIGHT of its heading, so opposing flows ride opposite sides of a road. Cosmetic —
  *  read only by the renderer's sprite draw; live-pass tuned. */
 const LANE = 0.22;
+/** The car lane offset (exported for tests / pace maths). */
+export const LANE_OFFSET = LANE;
 
 /** The lane seam (pure, `dir`-only): a car's draw-time offset from its tile centre,
  *  perpendicular to and on the RIGHT of its heading (right-hand traffic). Screen
@@ -564,6 +566,27 @@ const PED_CURB = 0.38;
  *  walking along a road. Cosmetic — read only by the renderer's sprite draw. */
 export function pedCurbOffset(dir: number): { dx: number; dy: number } {
   return { dx: -DIR_DY[dir]! * PED_CURB, dy: DIR_DX[dir]! * PED_CURB };
+}
+
+/**
+ * How much faster a mover's current sim leg should run so its DRAWN path keeps its pace: a leg's pose
+ * crosses one tile (moverPose), a unit line when straight but a quarter-arc of radius 0.5 ∓ lateral at
+ * a turn — only ~0.44 tiles on a right turn. With every leg taking the same sim time, a turning car
+ * visibly crawled round the corner (Maddy 2026-09-30). Returns straight/arc length (1 when straight).
+ */
+export function legPaceFactor(m: Mover, lateral: number): number {
+  const d = m.dir;
+  const pd = m.prevDir ?? d;
+  const turn = DIR_DX[pd]! * DIR_DY[d]! - DIR_DY[pd]! * DIR_DX[d]!;
+  if (turn === 0) return 1;
+  return 1 / ((Math.PI / 2) * (0.5 - turn * lateral));
+}
+
+/** The kerb offset a pedestrian's current leg is DRAWN with at the tile it crosses (for legPaceFactor). */
+function pedLegLateral(map: GameMap, p: Mover): number {
+  const x = p.tx - DIR_DX[p.dir]!;
+  const y = p.ty - DIR_DY[p.dir]!;
+  return map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!) ? PED_CURB : 0;
 }
 
 /** Commit a mover to a new heading, remembering the one it turned from (for moverPose's turn arc). */
@@ -643,9 +666,12 @@ export function moverPose(m: Mover, lateral: number | LateralProfile): Pose {
   // quarter-circle round corner K between the entry edge (−pd side) and the exit edge (+d side)
   const kx = cx - pdx * 0.5 + dx * 0.5;
   const ky = cy - pdy * 0.5 + dy * 0.5;
-  // unit radials from K to the entry point (= −d) and to the exit point (= +pd); nlerp between them
-  const vx0 = -dx * (1 - p) + pdx * p;
-  const vy0 = -dy * (1 - p) + pdy * p;
+  // unit radials from K to the entry point (= −d) and to the exit point (= +pd); nlerp between them, with
+  // p re-timed (a cubic fitted to atan) so the angle sweeps at a near-constant rate — plain nlerp crawls
+  // at the start and end of the bend
+  const u = p + 0.915 * p * (1 - p) * (0.5 - p);
+  const vx0 = -dx * (1 - u) + pdx * u;
+  const vy0 = -dy * (1 - u) + pdy * u;
   const len = Math.sqrt(vx0 * vx0 + vy0 * vy0);
   const vx = vx0 / len;
   const vy = vy0 / len;
@@ -1612,8 +1638,10 @@ function advanceMover(
   map: GameMap,
   pickNext: (x: number, y: number, fromDir: number, recent: readonly number[]) => number,
   blocked?: (m: Mover) => boolean,
+  lateral = LANE,
 ): boolean {
   if (blocked?.(m)) return true; // space ahead occupied → pause this substep (alive, just waiting)
+  speed *= legPaceFactor(m, lateral); // a turn leg's drawn arc is shorter/longer than a tile — keep pace
   const dist = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y);
   if (dist <= speed) {
     // Arrive at the target tile centre, record it, and recommit to the next leg.
@@ -3617,12 +3645,14 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
             p.pathGoal = undefined;
           }
         }
-        moving = p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y));
+        moving = p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y), undefined, pedLegLateral(map, p));
       } else {
         // Transit legs (streetcar/elevated) hug their OWN line via the greedy mode-cost step (walkPath
         // doesn't know a tram network; a rider must prefer its rails). Dithering is rare on open lines.
         moving = advanceMover(p, speed, map, (x, y, _fromDir, recent) =>
           nextStepToward(map, x, y, tgtx, tgty, recent, state.wear, mode, state.traffic, state.pollution),
+          undefined,
+          pedLegLateral(map, p),
         );
       }
       if (moving) return true; // still walking this leg
