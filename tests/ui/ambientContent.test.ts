@@ -67,6 +67,9 @@ import {
   spawnCruisers,
   stepCruisers,
   nextPatrolStep,
+  rerouteIfStuck,
+  spaceClear,
+  STUCK_REPATH,
   huntTarget,
   policePhase,
   stepArrests,
@@ -3312,13 +3315,28 @@ describe('mover collision / following (Maddy: bounding boxes, no overlap, pause 
     expect(blockedAhead(buildMoverGrid([me, sidecar], W), W, me)).toBe(false);
   });
 
-  it('blocks cross-traffic only for the LOWER-priority vehicle (deadlock-free)', () => {
+  it('cross-traffic: the car with the other one ahead of it waits; the one already crossing goes', () => {
     // a south-bound car crossing just ahead of an east-bound car, in its lane
     const east = { x: 10, y: 10, dir: 1, tx: 10, ty: 10, id: 1 };
     const south = { x: 10.6, y: 10.2, dir: 2, tx: 10, ty: 10, id: 2 };
     const grid = buildMoverGrid([east, south], W);
     expect(blockedAhead(grid, W, east)).toBe(true); // east (id 1) yields to south (id 2)
     expect(blockedAhead(grid, W, south)).toBe(false); // south (higher id) never yields → cluster drains
+  });
+
+  it('a car turning into a stopped queue waits, whatever its priority (Maddy 2026-09-30: stacking at (115,40))', () => {
+    // a westbound car stopped on the ramp tile, and a HIGHER-id northbound car arriving under it to turn west
+    const queued = { x: 15, y: 40, dir: 3, tx: 14, ty: 40, id: 1 };
+    const turner = { x: 15, y: 40.4, dir: 0, tx: 15, ty: 40, id: 9 };
+    expect(blockedAhead(buildMoverGrid([queued, turner], W), W, turner)).toBe(true);
+  });
+
+  it('two vehicles on the exact same spot separate: the lower id waits, the higher goes', () => {
+    const a = { x: 15, y: 40, dir: 3, tx: 14, ty: 40, id: 3 };
+    const b = { x: 15, y: 40, dir: 3, tx: 14, ty: 40, id: 7 };
+    const grid = buildMoverGrid([a, b], W);
+    expect(blockedAhead(grid, W, a)).toBe(true);
+    expect(blockedAhead(grid, W, b)).toBe(false);
   });
 
   it('a rear car stops far enough that its front does not enter the car ahead', () => {
@@ -3357,5 +3375,48 @@ describe('police cruisers obey lane direction (Maddy 2026-09-30: cruisers cut ac
         expect(canDrive(map, x, y, x + [0, 1, 0, -1][d]!, y + [-1, 0, 1, 0][d]!), `(${x},${y}) → ${d}`).toBe(true);
       }
     }
+  });
+});
+
+import type { Mover } from "../../src/ui/ambientContent";
+
+describe('gridlock relief (Maddy 2026-09-30: traffic gridlocked — cars must repath when stopped long)', () => {
+  // two parallel E-W streets (rows 2 and 6) joined by N-S connectors at x=2 and x=12: a loop
+  function loop(): GameMap {
+    const map = new GameMap(16, 9);
+    for (let x = 2; x <= 12; x++) {
+      map.setBuilt(x, 2, BuiltKind.RoadStreet);
+      map.setBuilt(x, 6, BuiltKind.RoadStreet);
+    }
+    for (let y = 2; y <= 6; y++) {
+      map.setBuilt(2, y, BuiltKind.RoadStreet);
+      map.setBuilt(12, y, BuiltKind.RoadStreet);
+    }
+    return map;
+  }
+
+  it('a car stopped for STUCK_REPATH substeps re-plans round the blocked tile ahead', () => {
+    const map = loop();
+    const path = roadPath(map, 2, 2, 12, 2)!; // straight along row 2
+    const car = { x: 5, y: 2, dir: 1, tx: 6, ty: 2, path, leg: path.indexOf(map.idx(6, 2)) + 1, stuck: STUCK_REPATH } as Mover;
+    expect(rerouteIfStuck(map, car, new Map())).toBe(true);
+    expect(car.path!.includes(map.idx(6, 2))).toBe(false); // it avoids the tile it was stuck behind
+    expect(car.path![car.path!.length - 1]).toBe(map.idx(12, 2)); // same destination
+    expect(car.x).toBe(5); // it re-plans from where it stands (a tile centre)
+  });
+
+  it('does nothing before the threshold, or mid-leg', () => {
+    const map = loop();
+    const path = roadPath(map, 2, 2, 12, 2)!;
+    const early = { x: 5, y: 2, dir: 1, tx: 6, ty: 2, path, leg: 5, stuck: STUCK_REPATH - 1 } as Mover;
+    expect(rerouteIfStuck(map, early, new Map())).toBe(false);
+    const midLeg = { x: 5.4, y: 2, dir: 1, tx: 6, ty: 2, path, leg: 5, stuck: STUCK_REPATH } as Mover;
+    expect(rerouteIfStuck(map, midLeg, new Map())).toBe(false);
+  });
+
+  it('spaceClear: a departure point is clear only when no moving vehicle sits on it', () => {
+    const grid = buildMoverGrid([{ x: 5, y: 5, dir: 1, tx: 6, ty: 5 } as Mover], 16);
+    expect(spaceClear(grid, 16, 5, 5)).toBe(false);
+    expect(spaceClear(grid, 16, 8, 5)).toBe(true);
   });
 });
