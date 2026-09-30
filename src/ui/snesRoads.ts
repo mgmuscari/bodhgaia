@@ -17,47 +17,109 @@ const W = 8;
 
 // ── Road tiles ─────────────────────────────────────────────────────────────────────────────────────
 
-function asphaltBase(v: number, dark: boolean): Pixels {
+function asphaltBase(v: number): Pixels {
   const p = blank(T, T);
-  fill(p, dark ? C.asphaltLo : C.asphalt);
-  for (let k = 0; k < 7; k++) px(p, hash2(k, 0, 7000 + v) % T, hash2(k, 1, 7000 + v) % T, dark ? C.asphalt : C.asphaltLo);
+  fill(p, C.asphalt);
+  for (let k = 0; k < 7; k++) px(p, hash2(k, 0, 7000 + v) % T, hash2(k, 1, 7000 + v) % T, C.asphaltLo);
   for (let k = 0; k < 2; k++) px(p, hash2(k, 2, 7100 + v) % T, hash2(k, 3, 7100 + v) % T, C.slate);
   return p;
 }
 
-/** Paint `c` along each connected arm at the given offsets across the arm (cols for N/S, rows for E/W). */
-function armLines(p: Pixels, mask: number, offs: readonly number[], c: RGB, dashed: boolean): void {
-  const on = (t: number): boolean => !dashed || t % 6 < 3;
-  for (const o of offs) {
-    if (mask & N) for (let y = 0; y < 8; y++) if (on(y)) px(p, o, y, c);
-    if (mask & S) for (let y = 8; y < T; y++) if (on(y)) px(p, o, y, c);
-    if (mask & W) for (let x = 0; x < 8; x++) if (on(x)) px(p, x, o, c);
-    if (mask & E) for (let x = 8; x < T; x++) if (on(x)) px(p, x, o, c);
+// Lane lines are painted from GEOMETRY, not per arm: each pixel's signed lateral offset `s` from the
+// road's centre path — a straight line through a straight tile, a quarter-circle of radius 8 round the
+// inside corner of a turn, a half-arm on a dead end — and a line is every pixel within half a pixel of
+// its offset. So a line leaving one tile at a given offset enters the next at the same offset, and
+// curves continuously through a bend. Offsets are symmetric about the centre path (sign-free).
+
+interface Line {
+  /** Lateral offset from the centre path (px). */
+  d: number;
+  /** Half thickness (px). */
+  half: number;
+  c: RGB;
+  dashed: boolean;
+}
+
+/** Signed lateral offset + an along-path parameter for pixel (x, y), or null where no lane runs. */
+function pathFrame(mask: number, x: number, y: number): { s: number; t: number } | null {
+  const px = x + 0.5;
+  const py = y + 0.5;
+  if (mask === (N | S)) return { s: px - 8, t: py };
+  if (mask === (E | W)) return { s: py - 8, t: px };
+  const turn: Record<number, readonly [number, number]> = { [N | E]: [16, 0], [E | S]: [16, 16], [S | W]: [0, 16], [W | N]: [0, 0] };
+  const corner = turn[mask];
+  if (corner) {
+    const ax = Math.abs(px - corner[0]);
+    const ay = Math.abs(py - corner[1]);
+    const r = Math.sqrt(ax * ax + ay * ay);
+    // along-arc parameter without trig: the ay/(ax+ay) ratio runs 0→1 round the quarter-circle (monotone,
+    // near-linear in angle) × its arc length 4π ≈ 12.6 px, so a turn carries whole dashes like a straight
+    return { s: r - 8, t: (ay / Math.max(1e-6, ax + ay)) * 12.6 };
+  }
+  // dead ends: the half-arm from the open edge to the centre
+  if (mask === N && py <= 9) return { s: px - 8, t: py };
+  if (mask === S && py >= 7) return { s: px - 8, t: py };
+  if (mask === W && px <= 9) return { s: py - 8, t: px };
+  if (mask === E && px >= 7) return { s: py - 8, t: px };
+  return null;
+}
+
+function paintLines(p: Pixels, mask: number, lines: readonly Line[]): void {
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      const f = pathFrame(mask, x, y);
+      if (!f) continue;
+      for (const l of lines) {
+        if (Math.abs(Math.abs(f.s) - l.d) >= l.half) continue;
+        if (l.dashed && Math.floor(f.t) % 6 >= 3) continue;
+        px(p, x, y, l.c);
+      }
+    }
+  }
+}
+
+const CENTRE_DASH: Line = { d: 0, half: 1, c: C.line, dashed: true };
+const DOUBLE_YELLOW: Line = { d: 1.5, half: 0.5, c: C.lineYellow, dashed: false };
+const EDGE_WHITE: Line = { d: 6.5, half: 0.5, c: C.line, dashed: false };
+const QUIET_DASH: Line = { d: 0, half: 0.5, c: C.paveLo, dashed: true };
+
+const LINES: Record<number, readonly Line[]> = {
+  1: [CENTRE_DASH], // street
+  2: [DOUBLE_YELLOW], // avenue
+  3: [DOUBLE_YELLOW, EDGE_WHITE], // single-lane highway
+  7: [QUIET_DASH], // quiet street
+  10: [CENTRE_DASH], // ramp
+};
+
+/** A multi-row corridor's centre seam: on the row whose partner lane lies to one side, a line along
+ *  that side (2 rows ⇒ a double line straddling the seam). Freeway slabs (kind 3) get their lanes from
+ *  the @road/flane overlays instead; junction/interior slabs stay clear. */
+function paintSeam(p: Pixels, kind: number, mask: number): void {
+  if (kind !== 1 && kind !== 2) return;
+  const c = kind === 2 ? C.lineYellow : C.line;
+  const dashed = kind === 1;
+  const h = (mask & (E | W)) === (E | W) && ((mask & N) !== 0) !== ((mask & S) !== 0);
+  const v = (mask & (N | S)) === (N | S) && ((mask & E) !== 0) !== ((mask & W) !== 0);
+  for (let t = 0; t < T; t++) {
+    if (dashed && t % 6 >= 3) continue;
+    if (h) px(p, t, mask & S ? L - 1 : 1, c);
+    else if (v) px(p, mask & E ? L - 1 : 1, t, c);
   }
 }
 
 export function roadTile(kind: number, mask: number, wide: boolean, v: number): Pixels {
-  const p = asphaltBase(v, kind === 3);
+  const p = asphaltBase(v); // one asphalt for every class — the paint tells them apart
+  if (wide) {
+    paintSeam(p, kind, mask);
+    return p;
+  }
   const conns = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
-  if (wide || conns >= 3) return p; // slabs and junction boxes carry no centre paint
+  if (conns >= 3) return p; // junction boxes carry no centre paint
   if (mask === 0) {
     rect(p, 7, 7, 2, 2, C.line);
     return p;
   }
-  switch (kind) {
-    case 2: // avenue: double yellow
-      armLines(p, mask, [6, 9], C.lineYellow, false);
-      break;
-    case 3: // 1-wide highway: double yellow + white edge lines
-      armLines(p, mask, [6, 9], C.lineYellow, false);
-      armLines(p, mask, [1, 14], C.line, false);
-      break;
-    case 7: // quiet street: a faint chalk dash
-      armLines(p, mask, [7], C.paveLo, true);
-      break;
-    default: // street, ramp: white dashed centre
-      armLines(p, mask, [7], C.line, true);
-  }
+  paintLines(p, mask, LINES[kind] ?? [CENTRE_DASH]);
   return p;
 }
 
@@ -71,8 +133,28 @@ function sides(mask: number, f: (set: (along: number, across: number, c: RGB) =>
   if (mask & E) f((a, d, c) => px(p, L - d, a, c));
 }
 
+/** Distance-to-corner functions for the four tile corners (0 at the corner pixel). */
+const CORNERS: ReadonlyArray<readonly [number, number, (x: number, y: number) => number]> = [
+  [N, W, (x, y) => x + y],
+  [N, E, (x, y) => L - x + y],
+  [S, E, (x, y) => L - x + (L - y)],
+  [S, W, (x, y) => x + (L - y)],
+];
+
 function curb(mask: number): Pixels {
   const p = blank(T, T);
+  // an outer corner (curbs on two adjacent sides) rounds off with a 45° sidewalk bulge first…
+  for (const [a, b, dist] of CORNERS) {
+    if (!(mask & a) || !(mask & b)) continue;
+    for (let y = 0; y < T; y++) {
+      for (let x = 0; x < T; x++) {
+        const d = dist(x, y);
+        if (d <= 5) px(p, x, y, C.paveHi);
+        else if (d === 6) px(p, x, y, C.asphaltLo);
+      }
+    }
+  }
+  // …then the straight sidewalk strips over it
   sides(mask, (set) => {
     for (let a = 0; a < T; a++) {
       set(a, 0, a % 4 === 0 ? C.pave : C.paveHi); // sidewalk slab with expansion joints
@@ -80,6 +162,29 @@ function curb(mask: number): Pixels {
       set(a, 2, C.asphaltLo); // gutter
     }
   }, p);
+  return p;
+}
+
+/** The inner block corner at each masked diagonal (NE=16 SE=32 SW=64 NW=128): the two sidewalks of the
+ *  neighbouring road tiles meet here, so the corner gets a small quarter-round of pavement. */
+function curbCorner(mask: number): Pixels {
+  const p = blank(T, T);
+  const at: Array<[number, (x: number, y: number) => number]> = [
+    [16, (x, y) => L - x + y],
+    [32, (x, y) => L - x + (L - y)],
+    [64, (x, y) => x + (L - y)],
+    [128, (x, y) => x + y],
+  ];
+  for (const [bit, dist] of at) {
+    if (!(mask & bit)) continue;
+    for (let y = 0; y < T; y++) {
+      for (let x = 0; x < T; x++) {
+        const d = dist(x, y);
+        if (d <= 2) px(p, x, y, C.paveHi);
+        else if (d === 3) px(p, x, y, C.asphaltLo);
+      }
+    }
+  }
   return p;
 }
 
@@ -103,9 +208,11 @@ function crossing(mask: number): Pixels {
   return p;
 }
 
+/** The lane divider down a freeway carriageway tile: white dashes between same-direction lanes (the
+ *  yellow belongs to the median edge, US-style). */
 function freewayLane(axis: 'h' | 'v'): Pixels {
   const p = blank(T, T);
-  for (let t = 0; t < T; t++) if (t % 8 < 4) (axis === 'h' ? px(p, t, 8, C.lineYellow) : px(p, 8, t, C.lineYellow));
+  for (let t = 0; t < T; t++) if (t % 8 < 4) (axis === 'h' ? px(p, t, 8, C.line) : px(p, 8, t, C.line));
   return p;
 }
 
@@ -133,13 +240,16 @@ function turnLane(axis: 'h' | 'v'): Pixels {
   return p;
 }
 
+/** The median: a jersey barrier down the spine with a solid yellow edge line on each carriageway side. */
 function median(axis: 'h' | 'v'): Pixels {
   const p = blank(T, T);
   for (let t = 0; t < T; t++) {
     const put = (d: number, c: RGB): void => (axis === 'h' ? px(p, t, d, c) : px(p, d, t, c));
+    put(4, C.lineYellow);
     put(7, C.paveHi);
     put(8, C.paveHi);
     put(9, C.ink);
+    put(11, C.lineYellow);
   }
   return p;
 }
@@ -151,14 +261,16 @@ function median(axis: 'h' | 'v'): Pixels {
 const WIRE_H = [1, 2, 3, 2];
 const WIRE_V = [1, 2, 3, 2];
 
-function pole(axis: 'h' | 'v'): Pixels {
+/** A pole: 'h'/'v' mid-block on the north/west curb; 'nw' tucked into a junction tile's corner. */
+function pole(spot: 'h' | 'v' | 'nw'): Pixels {
   const p = blank(T, T);
-  const put = (a: number, d: number, c: RGB): void => (axis === 'h' ? px(p, a, d, c) : px(p, d, a, c));
-  for (let a = 6; a <= 10; a++) put(a, 1, C.roofBrown); // crossarm, along the curb
-  put(8, 1, C.roofBrownLo); // mast top
-  put(8, 2, C.roofBrownLo);
-  put(6, 0, C.paveHi); // insulators
-  put(10, 0, C.paveHi);
+  const put = (a: number, d: number, c: RGB): void => (spot === 'v' ? px(p, d, a, c) : px(p, a, d, c));
+  const at = spot === 'nw' ? 2 : 8; // crossarm centre along the curb
+  for (let a = at - 2; a <= at + 2; a++) put(a, 1, C.roofBrown); // crossarm, along the curb
+  put(at, 1, C.roofBrownLo); // mast top
+  put(at, 2, C.roofBrownLo);
+  put(at - 2, 0, C.paveHi); // insulators
+  put(at + 2, 0, C.paveHi);
   outline(p, C.ink);
   return p;
 }
@@ -171,13 +283,24 @@ function wire(axis: 'h' | 'v', k: number): Pixels {
 
 /** Every SNES road tile + furniture overlay: atlas key → pixels. */
 export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly number[], wideKinds: readonly number[]): void {
+  // every surface variant under its explicit `#v` key (the renderer cycles `road-…#0..#2` when a skin
+  // has surface variants), plus the bare key as variant 0 for any lookup without a variant
   for (let v = 0; v < 3; v++) {
-    const sfx = v === 0 ? '' : `#${v}`;
     for (let m = 0; m < 16; m++) {
-      for (const k of roadKinds) out.set(`road-${k}-${m}${sfx}`, roadTile(k, m, false, v));
-      for (const k of wideKinds) out.set(`road-${k}-${m}-w${sfx}`, roadTile(k, m, true, v));
+      for (const k of roadKinds) {
+        const t = roadTile(k, m, false, v);
+        out.set(`road-${k}-${m}#${v}`, t);
+        if (v === 0) out.set(`road-${k}-${m}`, t);
+      }
+      for (const k of wideKinds) {
+        const t = roadTile(k, m, true, v);
+        out.set(`road-${k}-${m}-w#${v}`, t);
+        if (v === 0) out.set(`road-${k}-${m}-w`, t);
+      }
     }
   }
+  for (let m = 16; m < 256; m += 16) out.set(`@road/curbCorner/${m}`, curbCorner(m));
+  out.set('@road/pole/nw', pole('nw'));
   for (let m = 1; m < 16; m++) {
     out.set(`@road/curb/${m}`, curb(m));
     out.set(`@road/divider/${m}`, divider(m));

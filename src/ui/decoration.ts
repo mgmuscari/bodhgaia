@@ -111,8 +111,32 @@ export function curbWiresAt(map: GameMap, x: number, y: number): ReadonlyArray<{
  * the outer row qualifies). 'h' for an E-W run's
  * north-curb pole, 'v' for an N-S run's west-curb pole.
  */
-export function curbPoleAt(map: GameMap, x: number, y: number): 'h' | 'v' | null {
-  if (hRun(map, x, y) && !roadAt(map, x, y - 1) && spanPos(x) === 0) return 'h';
-  if (vRun(map, x, y) && !roadAt(map, x - 1, y) && spanPos(y) === 0) return 'v';
+export function curbPoleAt(map: GameMap, x: number, y: number): 'h' | 'v' | 'nw' | null {
+  if (hRun(map, x, y) && !roadAt(map, x, y - 1) && spanPos(x) === 0) {
+    // a side street leaving south makes this a T: stand the pole on the corner, clear of the mouth
+    return roadAt(map, x, y + 1) && !hRun(map, x, y + 1) ? 'nw' : 'h';
+  }
+  if (vRun(map, x, y) && !roadAt(map, x - 1, y) && spanPos(y) === 0) {
+    return roadAt(map, x + 1, y) && !vRun(map, x + 1, y) ? 'nw' : 'v';
+  }
   return null;
+}
+
+/**
+ * The inner block corners of a street/avenue tile: each diagonal (NE=16, SE=32, SW=64, NW=128) that is
+ * NOT road while both orthogonal neighbours flanking it ARE road — where the sidewalks of two meeting
+ * streets wrap a block corner that no single curb edge covers.
+ */
+export function innerCornerMask(map: GameMap, x: number, y: number): number {
+  if (!lineRoadAt(map, x, y)) return 0;
+  const n = roadAt(map, x, y - 1);
+  const e = roadAt(map, x + 1, y);
+  const s = roadAt(map, x, y + 1);
+  const w = roadAt(map, x - 1, y);
+  let m = 0;
+  if (n && e && !roadAt(map, x + 1, y - 1)) m |= 16;
+  if (s && e && !roadAt(map, x + 1, y + 1)) m |= 32;
+  if (s && w && !roadAt(map, x - 1, y + 1)) m |= 64;
+  if (n && w && !roadAt(map, x - 1, y - 1)) m |= 128;
+  return m;
 }
