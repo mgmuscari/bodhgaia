@@ -16,11 +16,16 @@ import { BuiltKind } from '../engine/fabric';
 import { SatType } from './satelliteFormat';
 import { GridTextureBridge } from './gridTextureBridge';
 
+/** How far (tiles) a building's shadow reaches across the ground — short contact shadows (Maddy
+ *  2026-09-30: the long dawn/dusk shadows read far too long for the buildings). */
+export const SHADOW_REACH = 1.0;
+
 /** `#define SAT_<NAME> <value>` for every SatType — keeps the GLSL switch in sync with the TS enum. */
 export function glslDefines(): string {
-  return Object.entries(SatType)
-    .map(([name, value]) => `#define SAT_${name.toUpperCase()} ${value}`)
-    .join('\n');
+  return [
+    ...Object.entries(SatType).map(([name, value]) => `#define SAT_${name.toUpperCase()} ${value}`),
+    `#define SHADOW_REACH ${SHADOW_REACH.toFixed(3)}`,
+  ].join('\n');
 }
 
 /** Fullscreen-triangle vertex stage (no attributes; gl_VertexID drives it). v_uv spans 0..1. */
@@ -160,17 +165,29 @@ void main() {
     float dayAmt = clamp(alt, 0.0, 1.0);
     sun = vec2(cos(day), -0.55);                 // azimuth arcs E↔W; downward bias
     shadowStrength = u_shadow * dayAmt;          // soft → none at night
-    shadowLen = mix(1.0, 2.4, 1.0 - dayAmt);     // long shadows when the sun is low
+    shadowLen = mix(0.6, 1.0, 1.0 - dayAmt);     // a little longer when the sun is low — never past a tile
   }
+  // Soft CONTACT shadows: march a few sub-tile steps toward the sun from THIS pixel (not its cell), at
+  // most SHADOW_REACH tiles; the nearest building found darkens it by a falloff that fades to nothing
+  // at the reach, scaled by the building's height — a short, diffuse gradient on the lee side. Roofs
+  // are skipped (the art carries its own drop shadows).
   float shadow = 1.0;
-  vec2 stepv = normalize(sun);
-  for (int i = 1; i <= 12; i++) {
-    vec2 sc = floor(ci + stepv * float(i) * shadowLen);
-    if (sc.x < 0.0 || sc.y < 0.0 || sc.x >= u_grid.x || sc.y >= u_grid.y) break;
-    vec4 nd = cell(sc);
-    int nt = int(nd.r * 255.0 + 0.5);
-    bool building = nt >= SAT_RESIDENTIAL && nt <= SAT_POWER;
-    if (building && nd.g * 255.0 > float(i) * 22.0) { shadow = 1.0 - shadowStrength; break; }
+  bool onBuilding = type >= SAT_RESIDENTIAL && type <= SAT_POWER;
+  if (!onBuilding) {
+    vec2 stepv = normalize(sun);
+    for (int i = 1; i <= 6; i++) {
+      float d = float(i) / 6.0 * SHADOW_REACH * shadowLen;
+      vec2 sc = floor(g + stepv * d);
+      if (sc.x < 0.0 || sc.y < 0.0 || sc.x >= u_grid.x || sc.y >= u_grid.y) break;
+      vec4 nd = cell(sc);
+      int nt = int(nd.r * 255.0 + 0.5);
+      if (nt >= SAT_RESIDENTIAL && nt <= SAT_POWER) {
+        float tall = clamp(nd.g * 255.0 / 96.0, 0.35, 1.0);
+        float fall = 1.0 - smoothstep(0.0, SHADOW_REACH * shadowLen, d);
+        shadow = 1.0 - shadowStrength * tall * fall;
+        break;
+      }
+    }
   }
   col *= shadow;
   if (u_dayspeed > 0.0) {
