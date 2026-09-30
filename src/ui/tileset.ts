@@ -46,6 +46,10 @@ export interface RenderProfile {
   /** GPU renderer's photographic life over the base (water warp/swell, sheen, glints, clouds). Off for
    *  pixel art, which it smears; day/night and building shadows apply to every skin regardless. */
   shaderLife: boolean;
+  /** Live status marks (unpowered, building health): flat squares, or the skin's `@icon/*` pixel icons. */
+  marks: 'flat' | 'icons';
+  /** The translucent gold/grey land-value wash over zone tiles. */
+  landValueWash: boolean;
 }
 
 /** The procedural look: no skin effects, bold labels. Also the renderer's profile when no skin loaded. */
@@ -57,6 +61,8 @@ export const PROCEDURAL_PROFILE: RenderProfile = {
   flora: false,
   agentSprites: false,
   shaderLife: true,
+  marks: 'flat',
+  landValueWash: true,
 };
 
 export interface TilesetDef {
@@ -121,6 +127,15 @@ export function surfaceKey(role: string): string {
   return `@surface/${role}`;
 }
 
+/**
+ * Reserved key namespace for skin-drawn status ICONS (`unpowered`, `thriving`, `suffering`) — badges
+ * the renderer draws over buildings when a profile asks for `marks: 'icons'`. Like `@surface/*`, the
+ * `@` prefix keeps them out of the tile atlas; they are never blitted as tiles.
+ */
+export function iconKey(name: string): string {
+  return `@icon/${name}`;
+}
+
 // ── The satellite tileset ──────────────────────────────────────────────────────────────────
 // Google-Maps-inspired top-down patchwork (see docs/art/satellite-tileset.md): a slightly
 // cartoonish, black-outlined, SimCity-2000-era look with Oakland, CA architectural cues —
@@ -162,6 +177,8 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
       flora: true,
       agentSprites: true,
       shaderLife: true,
+      marks: 'flat',
+      landValueWash: true,
     },
   },
   {
@@ -178,6 +195,8 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
       flora: false,
       agentSprites: true,
       shaderLife: false,
+      marks: 'icons',
+      landValueWash: false,
     },
   },
 ];

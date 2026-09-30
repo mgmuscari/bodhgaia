@@ -9,7 +9,7 @@
 // procedural painter, so the set can grow increment by increment.
 
 import { BASE_TILE } from './camera';
-import { blank, fill, hash2, px, slice, type Pixels, type RGB } from './pixelArt';
+import { blank, fill, hash2, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
 import { BUILDING_PAINTERS, paintBuilding } from './snesBuildings';
 import { builtRenderKey, footprintCellKey } from './renderKey';
@@ -178,10 +178,37 @@ function buildingTiles(out: Map<string, Pixels>): void {
   }
 }
 
+// ── Status icons ─────────────────────────────────────────────────────────────────────────────────
+// 8×8 badges on a transparent ground, drawn as 6×6 glyphs then ink-outlined: the blinking lightning bolt
+// of an unpowered zone (straight out of the SNES original), a heart for a thriving home, a raincloud for
+// a suffering one. Rows are strings so the glyph is legible in the source: '#' body, '+' highlight.
+
+const ICONS: Record<string, { rows: readonly string[]; body: RGB; hi: RGB }> = {
+  unpowered: { rows: ['...++.', '..##..', '.####.', '..##..', '.##...', '.#....'], body: C.gold, hi: C.lineYellow },
+  thriving: { rows: ['.##.##', '#+####', '######', '.####.', '..##..', '......'], body: C.signal, hi: C.petal },
+  suffering: { rows: ['..++..', '.####.', '######', '######', '.w..w.', '.w..w.'], body: C.slate, hi: C.slateHi },
+};
+
+function icon(name: string): Pixels {
+  const { rows, body, hi } = ICONS[name]!;
+  const p = blank(8, 8);
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const ch = row[x];
+      if (ch === '#') px(p, x + 1, y + 1, body);
+      else if (ch === '+') px(p, x + 1, y + 1, hi);
+      else if (ch === 'w') px(p, x + 1, y + 1, C.glass);
+    }
+  });
+  outline(p, C.ink);
+  return p;
+}
+
 /** Paint the whole SNES skin: atlas key → pixel buffer. */
 export function paintSnesTileset(): Map<string, Pixels> {
   const out = new Map<string, Pixels>();
   terrainTiles(out);
   buildingTiles(out);
+  for (const name of Object.keys(ICONS)) out.set(`@icon/${name}`, icon(name));
   return out;
 }
