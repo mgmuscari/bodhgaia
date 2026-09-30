@@ -118,15 +118,16 @@ export function curbPoleAt(map: GameMap, x: number, y: number): 'h' | 'v' | 'nw'
  */
 export function innerCornerMask(map: GameMap, x: number, y: number): number {
   if (!lineRoadAt(map, x, y)) return 0;
-  const n = roadAt(map, x, y - 1);
-  const e = roadAt(map, x + 1, y);
-  const s = roadAt(map, x, y + 1);
-  const w = roadAt(map, x - 1, y);
+  // ramps / quiet streets are road too — a ramp deck across a freeway is not a block corner
+  const n = roadish(map, x, y - 1);
+  const e = roadish(map, x + 1, y);
+  const s = roadish(map, x, y + 1);
+  const w = roadish(map, x - 1, y);
   let m = 0;
-  if (n && e && !roadAt(map, x + 1, y - 1)) m |= 16;
-  if (s && e && !roadAt(map, x + 1, y + 1)) m |= 32;
-  if (s && w && !roadAt(map, x - 1, y + 1)) m |= 64;
-  if (n && w && !roadAt(map, x - 1, y - 1)) m |= 128;
+  if (n && e && !roadish(map, x + 1, y - 1)) m |= 16;
+  if (s && e && !roadish(map, x + 1, y + 1)) m |= 32;
+  if (s && w && !roadish(map, x - 1, y + 1)) m |= 64;
+  if (n && w && !roadish(map, x - 1, y - 1)) m |= 128;
   return m;
 }
 

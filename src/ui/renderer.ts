@@ -9,7 +9,7 @@
 // condition-aware building tiles.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis } from '../engine/fabric';
+import { BuiltKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import {
@@ -29,6 +29,7 @@ import {
   type FootprintPos,
 } from './renderKey';
 import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
+import type { LazyImages } from './tilesetLoader';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
 import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask } from './decoration';
 import { parcelGlyph } from './glyphContent';
@@ -553,7 +554,31 @@ function collectBuildingVariants(overrides: ReadonlyMap<string, AtlasImage>): nu
   return max > 0 ? max + 1 : 0;
 }
 
-function buildAtlas(overrides?: ReadonlyMap<string, AtlasImage>): Map<string, AtlasImage> {
+/** A skin's override images: eager entries, plus an optional on-demand source (tilesetLoader.LazyImages). */
+type SkinOverrides = ReadonlyMap<string, AtlasImage> & { lazy?: LazyImages };
+
+/** The atlas for a skin with an on-demand source: a miss on one of the source's keys materializes that
+ *  tile (once — the source memoizes) and keeps it. `has` answers for lazy keys without painting. */
+class LazyAtlas extends Map<string, AtlasImage> {
+  constructor(
+    entries: Iterable<readonly [string, AtlasImage]>,
+    private readonly lazy: LazyImages,
+  ) {
+    super(entries);
+  }
+  override get(key: string): AtlasImage | undefined {
+    const hit = super.get(key);
+    if (hit !== undefined || !this.lazy.keys.has(key)) return hit;
+    const img = this.lazy.get(key);
+    if (img) super.set(key, img);
+    return img;
+  }
+  override has(key: string): boolean {
+    return super.has(key) || this.lazy.keys.has(key);
+  }
+}
+
+function buildAtlas(overrides?: SkinOverrides): Map<string, AtlasImage> {
   // Shallow clone of the cached procedural atlas (shares the painted tile canvases by reference).
   const atlas = new Map(proceduralAtlas());
   if (!overrides) return atlas;
@@ -581,7 +606,7 @@ function buildAtlas(overrides?: ReadonlyMap<string, AtlasImage>): Map<string, At
     if (!key.startsWith('@')) atlas.set(key, img);
   }
 
-  return atlas;
+  return overrides.lazy ? new LazyAtlas(atlas, overrides.lazy) : atlas;
 }
 
 /** One exported procedural tile: its atlas key, control-PNG filename, diffusion spec, and PNG. */
@@ -754,10 +779,13 @@ export class Renderer {
   private roadInk = new Map<string, AtlasImage>();
   // The skin's @emit/* building emission maps (empty → use the ambient sprite light maps).
   private skinEmission = new Map<string, AtlasImage>();
+  // The skin's on-demand image source (lazy building tiles + light maps), and whether it has light maps.
+  private lazyImages: LazyImages | null = null;
+  private hasSkinEmission = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    overrides?: ReadonlyMap<string, AtlasImage>,
+    overrides?: SkinOverrides,
     profile: RenderProfile = PROCEDURAL_PROFILE,
   ) {
     this.ctx = canvas.getContext('2d')!;
@@ -766,10 +794,12 @@ export class Renderer {
     this.atlas = buildAtlas(overrides);
     this.hasTileset = (overrides?.size ?? 0) > 0;
     this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
-    this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
+    this.tileVariants = overrides ? variantCounts([...overrides.keys(), ...(overrides.lazy?.keys ?? [])]) : new Map();
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
     this.skinEmission = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@emit/')));
+    this.lazyImages = overrides?.lazy ?? null;
+    this.hasSkinEmission = this.skinEmission.size > 0 || [...(overrides?.lazy?.keys ?? [])].some((k) => k.startsWith('@emit/'));
     this.roadInk = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@road/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
@@ -800,14 +830,16 @@ export class Renderer {
    * `overrides` empty/undefined ⇒ back to the pure procedural look. Lets the settings menu apply
    * a tileset change live — no page reload, unlike a map-size change (which is a different seed).
    */
-  applyTileset(overrides?: ReadonlyMap<string, AtlasImage>, profile: RenderProfile = PROCEDURAL_PROFILE): void {
+  applyTileset(overrides?: SkinOverrides, profile: RenderProfile = PROCEDURAL_PROFILE): void {
     this.atlas = buildAtlas(overrides);
     this.hasTileset = (overrides?.size ?? 0) > 0;
     this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
-    this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
+    this.tileVariants = overrides ? variantCounts([...overrides.keys(), ...(overrides.lazy?.keys ?? [])]) : new Map();
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
     this.skinEmission = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@emit/')));
+    this.lazyImages = overrides?.lazy ?? null;
+    this.hasSkinEmission = this.skinEmission.size > 0 || [...(overrides?.lazy?.keys ?? [])].some((k) => k.startsWith('@emit/'));
     this.roadInk = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@road/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
@@ -834,6 +866,11 @@ export class Renderer {
   setGpuMode(on: boolean): void {
     this.gpuMode = on;
     this.invalidateBase();
+  }
+
+  /** A skin light map by key — eager, or materialized on first use from the lazy source. */
+  private emissionImage(key: string): AtlasImage | undefined {
+    return this.skinEmission.get(key) ?? (this.lazyImages?.keys.has(key) ? this.lazyImages.get(key) : undefined);
   }
 
   /** The active skin's render profile (PROCEDURAL_PROFILE when no skin is loaded). */
@@ -1043,8 +1080,11 @@ export class Renderer {
           // line runs straight through the freeway instead of crossing the surface street it links.
           // the class this road tile is PAINTED as (a connector at a highway bend wears highway paint)
           const paintKind = isT ? roadPaintKind(map, tx, ty) : built;
-          const mask =
-            built === BuiltKind.RoadRamp && paintKind === BuiltKind.RoadRamp
+          // an at-grade road crossing a freeway is a junction box: clear paint, no lanes / median over it
+          const crossing = isT && freewayCrossing(map, tx, ty);
+          const mask = crossing
+            ? N | E | S | W
+            : built === BuiltKind.RoadRamp && paintKind === BuiltKind.RoadRamp
               ? rampMarkingMask(map, tx, ty)
               : clAxis !== null
                 ? clAxis === 'v'
@@ -1171,7 +1211,7 @@ export class Renderer {
             // CENTERLINE down each lane (hidden under the median on the spine, so it shows on the
             // outer lanes); (2) one line per INTER-LANE boundary, drawn ONCE per seam — the E/S side
             // only, since the neighbour's W/N edge is the same seam.
-            if (built === BuiltKind.RoadHighway && wide) {
+            if (built === BuiltKind.RoadHighway && wide && !crossing) {
               const fAxis = freewayAxis(map, tx, ty);
               if (fAxis !== null && this.roadInk.has(`@road/flane/${fAxis}`)) {
                 ink(`@road/flane/${fAxis}`, dx, dy);
@@ -1224,7 +1264,7 @@ export class Renderer {
 
             // Freeway MEDIAN: a jersey barrier down the centre spine tile of the 3-wide corridor,
             // running lengthwise (separates the opposing carriageways). Per-tile; opens at ramps.
-            const medianAxis = freewayMedianAxis(map, tx, ty);
+            const medianAxis = crossing ? null : freewayMedianAxis(map, tx, ty);
             if (medianAxis !== null && !ink(`@road/median/${medianAxis}`, dx, dy)) {
               const mb = Math.max(2, Math.round(ts * 0.2));
               const concrete = '#d8d2c4';
@@ -1293,13 +1333,13 @@ export class Renderer {
               // the baked atlas: `b-<kind>-c` (1×1) or `b-<kind>-<w>x<h>`. Absent key → not collected.
               if (unpowered) {
                 // no power, no lights — an unpowered building stays dark at night (the the classic city-builder rule)
-              } else if (this.skinEmission.size > 0) {
+              } else if (this.hasSkinEmission) {
                 // the skin's own map for THIS footprint, tier and art variant (read off the picked key)
                 const v = variantIndexOf(builtKey);
                 const base = emissionKey(pp.kind, pp.width, pp.height, tier);
                 const sfx = v === 0 ? '' : `#${v}`;
-                const lit = this.skinEmission.get(base + sfx);
-                const blink = this.skinEmission.get(`${base}/blink${sfx}`);
+                const lit = this.emissionImage(base + sfx);
+                const blink = this.emissionImage(`${base}/blink${sfx}`);
                 if (lit || blink) this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: base, kind: pp.kind, lit, blink });
               } else if (this.profile.bakedLightMaps) {
                 const form = pp.width === 1 && pp.height === 1 ? 'c' : `${pp.width}x${pp.height}`;
@@ -2099,14 +2139,14 @@ export class Renderer {
         // Power plants (24–30) run 24/7 → glow always on; everything else is lit WINDOWS → night-gated.
         const isPower = b.kind >= 24 && b.kind <= 30;
         const a = isPower ? 1 : night;
-        const stat = b.lit ?? (this.skinEmission.size > 0 ? undefined : emission?.[b.key]);
+        const stat = b.lit ?? (this.hasSkinEmission ? undefined : emission?.[b.key]);
         if (stat && a > 0.02) {
           ctx.globalAlpha = a;
           ctx.drawImage(stat, sx, sy, w, h);
         }
         // Hazard beacons blink on a PER-BUILDING phase + period (hashed from its anchor), so beacons
         // across the map don't pulse in unison (Maddy: global blink reads fake). Always-on (aviation).
-        const blinkImg = b.blink ?? (this.skinEmission.size > 0 ? undefined : emission?.[`${b.key}/blink`]);
+        const blinkImg = b.blink ?? (this.hasSkinEmission ? undefined : emission?.[`${b.key}/blink`]);
         if (blinkImg) {
           const hash = (((b.x * 73856093) ^ (b.y * 19349663)) >>> 0);
           const period = 420 + (hash % 6) * 90; // 420..870 ms, varies per building

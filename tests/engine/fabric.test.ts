@@ -21,6 +21,7 @@ import {
   depaveAsphalt,
   rampMarkingMask,
   freewayMedianAxis,
+  freewayCrossing,
   freewayAxis,
   freewayLaneBoundaryMask,
   freewayCenterLaneAxis,
@@ -1628,5 +1629,36 @@ describe('freeway corridors crossed by ramp decks (Maddy 2026-09-30: blank freew
     const map = crossedFreeway();
     expect(freewayAxis(map, 4, 4)).toBe(null);
     expect(freewayMedianAxis(map, 4, 4)).toBe(null);
+  });
+});
+
+describe('freewayCrossing — an at-grade road crossing a freeway is a clear junction box', () => {
+  // live seed "lotus" (97,37): a 2-row avenue (rows 6-7 here) crossing a 3-wide N-S freeway (x 3..5):
+  // the avenue's north row crosses on RAMP tiles, its south row on plain HIGHWAY tiles
+  function crossing(): GameMap {
+    const map = new GameMap(10, 14);
+    for (let y = 0; y < 14; y++) for (let x = 3; x <= 5; x++) map.setBuilt(x, y, BuiltKind.RoadHighway);
+    for (let x = 0; x < 10; x++) {
+      if (x >= 3 && x <= 5) map.setBuilt(x, 6, BuiltKind.RoadRamp);
+      else {
+        map.setBuilt(x, 6, BuiltKind.RoadAvenue);
+        map.setBuilt(x, 7, BuiltKind.RoadAvenue);
+      }
+    }
+    return map;
+  }
+
+  it('flags the freeway and ramp tiles the cross road passes over', () => {
+    const map = crossing();
+    for (let x = 3; x <= 5; x++) {
+      expect(freewayCrossing(map, x, 6), `ramp ${x}`).toBe(true);
+      expect(freewayCrossing(map, x, 7), `highway ${x}`).toBe(true);
+    }
+  });
+
+  it('plain freeway lanes away from the crossing are not a crossing', () => {
+    const map = crossing();
+    expect(freewayCrossing(map, 4, 2)).toBe(false);
+    expect(freewayCrossing(map, 4, 11)).toBe(false);
   });
 });
