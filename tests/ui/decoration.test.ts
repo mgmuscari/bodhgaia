@@ -324,3 +324,14 @@ describe('crosswalkMask — zebra crossings on local-street approaches to a junc
     expect(crosswalkMask(map, 5, 4)).toBe(0);
   });
 });
+
+describe('innerCornerMask treats ramp decks as road (Maddy 2026-09-30: stray kerb hooks at (97,37))', () => {
+  it('no block corner where the diagonal is a ramp deck across a freeway', () => {
+    const map = new GameMap(8, 8);
+    hline(map, BuiltKind.RoadAvenue, 3, 0, 2); // avenue approaching from the west
+    map.built[map.idx(3, 3)] = BuiltKind.RoadHighway; // east: the freeway
+    map.built[map.idx(3, 2)] = BuiltKind.RoadRamp; // NE diagonal: the ramp deck
+    map.built[map.idx(2, 2)] = BuiltKind.RoadAvenue; // north: the avenue's other row
+    expect(innerCornerMask(map, 2, 3) & 16).toBe(0);
+  });
+});

@@ -18,8 +18,9 @@ The dated sections below this one are the **archive** (✅ done + diagnoses kept
 of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
 ### 1 — Live-game bugs (playtest loop, do first)
-- 🟡 **Intersection at (97, 37) looks bad** (Maddy 2026-09-30, seed `lotus`, SNES skin) — road markings /
-  furniture at that junction read wrong; revisit after the traffic work.
+- ✅ **Intersection at (97, 37) looks bad** (Maddy 2026-09-30) — an avenue crossing a 3-wide freeway at
+  grade: freeway lanes/ramp dashes were painted through the crossing and ramp decks read as block corners
+  (stray kerb hooks). Fixed: `freewayCrossing` junction box + ramp-aware `innerCornerMask`.
 - 🔴 **World starts in a power collapse** (playtest 2026-09-30, seed `lotus`) — capacity 220 vs demand
   1188 at load; within ~2 min nearly every home is unpowered and Unhoused climbs 0 → ~1600. Confirm whether
   the opening energy crisis is intended; if so it needs to read as a challenge, not a silent collapse.

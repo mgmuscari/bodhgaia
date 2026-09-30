@@ -884,6 +884,40 @@ export function rampMarkingMask(map: GameMap, x: number, y: number): number {
 export const FREEWAY_WIDTH = 3;
 
 /**
+ * Is (x, y) — a freeway or ramp tile — part of an AT-GRADE CROSSING: a street/avenue that passes over the
+ * freeway here and continues on BOTH sides? Walks across the corridor (freeway + ramp tiles, at most
+ * CROSSING_SPAN) on each axis; a crossing is where both ends land on a surface road. Such tiles are a
+ * junction box: no freeway lane lines, no median, no ramp-axis dashes painted through them (Maddy
+ * 2026-09-30, the avenue at (97,37)). Render-only.
+ */
+const CROSSING_SPAN = 4;
+export function freewayCrossing(map: GameMap, x: number, y: number): boolean {
+  const k = map.getBuilt(x, y);
+  if (k !== BuiltKind.RoadHighway && k !== BuiltKind.RoadRamp) return false;
+  const corridor = (px: number, py: number): boolean => {
+    if (!map.inBounds(px, py)) return false;
+    const c = map.getBuilt(px, py);
+    return c === BuiltKind.RoadHighway || c === BuiltKind.RoadRamp;
+  };
+  const surface = (px: number, py: number): boolean => {
+    if (!map.inBounds(px, py)) return false;
+    const c = map.getBuilt(px, py);
+    return c === BuiltKind.RoadStreet || c === BuiltKind.RoadAvenue || c === BuiltKind.QuietStreet;
+  };
+  const endBeyond = (dx: number, dy: number): boolean => {
+    let px = x;
+    let py = y;
+    for (let i = 0; i < CROSSING_SPAN; i++) {
+      px += dx;
+      py += dy;
+      if (!corridor(px, py)) return surface(px, py);
+    }
+    return false; // the corridor runs on — this is along the freeway, not across it
+  };
+  return (endBeyond(1, 0) && endBeyond(-1, 0)) || (endBeyond(0, 1) && endBeyond(0, -1));
+}
+
+/**
  * A tile that continues a freeway CORRIDOR for run-length measurement: the freeway itself, or a RAMP
  * deck carrying a street across it. Without the ramps, a freeway crossed by a street every few tiles
  * measures as a string of 3×3 chunks with no longer axis — and loses its lanes and median entirely
