@@ -236,3 +236,31 @@ export function renderKeyspace(): readonly string[] {
   }
   return keys;
 }
+
+/**
+ * Per base key, how many interchangeable tiles a skin supplies: the base plus a contiguous run of
+ * `${base}#1..#n` variants. Keys without variants are omitted (plain lookup). A gap stops the run, so
+ * a pick can never land on a missing tile.
+ */
+export function variantCounts(keys: Iterable<string>): Map<string, number> {
+  const all = new Set(keys);
+  const counts = new Map<string, number>();
+  for (const key of all) {
+    if (key.includes('#') || !all.has(`${key}#1`)) continue;
+    let n = 1;
+    while (all.has(`${key}#${n}`)) n++;
+    counts.set(key, n);
+  }
+  return counts;
+}
+
+/**
+ * The tile to draw for `base` at (x, y): the base or one of its variants, chosen by the
+ * direction-neutral position hash (so a field of one terrain stops repeating on a 16-px grid).
+ */
+export function pickVariantKey(base: string, x: number, y: number, counts: ReadonlyMap<string, number>): string {
+  const n = counts.get(base);
+  if (n === undefined) return base;
+  const v = surfaceVariantIndex(x, y, n);
+  return v === 0 ? base : variantKey(base, v);
+}

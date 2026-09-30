@@ -92,3 +92,52 @@ describe('tileset key fan-out helpers', () => {
     for (const k of pristine) expect(k.endsWith('-0')).toBe(true);
   });
 });
+
+describe('tileset render profiles', () => {
+  it('every def carries a render profile', () => {
+    for (const d of TILESET_DEFS) expect(d.profile, d.id).toBeDefined();
+  });
+
+  it('procedural keeps bold glyphs and no skin effects', () => {
+    const p = tilesetDef(PROCEDURAL).profile;
+    expect(p.glyphs).toBe('bold');
+    expect(p.stochasticTerrain).toBe(false);
+    expect(p.ambientMotion).toBe(false);
+    expect(p.flora).toBe(false);
+  });
+
+  it('satellite keeps its photographic treatment (faint glyphs, anti-plaid, motion, canopy)', () => {
+    const p = tilesetDef('satellite').profile;
+    expect(p).toEqual({
+      glyphs: 'faint',
+      stochasticTerrain: true,
+      ambientMotion: true,
+      roadClassShade: true,
+      flora: true,
+      agentSprites: true,
+      shaderLife: true,
+    });
+  });
+});
+
+describe('the snes tileset (code-painted)', () => {
+  it('is registered, ships no PNG assets, and paints in code', () => {
+    const d = tilesetDef('snes');
+    expect(d.id).toBe('snes');
+    expect(d.assets).toEqual([]);
+    expect(typeof d.paint).toBe('function');
+  });
+
+  it('pixel art is never rotated, and the art carries type so glyphs are off', () => {
+    const p = tilesetDef('snes').profile;
+    expect(p.stochasticTerrain).toBe(false);
+    expect(p.glyphs).toBe('off');
+    expect(p.flora).toBe(false);
+    expect(p.roadClassShade).toBe(false);
+    expect(p.shaderLife).toBe(false); // the GPU warp/swell/clouds would smear the pixels
+  });
+
+  it('procedural keeps the GPU life it has always had', () => {
+    expect(tilesetDef(PROCEDURAL).profile.shaderLife).toBe(true);
+  });
+});

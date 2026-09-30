@@ -18,11 +18,13 @@ import {
   renderKeyspace,
   variantKey,
   surfaceVariantIndex,
+  variantCounts,
+  pickVariantKey,
   terrainTileTransform,
   waterTileTransform,
   type FootprintPos,
 } from './renderKey';
-import { surfaceKey } from './tileset';
+import { surfaceKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
 import { wideRoadAt, powerPoleAt, poleWireDirs } from './decoration';
 import { parcelGlyph } from './glyphContent';
@@ -665,6 +667,12 @@ export class Renderer {
   // True when a tileset supplied at least one override → enables the segmented-footprint
   // cell-key lookup in drawBase. False (procedural) keeps that path byte-identical + zero-cost.
   private hasTileset = false;
+  // How the active skin wants to be treated (glyphs, anti-plaid, motion, sprites…). PROCEDURAL_PROFILE
+  // whenever no skin supplied overrides, so the procedural path is unchanged.
+  private profile: RenderProfile = PROCEDURAL_PROFILE;
+  // Per base key, how many hash-cycled variants the skin painted (`grass-1` → 4). Terrain picks one per
+  // tile so a field stops repeating on the tile grid. Empty for procedural (byte-identical path).
+  private tileVariants: ReadonlyMap<string, number> = new Map();
   // Count of road asphalt-surface variants (0 = procedural roads, 1 = single surface, >1 = cycle
   // per-tile to break the repeated-texture plaid). Read in drawBase's per-tile road key pick.
   private roadVariants = 0;
@@ -729,20 +737,23 @@ export class Renderer {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     overrides?: ReadonlyMap<string, AtlasImage>,
+    profile: RenderProfile = PROCEDURAL_PROFILE,
   ) {
     this.ctx = canvas.getContext('2d')!;
     this.base = document.createElement('canvas');
     this.baseCtx = this.base.getContext('2d')!;
     this.atlas = buildAtlas(overrides);
     this.hasTileset = (overrides?.size ?? 0) > 0;
+    this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
+    this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
     // stay the baked textures (drawn per-tile rotated/scaled/cropped in drawBase for anti-plaid).
-    this.waterFrames = this.hasTileset
+    this.waterFrames = this.profile.ambientMotion
       ? makeWaterFrames(this.atlas.get('ocean-0') ?? this.atlas.get('lake-0') ?? null, WATER_FRAMES, BASE_TILE)
       : [];
-    this.grassSheen = this.hasTileset ? makeGrassSheen(BASE_TILE) : null;
+    this.grassSheen = this.profile.ambientMotion ? makeGrassSheen(BASE_TILE) : null;
     this.buildWaterSlosh();
   }
 
@@ -750,7 +761,7 @@ export class Renderer {
    *  slosh is a cheap plain blit per tile rather than a live rotate+shear drawImage (the FPS killer). */
   private buildWaterSlosh(): void {
     this.waterSlosh.clear();
-    if (!this.hasTileset) return;
+    if (!this.profile.ambientMotion) return;
     for (const key of this.atlas.keys()) {
       if (!/^(ocean|lake|river)-\d+$/.test(key)) continue;
       const tex = this.atlas.get(key);
@@ -764,17 +775,19 @@ export class Renderer {
    * `overrides` empty/undefined ⇒ back to the pure procedural look. Lets the settings menu apply
    * a tileset change live — no page reload, unlike a map-size change (which is a different seed).
    */
-  applyTileset(overrides?: ReadonlyMap<string, AtlasImage>): void {
+  applyTileset(overrides?: ReadonlyMap<string, AtlasImage>, profile: RenderProfile = PROCEDURAL_PROFILE): void {
     this.atlas = buildAtlas(overrides);
     this.hasTileset = (overrides?.size ?? 0) > 0;
+    this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
+    this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
     // stay the baked textures (drawn per-tile rotated/scaled/cropped in drawBase for anti-plaid).
-    this.waterFrames = this.hasTileset
+    this.waterFrames = this.profile.ambientMotion
       ? makeWaterFrames(this.atlas.get('ocean-0') ?? this.atlas.get('lake-0') ?? null, WATER_FRAMES, BASE_TILE)
       : [];
-    this.grassSheen = this.hasTileset ? makeGrassSheen(BASE_TILE) : null;
+    this.grassSheen = this.profile.ambientMotion ? makeGrassSheen(BASE_TILE) : null;
     this.buildWaterSlosh();
     this.invalidateBase();
   }
@@ -792,6 +805,11 @@ export class Renderer {
   setGpuMode(on: boolean): void {
     this.gpuMode = on;
     this.invalidateBase();
+  }
+
+  /** The active skin's render profile (PROCEDURAL_PROFILE when no skin is loaded). */
+  renderProfile(): RenderProfile {
+    return this.profile;
   }
 
   /** The offscreen CPU base canvas (terrain + buildings + roads + all line/divider/marking rules) —
@@ -911,9 +929,10 @@ export class Renderer {
         const dy = Math.floor(sy);
 
         const tkind = kindOf(map, i);
-        const terrain = this.atlas.get(`${tkind}-${bandOf(map.elevation[i]!)}`)!;
+        const terrainKey = `${tkind}-${bandOf(map.elevation[i]!)}`;
+        const terrain = this.atlas.get(pickVariantKey(terrainKey, tx, ty, this.tileVariants)) ?? this.atlas.get(terrainKey)!;
         const isWater = tkind === 'ocean' || tkind === 'lake' || tkind === 'river';
-        if (this.hasTileset && isWater) {
+        if (this.profile.stochasticTerrain && isWater) {
           // Water HYBRID: draw the baked water texture with a per-tile RANDOM rotation + scale, clipped
           // to the tile (stochastic tiling) so the sea never reads as plaid; the sloshy wang animates
           // over it (drawSprites). Scale ≥ √2 so the rotated tile still covers its clipped square.
@@ -927,7 +946,7 @@ export class Renderer {
           ctx.scale(wt.scale, wt.scale);
           ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, -ts / 2, -ts / 2, ts, ts);
           ctx.restore();
-        } else if (this.hasTileset) {
+        } else if (this.profile.stochasticTerrain) {
           // Non-water terrain: a deterministic dihedral (90° rot + mirror) to break the repeated plaid.
           const t = terrainTileTransform(tx, ty);
           ctx.save();
@@ -1014,7 +1033,7 @@ export class Renderer {
           if (builtTile) ctx.drawImage(builtTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
           // Road-class value (Maddy): streets read lighter than avenues lighter than freeways. The
           // asphalt is normalized to one average at load; this darkens the heavier classes on top.
-          if (this.hasTileset && builtTile) {
+          if (this.profile.roadClassShade && builtTile) {
             const darken = built === BuiltKind.RoadHighway ? 0.26 : built === BuiltKind.RoadAvenue ? 0.13 : 0;
             if (darken > 0) {
               ctx.globalAlpha = darken;
@@ -1027,7 +1046,7 @@ export class Renderer {
           // Flora canopies: a sparse tree/shrub sprite over the green-amenity kinds (parks, gardens,
           // rewilded land) under a tileset — Google-Maps-style canopy dots. Baked into the cached base
           // (static, hash-gated to ~⅗ of tiles so it reads as accents, not a solid mat).
-          const flora = this.hasTileset ? this.ambientSprites?.flora : undefined;
+          const flora = this.profile.flora ? this.ambientSprites?.flora : undefined;
           if (flora && flora.length > 0 && GREEN_FLORA_KINDS.has(built) && surfaceVariantIndex(tx, ty, 5) < 3) {
             const img = flora[surfaceVariantIndex(tx * 7, ty * 13, flora.length)]!;
             const fs = ts * 0.82;
@@ -1224,8 +1243,8 @@ export class Renderer {
     // wear; discarded junk from GARBAGE_WEAR up; encampment tents from ENCAMPMENT_WEAR up — junk + tents
     // COEXIST, and a heavily-worn tile grows MULTIPLE tents (a tent houses more than one unhoused person).
     if (ambient) {
-      const tents = this.hasTileset ? this.ambientSprites?.encampments : undefined;
-      const junk = this.hasTileset ? this.ambientSprites?.junk : undefined;
+      const tents = this.profile.agentSprites ? this.ambientSprites?.encampments : undefined;
+      const junk = this.profile.agentSprites ? this.ambientSprites?.junk : undefined;
       const mapW2 = world.map.width;
       for (const [tile, wear] of ambient.wear) {
         const wx = tile % mapW2;
@@ -1256,7 +1275,7 @@ export class Renderer {
             const img = tents[(hh >>> 16) % tents.length]!;
             ctx.drawImage(img, sx + ((hh & 0xff) / 255) * (ts - es), sy + (((hh >>> 8) & 0xff) / 255) * (ts - es), es, es);
           }
-        } else if (!this.hasTileset && wear > 120) {
+        } else if (!this.profile.agentSprites && wear > 120) {
           ctx.fillStyle = '#2e2a22'; // procedural fallback: trash specks
           const specks: ReadonlyArray<readonly [number, number]> = [[0.3, 0.35], [0.65, 0.5], [0.45, 0.72]];
           const n = wear > 210 ? 3 : wear > 170 ? 2 : 1;
@@ -1276,14 +1295,14 @@ export class Renderer {
         ctx.fillStyle = 'rgba(232, 72, 60, 0.95)';
         ctx.fillRect(m.dx + m.w * ts - pip - 1, m.dy + 1, pip, pip);
       }
-      if (ts >= GLYPH_MIN_TS) {
+      if (ts >= GLYPH_MIN_TS && this.profile.glyphs !== 'off') {
         const glyph = parcelGlyph(m.kind as BuiltKind, m.density);
         if (glyph) {
           const gx = m.dx + (m.w * ts) / 2;
           const gy = m.dy + (m.h * ts) / 2;
           // Under a tileset the baked roofs convey type, so the legibility glyphs go small + faint
           // to stop them from masking the satellite art; the procedural path keeps the bold label.
-          const skin = this.hasTileset;
+          const skin = this.profile.glyphs === 'faint';
           ctx.font = `bold ${Math.max(skin ? 7 : 8, Math.floor(ts * (skin ? 0.34 : 0.55)))}px "Courier New", ui-monospace, monospace`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
@@ -1383,7 +1402,7 @@ export class Renderer {
     // on screen, so hundreds–thousands of per-tile blits/frame tank FPS — and the slosh is sub-pixel
     // there anyway. The static (cached) base water shows instead; slosh kicks in at zoom ≥ 2 where the
     // visible tile count is bounded (Maddy: water animation tanks perf zoomed out).
-    if (!this.gpuMode && this.hasTileset && this.waterSlosh.size > 0 && camera.zoom >= 2) {
+    if (!this.gpuMode && this.profile.ambientMotion && this.waterSlosh.size > 0 && camera.zoom >= 2) {
       const path = this.tileMask(world, camera, 'water', (m, i) => m.water[i] !== 0);
       if (path) {
         const o = camera.worldToScreen(0, 0);
@@ -1467,7 +1486,7 @@ export class Renderer {
     // Wavy grass / canopy: scroll the wind-streak sheen over grass/meadow/forest along the prevailing
     // wind, clipped to the cached grass mask, at low alpha — a subtle wind ripple. Same non-row-major
     // pattern technique as the water (O(1) draws/frame), so no top-bar.
-    if (!this.gpuMode && this.hasTileset && this.grassSheen && ts >= 6) {
+    if (!this.gpuMode && this.profile.ambientMotion && this.grassSheen && ts >= 6) {
       const path = this.tileMask(
         world,
         camera,
@@ -1563,7 +1582,7 @@ export class Renderer {
     // tone-coded squares. Sprite is drawn a touch larger than the square so the little body reads.
     // In GPU mode the moving cars are drawn by the GPU sprite batch (lit by the shared base pass), so
     // skip the CPU car draw to avoid double-rendering (Maddy: move sprites to GPU for matched lighting).
-    const carSprites = !this.gpuMode && this.hasTileset ? this.ambientSprites?.cars : undefined;
+    const carSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.cars : undefined;
     for (const c of ambient.cars) {
       if (this.gpuMode) break; // cars rendered on GPU
       // A PARKED car (lot bay or kerb slot) carries its exact stall position in c.x/c.y, so it draws
@@ -1614,7 +1633,7 @@ export class Renderer {
     // lit normally (dims at night). The flashing red/blue light bar is drawn LATER, after the lighting
     // buffer, so the LIGHTS evade shading (a flasher glows full-bright; the car doesn't — Maddy).
     const cruiserSize = Math.max(2, ts * 0.26);
-    const policeSprites = !this.gpuMode && this.hasTileset ? this.ambientSprites?.police : undefined;
+    const policeSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.police : undefined;
     for (const c of ambient.cruisers) {
       if (this.gpuMode) break; // cruisers rendered on GPU in gpuMode
       const off = laneOffset(c.dir);
@@ -1690,8 +1709,8 @@ export class Renderer {
     // The sprite is FIXED per ped (a stable hash of its identity) — NOT cycled through the frames: the
     // frames are different-coloured PEOPLE, not gait frames, so cycling them flashed "rainbow road"
     // (Maddy). Procedural (or missing sprites) keeps the tone-coded mode dots.
-    const pedSprites = this.hasTileset ? this.ambientSprites?.peds : undefined;
-    const cyclistSprites = this.hasTileset ? this.ambientSprites?.cyclists : undefined;
+    const pedSprites = this.profile.agentSprites ? this.ambientSprites?.peds : undefined;
+    const cyclistSprites = this.profile.agentSprites ? this.ambientSprites?.cyclists : undefined;
     const pedSize = Math.max(1, ts * 0.16);
     for (const p of ambient.peds) {
       if (this.gpuMode) break; // peds/cyclists rendered on GPU in gpuMode
@@ -1741,7 +1760,7 @@ export class Renderer {
     // ground + ambient props (Maddy). Evaluated as NON-periodic fBm in WORLD space into a low-res buffer,
     // then upscaled smooth over the viewport — so it never tiles/tessellates and drifts with the wind.
     // Skipped when a DATA overlay is active so the viz reads clean.
-    if (!this.gpuMode && this.hasTileset && this.overlay === null && this.liveOverlay === null) {
+    if (!this.gpuMode && this.profile.ambientMotion && this.overlay === null && this.liveOverlay === null) {
       const BW = 96;
       const BH = 60;
       if (!this.cloudBuf) {
@@ -1783,7 +1802,7 @@ export class Renderer {
     // Smog plumes — TOP layer (above cars/peds, Maddy): translucent puffs over polluted tiles, streaming
     // downwind along the prevailing wind (loop + triangle fade so they don't pop), billowing as they go.
     // In GPU mode the smog is a WebGL overlay above the sprites (smogOverlay), so skip the CPU plumes.
-    const smogSprites = !this.gpuMode && this.hasTileset ? this.ambientSprites?.smog : undefined;
+    const smogSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.smog : undefined;
     if (smogSprites && smogSprites.length > 0) {
       const drift = performance.now() / 1000;
       for (const [tile, amt] of ambient.pollution) {
@@ -1893,7 +1912,7 @@ export class Renderer {
     // lighting pass). Aligned to the sprite arrays by the SAME index the sprite draw uses.
     const nightT = performance.now() / 1000;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
-    const carLights = !this.gpuMode && this.hasTileset ? this.ambientSprites?.carLights : undefined; // GPU draws car emission in gpuMode
+    const carLights = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.carLights : undefined; // GPU draws car emission in gpuMode
     if (night > 0.02 && carLights && carLights.length > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -1919,7 +1938,7 @@ export class Renderer {
       }
       ctx.restore();
     }
-    const cyclistLights = !this.gpuMode && this.hasTileset ? this.ambientSprites?.cyclistLights : undefined; // GPU draws cyclist emission in gpuMode
+    const cyclistLights = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.cyclistLights : undefined; // GPU draws cyclist emission in gpuMode
     if (night > 0.02 && cyclistLights && cyclistLights.length > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';

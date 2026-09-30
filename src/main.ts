@@ -28,7 +28,7 @@ import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { loadTileset } from './ui/tilesetLoader';
 import { loadAmbientSprites } from './ui/ambientSprites';
-import { PROCEDURAL } from './ui/tileset';
+import { PROCEDURAL, tilesetDef } from './ui/tileset';
 import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
@@ -192,9 +192,11 @@ export function main(): void {
   // Tileset skin: the procedural look paints instantly (above); a non-procedural skin loads its
   // committed PNGs async and hot-swaps in when ready (applyTileset invalidates the cached base →
   // the next frame repaints). A partial/missing tileset falls back per-key to the painter.
-  if (settings.tileset !== PROCEDURAL) {
-    void loadTileset(settings.tileset).then((overrides) => renderer.applyTileset(overrides));
-  }
+  // The ONE skin-swap path (boot, settings menu, dev handle): load/paint the skin's tiles, then rebuild
+  // the atlas under the skin's render profile (applyTileset invalidates the cached base).
+  const applySkin = (id: string): Promise<void> =>
+    loadTileset(id).then((overrides) => renderer.applyTileset(overrides, tilesetDef(id).profile));
+  if (settings.tileset !== PROCEDURAL) void applySkin(settings.tileset);
 
   // Two named dirty chokepoints (CRITIC-YP2). markDirty invalidates the cached
   // renderer base (map/camera/overlay changed); markPreviewDirty only requests a
@@ -331,8 +333,7 @@ export function main(): void {
     exportTiles: exportProceduralTiles,
     // Hot-swap a tileset skin at runtime (same path as the settings dropdown) — for live verification
     // and quick A/B without hunting the menu. e.g. window.bodhitropolis.setTileset('satellite').
-    setTileset: (id: string): Promise<void> =>
-      loadTileset(id).then((overrides) => renderer.applyTileset(overrides)),
+    setTileset: applySkin,
   };
 
   // Opening challenge overlay. Computed from the same world, mounted over the
@@ -512,7 +513,7 @@ export function main(): void {
       settings = clampSettings({ ...settings, tileset });
       saveSettings(settings);
       // Hot-swap the skin live (no regen): load its PNGs, then rebuild the atlas + invalidate base.
-      void loadTileset(settings.tileset).then((overrides) => renderer.applyTileset(overrides));
+      void applySkin(settings.tileset);
     },
     onRendererChange: (mode): void => {
       settings = clampSettings({ ...settings, renderer: mode });
@@ -1003,7 +1004,7 @@ export function main(): void {
     }
     // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so
     // it samples the freshest baked tiles. The base re-uploads only when its version changed.
-    gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion());
+    gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion(), renderer.renderProfile().shaderLife);
     // GPU agents: the moving sprites lit by the SAME pass as the ground (drawn over the base, under UI).
     if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList());
     // GPU smog overlay (z2, above sprites): the atmospheric haze, now on the GPU instead of CPU plumes.
