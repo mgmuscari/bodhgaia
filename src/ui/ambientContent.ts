@@ -595,6 +595,12 @@ function pedLegLateral(map: GameMap, p: Mover): number {
 
 /** Substeps (50 ms each) a held vehicle waits before re-planning its route round the blockage (~2 s). */
 export const STUCK_REPATH = 40;
+/** Substeps before a held vehicle turns back the way it came and re-plans from there (~4 s). */
+export const STUCK_UTURN = 80;
+/** Substeps before a jammed agent gives up on its current stop and moves on (~6 s). */
+export const STUCK_GIVE_UP = 120;
+/** Wellbeing a household loses when one of its citizens abandons a stop to a traffic jam (small). */
+export const JAM_SKIP_PENALTY = 3;
 /** Substeps before a held vehicle squeezes through anyway — breaks circular deadlocks (~8 s). */
 export const STUCK_ESCAPE = 160;
 
@@ -623,6 +629,59 @@ export function rerouteIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<nu
   car.path = path;
   car.leg = 2;
   return true;
+}
+
+/**
+ * Jam rung 2: a path-following vehicle held STUCK_UTURN substeps — typically MID-LEG in a queue, where a
+ * re-plan can't start — turns back toward the tile its leg started from (when driving that edge in
+ * reverse is legal; never on a one-way lane) and re-plans from there to the same destination, with the
+ * jammed tile priced out. Returns true iff it turned.
+ */
+export function uTurnIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<number, number>): boolean {
+  if (!car.path || (car.stuck ?? 0) < STUCK_UTURN) return false;
+  const fx = car.tx - DIR_DX[car.dir]!;
+  const fy = car.ty - DIR_DY[car.dir]!;
+  if (!map.inBounds(fx, fy) || !canDrive(map, car.tx, car.ty, fx, fy)) return false; // no driving back here
+  const goal = car.path[car.path.length - 1]!;
+  const gx = goal % map.width;
+  const gy = (goal - gx) / map.width;
+  const avoid = new Map(traffic);
+  avoid.set(map.idx(car.tx, car.ty), 1e6);
+  const path = roadPath(map, fx, fy, gx, gy, avoid);
+  if (!path || path.includes(map.idx(car.tx, car.ty))) return false;
+  car.tx = fx;
+  car.ty = fy;
+  commitHeading(car, opposite(car.dir));
+  car.path = path;
+  car.leg = 1; // on reaching (fx, fy), path[1] is next
+  car.stuck = 0;
+  return true;
+}
+
+/** Send a citizen home: drive its owned car home to park it if it has one out, else walk. */
+function headHome(state: AmbientState, p: Ped, map: GameMap): void {
+  const hx = p.homeTile! % map.width;
+  const hy = (p.homeTile! - hx) / map.width;
+  const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
+  if (!(car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home'))) {
+    p.phase = 'to-home';
+    p.walkTo = { x: hx, y: hy };
+    p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
+    p.mode = TravelMode.Walk;
+  }
+}
+
+/**
+ * Jam rung 3: a citizen whose car has been jammed STUCK_GIVE_UP substeps abandons the stop it was driving
+ * to — the household takes a small wellbeing hit (JAM_SKIP_PENALTY) — and moves on to the next reachable
+ * stop of its round (driving its car there), or home if none remain (Maddy 2026-09-30).
+ */
+export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void {
+  if (p.homeTile !== undefined) depositHealth(state, p.homeTile, -JAM_SKIP_PENALTY);
+  const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
+  if (car) car.stuck = 0;
+  if (p.itinerary !== undefined && advanceItinerary(state, p, map)) return;
+  if (p.homeTile !== undefined) headHome(state, p, map);
 }
 
 /** True when no moving vehicle's centre sits within `r` of (x, y) — a departure point is free to pull
@@ -3533,7 +3592,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
     const onFreeway = map.built[map.idx(cx, cy)] === BuiltKind.RoadHighway;
     const sp = speedAt(onFreeway ? CAR_SPEED * 2 : CAR_SPEED, cx, cy, c.dir) * (c.speedMul ?? 1);
     if (c.path !== undefined) {
-      rerouteIfStuck(map, c, state.traffic); // held too long behind a jam → find a way round it
+      // jam ladder: re-plan round it, then turn back; a trip still jammed after that just ends
+      rerouteIfStuck(map, c, state.traffic);
+      uTurnIfStuck(map, c, state.traffic);
+      if ((c.stuck ?? 0) >= STUCK_GIVE_UP) return false;
       const alive = advanceMover(c, sp, map, (x, y) => pathStep(map, c, x, y), blocked);
       return alive ? true : tryPark(state, c, map);
     }
@@ -3581,18 +3643,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
       if (p.dwellInside! > 0) return true;
       if (p.itinerary !== undefined) {
         // A CITIZEN on a daily round: go to the next stop (each leg picks its own mode), or head home.
-        if (!advanceItinerary(state, p, map)) {
-          const hx = p.homeTile! % map.width;
-          const hy = (p.homeTile! - hx) / map.width;
-          // If it has an owned car out, drive home to retrieve + park it; otherwise walk home.
-          const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-          if (!(car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home'))) {
-            p.phase = 'to-home';
-            p.walkTo = { x: hx, y: hy };
-            p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
-            p.mode = TravelMode.Walk;
-          }
-        }
+        if (!advanceItinerary(state, p, map)) headHome(state, p, map); // round done → drive/walk home
       } else if (p.carId !== undefined) {
         // A sim/freight last-mile ped: walk back to its parked car and release it.
         const car = findCar(state, p.carId);
@@ -3632,7 +3683,13 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
       // Freeways move traffic 2×; a crowded tile slows it (the same pileup field the car filter uses).
       const sp = speedAt(onFreeway ? CAR_SPEED * 2 : CAR_SPEED, carx, cary, car.dir) * (car.speedMul ?? 1);
       // an owned car obeys the same space-ahead rule as every other vehicle (it used to drive through queues)
-      rerouteIfStuck(map, car, state.traffic); // held too long behind a jam → find a way round it
+      // jam ladder: re-plan round it, then turn back, then give up on this stop (small wellbeing hit)
+      rerouteIfStuck(map, car, state.traffic);
+      uTurnIfStuck(map, car, state.traffic);
+      if ((car.stuck ?? 0) >= STUCK_GIVE_UP) {
+        skipJammedStop(state, p, map);
+        return true;
+      }
       const moving = advanceMover(car, sp, map, (x, y) => pathStep(map, car, x, y), blocked);
       layTraffic(state, map, Math.round(car.x), Math.round(car.y)); // the car IS the traffic
       layPollution(state, map, Math.round(car.x), Math.round(car.y), onFreeway); // ...and the smog

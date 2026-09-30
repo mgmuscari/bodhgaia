@@ -72,6 +72,10 @@ import {
   rerouteIfStuck,
   spaceClear,
   STUCK_REPATH,
+  STUCK_UTURN,
+  uTurnIfStuck,
+  skipJammedStop,
+  JAM_SKIP_PENALTY,
   huntTarget,
   policePhase,
   stepArrests,
@@ -3448,5 +3452,49 @@ describe('kerb parking + lanes leave room for whole cars (Maddy 2026-09-30)', ()
 
   it('opposing lanes still pass each other cleanly', () => {
     expect(Math.abs(laneOffset(1).dy - laneOffset(3).dy)).toBeGreaterThanOrEqual(CAR_WIDTH);
+  });
+});
+
+describe('jam escalation: U-turn, then skip the stop (Maddy 2026-09-30: deadlocked again after a while)', () => {
+  // row 4 and a parallel row 6 (x 3..12), joined at x=3 and x=12 — so there IS a way round a jam on row 4
+  function street(): GameMap {
+    const map = new GameMap(16, 9);
+    for (let x = 1; x <= 14; x++) map.setBuilt(x, 4, BuiltKind.RoadStreet);
+    for (let y = 1; y <= 7; y++) map.setBuilt(3, y, BuiltKind.RoadStreet);
+    for (let x = 3; x <= 12; x++) map.setBuilt(x, 6, BuiltKind.RoadStreet);
+    for (let y = 4; y <= 6; y++) map.setBuilt(12, y, BuiltKind.RoadStreet);
+    return map;
+  }
+
+  it('a car jammed MID-LEG for STUCK_UTURN turns back toward the tile it came from and re-plans from there', () => {
+    const map = street();
+    const path = roadPath(map, 3, 1, 12, 4)!; // down x=3 then east along row 4
+    const car = { x: 6.4, y: 4, dir: 1, tx: 7, ty: 4, path, leg: path.indexOf(map.idx(7, 4)) + 1, stuck: STUCK_UTURN } as Mover;
+    expect(uTurnIfStuck(map, car, new Map())).toBe(true);
+    expect(car.dir).toBe(3); // now heading west
+    expect([car.tx, car.ty]).toEqual([6, 4]); // back to the leg's start tile
+    expect(car.path![0]).toBe(map.idx(6, 4));
+    expect(car.stuck).toBe(0);
+  });
+
+  it('no U-turn where driving back is illegal (a one-way freeway lane)', () => {
+    const map = new GameMap(24, 7);
+    for (let x = 0; x < 24; x++) for (let y = 2; y <= 4; y++) map.setBuilt(x, y, BuiltKind.RoadHighway);
+    const car = { x: 10.5, y: 4, dir: 1, tx: 11, ty: 4, path: [map.idx(10, 4), map.idx(11, 4), map.idx(20, 4)], leg: 2, stuck: STUCK_UTURN } as Mover;
+    expect(uTurnIfStuck(map, car, new Map())).toBe(false);
+    expect(car.dir).toBe(1);
+  });
+
+  it('a citizen stuck too long skips its stop — heads on (here: home) and pays a small wellbeing penalty', () => {
+    const map = street();
+    const state = createAmbientState();
+    const home = map.idx(2, 3);
+    state.buildingHealth.set(home, 10);
+    const p = { x: 6, y: 4, dir: 1, tx: 7, ty: 4, homeTile: home, itinerary: ['work'], itinStep: 0, phase: 'driving' } as unknown as Mover;
+    skipJammedStop(state, p, map);
+    expect(state.buildingHealth.get(home)).toBe(10 - JAM_SKIP_PENALTY);
+    expect(JAM_SKIP_PENALTY).toBeGreaterThan(0);
+    expect(JAM_SKIP_PENALTY).toBeLessThan(10); // small
+    expect(p.phase === 'to-home' || p.phase === 'to-vehicle').toBe(true); // no stops left → home
   });
 });
