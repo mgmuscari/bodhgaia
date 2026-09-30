@@ -12,6 +12,16 @@ const NIGHT_FLOOR = 0.45; // darkest the scene gets at night (never fully black)
 const CLOUD_MAX = 0.2; // peak cloud-shadow darkening
 const SMOG_MAX = 0.35; // peak smog haze darkening at full pollution
 
+/**
+ * The in-game clock on the same wall clock as the sun: t = 0 is sunrise (06:00, altitude rising through
+ * zero), a quarter-day later is noon. `slot` counts whole in-game hours since load (monotonic) — the
+ * power grid's demand draws and blackout rotation key off it.
+ */
+export function gameClock(tSec: number): { hour: number; slot: number } {
+  const slot = Math.floor((tSec * DAYSPEED * 24) / (2 * Math.PI));
+  return { hour: (slot + 6) % 24, slot };
+}
+
 /** Day/night brightness 0.45..1 — altitude = sin(day); dims/brightens via smoothstep, like the shader. */
 export function dayNightBrightness(tSec: number): number {
   const alt = Math.sin(tSec * DAYSPEED);

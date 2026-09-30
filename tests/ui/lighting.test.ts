@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayNightBrightness, cloudShadow, lightingAt } from '../../src/ui/lighting';
+import { dayNightBrightness, cloudShadow, lightingAt, DAYSPEED } from '../../src/ui/lighting';
 
 // Shared scene lighting — the single definition the GPU shader (base) and the renderer (sprites) both
 // use, so a sprite is lit to the same level as the tile it's on (Maddy 2026-06-20).
@@ -35,5 +35,23 @@ describe('lighting (shared GPU/sprite scene lighting)', () => {
     const smoggy = lightingAt(10, 10, 4, 1);
     expect(smoggy).toBeLessThan(clear); // smog darkens
     expect(lightingAt(10, 10, 4, 0)).toBeLessThanOrEqual(dayNightBrightness(4) + 1e-9);
+  });
+});
+
+import { gameClock } from '../../src/ui/lighting';
+
+describe('gameClock — the in-game hour on the day/night wall clock', () => {
+  it('starts at sunrise (06:00) on load and reaches noon a quarter-day later', () => {
+    const day = (2 * Math.PI) / DAYSPEED; // seconds per in-game day
+    expect(gameClock(0).hour).toBe(6);
+    expect(gameClock(day / 4 + 0.01).hour).toBe(12);
+    expect(gameClock(day / 2 + 0.01).hour).toBe(18);
+  });
+
+  it('the slot counts in-game hours monotonically across days', () => {
+    const day = (2 * Math.PI) / DAYSPEED;
+    expect(gameClock(0).slot).toBe(0);
+    expect(gameClock(day + 0.01).slot).toBe(24);
+    expect(gameClock(day + 0.01).hour).toBe(6);
   });
 });
