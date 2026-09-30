@@ -193,3 +193,20 @@ export function roadPaintKind(map: GameMap, x: number, y: number): number {
   }
   return start.length === 2 ? BuiltKind.RoadHighway : self; // a dead-end connector keeps its own paint
 }
+
+/**
+ * Zebra crossings for a LOCAL street tile: the sides (N=1 E=2 S=4 W=8) whose neighbour is a junction box
+ * (a street/avenue tile with 3+ road neighbours) — the approaches where people cross. Only 1-wide
+ * streets that aren't junctions themselves; highways and wide slabs get none.
+ */
+export function crosswalkMask(map: GameMap, x: number, y: number): number {
+  if (!map.inBounds(x, y) || map.getBuilt(x, y) !== BuiltKind.RoadStreet) return 0;
+  if (wideRoadAt(map, x, y) || roadNeighbours(map, x, y).length > 2) return 0;
+  const junction = (jx: number, jy: number): boolean => lineRoadAt(map, jx, jy) && roadNeighbours(map, jx, jy).length >= 3;
+  let m = 0;
+  if (junction(x, y - 1)) m |= 1;
+  if (junction(x + 1, y)) m |= 2;
+  if (junction(x, y + 1)) m |= 4;
+  if (junction(x - 1, y)) m |= 8;
+  return m;
+}

@@ -71,7 +71,7 @@ function paintLines(p: Pixels, mask: number, lines: readonly Line[]): void {
       if (!f) continue;
       for (const l of lines) {
         if (Math.abs(Math.abs(f.s) - l.d) >= l.half) continue;
-        if (l.dashed && Math.floor(f.t) % 6 >= 3) continue;
+        if (l.dashed && Math.floor(f.t) % 8 >= 4) continue; // 4 on / 4 off: divides the tile, so joins stay even
         px(p, x, y, l.c);
       }
     }
@@ -96,14 +96,17 @@ const LINES: Record<number, readonly Line[]> = {
  *  the @road/flane overlays instead; junction/interior slabs stay clear. */
 function paintSeam(p: Pixels, kind: number, mask: number): void {
   if (kind !== 1 && kind !== 2) return;
-  const c = kind === 2 ? C.lineYellow : C.line;
-  const dashed = kind === 1;
   const h = (mask & (E | W)) === (E | W) && ((mask & N) !== 0) !== ((mask & S) !== 0);
   const v = (mask & (N | S)) === (N | S) && ((mask & E) !== 0) !== ((mask & W) !== 0);
+  // avenue: a double yellow, one line either side of the seam (3 px apart); street: ONE 2-px dash
+  // straddling the seam (a pixel on each row), the same weight as a 1-wide street's centre dash
+  const yellow = kind === 2;
+  const inset = yellow ? 1 : 0;
   for (let t = 0; t < T; t++) {
-    if (dashed && t % 6 >= 3) continue;
-    if (h) px(p, t, mask & S ? L - 1 : 1, c);
-    else if (v) px(p, mask & E ? L - 1 : 1, t, c);
+    if (!yellow && t % 8 >= 4) continue;
+    const c = yellow ? C.lineYellow : C.line;
+    if (h) px(p, t, mask & S ? L - inset : inset, c);
+    else if (v) px(p, mask & E ? L - inset : inset, t, c);
   }
 }
 
@@ -119,6 +122,10 @@ export function roadTile(kind: number, mask: number, wide: boolean, v: number): 
     rect(p, 7, 7, 2, 2, C.line);
     return p;
   }
+  // local streets (street, quiet street, ramp) paint no centre line round a corner — a dashed arc just
+  // crumbles into diagonal specks; avenues and highways keep their solid lines through the bend
+  const turn = conns === 2 && (mask === (N | E) || mask === (E | S) || mask === (S | W) || mask === (W | N));
+  if (turn && kind !== 2 && kind !== 3) return p;
   paintLines(p, mask, LINES[kind] ?? [CENTRE_DASH]);
   return p;
 }
@@ -167,6 +174,16 @@ function curb(mask: number): Pixels {
 
 /** The inner block corner at each masked diagonal (NE=16 SE=32 SW=64 NW=128): the two sidewalks of the
  *  neighbouring road tiles meet here, so the corner gets a small quarter-round of pavement. */
+/** Zebra crossing on each masked side — the approach edge into a junction: a 4-px band of bars running
+ *  with the traffic, across the carriageway between the sidewalks. */
+function zebra(mask: number): Pixels {
+  const p = blank(T, T);
+  sides(mask, (set) => {
+    for (let a = 4; a <= 12; a += 2) for (let d = 0; d < 4; d++) set(a, d, C.paveHi);
+  }, p);
+  return p;
+}
+
 function curbCorner(mask: number): Pixels {
   const p = blank(T, T);
   const at: Array<[number, (x: number, y: number) => number]> = [
@@ -294,6 +311,7 @@ export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly numb
   out.set('@road/pole/nw', pole('nw'));
   for (let m = 1; m < 16; m++) {
     out.set(`@road/curb/${m}`, curb(m));
+    out.set(`@road/zebra/${m}`, zebra(m));
     out.set(`@road/divider/${m}`, divider(m));
     out.set(`@road/xing/${m}`, crossing(m));
   }

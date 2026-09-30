@@ -458,3 +458,53 @@ describe('snes roads — every variant key the renderer asks for is ours', () =>
     for (const k of ['road-1-6#0', 'road-2-10#0', 'road-3-5#0', 'road-2-14-w#0']) expect(tiles.has(k), k).toBe(true);
   });
 });
+
+describe('snes roads — local streets (Maddy 2026-09-30)', () => {
+  const lineRows = (p: Pixels, x: number): number[] => {
+    const out: number[] = [];
+    for (let y = 0; y < 16; y++) {
+      const i = (y * 16 + x) * 4;
+      if (p.data[i] === C.line[0] && p.data[i + 1] === C.line[1] && p.data[i + 2] === C.line[2]) out.push(y);
+    }
+    return out;
+  };
+
+  it('street dashes run 4 on / 4 off — a period that divides the tile, so dashes stay even across joins', () => {
+    expect(lineRows(tiles.get('road-1-5')!, 7)).toEqual([0, 1, 2, 3, 8, 9, 10, 11]);
+  });
+
+  it('street corners carry no centre paint (no dash crumbs round the bend)', () => {
+    for (const k of ['road-1-6', 'road-1-3', 'road-10-6', 'road-7-9']) {
+      let n = 0;
+      const p = tiles.get(k)!;
+      for (let i = 0; i < p.data.length; i += 4) if (p.data[i] === C.line[0] && p.data[i + 1] === C.line[1] && p.data[i + 2] === C.line[2]) n++;
+      expect(n, k).toBe(0);
+    }
+  });
+
+  it('a two-row street paints ONE dash straddling its seam (row 15 above, row 0 below)', () => {
+    const top = tiles.get('road-1-14-w')!;
+    const bottom = tiles.get('road-1-11-w')!;
+    const onRow = (p: Pixels, y: number): number => {
+      let n = 0;
+      for (let x = 0; x < 16; x++) {
+        const i = (y * 16 + x) * 4;
+        if (p.data[i] === C.line[0] && p.data[i + 1] === C.line[1]) n++;
+      }
+      return n;
+    };
+    expect(onRow(top, 15)).toBe(8);
+    expect(onRow(top, 14)).toBe(0);
+    expect(onRow(bottom, 0)).toBe(8);
+    expect(onRow(bottom, 1)).toBe(0);
+  });
+
+  it('paints zebra crosswalk overlays for each approach side', () => {
+    for (let m = 1; m < 16; m++) expect(tiles.has(`@road/zebra/${m}`), `zebra ${m}`).toBe(true);
+    const z = tiles.get('@road/zebra/1')!; // approach from the south into a junction to the north
+    const a = (x: number, y: number): number => z.data[(y * 16 + x) * 4 + 3]!;
+    expect(a(4, 1)).toBe(255); // a stripe across the carriageway at the north edge
+    expect(a(5, 1)).toBe(0); // …with gaps between stripes
+    expect(a(4, 10)).toBe(0); // only at that edge
+  });
+});
