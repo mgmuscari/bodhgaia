@@ -1600,3 +1600,33 @@ describe('overpasses (the elevated deck layer — grade-separated transit over r
     expect(deckMask(m, 6, 4)).toBe(0);
   });
 });
+
+describe('freeway corridors crossed by ramp decks (Maddy 2026-09-30: blank freeway downtown)', () => {
+  // live seed "lotus" x 96..98: a 3-wide N-S freeway with a full-width RAMP row every 4 tiles (streets
+  // crossing on decks) — each freeway chunk is 3×3, so measured alone it has no longer axis
+  function crossedFreeway(): GameMap {
+    const map = new GameMap(9, 14);
+    for (let y = 0; y < 14; y++) {
+      for (let x = 3; x <= 5; x++) map.setBuilt(x, y, y % 4 === 0 ? BuiltKind.RoadRamp : BuiltKind.RoadHighway);
+    }
+    return map;
+  }
+
+  it('the ramp rows continue the corridor, so a chunk tile still has its lengthwise axis', () => {
+    const map = crossedFreeway();
+    expect(freewayAxis(map, 3, 2)).toBe('v');
+    expect(freewayAxis(map, 5, 6)).toBe('v');
+  });
+
+  it('…and the centre column still carries the median', () => {
+    const map = crossedFreeway();
+    expect(freewayMedianAxis(map, 4, 2)).toBe('v');
+    expect(freewayMedianAxis(map, 3, 2)).toBe(null);
+  });
+
+  it('the ramp tiles themselves stay unmarked by the freeway rules (they keep their own paint)', () => {
+    const map = crossedFreeway();
+    expect(freewayAxis(map, 4, 4)).toBe(null);
+    expect(freewayMedianAxis(map, 4, 4)).toBe(null);
+  });
+});
