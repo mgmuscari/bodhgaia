@@ -126,6 +126,8 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/tileset.ts',
   'src/ui/pixelArt.ts',
   'src/ui/snesTileset.ts',
+  'src/ui/snesPalette.ts',
+  'src/ui/snesBuildings.ts',
   'src/ui/tilesetExport.ts',
   'src/ui/satelliteManifest.ts',
   'src/ui/satelliteFormat.ts',

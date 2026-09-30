@@ -9,43 +9,14 @@
 // procedural painter, so the set can grow increment by increment.
 
 import { BASE_TILE } from './camera';
-import { blank, fill, hash2, px, type Pixels, type RGB } from './pixelArt';
+import { blank, fill, hash2, px, slice, type Pixels, type RGB } from './pixelArt';
+import { C } from './snesPalette';
+import { BUILDING_PAINTERS, paintBuilding } from './snesBuildings';
+import { builtRenderKey, footprintCellKey } from './renderKey';
 
 const T = BASE_TILE;
 
-// ── Palette ──────────────────────────────────────────────────────────────────────────────────────
-// Channel values sit on the SNES 5-bit grid (multiples of 8) — part of the look, and it keeps the
-// palette honest. Every pixel the painter writes must come from here (test-enforced).
-export const C = {
-  ink: [24, 24, 40],
-  // grass
-  grassHi: [152, 208, 88],
-  grass: [112, 176, 64],
-  grassMid: [88, 152, 56],
-  grassLo: [64, 120, 48],
-  // meadow
-  meadowHi: [200, 208, 104],
-  meadow: [160, 184, 72],
-  flower: [248, 216, 88],
-  petal: [248, 248, 232],
-  // bare ground
-  dirtHi: [216, 184, 128],
-  dirt: [184, 152, 104],
-  dirtLo: [144, 112, 80],
-  // forest canopy
-  leafHi: [120, 184, 72],
-  leaf: [64, 136, 56],
-  leafLo: [40, 104, 48],
-  leafDk: [24, 72, 40],
-  // water
-  waterDeep: [32, 64, 152],
-  water: [40, 80, 184],
-  waterShallow: [56, 104, 208],
-  wave: [104, 152, 232],
-  foam: [200, 224, 248],
-} as const satisfies Record<string, RGB>;
-
-export const SNES_PALETTE: readonly RGB[] = Object.values(C);
+export { C, SNES_PALETTE } from './snesPalette';
 
 // ── Seamless (wrapping) helpers ──────────────────────────────────────────────────────────────────
 // Terrain repeats tile-to-tile, so anything drawn near an edge must continue on the opposite edge.
@@ -177,9 +148,40 @@ function terrainTiles(out: Map<string, Pixels>): void {
   }
 }
 
+// ── Buildings ────────────────────────────────────────────────────────────────────────────────────
+// Every kind is painted as a whole image per footprint size (1..MAX_FOOTPRINT tiles a side) and sliced
+// into its segmented cell keys, so a multi-tile building is one picture. Variants (#n) are painted per
+// whole footprint — the renderer picks them by the parcel anchor, so a footprint never mixes variants.
+// The pos/tier keys get the 1×1 image as the fallback for any footprint larger than we paint.
+
+const MAX_FOOTPRINT = 4;
+
+function buildingTiles(out: Map<string, Pixels>): void {
+  for (const [kind, [, variants]] of BUILDING_PAINTERS) {
+    for (const tier of [0, 1]) {
+      for (let v = 0; v < variants; v++) {
+        for (let h = 1; h <= MAX_FOOTPRINT; h++) {
+          for (let w = 1; w <= MAX_FOOTPRINT; w++) {
+            const img = paintBuilding(kind, w * T, h * T, v, tier);
+            for (let r = 0; r < h; r++) {
+              for (let c = 0; c < w; c++) {
+                const k = footprintCellKey(kind, w, h, c, r, tier);
+                out.set(v === 0 ? k : `${k}#${v}`, slice(img, c, r, T));
+              }
+            }
+          }
+        }
+      }
+      const one = out.get(footprintCellKey(kind, 1, 1, 0, 0, tier))!;
+      for (const pos of ['c', 'e', 'k'] as const) out.set(builtRenderKey(kind, 0, pos, tier), one);
+    }
+  }
+}
+
 /** Paint the whole SNES skin: atlas key → pixel buffer. */
 export function paintSnesTileset(): Map<string, Pixels> {
   const out = new Map<string, Pixels>();
   terrainTiles(out);
+  buildingTiles(out);
   return out;
 }
