@@ -22,7 +22,9 @@ import type { Camera } from './camera';
 type Rect = readonly [number, number, number, number];
 /** A light-bearing building footprint (world coords) — the renderer collects these; the glow pass casts
  *  a faint window/beacon glow from each (Maddy: windows/hazard blinkies should cast glows too). */
-export type EmissiveBuilding = { x: number; y: number; w: number; h: number; kind: number };
+/** A light-bearing building. `lit`/`blink` are a skin's own emission maps (authoritative when set);
+ *  without them the glow uses the ambient-sprite light map for the kind+footprint. */
+export type EmissiveBuilding = { x: number; y: number; w: number; h: number; kind: number; lit?: CanvasImageSource; blink?: CanvasImageSource };
 
 const SUN: readonly [number, number] = [0.65, 0.78]; // sun direction in tile space (shadows trace toward it)
 const SHADOW = 0.45;
@@ -58,6 +60,18 @@ export class GpuRenderer {
   private glowData = new Float32Array(0);
   // Building emissive light POINTS (the actual lit window/beacon pixels) so glow casts from real lights.
   private buildingPoints = new Map<string, { lights: LightPoint[]; blink: LightPoint[] }>();
+  // Light points extracted from SKIN emission maps, cached per image (the maps are shared per variant).
+  private skinPoints = new WeakMap<object, LightPoint[]>();
+
+  private pointsOf(img: CanvasImageSource | undefined): LightPoint[] {
+    if (!img) return [];
+    let pts = this.skinPoints.get(img);
+    if (!pts) {
+      pts = extractLightPoints(img, 8, 0.26, 8);
+      this.skinPoints.set(img, pts);
+    }
+    return pts;
+  }
 
   constructor(private readonly map: GameMap) {
     this.bridge = new GridTextureBridge(map.width, map.height);
@@ -250,7 +264,10 @@ export class GpuRenderer {
     for (const bld of buildings) {
       const span = Math.max(bld.w, bld.h);
       const isPower = bld.kind >= 24 && bld.kind <= 30;
-      const pts = this.buildingPoints.get(`b-${bld.kind}-${bld.w === 1 && bld.h === 1 ? 'c' : `${bld.w}x${bld.h}`}`);
+      const pts =
+        bld.lit || bld.blink
+          ? { lights: this.pointsOf(bld.lit), blink: this.pointsOf(bld.blink) }
+          : this.buildingPoints.get(`b-${bld.kind}-${bld.w === 1 && bld.h === 1 ? 'c' : `${bld.w}x${bld.h}`}`);
       const at = (p: LightPoint): [number, number] => [bld.x + (0.5 + p.ox) * bld.w, bld.y + (0.5 + p.oy) * bld.h];
       if (pts && (isPower || night > 0.02)) {
         for (const p of pts.lights) {

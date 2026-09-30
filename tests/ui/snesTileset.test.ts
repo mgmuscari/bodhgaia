@@ -234,3 +234,57 @@ describe('snes tileset — transport', () => {
     expect(sig(tiles.get('rail-5')!)).not.toBe(sig(tiles.get('rail-10')!));
   });
 });
+
+describe('snes tileset — night lights come from the pixel art', () => {
+  const emitted = (p: Pixels): number => {
+    let n = 0;
+    for (let i = 3; i < p.data.length; i += 4) if (p.data[i] === 255) n++;
+    return n;
+  };
+
+  it('a pristine house has a lit-window map, and every lit pixel sits on one of its window panes', () => {
+    const img = (w: number, h: number) => {
+      // reassemble the 2×1 footprint from its cells
+      const out: number[][] = [];
+      for (let y = 0; y < 16 * h; y++) {
+        const row: number[] = [];
+        for (let x = 0; x < 16 * w; x++) {
+          const cell = tiles.get(footprintCellKey(16, w, h, x >> 4, y >> 4, 0))!;
+          const i = ((y & 15) * 16 + (x & 15)) * 4;
+          row.push((cell.data[i]! << 16) | (cell.data[i + 1]! << 8) | cell.data[i + 2]!);
+        }
+        out.push(row);
+      }
+      return out;
+    };
+    const art = img(2, 1);
+    const lit = tiles.get('@emit/b-16-2x1-0')!;
+    expect(lit).toBeDefined();
+    expect([lit.w, lit.h]).toEqual([32, 16]);
+    expect(emitted(lit)).toBeGreaterThan(0);
+    const glass = new Set([C.glass, C.glassHi, C.glassLo].map(([r, g, b]) => (r << 16) | (g << 8) | b));
+    for (let y = 0; y < 16; y++) {
+      for (let x = 0; x < 32; x++) if (lit.data[(y * 32 + x) * 4 + 3] === 255) expect(glass.has(art[y]![x]!), `(${x},${y})`).toBe(true);
+    }
+  });
+
+  it('a derelict building is dimmer but still lived in — some panes survive the boarding', () => {
+    const pristine = emitted(tiles.get('@emit/b-17-2x2-0')!);
+    const derelict = emitted(tiles.get('@emit/b-17-2x2-1') ?? blankPx(32, 32));
+    expect(derelict).toBeGreaterThan(0);
+    expect(derelict).toBeLessThan(pristine * 0.6);
+  });
+
+  it('a coal plant carries a blinking beacon layer; a park emits nothing', () => {
+    expect(tiles.has('@emit/b-24-3x3-0/blink')).toBe(true);
+    expect(tiles.has('@emit/b-61-2x2-0')).toBe(false);
+  });
+
+  it('house variants light their own windows (#v maps exist alongside the art variants)', () => {
+    expect(tiles.has('@emit/b-16-1x1-0#3')).toBe(true);
+  });
+});
+
+function blankPx(w: number, h: number): Pixels {
+  return { w, h, data: new Uint8ClampedArray(w * h * 4) };
+}

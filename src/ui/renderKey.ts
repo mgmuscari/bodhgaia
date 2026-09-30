@@ -323,3 +323,18 @@ export const BLOB_MASKS: readonly number[] = (() => {
 export function edgeKey(family: string, mask: number): string {
   return `@edge/${family}/${mask}`;
 }
+
+/**
+ * Key of a skin-supplied EMISSION map for a whole building footprint (kind, w×h tiles, condition tier):
+ * the lit pixels (windows, furnaces) the renderer overlays additively at night and casts glow from.
+ * `${key}/blink` is the blinking-beacon layer; `#v` suffixes follow the building's art variant.
+ */
+export function emissionKey(kind: number, width: number, height: number, condTier: number): string {
+  return `@emit/b-${kind}-${width}x${height}-${condTier}`;
+}
+
+/** The variant index a picked key carries (`…#3` → 3), or 0 for a base key. */
+export function variantIndexOf(key: string): number {
+  const i = key.lastIndexOf('#');
+  return i < 0 ? 0 : Number(key.slice(i + 1)) || 0;
+}

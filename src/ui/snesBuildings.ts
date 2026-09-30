@@ -808,7 +808,11 @@ export function derelict(src: Pixels, seed: number): Pixels {
       const k = (p.data[i]! << 16) | (p.data[i + 1]! << 8) | p.data[i + 2]!;
       const h = hash2(x, y, seed);
       if (GLASS.has(k)) {
-        px(p, x, y, h % 4 === 0 ? C.ink : C.roofBrownLo); // broken, or boarded up
+        // per PANE (not per pixel): a third survive grimy (and still light at night — people live
+        // here), a third are boarded, a third broken
+        const pane = hash2(x >> 1, y >> 1, seed) % 3;
+        if (pane === 0) px(p, x, y, C.glassLo);
+        else px(p, x, y, pane === 1 ? C.roofBrownLo : C.ink);
       } else if (ROOF_TOPS.has(k)) {
         px(p, x, y, h % 7 === 0 ? C.ink : ROOF_TOPS.get(k)!); // faded + holed
       } else if (ROOFS.has(k) && h % 9 === 0) {
@@ -827,6 +831,52 @@ export function derelict(src: Pixels, seed: number): Pixels {
     }
   }
   return p;
+}
+
+// ── Night lights ───────────────────────────────────────────────────────────────────────────────────
+// The emission map is DERIVED from the building's own pixels, so light always sits exactly where the
+// art put a window: glass panes light warm (most), TV-blue (some) or stay dark (a few), decided per
+// pane so a window lights as a unit; boarded derelict windows have no glass, so they stay dark. Stack
+// tops (the red band under the ink mouth) become the blinking aviation beacons; the fusion ring and
+// the AI node's cyan racks glow too.
+
+const WARM: RGB = C.lineYellow;
+const WARM_HI: RGB = C.flower;
+const TV: RGB = C.glassHi;
+
+export interface Emission {
+  lit: Pixels | null;
+  blink: Pixels | null;
+}
+
+export function emissionOf(img: Pixels, kind: number, seed: number): Emission {
+  const lit = blank(img.w, img.h);
+  const blink = blank(img.w, img.h);
+  let nLit = 0;
+  let nBlink = 0;
+  const at = (x: number, y: number): number => {
+    if (x < 0 || y < 0 || x >= img.w || y >= img.h) return -1;
+    const i = (y * img.w + x) * 4;
+    return (img.data[i]! << 16) | (img.data[i + 1]! << 8) | img.data[i + 2]!;
+  };
+  for (let y = 0; y < img.h; y++) {
+    for (let x = 0; x < img.w; x++) {
+      const k = at(x, y);
+      if (GLASS.has(k)) {
+        const pane = hash2(x >> 1, y >> 1, seed) % 10; // ~2-px panes light as a unit
+        if (pane < 1) continue; // dark window
+        px(lit, x, y, pane < 3 ? TV : k === key(C.glassHi) ? WARM_HI : WARM);
+        nLit++;
+      } else if (k === key(C.signal) && at(x, y - 1) === key(C.ink) && (kind >= 21 && kind <= 30)) {
+        px(blink, x, y, C.signal); // stack-top beacon
+        nBlink++;
+      } else if (k === key(C.cyan) && (kind === 30 || kind === 54)) {
+        px(lit, x, y, C.cyan);
+        nLit++;
+      }
+    }
+  }
+  return { lit: nLit > 0 ? lit : null, blink: nBlink > 0 ? blink : null };
 }
 
 /** Paint kind `kind` at footprint W×H px, variant v, condition tier. */
