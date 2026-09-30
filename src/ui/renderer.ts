@@ -30,7 +30,7 @@ import {
 } from './renderKey';
 import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
-import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, curbWiresAt, innerCornerMask } from './decoration';
+import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roadPaintKind } from './decoration';
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { laneOffset, pedCurbOffset, dirVector } from './ambientContent';
@@ -957,9 +957,7 @@ export class Renderer {
       if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
       return img !== undefined;
     };
-    // Skin power lines, drawn AFTER the tile loop (wire spans, then masts) so later tiles can't paint over
-    // them: `wires` holds each tile's span overlay key, `poles` each curb pole.
-    const wires: { x: number; y: number; key: string }[] = [];
+    // Skin power poles (props), drawn AFTER the tile loop so no later tile paints over one.
     const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
@@ -1043,8 +1041,10 @@ export class Renderer {
           const clAxis = isT ? freewayCenterLaneAxis(map, tx, ty) : null;
           // A ramp uses its FREEWAY-axis marking mask (not the full 4-way connection) so its dashed
           // line runs straight through the freeway instead of crossing the surface street it links.
+          // the class this road tile is PAINTED as (a connector at a highway bend wears highway paint)
+          const paintKind = isT ? roadPaintKind(map, tx, ty) : built;
           const mask =
-            built === BuiltKind.RoadRamp
+            built === BuiltKind.RoadRamp && paintKind === BuiltKind.RoadRamp
               ? rampMarkingMask(map, tx, ty)
               : clAxis !== null
                 ? clAxis === 'v'
@@ -1063,7 +1063,9 @@ export class Renderer {
           // (a single W×H image sliced per cell, for seam continuity) and fall back to the
           // procedural pos/tier key when the tileset doesn't supply that cell. The procedural
           // path never enters this branch (hasTileset false), so it stays byte-identical.
-          let builtKey = builtRenderKey(built, mask, pos, tier, wide);
+          // road tiles are keyed by the class they're PAINTED as (a street linking highway runs at a bend
+          // wears highway paint — decoration.roadPaintKind); everything else by its own kind
+          let builtKey = builtRenderKey(paintKind, mask, pos, tier, wide);
           if (this.hasTileset && !isT && pid !== 0) {
             const fp = parcels.get(pid - 1);
             const cellKey = footprintCellKey(built, fp.width, fp.height, tx - fp.x, ty - fp.y, tier);
@@ -1256,8 +1258,7 @@ export class Renderer {
           // poleWireDirs picks the wire offsets. The shell only draws the mast and a
           // segment toward each returned offset; it holds no branching of its own.
           if (this.roadInk.has('@road/pole/h')) {
-            // curb-side lines (decoration.curbWiresAt / curbPoleAt own every placement decision)
-            for (const w of curbWiresAt(map, tx, ty)) wires.push({ x: tx, y: ty, key: `@road/wire/${w.axis}${w.k}` });
+            // curb-side pole props (decoration.curbPoleAt owns every placement decision)
             const pa = curbPoleAt(map, tx, ty);
             if (pa) poles.push({ x: tx, y: ty, axis: pa });
           } else if (powerPoleAt(map, tx, ty)) {
@@ -1373,11 +1374,7 @@ export class Renderer {
       }
     }
 
-    // Skin power lines: the wire spans first, then the masts on top — after the whole tile loop.
-    for (const w of wires) {
-      const o = camera.tileOrigin(w.x, w.y);
-      ink(w.key, o.dx, o.dy);
-    }
+    // Skin power poles — after the whole tile loop.
     for (const pl of poles) {
       const o = camera.tileOrigin(pl.x, pl.y);
       ink(`@road/pole/${pl.axis}`, o.dx, o.dy);

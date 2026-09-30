@@ -254,12 +254,9 @@ function median(axis: 'h' | 'v'): Pixels {
   return p;
 }
 
-// Poles stand ON THE SIDEWALK — the north curb of an E-W run, the west curb of an N-S run — seen from
-// above: a crossarm across the sidewalk strip with the mast-top at its middle and insulators at its
-// tips, never reaching into the carriageway. The wire leaves the crossarm and runs along the sidewalk
-// to the next pole four tiles on, sagging two pixels mid-span; wire tiles are indexed by span position.
-const WIRE_H = [1, 2, 3, 2];
-const WIRE_V = [1, 2, 3, 2];
+// Poles are props standing ON THE SIDEWALK — the north curb of an E-W run, the west curb of an N-S run —
+// seen from above: a crossarm across the sidewalk strip with the mast-top at its middle and insulators
+// at its tips, never reaching into the carriageway. No wires (too much clutter at 16 px).
 
 /** A pole: 'h'/'v' mid-block on the north/west curb; 'nw' tucked into a junction tile's corner. */
 function pole(spot: 'h' | 'v' | 'nw'): Pixels {
@@ -272,12 +269,6 @@ function pole(spot: 'h' | 'v' | 'nw'): Pixels {
   put(at - 2, 0, C.paveHi); // insulators
   put(at + 2, 0, C.paveHi);
   outline(p, C.ink);
-  return p;
-}
-
-function wire(axis: 'h' | 'v', k: number): Pixels {
-  const p = blank(T, T);
-  for (let t = 0; t < T; t++) (axis === 'h' ? px(p, t, WIRE_H[k]!, C.slateLo) : px(p, WIRE_V[k]!, t, C.slateLo)); // a light line, not a border
   return p;
 }
 
@@ -312,6 +303,5 @@ export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly numb
     out.set(`@road/turn/${a}`, turnLane(a));
     out.set(`@road/median/${a}`, median(a));
     out.set(`@road/pole/${a}`, pole(a));
-    for (let k = 0; k < 4; k++) out.set(`@road/wire/${a}${k}`, wire(a, k));
   }
 }
