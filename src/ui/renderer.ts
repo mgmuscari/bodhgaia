@@ -24,7 +24,7 @@ import {
   waterTileTransform,
   type FootprintPos,
 } from './renderKey';
-import { surfaceKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
+import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
 import { wideRoadAt, powerPoleAt, poleWireDirs } from './decoration';
 import { parcelGlyph } from './glyphContent';
@@ -673,6 +673,11 @@ export class Renderer {
   // Per base key, how many hash-cycled variants the skin painted (`grass-1` → 4). Terrain picks one per
   // tile so a field stops repeating on the tile grid. Empty for procedural (byte-identical path).
   private tileVariants: ReadonlyMap<string, number> = new Map();
+  // Skin-drawn status icons (`@icon/unpowered`, …) for profile.marks === 'icons'; empty otherwise.
+  private icons = new Map<string, AtlasImage>();
+  // Unpowered parcel footprints (WORLD coords) from the last base pass — drawn per frame as a blinking
+  // icon when the skin supplies one (the base is cached, so a blink can't live there).
+  private unpoweredFootprints: { x: number; y: number; w: number }[] = [];
   // Count of road asphalt-surface variants (0 = procedural roads, 1 = single surface, >1 = cycle
   // per-tile to break the repeated-texture plaid). Read in drawBase's per-tile road key pick.
   private roadVariants = 0;
@@ -746,6 +751,7 @@ export class Renderer {
     this.hasTileset = (overrides?.size ?? 0) > 0;
     this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
     this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
+    this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -780,6 +786,7 @@ export class Renderer {
     this.hasTileset = (overrides?.size ?? 0) > 0;
     this.profile = this.hasTileset ? profile : PROCEDURAL_PROFILE;
     this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
+    this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -921,6 +928,7 @@ export class Renderer {
     // would otherwise paint over a mark drawn at the anchor tile (z-order fix).
     const marks: { dx: number; dy: number; w: number; h: number; kind: number; density: number; unpowered: boolean }[] = [];
     this.emissiveBuildings.length = 0; // re-collected this pass (refreshed on every base rebuild)
+    this.unpoweredFootprints.length = 0; // likewise
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
         const i = map.idx(tx, ty);
@@ -1209,6 +1217,7 @@ export class Renderer {
               const unpowered =
                 this.powered !== null && isPowerConsumer(pp.kind) && !this.powered.has(i);
               marks.push({ dx, dy, w: pp.width, h: pp.height, kind: pp.kind, density: pp.density, unpowered });
+              if (unpowered) this.unpoweredFootprints.push({ x: tx, y: ty, w: pp.width });
               // Light-bearing building? Collect its footprint (world coords) for the per-frame emissive
               // overlay (drawSprites). The emission stem is the build FORM (kind + footprint), matching
               // the baked atlas: `b-<kind>-c` (1×1) or `b-<kind>-<w>x<h>`. Absent key → not collected.
@@ -1289,8 +1298,9 @@ export class Renderer {
     // multi-tile footprint's own tiles (and the heatmap tint) can't hide them.
     // The unpowered pip sits in the footprint's top-right; the legibility glyph is
     // centered over the whole footprint (skipped below GLYPH_MIN_TS).
+    const iconMarks = this.profile.marks === 'icons';
     for (const m of marks) {
-      if (m.unpowered) {
+      if (m.unpowered && !iconMarks) {
         const pip = Math.max(2, ts * 0.18);
         ctx.fillStyle = 'rgba(232, 72, 60, 0.95)';
         ctx.fillRect(m.dx + m.w * ts - pip - 1, m.dy + 1, pip, pip);
@@ -1544,7 +1554,7 @@ export class Renderer {
     // Land value: a diverging tint on each inhabited plot — warm gold where it's prized, cold slate
     // where it's decayed (mid reads through clean). On zone tiles, so it rarely overlaps the wear
     // (wild ground) or smog (roads) overlays. The desirability the other layers add up to.
-    for (const [tile, lv] of ambient.landValue) {
+    for (const [tile, lv] of this.profile.landValueWash ? ambient.landValue : []) {
       const lx = tile % mapW;
       const ly = (tile - lx) / mapW;
       const { sx, sy } = camera.worldToScreen(lx, ly);
@@ -1560,12 +1570,36 @@ export class Renderer {
     // green when thriving, red when suffering, growing with magnitude. A distinct badge (not
     // a tile tint) so it reads against any building colour. The visible output of the
     // citizen-transit-health loop; live per-frame, so it lives here, not in the cached base.
+    // Skin icons (profile.marks 'icons') are drawn at the tile pixel scale so they match the art:
+    // a heart / raincloud badge in the top-left for a clearly thriving / suffering home, and the
+    // blinking lightning bolt top-right of every unpowered footprint.
+    const iconScale = ts / BASE_TILE;
+    const thriving = this.profile.marks === 'icons' ? this.icons.get(iconKey('thriving')) : undefined;
+    const suffering = this.profile.marks === 'icons' ? this.icons.get(iconKey('suffering')) : undefined;
+    const bolt = this.profile.marks === 'icons' ? this.icons.get(iconKey('unpowered')) : undefined;
+    if (bolt && performance.now() % 1000 < 620) {
+      const bs = 8 * iconScale;
+      for (const f of this.unpoweredFootprints) {
+        const { dx, dy } = camera.tileOrigin(f.x + f.w, f.y);
+        if (!onScreen(dx, dy)) continue;
+        ctx.drawImage(bolt, dx - bs, dy - iconScale, bs, bs);
+      }
+    }
     for (const [tile, health] of ambient.buildingHealth) {
       const hx = tile % mapW;
       const hy = (tile - hx) / mapW;
       const { sx, sy } = camera.worldToScreen(hx + 0.5, hy + 0.5);
       if (!onScreen(sx, sy)) continue;
       const mag = Math.min(1, Math.abs(health) / 18);
+      const badge = health >= 0 ? thriving : suffering;
+      if (badge) {
+        // icons flag EXCEPTIONS, not every home: a heart for a standout (health ≥ 9, ~1 in 10 on a fresh
+        // city), a raincloud a little earlier (≤ −6) since suffering is the actionable case
+        if (health >= 0 ? health < 9 : health > -6) continue;
+        const { dx, dy } = camera.tileOrigin(hx, hy);
+        ctx.drawImage(badge, dx - iconScale, dy - iconScale, 8 * iconScale, 8 * iconScale);
+        continue;
+      }
       const pip = ts * (0.2 + 0.18 * mag); // bigger badge = stronger health
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = health >= 0 ? '#4ee06a' : '#ff4636';

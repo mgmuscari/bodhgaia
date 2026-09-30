@@ -147,3 +147,20 @@ describe('snes tileset — buildings', () => {
     }
   });
 });
+
+describe('snes tileset — status icons', () => {
+  for (const name of ['unpowered', 'thriving', 'suffering']) {
+    it(`paints an ink-outlined 8×8 @icon/${name} on a transparent ground`, () => {
+      const t = tiles.get(`@icon/${name}`);
+      expect(t).toBeDefined();
+      expect([t!.w, t!.h]).toEqual([8, 8]);
+      expect(hasInk(t!)).toBe(true);
+      expect(t!.data[3]).toBe(0); // corner stays clear — it's a badge, not a tile
+    });
+  }
+
+  it('the three icons are distinct', () => {
+    const s3 = new Set(['unpowered', 'thriving', 'suffering'].map((n) => sig(tiles.get(`@icon/${n}`)!)));
+    expect(s3.size).toBe(3);
+  });
+});

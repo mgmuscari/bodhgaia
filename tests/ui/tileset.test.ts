@@ -7,6 +7,7 @@ import {
   terrainKeys,
   buildingKeys,
   surfaceKey,
+  iconKey,
 } from '../../src/ui/tileset';
 import { BuiltKind } from '../../src/engine/fabric';
 import { builtRenderKey } from '../../src/ui/renderKey';
@@ -116,6 +117,8 @@ describe('tileset render profiles', () => {
       flora: true,
       agentSprites: true,
       shaderLife: true,
+      marks: 'flat',
+      landValueWash: true,
     });
   });
 });
@@ -135,6 +138,21 @@ describe('the snes tileset (code-painted)', () => {
     expect(p.flora).toBe(false);
     expect(p.roadClassShade).toBe(false);
     expect(p.shaderLife).toBe(false); // the GPU warp/swell/clouds would smear the pixels
+  });
+
+  it('snes shows status as pixel icons and drops the land-value wash over the art', () => {
+    const p = tilesetDef('snes').profile;
+    expect(p.marks).toBe('icons');
+    expect(p.landValueWash).toBe(false);
+  });
+
+  it('procedural keeps flat marks and the land-value wash', () => {
+    expect(tilesetDef(PROCEDURAL).profile.marks).toBe('flat');
+    expect(tilesetDef(PROCEDURAL).profile.landValueWash).toBe(true);
+  });
+
+  it('iconKey namespaces skin icons under @icon/ (never drawn as tiles)', () => {
+    expect(iconKey('unpowered')).toBe('@icon/unpowered');
   });
 
   it('procedural keeps the GPU life it has always had', () => {
