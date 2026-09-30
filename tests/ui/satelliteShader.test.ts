@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { SatType } from '../../src/ui/satelliteFormat';
 import { buildVertexSource, buildFragmentSource, glslDefines } from '../../src/ui/satelliteShader';
+import { SHADOW_REACH } from '../../src/ui/satelliteShader';
+import { SHADOW_STRENGTH } from '../../src/ui/gpuRenderer';
 
 // The GL program itself needs a WebGL2 context (browser-only, smoke-tested via the
 // ?shaderdemo route). What IS pure and worth pinning here is the GLSL *source*: the
@@ -44,6 +46,13 @@ describe('satelliteShader: fragment contract', () => {
     // the water UV warp and the cloud shadow — the two effects that smear pixel art — are both gated
     expect(f).toMatch(/baseUv \+= \(flow \* 0\.5\) \/ u_view \* u_motion/);
     expect(f).toMatch(/cloud\) \* 0\.20 \* u_motion/);
+  });
+
+  it('shadows are short contact shadows: reach at most ~1 tile, soft, and faint (Maddy 2026-09-30)', () => {
+    expect(SHADOW_REACH).toBeLessThanOrEqual(1);
+    expect(SHADOW_STRENGTH).toBeLessThanOrEqual(0.25);
+    expect(f).toContain('SHADOW_REACH');
+    expect(f).not.toMatch(/mix\(1\.0, 2\.4/); // the old dawn/dusk stretch to 2.4 tiles is gone
   });
 
   it('carries the single-pass raymarched shadow loop', () => {

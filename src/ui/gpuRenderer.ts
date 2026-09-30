@@ -27,7 +27,8 @@ type Rect = readonly [number, number, number, number];
 export type EmissiveBuilding = { x: number; y: number; w: number; h: number; kind: number; lit?: CanvasImageSource; blink?: CanvasImageSource };
 
 const SUN: readonly [number, number] = [0.65, 0.78]; // sun direction in tile space (shadows trace toward it)
-const SHADOW = 0.45;
+/** Peak building-shadow darkening (0..1) — faint, so shadows read as soft contact shade. */
+export const SHADOW_STRENGTH = 0.22;
 
 /** The live world→shader view: the visible window in world cells (matches the Canvas2D camera). */
 export function cameraToShaderView(
@@ -324,7 +325,7 @@ export class GpuRenderer {
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW, origin, view, dayspeed: DAYSPEED, motion: shaderLife ? 1 : 0 });
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED, motion: shaderLife ? 1 : 0 });
   }
 
   /** Force a base re-upload on the next render (e.g. after a resize changes the base canvas size). */
