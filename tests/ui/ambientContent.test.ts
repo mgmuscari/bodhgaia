@@ -73,6 +73,7 @@ import {
   spaceClear,
   STUCK_REPATH,
   STUCK_UTURN,
+  STUCK_GIVE_UP,
   uTurnIfStuck,
   skipJammedStop,
   JAM_SKIP_PENALTY,
@@ -3495,6 +3496,21 @@ describe('jam escalation: U-turn, then skip the stop (Maddy 2026-09-30: deadlock
     expect(state.buildingHealth.get(home)).toBe(10 - JAM_SKIP_PENALTY);
     expect(JAM_SKIP_PENALTY).toBeGreaterThan(0);
     expect(JAM_SKIP_PENALTY).toBeLessThan(10); // small
-    expect(p.phase === 'to-home' || p.phase === 'to-vehicle').toBe(true); // no stops left → home
+    expect(['to-home', 'to-vehicle', 'driving']).toContain(p.phase); // no stops left → home
+  });
+
+  it('a driver who skips STAYS in the car (re-routed on) — or parks it; never leaves it in the lane', () => {
+    const map = street();
+    const state = createAmbientState();
+    const home = map.idx(2, 3);
+    const car = { x: 6.4, y: 4, dir: 1, tx: 7, ty: 4, owned: true, id: 42, path: [map.idx(6, 4), map.idx(7, 4)], leg: 2, stuck: STUCK_GIVE_UP } as Mover;
+    state.cars.push(car);
+    const p = { x: 6.4, y: 4, dir: 1, tx: 7, ty: 4, homeTile: home, carId: 42, itinerary: ['work'], itinStep: 0, phase: 'driving' } as unknown as Mover;
+    state.peds.push(p);
+    skipJammedStop(state, p, map);
+    // either it's still driving (a new route), or the car is parked before its owner walks off
+    if (p.phase === 'driving') expect(car.path).toBeDefined();
+    else expect(car.parked).toBe(true);
+    expect(p.phase).not.toBe('to-vehicle'); // no dismount-and-walk-back-to-the-car shuffle
   });
 });
