@@ -11,8 +11,8 @@
 import { BASE_TILE } from './camera';
 import { blank, disc, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
-import { BUILDING_PAINTERS, paintBuilding } from './snesBuildings';
-import { builtRenderKey, footprintCellKey, edgeKey, BLOB, BLOB_MASKS } from './renderKey';
+import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
+import { builtRenderKey, emissionKey, footprintCellKey, edgeKey, BLOB, BLOB_MASKS } from './renderKey';
 
 const T = BASE_TILE;
 
@@ -163,6 +163,10 @@ function buildingTiles(out: Map<string, Pixels>): void {
         for (let h = 1; h <= MAX_FOOTPRINT; h++) {
           for (let w = 1; w <= MAX_FOOTPRINT; w++) {
             const img = paintBuilding(kind, w * T, h * T, v, tier);
+            const suffix = v === 0 ? '' : `#${v}`;
+            const { lit, blink } = emissionOf(img, kind, kind * 977 + w * 31 + h * 7 + v);
+            if (lit) out.set(emissionKey(kind, w, h, tier) + suffix, lit);
+            if (blink) out.set(`${emissionKey(kind, w, h, tier)}/blink${suffix}`, blink);
             for (let r = 0; r < h; r++) {
               for (let c = 0; c < w; c++) {
                 const k = footprintCellKey(kind, w, h, c, r, tier);

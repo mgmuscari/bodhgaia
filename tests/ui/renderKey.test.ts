@@ -375,3 +375,15 @@ describe('blobMask — 8-neighbour edge masks for terrain edge overlays', () => 
     }
   });
 });
+
+import { emissionKey, variantIndexOf } from '../../src/ui/renderKey';
+
+describe('emissionKey / variantIndexOf', () => {
+  it('keys a whole-footprint emission map by kind, size and tier under @emit/', () => {
+    expect(emissionKey(16, 2, 1, 0)).toBe('@emit/b-16-2x1-0');
+  });
+  it('reads the variant index back off a picked key (0 for the base)', () => {
+    expect(variantIndexOf('b-16-1x1-c0-r0-0')).toBe(0);
+    expect(variantIndexOf('b-16-1x1-c0-r0-0#3')).toBe(3);
+  });
+});

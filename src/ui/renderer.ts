@@ -22,6 +22,8 @@ import {
   pickVariantKey,
   blobMask,
   edgeKey,
+  emissionKey,
+  variantIndexOf,
   terrainTileTransform,
   waterTileTransform,
   type FootprintPos,
@@ -741,7 +743,14 @@ export class Renderer {
   // Light-bearing building footprints (WORLD coords) collected during drawBase, redrawn each frame in
   // drawSprites: an emission map (e.g. coal aviation beacons) overlaid additively over the footprint,
   // blinking + evading shading (the building twin of the cruiser's emissive bar).
-  private emissiveBuildings: { x: number; y: number; w: number; h: number; key: string; kind: number }[] = [];
+  // `lit`/`blink` carry a SKIN's own emission maps (@emit/…) when it supplies them — authoritative, so
+  // a pixel-art skin never falls back to the diffusion light maps; otherwise `key` names the ambient
+  // sprite emission map (the satellite path).
+  private emissiveBuildings: {
+    x: number; y: number; w: number; h: number; key: string; kind: number; lit?: AtlasImage; blink?: AtlasImage;
+  }[] = [];
+  // The skin's @emit/* building emission maps (empty → use the ambient sprite light maps).
+  private skinEmission = new Map<string, AtlasImage>();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -757,6 +766,7 @@ export class Renderer {
     this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
+    this.skinEmission = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@emit/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -793,6 +803,7 @@ export class Renderer {
     this.tileVariants = overrides ? variantCounts(overrides.keys()) : new Map();
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
+    this.skinEmission = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@emit/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -833,7 +844,7 @@ export class Renderer {
 
   /** Light-bearing building footprints collected during the last base build (world coords) — the GPU
    *  glow pass casts a faint window/beacon glow from each (Maddy: windows/blinkies cast glow too). */
-  emissiveBuildingList(): readonly { x: number; y: number; w: number; h: number; kind: number }[] {
+  emissiveBuildingList(): readonly { x: number; y: number; w: number; h: number; kind: number; lit?: AtlasImage; blink?: AtlasImage }[] {
     return this.emissiveBuildings;
   }
 
@@ -1251,10 +1262,22 @@ export class Renderer {
               // Light-bearing building? Collect its footprint (world coords) for the per-frame emissive
               // overlay (drawSprites). The emission stem is the build FORM (kind + footprint), matching
               // the baked atlas: `b-<kind>-c` (1×1) or `b-<kind>-<w>x<h>`. Absent key → not collected.
-              const form = pp.width === 1 && pp.height === 1 ? 'c' : `${pp.width}x${pp.height}`;
-              const ekey = `building/b-${pp.kind}-${form}`;
-              if (this.ambientSprites?.emission[ekey]) {
-                this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: ekey, kind: pp.kind });
+              if (unpowered) {
+                // no power, no lights — an unpowered building stays dark at night (the SimCity rule)
+              } else if (this.skinEmission.size > 0) {
+                // the skin's own map for THIS footprint, tier and art variant (read off the picked key)
+                const v = variantIndexOf(builtKey);
+                const base = emissionKey(pp.kind, pp.width, pp.height, tier);
+                const sfx = v === 0 ? '' : `#${v}`;
+                const lit = this.skinEmission.get(base + sfx);
+                const blink = this.skinEmission.get(`${base}/blink${sfx}`);
+                if (lit || blink) this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: base, kind: pp.kind, lit, blink });
+              } else {
+                const form = pp.width === 1 && pp.height === 1 ? 'c' : `${pp.width}x${pp.height}`;
+                const ekey = `building/b-${pp.kind}-${form}`;
+                if (this.ambientSprites?.emission[ekey]) {
+                  this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: ekey, kind: pp.kind });
+                }
               }
             }
           }
@@ -2053,14 +2076,14 @@ export class Renderer {
         // Power plants (24–30) run 24/7 → glow always on; everything else is lit WINDOWS → night-gated.
         const isPower = b.kind >= 24 && b.kind <= 30;
         const a = isPower ? 1 : night;
-        const stat = emission?.[b.key];
+        const stat = b.lit ?? (this.skinEmission.size > 0 ? undefined : emission?.[b.key]);
         if (stat && a > 0.02) {
           ctx.globalAlpha = a;
           ctx.drawImage(stat, sx, sy, w, h);
         }
         // Hazard beacons blink on a PER-BUILDING phase + period (hashed from its anchor), so beacons
         // across the map don't pulse in unison (Maddy: global blink reads fake). Always-on (aviation).
-        const blinkImg = emission?.[`${b.key}/blink`];
+        const blinkImg = b.blink ?? (this.skinEmission.size > 0 ? undefined : emission?.[`${b.key}/blink`]);
         if (blinkImg) {
           const hash = (((b.x * 73856093) ^ (b.y * 19349663)) >>> 0);
           const period = 420 + (hash % 6) * 90; // 420..870 ms, varies per building
