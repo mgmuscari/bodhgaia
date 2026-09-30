@@ -300,7 +300,7 @@ describe('terrainTileTransform: dihedral anti-plaid for isotropic terrain', () =
   });
 });
 
-import { waterTileTransform } from '../../src/ui/renderKey';
+import { waterTileTransform, variantCounts, pickVariantKey } from '../../src/ui/renderKey';
 
 describe('waterTileTransform: stochastic baked-tile hybrid (anti-plaid)', () => {
   it('rot in [0,1) turns; scale in [√2, 1.74] so rotation always covers the clipped tile', () => {
@@ -320,5 +320,28 @@ describe('waterTileTransform: stochastic baked-tile hybrid (anti-plaid)', () => 
     const rots = new Set<number>();
     for (let i = 0; i < 20; i++) rots.add(Math.round(waterTileTransform(i, i * 3).rot * 100));
     expect(rots.size).toBeGreaterThan(8); // genuinely varied, not banded
+  });
+});
+
+describe('variantCounts / pickVariantKey (hash-cycled tile variants)', () => {
+  it('counts each base key plus its #n variants', () => {
+    const counts = variantCounts(['grass-0', 'grass-0#1', 'grass-0#2', 'forest-1', 'forest-1#1', 'ocean-0']);
+    expect(counts.get('grass-0')).toBe(3);
+    expect(counts.get('forest-1')).toBe(2);
+    expect(counts.has('ocean-0')).toBe(false); // no variants → not listed (plain lookup)
+  });
+
+  it('only counts a contiguous run #1..#n (a gap would pick a missing tile)', () => {
+    const counts = variantCounts(['grass-0', 'grass-0#1', 'grass-0#3']);
+    expect(counts.get('grass-0')).toBe(2);
+  });
+
+  it('pickVariantKey returns the base or one of its variants, deterministically by position', () => {
+    const counts = variantCounts(['grass-0', 'grass-0#1', 'grass-0#2', 'grass-0#3']);
+    const seen = new Set<string>();
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) seen.add(pickVariantKey('grass-0', x, y, counts));
+    expect(seen).toEqual(new Set(['grass-0', 'grass-0#1', 'grass-0#2', 'grass-0#3']));
+    expect(pickVariantKey('grass-0', 3, 5, counts)).toBe(pickVariantKey('grass-0', 3, 5, counts));
+    expect(pickVariantKey('lake-0', 3, 5, counts)).toBe('lake-0'); // no variants → base
   });
 });

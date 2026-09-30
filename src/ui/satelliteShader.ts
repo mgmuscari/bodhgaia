@@ -50,6 +50,7 @@ uniform float u_time;     // seconds, for animated water
 uniform vec2 u_sun;       // sun direction in tile space (shadows trace toward it)
 uniform float u_shadow;   // shadow strength 0..1
 uniform float u_dayspeed; // >0 slowly rotates the sun (day/night sweep); 0 = fixed
+uniform float u_motion;   // 1 = photographic life (water warp/swell, sheen, glints, clouds); 0 = pixel art
 
 in vec2 v_uv;
 out vec4 fragColor;
@@ -101,9 +102,10 @@ void main() {
       fbm(g * 0.9 + vec2(u_time * 0.10, u_time * 0.07)),
       fbm(g * 0.9 + vec2(40.0 - u_time * 0.08, 9.0 + u_time * 0.11))
     ) - 0.5;
-    baseUv += (flow * 0.5) / u_view;
+    baseUv += (flow * 0.5) / u_view * u_motion;
   }
   vec3 col = texture(u_base, baseUv).rgb;
+  vec3 still = col; // the unanimated albedo — pixel-art skins (u_motion 0) keep exactly this
 
   if (type == SAT_WATER) {
     // DEEP water must read alive everywhere (not just the shore): a moving two-octave swell modulates
@@ -138,9 +140,11 @@ void main() {
     col += vec3(0.9, 0.88, 0.8) * glint * 0.12;
   }
 
+  col = mix(still, col, u_motion); // per-type life above fades out entirely for pixel art
+
   // Clouds: non-repeating fBm drifting with time casts a soft moving shadow over the ground.
   float cloud = fbm(g * 0.35 + vec2(u_time * 0.02, u_time * 0.015));
-  col *= 1.0 - smoothstep(0.55, 0.82, cloud) * 0.20;
+  col *= 1.0 - smoothstep(0.55, 0.82, cloud) * 0.20 * u_motion;
 
   // Day/night: the sun ARCS east→west across the sky (NOT a full orbit around the map — that read as
   // flat-earth, Maddy). Altitude = sin(day): >0 daytime, <0 night. Azimuth sweeps via cos(day), with a
@@ -206,6 +210,7 @@ export class SatelliteShader {
   private readonly uSun: WebGLUniformLocation | null;
   private readonly uShadow: WebGLUniformLocation | null;
   private readonly uDayspeed: WebGLUniformLocation | null;
+  private readonly uMotion: WebGLUniformLocation | null;
   private gridW = 0;
   private gridH = 0;
 
@@ -236,6 +241,7 @@ export class SatelliteShader {
     this.uSun = gl.getUniformLocation(program, 'u_sun');
     this.uShadow = gl.getUniformLocation(program, 'u_shadow');
     this.uDayspeed = gl.getUniformLocation(program, 'u_dayspeed');
+    this.uMotion = gl.getUniformLocation(program, 'u_motion');
   }
 
   /** (Re)upload the entire packed grid as the data texture. Sizes the texture on first call. */
@@ -295,6 +301,8 @@ export class SatelliteShader {
     origin?: readonly [number, number];
     view?: readonly [number, number];
     dayspeed?: number;
+    /** 1 = photographic life (default), 0 = still pixel art. */
+    motion?: number;
   }): void {
     const gl = this.gl;
     gl.useProgram(this.program);
@@ -310,6 +318,7 @@ export class SatelliteShader {
     if (this.uSun) gl.uniform2f(this.uSun, opts.sun[0], opts.sun[1]);
     if (this.uShadow) gl.uniform1f(this.uShadow, opts.shadow ?? 0.45);
     if (this.uDayspeed) gl.uniform1f(this.uDayspeed, opts.dayspeed ?? 0);
+    if (this.uMotion) gl.uniform1f(this.uMotion, opts.motion ?? 1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 

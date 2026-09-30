@@ -8,9 +8,27 @@
 
 import { tilesetDef, type TilesetDef } from './tileset';
 import { BASE_TILE } from './camera';
+import type { Pixels } from './pixelArt';
 
 /** Loads one image URL, resolving to the decoded image or `null` on any failure (never rejects). */
 export type ImageLoader = (url: string) => Promise<CanvasImageSource | null>;
+
+/** Turns a code-painted pixel buffer into a drawable image, or `null` if it can't (headless). */
+export type Materializer = (p: Pixels) => CanvasImageSource | null;
+
+/** Default materializer: one canvas per buffer via putImageData (crisp — no scaling involved). */
+const domMaterializer: Materializer = (p) => {
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = p.w;
+  canvas.height = p.h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const id = ctx.createImageData(p.w, p.h);
+  id.data.set(p.data);
+  ctx.putImageData(id, 0, 0);
+  return canvas;
+};
 
 /**
  * Default browser image loader: fetch the PNG, then DECODE it ONCE into a BASE_TILE×BASE_TILE
@@ -130,6 +148,7 @@ export async function loadTilesetAssets(
   def: TilesetDef,
   loadImage: ImageLoader = domImageLoader,
   base = '/',
+  materialize: Materializer = domMaterializer,
 ): Promise<Map<string, CanvasImageSource>> {
   const overrides = new Map<string, CanvasImageSource>();
   await Promise.all(
@@ -165,6 +184,14 @@ export async function loadTilesetAssets(
       if (m) overrides.set(key, oceanByBand.get(m[1]!) ?? anyOcean);
     }
   }
+
+  // Code-painted tiles go in last (after the PNG-only river alias above, which they must not inherit).
+  if (def.paint) {
+    for (const [key, pixels] of def.paint()) {
+      const out = materialize(pixels);
+      if (out) overrides.set(key, out);
+    }
+  }
   return overrides;
 }
 
@@ -177,6 +204,7 @@ export function loadTileset(
   id: string,
   loadImage: ImageLoader = domImageLoader,
   base = '/',
+  materialize: Materializer = domMaterializer,
 ): Promise<Map<string, CanvasImageSource>> {
-  return loadTilesetAssets(tilesetDef(id), loadImage, base);
+  return loadTilesetAssets(tilesetDef(id), loadImage, base, materialize);
 }

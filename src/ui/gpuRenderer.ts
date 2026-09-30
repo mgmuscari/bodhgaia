@@ -294,6 +294,7 @@ export class GpuRenderer {
     timeSec: number,
     base: TexImageSource,
     baseVersion: number,
+    shaderLife = true,
   ): void {
     if (!this.shader || !this.gl) return;
     this.shader.uploadDirty(this.bridge);
@@ -306,7 +307,7 @@ export class GpuRenderer {
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW, origin, view, dayspeed: DAYSPEED });
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW, origin, view, dayspeed: DAYSPEED, motion: shaderLife ? 1 : 0 });
   }
 
   /** Force a base re-upload on the next render (e.g. after a resize changes the base canvas size). */

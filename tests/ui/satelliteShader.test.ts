@@ -39,6 +39,13 @@ describe('satelliteShader: fragment contract', () => {
     expect(f).toMatch(/u_origin\s*\+\s*v_uv\s*\*\s*u_view/);
   });
 
+  it('scales the photographic "life" by u_motion (pixel-art skins turn it off)', () => {
+    expect(f).toContain('uniform float u_motion');
+    // the water UV warp and the cloud shadow — the two effects that smear pixel art — are both gated
+    expect(f).toMatch(/baseUv \+= \(flow \* 0\.5\) \/ u_view \* u_motion/);
+    expect(f).toMatch(/cloud\) \* 0\.20 \* u_motion/);
+  });
+
   it('carries the single-pass raymarched shadow loop', () => {
     expect(f).toMatch(/for\s*\(\s*int\s+i\s*=\s*1/); // step loop along the sun ray
     expect(f).toContain('shadow');

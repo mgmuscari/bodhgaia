@@ -11,6 +11,8 @@
 
 import { builtRenderKey, variantKey, type FootprintPos } from './renderKey';
 import { SATELLITE_BAKED } from './satelliteManifest';
+import type { Pixels } from './pixelArt';
+import { paintSnesTileset } from './snesTileset';
 
 /** The permanent default tileset id — pure procedural painters, never removed. */
 export const PROCEDURAL = 'procedural';
@@ -23,6 +25,40 @@ export interface TilesetAsset {
   keys: readonly string[];
 }
 
+/**
+ * How the renderer treats a skin — the per-skin half of what used to be one `hasTileset` boolean.
+ * Photographic skins (satellite) want anti-plaid rotation, ambient motion and faint labels; pixel art
+ * wants none of that (a rotated pixel tile is a broken tile) and carries type in its own drawing.
+ */
+export interface RenderProfile {
+  /** Parcel legibility glyphs (R1/C2/PD…): bold (procedural), faint (photo skins), off (art carries type). */
+  glyphs: 'bold' | 'faint' | 'off';
+  /** Per-tile random rotation/mirror of terrain + water tiles (anti-plaid for photographic textures). */
+  stochasticTerrain: boolean;
+  /** CPU ambient motion over the skin: water slosh, grass sheen, drifting cloud shadows. */
+  ambientMotion: boolean;
+  /** Darken avenues/freeways over a single shared asphalt surface. */
+  roadClassShade: boolean;
+  /** Canopy sprites dotted over green-amenity parcels. */
+  flora: boolean;
+  /** Draw the baked agent/prop sprites (cars, peds, tents, junk, smog) instead of procedural marks. */
+  agentSprites: boolean;
+  /** GPU renderer's photographic life over the base (water warp/swell, sheen, glints, clouds). Off for
+   *  pixel art, which it smears; day/night and building shadows apply to every skin regardless. */
+  shaderLife: boolean;
+}
+
+/** The procedural look: no skin effects, bold labels. Also the renderer's profile when no skin loaded. */
+export const PROCEDURAL_PROFILE: RenderProfile = {
+  glyphs: 'bold',
+  stochasticTerrain: false,
+  ambientMotion: false,
+  roadClassShade: false,
+  flora: false,
+  agentSprites: false,
+  shaderLife: true,
+};
+
 export interface TilesetDef {
   id: string;
   /** Settings-dropdown label. */
@@ -31,6 +67,10 @@ export interface TilesetDef {
   description: string;
   /** The committed PNGs and the keys they fill. `procedural` → [] (pure painters). */
   assets: readonly TilesetAsset[];
+  /** A code-painted skin: atlas key → pixel buffer, materialized by the loader (no PNGs, no bake). */
+  paint?: () => ReadonlyMap<string, Pixels>;
+  /** How the renderer treats this skin. */
+  profile: RenderProfile;
 }
 
 /** A lightweight view of a def for the settings UI (no asset list). */
@@ -107,12 +147,38 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
     label: 'Procedural (default)',
     description: 'The hand-painted Canvas2D look — always available, never removed.',
     assets: [],
+    profile: PROCEDURAL_PROFILE,
   },
   {
     id: 'satellite',
     label: 'Satellite (Oakland)',
     description: 'Top-down Google-Maps-style patchwork, Oakland architectural cues.',
     assets: SATELLITE_ASSETS,
+    profile: {
+      glyphs: 'faint',
+      stochasticTerrain: true,
+      ambientMotion: true,
+      roadClassShade: true,
+      flora: true,
+      agentSprites: true,
+      shaderLife: true,
+    },
+  },
+  {
+    id: 'snes',
+    label: 'Super (16-bit)',
+    description: 'Code-painted pixel art in the spirit of the classic city-builder on the Super Famicom.',
+    assets: [],
+    paint: paintSnesTileset,
+    profile: {
+      glyphs: 'off',
+      stochasticTerrain: false,
+      ambientMotion: false,
+      roadClassShade: false,
+      flora: false,
+      agentSprites: true,
+      shaderLife: false,
+    },
   },
 ];
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { loadTileset, loadTilesetAssets, type ImageLoader } from '../../src/ui/tilesetLoader';
-import { PROCEDURAL, type TilesetDef } from '../../src/ui/tileset';
+import { PROCEDURAL, PROCEDURAL_PROFILE, type TilesetDef } from '../../src/ui/tileset';
 
 // Sentinel "images" — the loader is source-agnostic (Map<key, CanvasImageSource>), so the test
 // returns tagged objects and asserts by identity. No DOM / no real decoding needed.
@@ -42,6 +42,7 @@ describe('loadTilesetAssets (the core)', () => {
       { file: 'buildings/house.png', keys: ['b-16-c-0', 'b-16-e-0'] },
       { file: 'buildings/missing.png', keys: ['b-16-k-0'] },
     ],
+    profile: PROCEDURAL_PROFILE,
   };
 
   it('assigns each loaded image to ALL its atlas keys', async () => {
@@ -135,5 +136,45 @@ describe('normalizeLuma: asphalt variant brightness match', () => {
     normalizeLuma(dark, 96);
     normalizeLuma(light, 96);
     expect(Math.abs(dark[0]! - light[0]!)).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('loadTilesetAssets — code-painted skins', () => {
+  const painted: TilesetDef = {
+    id: 'painted',
+    label: 'Painted',
+    description: 'test',
+    assets: [],
+    paint: () =>
+      new Map([
+        ['grass-0', { w: 1, h: 1, data: new Uint8ClampedArray([1, 2, 3, 255]) }],
+        ['river-0', { w: 1, h: 1, data: new Uint8ClampedArray([4, 5, 6, 255]) }],
+      ]),
+    profile: PROCEDURAL_PROFILE,
+  };
+
+  it('materializes every painted key, with no fetches', async () => {
+    const { load, urls } = stubLoader();
+    const seen: number[] = [];
+    const overrides = await loadTilesetAssets(painted, load, '/', (p) => {
+      seen.push(p.data[0]!);
+      return img(`px${p.data[0]}`);
+    });
+    expect(urls).toEqual([]);
+    expect([...overrides.keys()].sort()).toEqual(['grass-0', 'river-0']);
+    expect(seen.sort()).toEqual([1, 4]);
+  });
+
+  it('keeps a painted river as painted (the satellite river→ocean alias is for baked PNGs only)', async () => {
+    const { load } = stubLoader();
+    const overrides = await loadTilesetAssets(painted, load, '/', (p) => img(`px${p.data[0]}`));
+    expect(overrides.get('river-0')).toEqual(img('px4'));
+  });
+
+  it('the registered snes skin paints its tiles through loadTileset', async () => {
+    const { load, urls } = stubLoader();
+    const overrides = await loadTileset('snes', load, '/', (p) => img(`${p.w}x${p.h}`));
+    expect(urls).toEqual([]);
+    expect(overrides.has('grass-0')).toBe(true);
   });
 });
