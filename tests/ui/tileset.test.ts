@@ -118,7 +118,7 @@ describe('tileset render profiles', () => {
       agentSprites: true,
       shaderLife: true,
       marks: 'flat',
-      landValueWash: true,
+      tileWashes: true,
     });
   });
 });
@@ -140,15 +140,15 @@ describe('the snes tileset (code-painted)', () => {
     expect(p.shaderLife).toBe(false); // the GPU warp/swell/clouds would smear the pixels
   });
 
-  it('snes shows status as pixel icons and drops the land-value wash over the art', () => {
+  it('snes shows status as pixel icons and drops the per-tile data washes over the art', () => {
     const p = tilesetDef('snes').profile;
     expect(p.marks).toBe('icons');
-    expect(p.landValueWash).toBe(false);
+    expect(p.tileWashes).toBe(false);
   });
 
-  it('procedural keeps flat marks and the land-value wash', () => {
+  it('procedural keeps flat marks and the data washes', () => {
     expect(tilesetDef(PROCEDURAL).profile.marks).toBe('flat');
-    expect(tilesetDef(PROCEDURAL).profile.landValueWash).toBe(true);
+    expect(tilesetDef(PROCEDURAL).profile.tileWashes).toBe(true);
   });
 
   it('iconKey namespaces skin icons under @icon/ (never drawn as tiles)', () => {

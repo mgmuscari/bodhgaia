@@ -178,6 +178,115 @@ function buildingTiles(out: Map<string, Pixels>): void {
   }
 }
 
+// ── Transport ────────────────────────────────────────────────────────────────────────────────────
+// Roads come in as the asphalt SURFACE (`@surface/road#n`): the renderer paints its per-mask lane
+// markings over it, so every autotile and wide slab stays correct. Rail, streetcar, elevated rail,
+// bike paths and promenades are full mask tiles. Mask bits: N=1 E=2 S=4 W=8.
+
+function asphalt(v: number): Pixels {
+  const p = blank(T, T);
+  fill(p, C.asphalt);
+  for (const [x, y] of scatter(7, 6000 + v)) pxw(p, x, y, C.asphaltLo);
+  for (const [x, y] of scatter(2, 6100 + v)) pxw(p, x, y, C.slate); // aggregate glint
+  return p;
+}
+
+/** Call `f(x, y)` for every pixel of each arm running from the tile centre toward a connected edge,
+ *  `half` px either side of the centre line. A mask of 0 draws just the centre stub. */
+function arms(mask: number, half: number, f: (x: number, y: number) => void): void {
+  const lo = 8 - half;
+  const hi = 7 + half;
+  const box = (x0: number, y0: number, x1: number, y1: number): void => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f(x, y);
+  };
+  box(lo, lo, hi, hi);
+  if (mask & 1) box(lo, 0, hi, hi);
+  if (mask & 4) box(lo, lo, hi, T - 1);
+  if (mask & 8) box(0, lo, hi, hi);
+  if (mask & 2) box(lo, lo, T - 1, hi);
+}
+
+/** Twin rails (+ optional ties) along each connected axis. */
+function track(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB): void {
+  const vert = (mask & 5) !== 0 || mask === 0;
+  const horz = (mask & 10) !== 0;
+  if (ties) {
+    arms(mask, 5, (x, y) => {
+      if ((vert && (y % 3 === 1) && x >= 3 && x <= 12) || (horz && (x % 3 === 1) && y >= 3 && y <= 12)) px(p, x, y, ties);
+    });
+  }
+  arms(mask, 3, (x, y) => {
+    const onV = (mask & 5) !== 0 || mask === 0 ? x === 5 || x === 10 : false;
+    const onH = (mask & 10) !== 0 ? y === 5 || y === 10 : false;
+    if (onV && (y < 8 ? (mask & 1) || y >= 5 : (mask & 4) || y <= 10)) {
+      px(p, x, y, rail);
+      px(p, x + 1, y, shadow);
+    }
+    if (onH && (x < 8 ? (mask & 8) || x >= 5 : (mask & 2) || x <= 10)) {
+      px(p, x, y, rail);
+      px(p, x, y + 1, shadow);
+    }
+  });
+}
+
+function railTile(mask: number): Pixels {
+  const p = blank(T, T);
+  fill(p, C.grass);
+  arms(mask, 6, (x, y) => px(p, x, y, hash2(x, y, 6200) % 4 === 0 ? C.dirtLo : C.dirt)); // ballast bed
+  track(p, mask, C.roofBrownLo, C.paveHi, C.slateLo);
+  return p;
+}
+
+function streetcarTile(mask: number): Pixels {
+  const p = asphalt(1);
+  track(p, mask, null, C.paveHi, C.asphaltLo);
+  return p;
+}
+
+function elevTile(mask: number): Pixels {
+  const p = blank(T, T);
+  fill(p, C.grassLo); // the shadow the viaduct throws on the ground
+  arms(mask, 6, (x, y) => px(p, x, y, C.pave)); // deck
+  arms(mask, 6, (x, y) => {
+    const edge = x === 2 || x === 13 || y === 2 || y === 13;
+    if (edge) px(p, x, y, C.paveHi); // parapet
+  });
+  track(p, mask, null, C.line, C.paveLo);
+  return p;
+}
+
+function bikeTile(mask: number): Pixels {
+  const p = blank(T, T);
+  fill(p, C.grass);
+  arms(mask, 4, (x, y) => px(p, x, y, C.leafLo)); // painted green lane
+  arms(mask, 0, (x, y) => {
+    if ((x + y) % 4 < 2) px(p, x, y, C.line); // dashed centre line
+  });
+  return p;
+}
+
+function pedTile(mask: number): Pixels {
+  const p = blank(T, T);
+  fill(p, C.grass);
+  arms(mask, 5, (x, y) => px(p, x, y, (x + y) % 2 === 0 ? C.paveHi : C.pave)); // pavers
+  if (mask === 0 || mask === 15) {
+    px(p, 3, 3, C.flower); // a planter on a plaza tile
+    px(p, 12, 12, C.flower);
+  }
+  return p;
+}
+
+function transportTiles(out: Map<string, Pixels>): void {
+  for (let v = 0; v < 3; v++) out.set(`@surface/road#${v}`, asphalt(v));
+  for (let m = 0; m < 16; m++) {
+    out.set(`rail-${m}`, railTile(m));
+    out.set(`streetcar-${m}`, streetcarTile(m));
+    out.set(`elev-${m}`, elevTile(m));
+    out.set(`bike-${m}`, bikeTile(m));
+    out.set(`ped-${m}`, pedTile(m));
+  }
+}
+
 // ── Terrain edges ────────────────────────────────────────────────────────────────────────────────
 // Transparent overlays keyed by blob mask (renderKey.blobMask) that soften the square terrain steps:
 // SHORE on a water cell beside land (sand, a broken foam line, then chop), CANOPY on open land beside
@@ -320,6 +429,7 @@ export function paintSnesTileset(): Map<string, Pixels> {
   const out = new Map<string, Pixels>();
   terrainTiles(out);
   buildingTiles(out);
+  transportTiles(out);
   edgeTiles(out);
   for (const name of Object.keys(ICONS)) out.set(`@icon/${name}`, icon(name));
   return out;

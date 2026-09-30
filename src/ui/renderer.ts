@@ -1570,7 +1570,7 @@ export class Renderer {
 
     // Air pollution: cars smog the tiles they drive — a grey haze thickening with the live field,
     // drawn over the ground overlays but under the sprites/pips (they read through the haze).
-    for (const [tile, poll] of ambient.pollution) {
+    for (const [tile, poll] of this.profile.tileWashes ? ambient.pollution : []) {
       const px = tile % mapW;
       const py = (tile - px) / mapW;
       const { sx, sy } = camera.worldToScreen(px, py);
@@ -1584,7 +1584,7 @@ export class Renderer {
     // Land value: a diverging tint on each inhabited plot — warm gold where it's prized, cold slate
     // where it's decayed (mid reads through clean). On zone tiles, so it rarely overlaps the wear
     // (wild ground) or smog (roads) overlays. The desirability the other layers add up to.
-    for (const [tile, lv] of this.profile.landValueWash ? ambient.landValue : []) {
+    for (const [tile, lv] of this.profile.tileWashes ? ambient.landValue : []) {
       const lx = tile % mapW;
       const ly = (tile - lx) / mapW;
       const { sx, sy } = camera.worldToScreen(lx, ly);

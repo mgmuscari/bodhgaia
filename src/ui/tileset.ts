@@ -48,8 +48,9 @@ export interface RenderProfile {
   shaderLife: boolean;
   /** Live status marks (unpowered, building health): flat squares, or the skin's `@icon/*` pixel icons. */
   marks: 'flat' | 'icons';
-  /** The translucent gold/grey land-value wash over zone tiles. */
-  landValueWash: boolean;
+  /** Translucent per-tile data washes over the map (land value on zones, smog on roads). Pixel art
+   *  keeps its colours; the same signals stay in the overlays and Inspect. */
+  tileWashes: boolean;
 }
 
 /** The procedural look: no skin effects, bold labels. Also the renderer's profile when no skin loaded. */
@@ -62,7 +63,7 @@ export const PROCEDURAL_PROFILE: RenderProfile = {
   agentSprites: false,
   shaderLife: true,
   marks: 'flat',
-  landValueWash: true,
+  tileWashes: true,
 };
 
 export interface TilesetDef {
@@ -180,7 +181,7 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
       agentSprites: true,
       shaderLife: true,
       marks: 'flat',
-      landValueWash: true,
+      tileWashes: true,
     },
   },
   {
@@ -198,7 +199,7 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
       agentSprites: true,
       shaderLife: false,
       marks: 'icons',
-      landValueWash: false,
+      tileWashes: false,
     },
   },
 ];
