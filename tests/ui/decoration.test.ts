@@ -200,3 +200,17 @@ describe('wideRoadAt mixed-kind boundary (street abutting an avenue band reads w
     expect(wideRoadAt(map, 3, 4)).toBe(true);
   });
 });
+
+import { poleAxis } from '../../src/ui/decoration';
+
+describe('poleAxis — which way a pole run goes (for curb-side poles + along-curb wires)', () => {
+  it("is 'h' on an E-W street pole, 'v' on an N-S one, null off a pole", () => {
+    const map = new GameMap(12, 12);
+    for (let x = 0; x < 12; x++) map.setBuilt(x, 2, BuiltKind.RoadStreet);
+    for (let y = 4; y < 12; y++) map.setBuilt(6, y, BuiltKind.RoadStreet);
+    expect(poleAxis(map, 4, 2)).toBe('h');
+    expect(poleAxis(map, 6, 8)).toBe('v');
+    expect(poleAxis(map, 5, 2)).toBe(null); // not on the pole spacing
+    expect(poleAxis(map, 0, 0)).toBe(null); // not a road
+  });
+});

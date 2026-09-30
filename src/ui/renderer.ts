@@ -30,7 +30,7 @@ import {
 } from './renderKey';
 import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
-import { wideRoadAt, powerPoleAt, poleWireDirs } from './decoration';
+import { wideRoadAt, powerPoleAt, poleWireDirs, poleAxis, POLE_SPACING } from './decoration';
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { laneOffset, pedCurbOffset, dirVector } from './ambientContent';
@@ -749,6 +749,9 @@ export class Renderer {
   private emissiveBuildings: {
     x: number; y: number; w: number; h: number; key: string; kind: number; lit?: AtlasImage; blink?: AtlasImage;
   }[] = [];
+  // The skin's @road/* street-furniture overlays (curbs, barriers, stop lines, lanes, median, poles,
+  // wires) on the art grid; a feature without one keeps its procedural drawing.
+  private roadInk = new Map<string, AtlasImage>();
   // The skin's @emit/* building emission maps (empty → use the ambient sprite light maps).
   private skinEmission = new Map<string, AtlasImage>();
 
@@ -767,6 +770,7 @@ export class Renderer {
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
     this.skinEmission = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@emit/')));
+    this.roadInk = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@road/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -804,6 +808,7 @@ export class Renderer {
     this.icons = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@icon/')));
     this.edges = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@edge/')));
     this.skinEmission = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@emit/')));
+    this.roadInk = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@road/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -946,6 +951,14 @@ export class Renderer {
     const marks: { dx: number; dy: number; w: number; h: number; kind: number; density: number; unpowered: boolean }[] = [];
     this.emissiveBuildings.length = 0; // re-collected this pass (refreshed on every base rebuild)
     this.unpoweredFootprints.length = 0; // likewise
+    // Skin road overlay at a tile (true iff the skin supplied it — else the caller draws procedurally).
+    const ink = (key: string, dx: number, dy: number): boolean => {
+      const img = this.roadInk.get(key);
+      if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+      return img !== undefined;
+    };
+    // Skin power poles, drawn AFTER the tile loop (wires + masts) so later tiles can't paint over a span.
+    const poles: { x: number; y: number; axis: 'h' | 'v' }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
         const i = map.idx(tx, ty);
@@ -1110,7 +1123,7 @@ export class Renderer {
             // minRun 3: only barrier a SUSTAINED freeway/frontage stretch (>2 tiles). A 1-tile
             // freeway↔street contact is a crossing / onramp, not a frontage — no barrier there.
             const div = roadDividerMask(map, tx, ty, 3);
-            if (div !== 0) {
+            if (div !== 0 && !ink(`@road/divider/${div}`, dx, dy)) {
               const bw = Math.max(2, Math.round(ts * 0.16));
               const concrete = '#d8d2c4';
               const ridge = '#3a3630'; // shadow line on the road-facing side, for depth
@@ -1124,7 +1137,7 @@ export class Renderer {
             // or open land), a light sidewalk strip with a dark gutter line on its road-facing side.
             // Turns the "field of asphalt" into a street with edges. Per-tile (neighbour-dependent).
             const curb = roadCurbMask(map, tx, ty);
-            if (curb !== 0) {
+            if (curb !== 0 && !ink(`@road/curb/${curb}`, dx, dy)) {
               const sw = Math.max(1, Math.round(ts * 0.16));
               const walk = '#b0aa9c'; // warm concrete sidewalk (distinct from the white barrier)
               const gutter = '#26221c'; // the gutter channel where it meets the asphalt
@@ -1136,7 +1149,7 @@ export class Renderer {
 
             // Level-crossing PAINT: the white stop line a road has at a rail/tram crossing, on each
             // road-approach edge (the asphalt band + rails are already laid below/in the rail tile).
-            if (xMask !== 0) {
+            if (xMask !== 0 && !ink(`@road/xing/${xMask}`, dx, dy)) {
               ctx.fillStyle = '#f2efe6';
               const lw = Math.max(1, Math.round(ts * 0.11));
               if (xMask & N) ctx.fillRect(dx + ts * 0.26, dy + Math.round(ts * 0.10), Math.ceil(ts * 0.48), lw);
@@ -1152,7 +1165,11 @@ export class Renderer {
             // only, since the neighbour's W/N edge is the same seam.
             if (built === BuiltKind.RoadHighway && wide) {
               const fAxis = freewayAxis(map, tx, ty);
-              if (fAxis !== null) {
+              if (fAxis !== null && this.roadInk.has(`@road/flane/${fAxis}`)) {
+                ink(`@road/flane/${fAxis}`, dx, dy);
+                const edges = freewayLaneBoundaryMask(map, tx, ty) & (E | S);
+                if (edges) ink(`@road/flaneEdge/${edges}`, dx, dy);
+              } else if (fAxis !== null) {
                 ctx.fillStyle = '#cebe6e'; // freeway lane gold
                 const dash = Math.max(1, Math.round(ts * 0.16));
                 const lw = Math.max(1, Math.round(ts * 0.06));
@@ -1172,7 +1189,7 @@ export class Renderer {
             // Freeway CENTER LANE (two-way left-turn / "suicide" lane): a surface street running
             // through the freeway middle. Draw the classic yellow solid-OUTER + dashed-INNER markings
             // on the flanking edges (the boundary with the freeway lanes). clAxis computed above.
-            if (clAxis !== null) {
+            if (clAxis !== null && !ink(`@road/turn/${clAxis}`, dx, dy)) {
               const solid = '#e2c84e';
               const lw = Math.max(1, Math.round(ts * 0.06));
               const dash = Math.max(1, Math.round(ts * 0.16));
@@ -1200,7 +1217,7 @@ export class Renderer {
             // Freeway MEDIAN: a jersey barrier down the centre spine tile of the 3-wide corridor,
             // running lengthwise (separates the opposing carriageways). Per-tile; opens at ramps.
             const medianAxis = freewayMedianAxis(map, tx, ty);
-            if (medianAxis !== null) {
+            if (medianAxis !== null && !ink(`@road/median/${medianAxis}`, dx, dy)) {
               const mb = Math.max(2, Math.round(ts * 0.2));
               const concrete = '#d8d2c4';
               const ridge = '#3a3630';
@@ -1234,7 +1251,10 @@ export class Renderer {
           // DECISION is owned by decoration.ts — powerPoleAt picks the pole tiles,
           // poleWireDirs picks the wire offsets. The shell only draws the mast and a
           // segment toward each returned offset; it holds no branching of its own.
-          if (powerPoleAt(map, tx, ty)) {
+          const pAxis = this.roadInk.has('@road/pole/h') ? poleAxis(map, tx, ty) : null;
+          if (pAxis !== null) {
+            poles.push({ x: tx, y: ty, axis: pAxis });
+          } else if (powerPoleAt(map, tx, ty)) {
             const cx = dx + ts * 0.5;
             const cy = dy + ts * 0.5;
             const mast = Math.max(1, ts * 0.16);
@@ -1345,6 +1365,19 @@ export class Renderer {
           for (let k = 0; k < n; k++) ctx.fillRect(Math.floor(sx + specks[k]![0] * ts), Math.floor(sy + specks[k]![1] * ts), sp, sp);
         }
       }
+    }
+
+    // Skin power lines: every wire span first (four tiles along the run from each pole, sagging mid-span),
+    // then the masts on top — after the whole tile loop, so no later tile paints over a span.
+    for (const pl of poles) {
+      for (let k = 0; k < POLE_SPACING; k++) {
+        const o = pl.axis === 'h' ? camera.tileOrigin(pl.x + k, pl.y) : camera.tileOrigin(pl.x, pl.y + k);
+        ink(`@road/wire/${pl.axis}${k}`, o.dx, o.dy);
+      }
+    }
+    for (const pl of poles) {
+      const o = camera.tileOrigin(pl.x, pl.y);
+      ink(`@road/pole/${pl.axis}`, o.dx, o.dy);
     }
 
     // Second pass: parcel anchor marks ON TOP of every tile + the overlay, so a

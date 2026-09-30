@@ -12,6 +12,7 @@ import { BASE_TILE } from './camera';
 import { blank, disc, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
+import { snesRoadTiles } from './snesRoads';
 import { builtRenderKey, emissionKey, footprintCellKey, edgeKey, BLOB, BLOB_MASKS } from './renderKey';
 
 const T = BASE_TILE;
@@ -282,6 +283,8 @@ function pedTile(mask: number): Pixels {
 
 function transportTiles(out: Map<string, Pixels>): void {
   for (let v = 0; v < 3; v++) out.set(`@surface/road#${v}`, asphalt(v));
+  // full road tiles (lane paint in the palette) + the per-tile street furniture overlays
+  snesRoadTiles(out, [1, 2, 3, 7, 10], [1, 2, 3]);
   for (let m = 0; m < 16; m++) {
     out.set(`rail-${m}`, railTile(m));
     out.set(`streetcar-${m}`, streetcarTile(m));

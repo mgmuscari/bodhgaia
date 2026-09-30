@@ -288,3 +288,72 @@ describe('snes tileset — night lights come from the pixel art', () => {
 function blankPx(w: number, h: number): Pixels {
   return { w, h, data: new Uint8ClampedArray(w * h * 4) };
 }
+
+describe('snes tileset — road paint + street furniture on the art grid', () => {
+  const count = (p: Pixels, c: readonly number[]): number => {
+    let n = 0;
+    for (let i = 0; i < p.data.length; i += 4) if (p.data[i + 3] === 255 && p.data[i] === c[0] && p.data[i + 1] === c[1] && p.data[i + 2] === c[2]) n++;
+    return n;
+  };
+
+  it('paints every road tile the renderer can request (all kinds × masks, wide slabs, surface variants)', () => {
+    for (const k of renderKeyspace().filter((k) => k.startsWith('road-'))) {
+      for (const key of [k, `${k}#1`, `${k}#2`]) {
+        expect(tiles.has(key), key).toBe(true);
+        expect(opaque(tiles.get(key)!), key).toBe(true);
+      }
+    }
+  });
+
+  it('a straight street carries a white dashed centre line; a 4-way junction box is clear', () => {
+    expect(count(tiles.get('road-1-5')!, C.line)).toBeGreaterThan(3);
+    expect(count(tiles.get('road-1-15')!, C.line)).toBe(0);
+    expect(count(tiles.get('road-1-15')!, C.lineYellow)).toBe(0);
+  });
+
+  it('an avenue carries a double yellow; a wide slab carries no centre paint', () => {
+    expect(count(tiles.get('road-2-10')!, C.lineYellow)).toBeGreaterThan(8);
+    expect(count(tiles.get('road-2-10-w')!, C.lineYellow)).toBe(0);
+  });
+
+  it('paints the per-tile street-furniture overlays as transparent art-grid tiles', () => {
+    const keys = [
+      ...Array.from({ length: 15 }, (_, i) => `@road/curb/${i + 1}`),
+      ...Array.from({ length: 15 }, (_, i) => `@road/divider/${i + 1}`),
+      ...Array.from({ length: 15 }, (_, i) => `@road/xing/${i + 1}`),
+      '@road/pole/h', '@road/pole/v',
+      ...[0, 1, 2, 3].flatMap((k) => [`@road/wire/h${k}`, `@road/wire/v${k}`]),
+      '@road/flane/h', '@road/flane/v', '@road/flaneEdge/2', '@road/flaneEdge/4', '@road/flaneEdge/6',
+      '@road/turn/h', '@road/turn/v', '@road/median/h', '@road/median/v',
+    ];
+    for (const k of keys) {
+      const t = tiles.get(k);
+      expect(t, k).toBeDefined();
+      let on = 0;
+      for (let i = 3; i < t!.data.length; i += 4) if (t!.data[i] === 255) on++;
+      expect(on, `${k} draws`).toBeGreaterThan(0);
+      expect(on, `${k} is an overlay`).toBeLessThan(BASE_TILE * BASE_TILE);
+    }
+  });
+
+  it('a curb on the north edge sits in the top rows only', () => {
+    const t = tiles.get('@road/curb/1')!;
+    for (let y = 4; y < BASE_TILE; y++) for (let x = 0; x < BASE_TILE; x++) expect(t.data[(y * BASE_TILE + x) * 4 + 3]).toBe(0);
+  });
+
+  it('a pole is an ink-outlined sprite at the curb, not a block in the road middle', () => {
+    const t = tiles.get('@road/pole/h')!;
+    expect(hasInk(t)).toBe(true);
+    expect(t.data[(8 * BASE_TILE + 8) * 4 + 3]).toBe(0); // the tile centre (road middle) is clear
+  });
+
+  it('the four wire spans along a run sag in the middle (a catenary, 1 art px thick)', () => {
+    const row = (k: number): number => {
+      const t = tiles.get(`@road/wire/h${k}`)!;
+      for (let y = 0; y < BASE_TILE; y++) if (t.data[(y * BASE_TILE + 8) * 4 + 3] === 255) return y;
+      return -1;
+    };
+    expect(row(1)).toBeGreaterThan(row(0));
+    expect(row(2)).toBeGreaterThanOrEqual(row(1));
+  });
+});

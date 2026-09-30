@@ -8,7 +8,7 @@ import type { GameMap } from '../engine/map';
 import { isRoadKind, BuiltKind } from '../engine/fabric';
 
 /** Power poles fall every Nth tile along a street/avenue run. */
-const POLE_SPACING = 4;
+export const POLE_SPACING = 4;
 
 /** True iff (x, y) is in-bounds and holds a road kind (street/avenue/highway). */
 function roadAt(map: GameMap, x: number, y: number): boolean {
@@ -65,4 +65,14 @@ export function poleWireDirs(map: GameMap, x: number, y: number): ReadonlyArray<
   if (roadAt(map, x + 1, y)) out.push([1, 0]);
   if (roadAt(map, x, y + 1)) out.push([0, 1]);
   return out;
+}
+
+/**
+ * The run axis of the pole at (x, y) — 'h' for an E-W run, 'v' for N-S — or null when no pole stands
+ * there. Mirrors {@link powerPoleAt}'s axis choice, so a skin can plant the pole at the curb on the
+ * run's side and string its wire along the curb instead of down the centre line.
+ */
+export function poleAxis(map: GameMap, x: number, y: number): 'h' | 'v' | null {
+  if (!powerPoleAt(map, x, y)) return null;
+  return roadAt(map, x + 1, y) || roadAt(map, x - 1, y) ? 'h' : 'v';
 }
