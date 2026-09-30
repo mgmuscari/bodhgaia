@@ -30,7 +30,7 @@ import {
 } from './renderKey';
 import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
-import { wideRoadAt, powerPoleAt, poleWireDirs, poleAxis, POLE_SPACING } from './decoration';
+import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, curbWiresAt } from './decoration';
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { laneOffset, pedCurbOffset, dirVector } from './ambientContent';
@@ -957,7 +957,9 @@ export class Renderer {
       if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
       return img !== undefined;
     };
-    // Skin power poles, drawn AFTER the tile loop (wires + masts) so later tiles can't paint over a span.
+    // Skin power lines, drawn AFTER the tile loop (wire spans, then masts) so later tiles can't paint over
+    // them: `wires` holds each tile's span overlay key, `poles` each curb pole.
+    const wires: { x: number; y: number; key: string }[] = [];
     const poles: { x: number; y: number; axis: 'h' | 'v' }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
@@ -1251,9 +1253,11 @@ export class Renderer {
           // DECISION is owned by decoration.ts — powerPoleAt picks the pole tiles,
           // poleWireDirs picks the wire offsets. The shell only draws the mast and a
           // segment toward each returned offset; it holds no branching of its own.
-          const pAxis = this.roadInk.has('@road/pole/h') ? poleAxis(map, tx, ty) : null;
-          if (pAxis !== null) {
-            poles.push({ x: tx, y: ty, axis: pAxis });
+          if (this.roadInk.has('@road/pole/h')) {
+            // curb-side lines (decoration.curbWiresAt / curbPoleAt own every placement decision)
+            for (const w of curbWiresAt(map, tx, ty)) wires.push({ x: tx, y: ty, key: `@road/wire/${w.axis}${w.k}` });
+            const pa = curbPoleAt(map, tx, ty);
+            if (pa) poles.push({ x: tx, y: ty, axis: pa });
           } else if (powerPoleAt(map, tx, ty)) {
             const cx = dx + ts * 0.5;
             const cy = dy + ts * 0.5;
@@ -1367,13 +1371,10 @@ export class Renderer {
       }
     }
 
-    // Skin power lines: every wire span first (four tiles along the run from each pole, sagging mid-span),
-    // then the masts on top — after the whole tile loop, so no later tile paints over a span.
-    for (const pl of poles) {
-      for (let k = 0; k < POLE_SPACING; k++) {
-        const o = pl.axis === 'h' ? camera.tileOrigin(pl.x + k, pl.y) : camera.tileOrigin(pl.x, pl.y + k);
-        ink(`@road/wire/${pl.axis}${k}`, o.dx, o.dy);
-      }
+    // Skin power lines: the wire spans first, then the masts on top — after the whole tile loop.
+    for (const w of wires) {
+      const o = camera.tileOrigin(w.x, w.y);
+      ink(w.key, o.dx, o.dy);
     }
     for (const pl of poles) {
       const o = camera.tileOrigin(pl.x, pl.y);

@@ -201,16 +201,57 @@ describe('wideRoadAt mixed-kind boundary (street abutting an avenue band reads w
   });
 });
 
-import { poleAxis } from '../../src/ui/decoration';
+import { curbPoleAt, curbWiresAt } from '../../src/ui/decoration';
 
-describe('poleAxis — which way a pole run goes (for curb-side poles + along-curb wires)', () => {
-  it("is 'h' on an E-W street pole, 'v' on an N-S one, null off a pole", () => {
-    const map = new GameMap(12, 12);
-    for (let x = 0; x < 12; x++) map.setBuilt(x, 2, BuiltKind.RoadStreet);
-    for (let y = 4; y < 12; y++) map.setBuilt(6, y, BuiltKind.RoadStreet);
-    expect(poleAxis(map, 4, 2)).toBe('h');
-    expect(poleAxis(map, 6, 8)).toBe('v');
-    expect(poleAxis(map, 5, 2)).toBe(null); // not on the pole spacing
-    expect(poleAxis(map, 0, 0)).toBe(null); // not a road
+// A period-4 street grid (the common worldgen shape): streets on x ≡ 0 and y ≡ 0 (mod 4), blocks between.
+function streetGrid(size = 17): GameMap {
+  const map = new GameMap(size, size);
+  for (let i = 0; i < size; i += 4) {
+    hline(map, BuiltKind.RoadStreet, i, 0, size - 1);
+    vline(map, BuiltKind.RoadStreet, i, 0, size - 1);
+  }
+  return map;
+}
+
+describe('curb-side power lines (Maddy 2026-09-30: at the sides, not only at intersections)', () => {
+  it('poles stand mid-block on straight street runs — never in a junction box', () => {
+    const map = streetGrid();
+    expect(curbPoleAt(map, 2, 4)).toBe('h'); // mid-block on the y=4 street
+    expect(curbPoleAt(map, 4, 6)).toBe('v'); // mid-block on the x=4 street
+    for (let y = 0; y < 17; y += 4) for (let x = 0; x < 17; x += 4) expect(curbPoleAt(map, x, y), `junction ${x},${y}`).toBe(null);
+  });
+
+  it('every block of a street grid gets poles (they are not all eaten by the intersections)', () => {
+    const map = streetGrid();
+    let poles = 0;
+    for (let y = 0; y < 17; y++) for (let x = 0; x < 17; x++) if (curbPoleAt(map, x, y)) poles++;
+    expect(poles).toBeGreaterThanOrEqual(20);
+  });
+
+  it('wires run along every tile of a run, continuous through the junctions', () => {
+    const map = streetGrid();
+    for (let x = 0; x < 17; x++) expect(curbWiresAt(map, x, 4).some((w) => w.axis === 'h'), `x=${x}`).toBe(true);
+  });
+
+  it('on a two-row avenue only the outer (north) row carries the line — never mid-road', () => {
+    const map = new GameMap(16, 8);
+    hline(map, BuiltKind.RoadAvenue, 3, 0, 15);
+    hline(map, BuiltKind.RoadAvenue, 4, 0, 15);
+    expect(curbWiresAt(map, 5, 3).some((w) => w.axis === 'h')).toBe(true);
+    expect(curbWiresAt(map, 5, 4).some((w) => w.axis === 'h')).toBe(false);
+    expect(curbPoleAt(map, 6, 4)).toBe(null);
+    expect(curbPoleAt(map, 6, 3)).toBe('h'); // the outer row still gets its poles
+  });
+
+  it("each wire tile knows its span position k (0 at a pole) so the line sags between poles", () => {
+    const map = streetGrid();
+    expect(curbWiresAt(map, 2, 4).find((w) => w.axis === 'h')!.k).toBe(0);
+    expect(curbWiresAt(map, 3, 4).find((w) => w.axis === 'h')!.k).toBe(1);
+  });
+
+  it('highways carry no poles', () => {
+    const map = new GameMap(12, 6);
+    hline(map, BuiltKind.RoadHighway, 2, 0, 11);
+    for (let x = 0; x < 12; x++) expect(curbPoleAt(map, x, 2)).toBe(null);
   });
 });

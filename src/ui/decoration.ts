@@ -67,12 +67,52 @@ export function poleWireDirs(map: GameMap, x: number, y: number): ReadonlyArray<
   return out;
 }
 
+// ── Curb-side power lines (skin path) ──────────────────────────────────────────────────────────────
+// Lines run along the OUTER edge of a street — the north curb of an E-W run, the west curb of an N-S
+// run — and continue across junctions; poles stand mid-block on that curb, never in a junction box and
+// never mid-road on a multi-row avenue. Independent of how the street grid happens to align with the
+// pole spacing (the old centre-line poles fell exactly on the intersections of a period-4 grid).
+
+/** A street or avenue tile (the kinds that carry distribution lines — not highways, not transit). */
+function lineRoadAt(map: GameMap, x: number, y: number): boolean {
+  if (!map.inBounds(x, y)) return false;
+  const k = map.getBuilt(x, y);
+  return k === BuiltKind.RoadStreet || k === BuiltKind.RoadAvenue;
+}
+
+/** Part of an E-W run (a road neighbour east or west) / an N-S run. */
+function hRun(map: GameMap, x: number, y: number): boolean {
+  return lineRoadAt(map, x, y) && (roadAt(map, x + 1, y) || roadAt(map, x - 1, y));
+}
+function vRun(map: GameMap, x: number, y: number): boolean {
+  return lineRoadAt(map, x, y) && (roadAt(map, x, y + 1) || roadAt(map, x, y - 1));
+}
+
+/** Span position 0..POLE_SPACING-1 along a run; 0 is where a pole stands (mid-block on a period-4 grid). */
+function spanPos(t: number): number {
+  return (((t - 2) % POLE_SPACING) + POLE_SPACING) % POLE_SPACING;
+}
+
 /**
- * The run axis of the pole at (x, y) — 'h' for an E-W run, 'v' for N-S — or null when no pole stands
- * there. Mirrors {@link powerPoleAt}'s axis choice, so a skin can plant the pole at the curb on the
- * run's side and string its wire along the curb instead of down the centre line.
+ * The wire spans crossing tile (x, y): an 'h' span on the outer (north) edge of an E-W run whose north
+ * neighbour isn't another lane of that run, a 'v' span on the outer (west) edge of an N-S run likewise.
+ * A junction carries both. `k` is the span position (0 at a pole) for the sag.
  */
-export function poleAxis(map: GameMap, x: number, y: number): 'h' | 'v' | null {
-  if (!powerPoleAt(map, x, y)) return null;
-  return roadAt(map, x + 1, y) || roadAt(map, x - 1, y) ? 'h' : 'v';
+export function curbWiresAt(map: GameMap, x: number, y: number): ReadonlyArray<{ axis: 'h' | 'v'; k: number }> {
+  const out: Array<{ axis: 'h' | 'v'; k: number }> = [];
+  if (hRun(map, x, y) && !hRun(map, x, y - 1)) out.push({ axis: 'h', k: spanPos(x) });
+  if (vRun(map, x, y) && !vRun(map, x - 1, y)) out.push({ axis: 'v', k: spanPos(y) });
+  return out;
+}
+
+/**
+ * The pole at (x, y), if any: on the curb of a run at span position 0, where the curb side is open
+ * ground (no road beyond it — so never in a crossing's junction box, and on a multi-row avenue only
+ * the outer row qualifies). 'h' for an E-W run's
+ * north-curb pole, 'v' for an N-S run's west-curb pole.
+ */
+export function curbPoleAt(map: GameMap, x: number, y: number): 'h' | 'v' | null {
+  if (hRun(map, x, y) && !roadAt(map, x, y - 1) && spanPos(x) === 0) return 'h';
+  if (vRun(map, x, y) && !roadAt(map, x - 1, y) && spanPos(y) === 0) return 'v';
+  return null;
 }
