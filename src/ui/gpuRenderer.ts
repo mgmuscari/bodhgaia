@@ -11,7 +11,7 @@ import { SatelliteShader } from './satelliteShader';
 import { SpriteBatch, buildSpriteAtlas, FLOATS_PER_INSTANCE, GlowBatch, GLOW_FLOATS, extractLightPoints } from './spriteBatch';
 import type { LightPoint } from './spriteBatch';
 import { DAYSPEED, dayNightBrightness } from './lighting';
-import { laneOffset, dirVector, pedCurbOffset } from './ambientContent';
+import { carPose, pedPose, ambientAlpha } from './ambientContent';
 import { isRoadKind } from '../engine/fabric';
 import { TravelMode } from '../citizens/modes';
 import type { AmbientState } from './ambientContent';
@@ -138,6 +138,7 @@ export class GpuRenderer {
   /** Draw the moving agents as instanced quads in the base canvas (AFTER render()), lit by the shared
    *  lighting. Headlights/taillights are emission, night-gated; parked cars are off. */
   renderAgents(ambient: AmbientState, camera: Camera, cssWidth: number, cssHeight: number, timeSec: number, buildings: readonly EmissiveBuilding[] = []): void {
+    const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
     const gl = this.gl;
     if (!gl || !this.batch || this.carRects.length === 0) return;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
@@ -160,11 +161,9 @@ export class GpuRenderer {
       const ci = (((c.tint ?? 0) % nCars) + nCars) % nCars;
       const rect = this.carRects[ci];
       if (!rect) continue;
-      const off = c.parked ? { dx: 0, dy: 0 } : laneOffset(c.dir);
-      const headingDir = c.parked && c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
-      const hv = dirVector(headingDir);
+      const pose = carPose(c, alpha); // smooth round turns; kerb-parallel when parked
       const lr = c.parked ? null : this.carLightRects[ci];
-      push(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy, Math.atan2(hv.dx, -hv.dy), 0.58, rect, lr ?? rect, lr ? night : 0);
+      push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.58, rect, lr ?? rect, lr ? night : 0);
     }
     // Pedestrians + cyclists (cyclists = bike-mode peds): a STABLE per-person sprite pick; cyclists get
     // a small headlight (night). Skip those inside a building / riding a car.
@@ -174,13 +173,10 @@ export class GpuRenderer {
       if (p.phase === 'inside' || p.phase === 'driving') continue;
       const seed = ((p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0);
       const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      let ox = 0.5;
-      let oy = 0.5;
-      if (isRoadKind(map.built[map.idx(Math.round(p.x), Math.round(p.y))]!)) {
-        const o = pedCurbOffset(p.dir); ox += o.dx; oy += o.dy;
-      }
-      const hv = dirVector(p.dir);
-      const rot = Math.atan2(hv.dx, -hv.dy);
+      const pose = pedPose(p, (x, y) => map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!), alpha);
+      const ox = pose.x - p.x;
+      const oy = pose.y - p.y;
+      const rot = Math.atan2(pose.hx, -pose.hy);
       if (isBike && nCyc > 0) {
         const i = (Math.imul(seed, 2654435761) >>> 0) % nCyc;
         const rect = this.cycRects[i];
@@ -197,10 +193,9 @@ export class GpuRenderer {
     if (this.cruiserRect) {
       const flash = Math.floor(timeSec * 1000 / 180) % 2 === 0 ? 1 : 0.45;
       for (const c of ambient.cruisers) {
-        const off = laneOffset(c.dir);
-        const hv = dirVector(c.dir);
+        const pose = carPose(c, alpha);
         const lr = this.cruiserLightRect;
-        push(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy, Math.atan2(hv.dx, -hv.dy), 0.55, this.cruiserRect, lr ?? this.cruiserRect, lr ? flash : 0);
+        push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.55, this.cruiserRect, lr ?? this.cruiserRect, lr ? flash : 0);
       }
     }
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
@@ -218,6 +213,7 @@ export class GpuRenderer {
    *  Headlights = forward cone (night); cruiser bars flash red/blue (radial); building windows a faint
    *  warm pool (night), power plants a faint warm glow + a blinking red beacon glow. Additive (ONE,ONE). */
   private renderGlow(ambient: AmbientState, origin: readonly [number, number], view: readonly [number, number], timeSec: number, night: number, buildings: readonly EmissiveBuilding[]): void {
+    const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
     const gl = this.gl;
     if (!gl || !this.glow) return;
     const cap = ambient.cars.length + ambient.cruisers.length + buildings.length * 2;
@@ -247,17 +243,17 @@ export class GpuRenderer {
     if (night > 0.02) {
       for (const c of ambient.cars) {
         if (c.parked) continue;
-        const lo = laneOffset(c.dir);
-        carGlow(c.x + 0.5 + lo.dx, c.y + 0.5 + lo.dy, dirVector(c.dir), night);
+        const pose = carPose(c, alpha);
+        carGlow(pose.x, pose.y, { dx: pose.hx, dy: pose.hy }, night);
       }
     }
     // Cruisers: headlights + taillight always, PLUS a flashing red/blue roof-bar pool (emergency).
     const blue = Math.floor(timeSec * 1000 / 180) % 2 === 0;
     for (const c of ambient.cruisers) {
-      const lo = laneOffset(c.dir);
-      const cx = c.x + 0.5 + lo.dx;
-      const cy = c.y + 0.5 + lo.dy;
-      carGlow(cx, cy, dirVector(c.dir), Math.max(night, 0.5));
+      const pose = carPose(c, alpha);
+      const cx = pose.x;
+      const cy = pose.y;
+      carGlow(cx, cy, { dx: pose.hx, dy: pose.hy }, Math.max(night, 0.5));
       if (blue) radial(cx, cy, 0.75, 0.3, 0.45, 1.0, 0.5);
       else radial(cx, cy, 0.75, 1.0, 0.25, 0.2, 0.5);
     }
