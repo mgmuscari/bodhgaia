@@ -469,8 +469,8 @@ describe('snes roads — local streets (Maddy 2026-09-30)', () => {
     return out;
   };
 
-  it('street dashes run 4 on / 4 off — a period that divides the tile, so dashes stay even across joins', () => {
-    expect(lineRows(tiles.get('road-1-5')!, 7)).toEqual([0, 1, 2, 3, 8, 9, 10, 11]);
+  it('street dashes run 4 on / 4 off, CENTRED in the tile — a 2-px gap at both ends, so no dash pokes into a junction', () => {
+    expect(lineRows(tiles.get('road-1-5')!, 7)).toEqual([2, 3, 4, 5, 10, 11, 12, 13]);
   });
 
   it('street corners carry no centre paint (no dash crumbs round the bend)', () => {
@@ -482,21 +482,17 @@ describe('snes roads — local streets (Maddy 2026-09-30)', () => {
     }
   });
 
-  it('a two-row street paints ONE dash straddling its seam (row 15 above, row 0 below)', () => {
-    const top = tiles.get('road-1-14-w')!;
-    const bottom = tiles.get('road-1-11-w')!;
+  it('a two-row street is the avenue form: a double yellow along its seam, like a two-row avenue', () => {
     const onRow = (p: Pixels, y: number): number => {
       let n = 0;
       for (let x = 0; x < 16; x++) {
         const i = (y * 16 + x) * 4;
-        if (p.data[i] === C.line[0] && p.data[i + 1] === C.line[1]) n++;
+        if (p.data[i] === C.lineYellow[0] && p.data[i + 1] === C.lineYellow[1]) n++;
       }
       return n;
     };
-    expect(onRow(top, 15)).toBe(8);
-    expect(onRow(top, 14)).toBe(0);
-    expect(onRow(bottom, 0)).toBe(8);
-    expect(onRow(bottom, 1)).toBe(0);
+    expect(onRow(tiles.get('road-1-14-w')!, 14)).toBe(16);
+    expect(onRow(tiles.get('road-1-11-w')!, 1)).toBe(16);
   });
 
   it('paints zebra crosswalk overlays for each approach side', () => {
@@ -506,5 +502,8 @@ describe('snes roads — local streets (Maddy 2026-09-30)', () => {
     expect(a(4, 1)).toBe(255); // a stripe across the carriageway at the north edge
     expect(a(5, 1)).toBe(0); // …with gaps between stripes
     expect(a(4, 10)).toBe(0); // only at that edge
+    // the band is cleared to asphalt between the bars, so no centre dash shows through the crossing
+    const at = (x: number, y: number): string => Array.from(z.data.slice((y * 16 + x) * 4, (y * 16 + x) * 4 + 4)).join();
+    expect(at(7, 2)).toBe([...C.asphalt, 255].join());
   });
 });

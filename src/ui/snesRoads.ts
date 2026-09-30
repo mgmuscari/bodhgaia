@@ -71,7 +71,9 @@ function paintLines(p: Pixels, mask: number, lines: readonly Line[]): void {
       if (!f) continue;
       for (const l of lines) {
         if (Math.abs(Math.abs(f.s) - l.d) >= l.half) continue;
-        if (l.dashed && Math.floor(f.t) % 8 >= 4) continue; // 4 on / 4 off: divides the tile, so joins stay even
+        // 4 on / 4 off, centred (rows 2–5, 10–13): the period divides the tile so joins stay even, and every
+        // tile end has a 2-px gap, so no dash pokes into a junction box
+        if (l.dashed && (Math.floor(f.t) + 6) % 8 >= 4) continue;
         px(p, x, y, l.c);
       }
     }
@@ -98,15 +100,11 @@ function paintSeam(p: Pixels, kind: number, mask: number): void {
   if (kind !== 1 && kind !== 2) return;
   const h = (mask & (E | W)) === (E | W) && ((mask & N) !== 0) !== ((mask & S) !== 0);
   const v = (mask & (N | S)) === (N | S) && ((mask & E) !== 0) !== ((mask & W) !== 0);
-  // avenue: a double yellow, one line either side of the seam (3 px apart); street: ONE 2-px dash
-  // straddling the seam (a pixel on each row), the same weight as a 1-wide street's centre dash
-  const yellow = kind === 2;
-  const inset = yellow ? 1 : 0;
+  // a two-row street IS the avenue form, so both wear the avenue's double yellow: one line either side
+  // of the seam, 3 px apart
   for (let t = 0; t < T; t++) {
-    if (!yellow && t % 8 >= 4) continue;
-    const c = yellow ? C.lineYellow : C.line;
-    if (h) px(p, t, mask & S ? L - inset : inset, c);
-    else if (v) px(p, mask & E ? L - inset : inset, t, c);
+    if (h) px(p, t, mask & S ? L - 1 : 1, C.lineYellow);
+    else if (v) px(p, mask & E ? L - 1 : 1, t, C.lineYellow);
   }
 }
 
@@ -179,7 +177,10 @@ function curb(mask: number): Pixels {
 function zebra(mask: number): Pixels {
   const p = blank(T, T);
   sides(mask, (set) => {
-    for (let a = 4; a <= 12; a += 2) for (let d = 0; d < 4; d++) set(a, d, C.paveHi);
+    for (let d = 0; d < 4; d++) {
+      for (const a of [7, 9]) set(a, d, C.asphalt); // wipe the centre dash out of the crossing
+      for (let a = 4; a <= 12; a += 2) set(a, d, C.paveHi);
+    }
   }, p);
   return p;
 }
