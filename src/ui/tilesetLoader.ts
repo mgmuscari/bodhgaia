@@ -13,6 +13,16 @@ import type { Pixels } from './pixelArt';
 /** Loads one image URL, resolving to the decoded image or `null` on any failure (never rejects). */
 export type ImageLoader = (url: string) => Promise<CanvasImageSource | null>;
 
+/** A skin's on-demand images: every key it can supply, and a getter that materializes one on first use
+ *  (memoized). The renderer's atlas consults it on a miss. */
+export interface LazyImages {
+  keys: ReadonlySet<string>;
+  get(key: string): CanvasImageSource | undefined;
+}
+
+/** The loaded override images of a skin: the eager ones (a Map), plus its lazy source if it has one. */
+export type SkinImages = Map<string, CanvasImageSource> & { lazy?: LazyImages };
+
 /** Turns a code-painted pixel buffer into a drawable image, or `null` if it can't (headless). */
 export type Materializer = (p: Pixels) => CanvasImageSource | null;
 
@@ -149,8 +159,8 @@ export async function loadTilesetAssets(
   loadImage: ImageLoader = domImageLoader,
   base = '/',
   materialize: Materializer = domMaterializer,
-): Promise<Map<string, CanvasImageSource>> {
-  const overrides = new Map<string, CanvasImageSource>();
+): Promise<SkinImages> {
+  const overrides: SkinImages = new Map<string, CanvasImageSource>();
   await Promise.all(
     def.assets.map(async (asset) => {
       const img = await loadImage(assetUrl(def, asset.file, base));
@@ -187,9 +197,24 @@ export async function loadTilesetAssets(
 
   // Code-painted tiles go in last (after the PNG-only river alias above, which they must not inherit).
   if (def.paint) {
-    for (const [key, pixels] of def.paint()) {
+    const skin = def.paint();
+    for (const [key, pixels] of skin.eager) {
       const out = materialize(pixels);
       if (out) overrides.set(key, out);
+    }
+    if (skin.lazy) {
+      const lazy = skin.lazy;
+      const cache = new Map<string, CanvasImageSource | null>();
+      overrides.lazy = {
+        keys: new Set(lazy.keys),
+        get(key) {
+          if (!cache.has(key)) {
+            const px = lazy.paint(key);
+            cache.set(key, px ? materialize(px) : null);
+          }
+          return cache.get(key) ?? undefined;
+        },
+      };
     }
   }
   return overrides;
@@ -205,6 +230,6 @@ export function loadTileset(
   loadImage: ImageLoader = domImageLoader,
   base = '/',
   materialize: Materializer = domMaterializer,
-): Promise<Map<string, CanvasImageSource>> {
+): Promise<SkinImages> {
   return loadTilesetAssets(tilesetDef(id), loadImage, base, materialize);
 }
