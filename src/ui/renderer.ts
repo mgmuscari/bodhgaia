@@ -924,9 +924,7 @@ export class Renderer {
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
         const i = map.idx(tx, ty);
-        const { sx, sy } = camera.worldToScreen(tx, ty);
-        const dx = Math.floor(sx);
-        const dy = Math.floor(sy);
+        const { dx, dy } = camera.tileOrigin(tx, ty); // seam-free integer origin
 
         const tkind = kindOf(map, i);
         const terrainKey = `${tkind}-${bandOf(map.elevation[i]!)}`;
@@ -1006,7 +1004,9 @@ export class Renderer {
             const fp = parcels.get(pid - 1);
             const cellKey = footprintCellKey(built, fp.width, fp.height, tx - fp.x, ty - fp.y, tier);
             if (this.atlas.has(cellKey)) {
-              builtKey = cellKey; // segmented multi-tile cell wins (seam continuity)
+              // segmented multi-tile cell wins (seam continuity); its variant is picked by the parcel
+              // ANCHOR so every cell of one footprint agrees
+              builtKey = pickVariantKey(cellKey, fp.x, fp.y, this.tileVariants);
             } else if (this.buildingVariants > 1) {
               // 1×1 building VARIETY: cycle baked variants (b-…#n) by the PARCEL ANCHOR hash, so the
               // whole footprint agrees and adjacent same-kind parcels read distinctly. Falls back to

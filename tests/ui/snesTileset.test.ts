@@ -70,3 +70,80 @@ describe('snes tileset — anti-grid variants', () => {
     }
   });
 });
+
+// ── Buildings ─────────────────────────────────────────────────────────────────────────────────────
+import { renderKeyspace, footprintCellKey } from '../../src/ui/renderKey';
+import { C } from '../../src/ui/snesPalette';
+
+const buildingKinds = [...new Set(renderKeyspace().filter((k) => k.startsWith('b-')).map((k) => Number(k.split('-')[1])))];
+const sig = (p: Pixels): string => Array.from(p.data).join();
+const opaque = (p: Pixels): boolean => {
+  for (let i = 3; i < p.data.length; i += 4) if (p.data[i] !== 255) return false;
+  return true;
+};
+const hasInk = (p: Pixels): boolean => {
+  for (let i = 0; i < p.data.length; i += 4) {
+    if (p.data[i] === C.ink[0] && p.data[i + 1] === C.ink[1] && p.data[i + 2] === C.ink[2]) return true;
+  }
+  return false;
+};
+
+describe('snes tileset — buildings', () => {
+  it('covers every procedural building key (b-{kind}-{pos}-{tier}) so nothing falls back', () => {
+    for (const key of renderKeyspace().filter((k) => k.startsWith('b-'))) expect(tiles.has(key), key).toBe(true);
+  });
+
+  it('paints every kind as whole footprints 1..4 × 1..4, sliced into opaque cells, both tiers', () => {
+    const bad: string[] = [];
+    for (const kind of buildingKinds) {
+      for (let w = 1; w <= 4; w++) {
+        for (let h = 1; h <= 4; h++) {
+          for (const tier of [0, 1]) {
+            for (let r = 0; r < h; r++) {
+              for (let c = 0; c < w; c++) {
+                const key = footprintCellKey(kind, w, h, c, r, tier);
+                const t = tiles.get(key);
+                if (!t) bad.push(`${key} missing`);
+                else if (t.w !== BASE_TILE || t.h !== BASE_TILE) bad.push(`${key} size`);
+                else if (!opaque(t)) bad.push(`${key} has holes`);
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('a derelict building reads differently from its pristine twin', () => {
+    for (const kind of buildingKinds) {
+      const a = tiles.get(footprintCellKey(kind, 2, 2, 0, 0, 0))!;
+      const b = tiles.get(footprintCellKey(kind, 2, 2, 0, 0, 1))!;
+      expect(sig(a), `kind ${kind}`).not.toBe(sig(b));
+    }
+  });
+
+  it('distinct kinds are drawn distinctly (type is carried by the art, not a label)', () => {
+    const sigs = new Set(buildingKinds.map((k) => sig(tiles.get(footprintCellKey(k, 2, 2, 0, 1, 0))!)));
+    expect(sigs.size).toBe(buildingKinds.length);
+  });
+
+  it('structures are ink-outlined (the SNES look) — every 1×1 non-green kind has ink', () => {
+    const greens = new Set([11, 48, 49, 61, 62]);
+    for (const kind of buildingKinds.filter((k) => !greens.has(k))) {
+      expect(hasInk(tiles.get(footprintCellKey(kind, 1, 1, 0, 0, 0))!), `kind ${kind}`).toBe(true);
+    }
+  });
+
+  it('houses come in several variants, and a variant covers the WHOLE footprint (no mixed cells)', () => {
+    expect(tiles.has(`${footprintCellKey(16, 1, 1, 0, 0, 0)}#3`)).toBe(true);
+    for (const [key] of tiles) {
+      const m = /^(b-\d+-(\d)x(\d)-)c\d-r\d(-\d)#(\d+)$/.exec(key);
+      if (!m) continue;
+      const [, prefix, w, h, tier, v] = m;
+      for (let r = 0; r < Number(h); r++) {
+        for (let c = 0; c < Number(w); c++) expect(tiles.has(`${prefix}c${c}-r${r}${tier}#${v}`), key).toBe(true);
+      }
+    }
+  });
+});
