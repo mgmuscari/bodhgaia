@@ -3184,7 +3184,9 @@ export function nextPatrolStep(
   for (let d = 0; d < 4; d++) {
     const nx = x + DIR_DX[d]!;
     const ny = y + DIR_DY[d]!;
-    if (!map.inBounds(nx, ny) || !carPassable(map, nx, ny)) continue;
+    // the same edge-aware rule every car obeys: one-way freeway lanes, limited access, no median
+    // crossing (Maddy 2026-09-30: cruisers were cutting across opposing freeway lanes)
+    if (!canDrive(map, x, y, nx, ny)) continue;
     if (safe?.has(map.idx(nx, ny))) continue; // community refuge — cruisers won't enter it
     if (d === fromDir) {
       uTurn = d;

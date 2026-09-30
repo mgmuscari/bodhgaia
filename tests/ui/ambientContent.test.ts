@@ -3330,3 +3330,32 @@ describe('mover collision / following (Maddy: bounding boxes, no overlap, pause 
     expect(blockedAhead(buildMoverGrid([near, rear], W), W, rear)).toBe(true);
   });
 });
+
+describe('police cruisers obey lane direction (Maddy 2026-09-30: cruisers cut across opposing freeway lanes)', () => {
+  // a clean 3-wide horizontal freeway: rows 2 (north lane, westbound), 3 (median), 4 (south lane, eastbound)
+  function freeway(): GameMap {
+    const map = new GameMap(24, 7);
+    for (let x = 0; x < 24; x++) for (let y = 2; y <= 4; y++) map.setBuilt(x, y, BuiltKind.RoadHighway);
+    return map;
+  }
+
+  it('never drives the wrong way down a one-way freeway lane, even chasing a target', () => {
+    const map = freeway();
+    // on the westbound north lane, having come from the east (fromDir = East), target far to the east
+    for (let i = 0; i < 20; i++) {
+      const d = nextPatrolStep(map, 10, 2, 1, ambientFork(`lane-${i}`), [], { x: 22, y: 2 });
+      expect(d, `try ${i}`).not.toBe(1); // East = against the lane
+    }
+  });
+
+  it('every step it picks on a freeway is one canDrive allows', () => {
+    const map = freeway();
+    for (const [x, y, from] of [[10, 2, 1], [10, 4, 3], [3, 4, 3]] as const) {
+      for (let i = 0; i < 10; i++) {
+        const d = nextPatrolStep(map, x, y, from, ambientFork(`cd-${x}-${y}-${i}`), [], { x: 12, y: 0 });
+        if (d < 0) continue;
+        expect(canDrive(map, x, y, x + [0, 1, 0, -1][d]!, y + [-1, 0, 1, 0][d]!), `(${x},${y}) → ${d}`).toBe(true);
+      }
+    }
+  });
+});
