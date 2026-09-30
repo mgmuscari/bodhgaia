@@ -18,6 +18,17 @@ The dated sections below this one are the **archive** (✅ done + diagnoses kept
 of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- 🔴 **World starts in a power collapse** (playtest 2026-09-30, seed `lotus`) — capacity 220 vs demand
+  1188 at load; within ~2 min nearly every home is unpowered and Unhoused climbs 0 → ~1600. Confirm whether
+  the opening energy crisis is intended; if so it needs to read as a challenge, not a silent collapse.
+- 🟡 **Map clicks dropped when a no-button move arrives between press and release** — `src/ui/input.ts`
+  safety net (`e.buttons === 0` → end drag) swallows the pointerup, so a build click places nothing (seen
+  driving the game from the Chrome extension). Fix: only apply the safety net when the pointer isn't captured.
+- 🟡 **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
+  cut off the top; the dock also runs off the bottom edge.
+- 🟡 **Tech tree cards overlap** — card text spills into the next card; "Needs:" lines are cut off.
+- 🟢 **Settings typo** — "GPU jeujés the baked tiles…".
+- 🟢 **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
 - 🔴 **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
   smoothly but the white consist cars "tick along locked to the tiles behind it" (snap per-tile, no lerp).
   The loco is interpolated; give the trailing cars the same smooth interpolation along the track.
