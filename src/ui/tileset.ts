@@ -12,7 +12,7 @@
 import { builtRenderKey, variantKey, type FootprintPos } from './renderKey';
 import { SATELLITE_BAKED } from './satelliteManifest';
 import type { Pixels } from './pixelArt';
-import { paintSnesTileset } from './snesTileset';
+import { paintSnesSkin } from './snesTileset';
 
 /** The permanent default tileset id — pure procedural painters, never removed. */
 export const PROCEDURAL = 'procedural';
@@ -78,10 +78,24 @@ export interface TilesetDef {
   description: string;
   /** The committed PNGs and the keys they fill. `procedural` → [] (pure painters). */
   assets: readonly TilesetAsset[];
-  /** A code-painted skin: atlas key → pixel buffer, materialized by the loader (no PNGs, no bake). */
-  paint?: () => ReadonlyMap<string, Pixels>;
+  /** A code-painted skin (no PNGs, no bake): the eager tiles plus an optional LAZY source the renderer
+   *  materializes on first use (a skin can offer thousands of building tiles it mostly never draws). */
+  paint?: () => PaintedSkin;
   /** How the renderer treats this skin. */
   profile: RenderProfile;
+}
+
+/** Tiles a code-painted skin offers on demand: every key it can paint, and a painter for one key
+ *  (null when that key turns out empty — e.g. a building with no lit windows). */
+export interface LazyTiles {
+  keys: readonly string[];
+  paint(key: string): Pixels | null;
+}
+
+/** A code-painted skin: tiles materialized up front, and (optionally) tiles materialized when first drawn. */
+export interface PaintedSkin {
+  eager: ReadonlyMap<string, Pixels>;
+  lazy?: LazyTiles;
 }
 
 /** A lightweight view of a def for the settings UI (no asset list). */
@@ -194,7 +208,7 @@ export const TILESET_DEFS: readonly TilesetDef[] = [
     label: 'Super (16-bit)',
     description: 'Code-painted pixel art in the spirit of the classic city-builder on the Super Famicom.',
     assets: [],
-    paint: paintSnesTileset,
+    paint: paintSnesSkin,
     profile: {
       glyphs: 'off',
       stochasticTerrain: false,

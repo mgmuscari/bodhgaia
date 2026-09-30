@@ -9,6 +9,7 @@
 // procedural painter, so the set can grow increment by increment.
 
 import { BASE_TILE } from './camera';
+import type { PaintedSkin } from './tileset';
 import { blank, disc, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
@@ -157,30 +158,64 @@ function terrainTiles(out: Map<string, Pixels>): void {
 
 const MAX_FOOTPRINT = 4;
 
-function buildingTiles(out: Map<string, Pixels>): void {
+/** Every building / light-map key the skin can paint — enumerated without painting anything. */
+function buildingKeys(): string[] {
+  const keys: string[] = [];
   for (const [kind, [, variants]] of BUILDING_PAINTERS) {
     for (const tier of [0, 1]) {
       for (let v = 0; v < variants; v++) {
+        const sfx = v === 0 ? '' : `#${v}`;
         for (let h = 1; h <= MAX_FOOTPRINT; h++) {
           for (let w = 1; w <= MAX_FOOTPRINT; w++) {
-            const img = paintBuilding(kind, w * T, h * T, v, tier);
-            const suffix = v === 0 ? '' : `#${v}`;
-            const { lit, blink } = emissionOf(img, kind, kind * 977 + w * 31 + h * 7 + v);
-            if (lit) out.set(emissionKey(kind, w, h, tier) + suffix, lit);
-            if (blink) out.set(`${emissionKey(kind, w, h, tier)}/blink${suffix}`, blink);
-            for (let r = 0; r < h; r++) {
-              for (let c = 0; c < w; c++) {
-                const k = footprintCellKey(kind, w, h, c, r, tier);
-                out.set(v === 0 ? k : `${k}#${v}`, slice(img, c, r, T));
-              }
-            }
+            keys.push(emissionKey(kind, w, h, tier) + sfx, `${emissionKey(kind, w, h, tier)}/blink${sfx}`);
+            for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) keys.push(footprintCellKey(kind, w, h, c, r, tier) + sfx);
           }
         }
       }
-      const one = out.get(footprintCellKey(kind, 1, 1, 0, 0, tier))!;
-      for (const pos of ['c', 'e', 'k'] as const) out.set(builtRenderKey(kind, 0, pos, tier), one);
+      for (const pos of ['c', 'e', 'k'] as const) keys.push(builtRenderKey(kind, 0, pos, tier));
     }
   }
+  return keys;
+}
+
+const CELL_KEY = /^b-(\d+)-(\d)x(\d)-c(\d)-r(\d)-(\d)(?:#(\d+))?$/;
+const POS_KEY = /^b-(\d+)-[cek]-(\d)$/;
+const EMIT_KEY = /^@emit\/b-(\d+)-(\d)x(\d)-(\d)(\/blink)?(?:#(\d+))?$/;
+
+/** A lazy painter for building tiles: paints each whole footprint once (cached) and slices on request. */
+function buildingPainter(): (key: string) => Pixels | null {
+  const footprints = new Map<string, Pixels>();
+  const footprint = (kind: number, w: number, h: number, v: number, tier: number): Pixels => {
+    const k = `${kind}/${w}x${h}/${v}/${tier}`;
+    let img = footprints.get(k);
+    if (!img) footprints.set(k, (img = paintBuilding(kind, w * T, h * T, v, tier)));
+    return img;
+  };
+  return (key) => {
+    let m = CELL_KEY.exec(key);
+    if (m) {
+      const [kind, w, h, c, r, tier, v] = m.slice(1).map((n) => Number(n ?? 0)) as number[];
+      if (!BUILDING_PAINTERS.has(kind!)) return null;
+      return slice(footprint(kind!, w!, h!, v!, tier!), c!, r!, T);
+    }
+    m = POS_KEY.exec(key);
+    if (m) {
+      const kind = Number(m[1]);
+      return BUILDING_PAINTERS.has(kind) ? slice(footprint(kind, 1, 1, 0, Number(m[2])), 0, 0, T) : null;
+    }
+    m = EMIT_KEY.exec(key);
+    if (m) {
+      const kind = Number(m[1]);
+      const w = Number(m[2]);
+      const h = Number(m[3]);
+      const tier = Number(m[4]);
+      const v = Number(m[6] ?? 0);
+      if (!BUILDING_PAINTERS.has(kind)) return null;
+      const { lit, blink } = emissionOf(footprint(kind, w, h, v, tier), kind, kind * 977 + w * 31 + h * 7 + v);
+      return (m[5] ? blink : lit) ?? null;
+    }
+    return null;
+  };
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────────────────────────
@@ -431,13 +466,25 @@ function icon(name: string): Pixels {
   return p;
 }
 
-/** Paint the whole SNES skin: atlas key → pixel buffer. */
+/** The SNES skin as the renderer loads it: terrain, roads, edges and icons up front; buildings and
+ *  their light maps LAZILY (≈10k tiles a city mostly never draws — materializing them all as canvases
+ *  up front exhausted the browser and blanked the view). */
+export function paintSnesSkin(): PaintedSkin {
+  const eager = new Map<string, Pixels>();
+  terrainTiles(eager);
+  transportTiles(eager);
+  edgeTiles(eager);
+  for (const name of Object.keys(ICONS)) eager.set(`@icon/${name}`, icon(name));
+  return { eager, lazy: { keys: buildingKeys(), paint: buildingPainter() } };
+}
+
+/** Paint the WHOLE SNES skin eagerly: atlas key → pixel buffer (tests; the renderer loads paintSnesSkin). */
 export function paintSnesTileset(): Map<string, Pixels> {
-  const out = new Map<string, Pixels>();
-  terrainTiles(out);
-  buildingTiles(out);
-  transportTiles(out);
-  edgeTiles(out);
-  for (const name of Object.keys(ICONS)) out.set(`@icon/${name}`, icon(name));
+  const skin = paintSnesSkin();
+  const out = new Map(skin.eager);
+  for (const k of skin.lazy!.keys) {
+    const px = skin.lazy!.paint(k);
+    if (px) out.set(k, px);
+  }
   return out;
 }

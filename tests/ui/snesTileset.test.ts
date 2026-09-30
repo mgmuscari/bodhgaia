@@ -507,3 +507,28 @@ describe('snes roads — local streets (Maddy 2026-09-30)', () => {
     expect(at(7, 2)).toBe([...C.asphalt, 255].join());
   });
 });
+
+describe('snes skin — buildings are materialized lazily (Maddy 2026-09-30: the view went blank)', () => {
+  it('the eager set is small; buildings + their light maps come from the lazy source', async () => {
+    const { paintSnesSkin } = await import('../../src/ui/snesTileset');
+    const skin = paintSnesSkin();
+    expect(skin.eager.size).toBeLessThan(3000);
+    expect([...skin.eager.keys()].some((k) => k.startsWith('b-') || k.startsWith('@emit/'))).toBe(false);
+    expect(skin.lazy!.keys.length).toBeGreaterThan(9000);
+  });
+
+  it('lazy tiles are pixel-identical to the full paint, and cover every building + light key', async () => {
+    const { paintSnesSkin } = await import('../../src/ui/snesTileset');
+    const skin = paintSnesSkin();
+    const lazyKeys = new Set(skin.lazy!.keys);
+    for (const k of tiles.keys()) {
+      if (k.startsWith('b-') || k.startsWith('@emit/')) expect(lazyKeys.has(k), k).toBe(true);
+    }
+    for (const k of ['b-16-1x1-c0-r0-0#3', 'b-24-3x3-c2-r1-1', 'b-16-c-0', '@emit/b-16-2x1-0', '@emit/b-24-3x3-0/blink']) {
+      const want = tiles.get(k);
+      const got = skin.lazy!.paint(k);
+      expect(got && Array.from(got.data).join(), k).toBe(want && Array.from(want.data).join());
+    }
+    expect(skin.lazy!.paint('@emit/b-61-2x2-0')).toBe(null); // a park has no lights
+  });
+});

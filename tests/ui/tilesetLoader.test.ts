@@ -145,11 +145,16 @@ describe('loadTilesetAssets — code-painted skins', () => {
     label: 'Painted',
     description: 'test',
     assets: [],
-    paint: () =>
-      new Map([
+    paint: () => ({
+      eager: new Map([
         ['grass-0', { w: 1, h: 1, data: new Uint8ClampedArray([1, 2, 3, 255]) }],
         ['river-0', { w: 1, h: 1, data: new Uint8ClampedArray([4, 5, 6, 255]) }],
       ]),
+      lazy: {
+        keys: ['b-16-c-0', 'b-99-c-0'],
+        paint: (k: string) => (k === 'b-16-c-0' ? { w: 1, h: 1, data: new Uint8ClampedArray([7, 8, 9, 255]) } : null),
+      },
+    }),
     profile: PROCEDURAL_PROFILE,
   };
 
@@ -169,6 +174,21 @@ describe('loadTilesetAssets — code-painted skins', () => {
     const { load } = stubLoader();
     const overrides = await loadTilesetAssets(painted, load, '/', (p) => img(`px${p.data[0]}`));
     expect(overrides.get('river-0')).toEqual(img('px4'));
+  });
+
+  it('lazy tiles materialize on first get (memoized), not at load; an empty one is undefined', async () => {
+    const { load } = stubLoader();
+    let made = 0;
+    const overrides = await loadTilesetAssets(painted, load, '/', (p) => {
+      made++;
+      return img(`px${p.data[0]}`);
+    });
+    expect(made).toBe(2); // only the eager pair
+    expect(overrides.lazy!.keys.has('b-16-c-0')).toBe(true);
+    expect(overrides.lazy!.get('b-16-c-0')).toEqual(img('px7'));
+    overrides.lazy!.get('b-16-c-0');
+    expect(made).toBe(3); // painted once
+    expect(overrides.lazy!.get('b-99-c-0')).toBe(undefined);
   });
 
   it('the registered snes skin paints its tiles through loadTileset', async () => {
