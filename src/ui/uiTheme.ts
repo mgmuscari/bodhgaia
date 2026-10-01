@@ -2,14 +2,15 @@
 // (as a data-URL CSS variable, `--ui-frame-<kind>`) on :root, plus the pixel font. index.html's styles
 // read only these variables, so the interface is drawn from the same palette and pixels as the map.
 
-import '@fontsource/pixelify-sans/400.css';
-import '@fontsource/pixelify-sans/700.css';
+import '@fontsource/jersey-10/400.css';
 import { FRAME_KINDS, framePixels, themeVars } from './uiKit';
 
 export function installUiTheme(): void {
   const root = document.documentElement.style;
   for (const [name, value] of Object.entries(themeVars())) root.setProperty(name, value);
-  root.setProperty('--ui-font', '"Pixelify Sans", ui-monospace, monospace');
+  // Jersey 10 at 20 px (twice its 10-px grid, so it stays crisp): chunky, unambiguous digits — Pixelify
+  // Sans's 3 read as an 8 at 16 px (Maddy 2026-10-01: "numbers are hard to read in the font")
+  root.setProperty('--ui-font', '"Jersey 10", ui-monospace, monospace');
   for (const kind of FRAME_KINDS) {
     const p = framePixels(kind);
     const c = document.createElement('canvas');
