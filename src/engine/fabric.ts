@@ -920,9 +920,9 @@ export function freewayCrossing(map: GameMap, x: number, y: number): boolean {
     const c = map.getBuilt(px, py);
     return c === BuiltKind.RoadStreet || c === BuiltKind.RoadAvenue || c === BuiltKind.QuietStreet;
   };
-  const endBeyond = (dx: number, dy: number): boolean => {
-    let px = x;
-    let py = y;
+  const endBeyond = (ox: number, oy: number, dx: number, dy: number): boolean => {
+    let px = ox;
+    let py = oy;
     for (let i = 0; i < CROSSING_SPAN; i++) {
       px += dx;
       py += dy;
@@ -930,7 +930,22 @@ export function freewayCrossing(map: GameMap, x: number, y: number): boolean {
     }
     return false; // the corridor runs on — this is along the freeway, not across it
   };
-  return (endBeyond(1, 0) && endBeyond(-1, 0)) || (endBeyond(0, 1) && endBeyond(0, -1));
+  const spans = (ox: number, oy: number, dx: number, dy: number): boolean => endBeyond(ox, oy, dx, dy) && endBeyond(ox, oy, -dx, -dy);
+  const isRamp = (px: number, py: number): boolean => map.inBounds(px, py) && map.getBuilt(px, py) === BuiltKind.RoadRamp;
+  for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+    if (!spans(x, y, dx, dy)) continue;
+    // A real crossing passes through the band ON RAMPS (worldgen lays the crossing road as ramp tiles). A
+    // plain freeway tile belongs to one only beside a ramp of that same crossing (the second row of a
+    // 2-row road) — so a freeway between two frontage roads, surface on both sides but no ramp, keeps its
+    // lanes (Maddy 2026-10-01).
+    if (k === BuiltKind.RoadRamp) return true;
+    for (const s of [1, -1]) {
+      const nx = x + dy * s;
+      const ny = y + dx * s;
+      if (isRamp(nx, ny) && spans(nx, ny, dx, dy)) return true;
+    }
+  }
+  return false;
 }
 
 /**
