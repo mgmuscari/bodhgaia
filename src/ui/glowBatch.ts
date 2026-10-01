@@ -3,6 +3,8 @@
 //
 // IO module (WebGL/DOM) — not on the pure-ui allowlist.
 
+import { ART_PX, ART_GRID_GLSL } from './artGrid';
+
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const s = gl.createShader(type)!;
   gl.shaderSource(s, src);
@@ -15,6 +17,69 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLSh
 //    headlights illuminating road in front"; emissive lights casting glow). Each source is a colored
 //    radial falloff quad, blended ONE,ONE over the scene so it brightens the ground + sprites around it.
 export const GLOW_FLOATS = 12; // pos(2) fwd(2) len(1) halfwidth(1) color(3) intensity(1) [+2 pad]
+
+/** Glow vertex stage: a cone (headlights) or radial (bars, beacons, windows) quad per light source. */
+export function buildGlowVertex(): string {
+  return `#version 300 es
+layout(location=0) in vec2 a_corner;     // unit quad [-1,1]
+layout(location=1) in vec2 a_pos;        // world cell (cone origin / radial center)
+layout(location=2) in vec2 a_fwd;        // forward unit (travel dir); ignored when a_len==0
+layout(location=3) in float a_len;       // cone forward length in cells (0 = radial)
+layout(location=4) in float a_halfwidth; // cone half-width at the tip / radial radius
+layout(location=5) in vec3 a_color;
+layout(location=6) in float a_intensity;
+uniform vec2 u_origin; uniform vec2 u_view;
+const float ART_PX = ${ART_PX.toFixed(1)};
+out vec2 v_world; out vec3 v_color; out float v_int;
+flat out vec2 v_pos; flat out vec2 v_fwd; flat out float v_len; flat out float v_hw;
+void main(){
+  // the source sits on the art grid, like the sprite casting it (renderer.drawArt rounds to art pixels);
+  // the quad grows by an art pixel so the per-art-pixel falloff is never clipped mid-pixel
+  vec2 pos = round(a_pos * ART_PX) / ART_PX;
+  float grow = 1.0 / ART_PX;
+  vec2 world;
+  if (a_len > 0.0) {
+    vec2 side = vec2(-a_fwd.y, a_fwd.x);
+    float t = (a_corner.y + 1.0) * 0.5;            // 0 at the car .. 1 at the cone tip
+    float w = mix(a_halfwidth * 0.22, a_halfwidth, t);
+    world = pos + a_fwd * (t * (a_len + grow) - grow * 0.5) + side * (a_corner.x * (w + grow));
+  } else {
+    world = pos + a_corner * (a_halfwidth + grow);
+  }
+  vec2 ndc = ((world - u_origin)/u_view)*2.0 - 1.0;
+  gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
+  v_world = world; v_color = a_color; v_int = a_intensity;
+  v_pos = pos; v_fwd = a_fwd; v_len = a_len; v_hw = a_halfwidth;
+}`;
+}
+
+/** Glow fragment stage: the falloff from the TRUE geometry (lateral distance from the cone centerline —
+ *  symmetric, unlike an interpolated corner attribute), evaluated once per art pixel. */
+export function buildGlowFragment(): string {
+  return `#version 300 es
+precision highp float;
+in vec2 v_world; in vec3 v_color; in float v_int;
+flat in vec2 v_pos; flat in vec2 v_fwd; flat in float v_len; flat in float v_hw;
+out vec4 fragColor;
+${ART_GRID_GLSL}
+void main(){
+  vec2 rel = artPixel(v_world) - v_pos; // one light value per art pixel
+  float fall;
+  if (v_len > 0.0) {
+    float fd = dot(rel, v_fwd);                       // distance ahead along travel
+    float t = fd / v_len;
+    if (t < 0.0 || t > 1.0) discard;
+    vec2 side = vec2(-v_fwd.y, v_fwd.x);
+    float hw = mix(v_hw * 0.22, v_hw, t);
+    float lf = dot(rel, side) / hw;                   // lateral fraction from the centerline (symmetric)
+    fall = (1.0 - clamp(abs(lf), 0.0, 1.0)) * smoothstep(1.0, 0.0, t);
+  } else {
+    float d = length(rel) / max(v_hw, 1e-4);
+    fall = smoothstep(1.0, 0.0, d); fall *= fall;
+  }
+  fragColor = vec4(v_color * v_int * fall, 1.0);
+}`;
+}
 
 export class GlowBatch {
   private program: WebGLProgram;
@@ -31,54 +96,8 @@ export class GlowBatch {
     // cone's actual centerline), NOT from an interpolated corner attribute — a trapezoid drawn as two
     // triangles interpolates a corner attribute asymmetrically across the centerline (one side brighter
     // than the other — Maddy). Measuring lateral offset from the centerline per-pixel is symmetric.
-    const vs = `#version 300 es
-layout(location=0) in vec2 a_corner;     // unit quad [-1,1]
-layout(location=1) in vec2 a_pos;        // world cell (cone origin / radial center)
-layout(location=2) in vec2 a_fwd;        // forward unit (travel dir); ignored when a_len==0
-layout(location=3) in float a_len;       // cone forward length in cells (0 = radial)
-layout(location=4) in float a_halfwidth; // cone half-width at the tip / radial radius
-layout(location=5) in vec3 a_color;
-layout(location=6) in float a_intensity;
-uniform vec2 u_origin; uniform vec2 u_view;
-out vec2 v_world; out vec3 v_color; out float v_int;
-flat out vec2 v_pos; flat out vec2 v_fwd; flat out float v_len; flat out float v_hw;
-void main(){
-  vec2 world;
-  if (a_len > 0.0) {
-    vec2 side = vec2(-a_fwd.y, a_fwd.x);
-    float t = (a_corner.y + 1.0) * 0.5;            // 0 at the car .. 1 at the cone tip
-    float w = mix(a_halfwidth * 0.22, a_halfwidth, t);
-    world = a_pos + a_fwd * (t * a_len) + side * (a_corner.x * w);
-  } else {
-    world = a_pos + a_corner * a_halfwidth;
-  }
-  vec2 ndc = ((world - u_origin)/u_view)*2.0 - 1.0;
-  gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
-  v_world = world; v_color = a_color; v_int = a_intensity;
-  v_pos = a_pos; v_fwd = a_fwd; v_len = a_len; v_hw = a_halfwidth;
-}`;
-    const fs = `#version 300 es
-precision highp float;
-in vec2 v_world; in vec3 v_color; in float v_int;
-flat in vec2 v_pos; flat in vec2 v_fwd; flat in float v_len; flat in float v_hw;
-out vec4 fragColor;
-void main(){
-  vec2 rel = v_world - v_pos;
-  float fall;
-  if (v_len > 0.0) {
-    float fd = dot(rel, v_fwd);                       // distance ahead along travel
-    float t = fd / v_len;
-    if (t < 0.0 || t > 1.0) discard;
-    vec2 side = vec2(-v_fwd.y, v_fwd.x);
-    float hw = mix(v_hw * 0.22, v_hw, t);
-    float lf = dot(rel, side) / hw;                   // lateral fraction from the centerline (symmetric)
-    fall = (1.0 - clamp(abs(lf), 0.0, 1.0)) * smoothstep(1.0, 0.0, t);
-  } else {
-    float d = length(rel) / max(v_hw, 1e-4);
-    fall = smoothstep(1.0, 0.0, d); fall *= fall;
-  }
-  fragColor = vec4(v_color * v_int * fall, 1.0);
-}`;
+    const vs = buildGlowVertex();
+    const fs = buildGlowFragment();
     const program = gl.createProgram()!;
     const v = compile(gl, gl.VERTEX_SHADER, vs);
     const f = compile(gl, gl.FRAGMENT_SHADER, fs);

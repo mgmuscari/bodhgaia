@@ -10,6 +10,7 @@
 // IO module (WebGL/DOM) — not on the pure-ui allowlist.
 import { buildVertexSource } from './satelliteShader';
 import { cameraToShaderView } from './gpuRenderer';
+import { ART_GRID_GLSL } from './artGrid';
 import type { Camera } from './camera';
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
@@ -22,7 +23,7 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLSh
 
 /** Fragment: sample pollution at the world cell, billow wind-drifted fBm haze, output translucent
  *  grey-brown smog (normal alpha-blended over the page below). Pollution < threshold → fully clear. */
-function buildSmogFragment(): string {
+export function buildSmogFragment(): string {
   return `#version 300 es
 precision highp float;
 uniform sampler2D u_poll; // R = air pollution 0..1 at world cell
@@ -33,11 +34,12 @@ uniform float u_time;     // seconds
 uniform vec2 u_wind;      // prevailing wind (cells/sec-ish direction)
 in vec2 v_uv;
 out vec4 fragColor;
+${ART_GRID_GLSL}
 float hash21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash21(i),b=hash21(i+vec2(1,0)),c=hash21(i+vec2(0,1)),d=hash21(i+vec2(1,1));vec2 u=f*f*(3.0-2.0*f);return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
 float fbm(vec2 p){float s=0.0,a=0.5;for(int i=0;i<5;i++){s+=a*vnoise(p);p*=2.0;a*=0.5;}return s;}
 void main(){
-  vec2 cell = u_origin + v_uv * u_view;
+  vec2 cell = artPixel(u_origin + v_uv * u_view); // haze steps per art pixel
   // sample pollution slightly UPWIND so the plume reads as streaming downwind from its source
   float poll = texture(u_poll, (cell - u_wind * 0.6 + 0.5) / u_grid).r;
   if (poll < 0.16) { fragColor = vec4(0.0); return; }
