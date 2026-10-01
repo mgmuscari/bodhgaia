@@ -5,7 +5,7 @@
 // fixtures. On the architecture pure-ui allowlist (tests/architecture.test.ts).
 
 import type { GameMap } from '../engine/map';
-import { isRoadKind, BuiltKind } from '../engine/fabric';
+import { isRoadKind, BuiltKind, isLimitedAccessBoundary } from '../engine/fabric';
 
 /** Power poles fall every Nth tile along a street/avenue run. */
 export const POLE_SPACING = 4;
@@ -170,15 +170,64 @@ export function roadPaintKind(map: GameMap, x: number, y: number): number {
  * streets that aren't junctions themselves; highways and wide slabs get none.
  */
 export function crosswalkMask(map: GameMap, x: number, y: number): number {
-  if (!map.inBounds(x, y) || map.getBuilt(x, y) !== BuiltKind.RoadStreet) return 0;
-  if (wideRoadAt(map, x, y) || roadNeighbours(map, x, y).length > 2) return 0;
-  const junction = (jx: number, jy: number): boolean => lineRoadAt(map, jx, jy) && roadNeighbours(map, jx, jy).length >= 3;
+  if (!map.inBounds(x, y)) return 0;
+  const k = map.getBuilt(x, y);
+  // people cross streets and avenues (of any width) — never a freeway or its ramps
+  if (k !== BuiltKind.RoadStreet && k !== BuiltKind.RoadAvenue && k !== BuiltKind.QuietStreet) return 0;
+  if (junctionBox(map, x, y)) return 0;
+  const legacyJunction = (jx: number, jy: number): boolean => lineRoadAt(map, jx, jy) && roadNeighbours(map, jx, jy).length >= 3;
+  const oneWide = !wideRoadAt(map, x, y) && roadNeighbours(map, x, y).length <= 2;
   let m = 0;
-  if (junction(x, y - 1)) m |= 1;
-  if (junction(x + 1, y)) m |= 2;
-  if (junction(x, y + 1)) m |= 4;
-  if (junction(x - 1, y)) m |= 8;
+  for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]] as const) {
+    const nx = x + dx;
+    const ny = y + dy;
+    // an approach: the road runs toward the box (narrow across, so this is a lane meeting it, not a band
+    // alongside it)
+    const approaching = runAcross(map, x, y, dx !== 0) < JUNCTION_RUN;
+    if (approaching && (junctionBox(map, nx, ny) || (oneWide && legacyJunction(nx, ny)))) m |= bit;
+  }
   return m;
+}
+
+/** Traffic runs this many tiles through a tile both ways before it counts as a junction box — longer than
+ *  any band is wide (freeways are 3), so a wide road's own width never reads as a crossing. */
+const JUNCTION_RUN = 4;
+
+/** Can traffic pass between these two adjacent road tiles? Not across a limited-access barrier. */
+function passable(map: GameMap, ax: number, ay: number, bx: number, by: number): boolean {
+  if (!roadish(map, bx, by)) return false;
+  return !isLimitedAccessBoundary(map.getBuilt(ax, ay), map.getBuilt(bx, by));
+}
+
+/** Contiguous passable road through (x, y) along one axis, counting at most JUNCTION_RUN − 1 each way. */
+function run(map: GameMap, x: number, y: number, horizontal: boolean): number {
+  const [dx, dy] = horizontal ? [1, 0] : [0, 1];
+  let n = 1;
+  for (const s of [1, -1]) {
+    let px = x;
+    let py = y;
+    for (let i = 0; i < JUNCTION_RUN - 1; i++) {
+      if (!passable(map, px, py, px + s * dx, py + s * dy)) break;
+      px += s * dx;
+      py += s * dy;
+      n++;
+    }
+  }
+  return n;
+}
+
+/** The road's run ACROSS an approach direction (perpendicular to it). */
+const runAcross = (map: GameMap, x: number, y: number, approachHorizontal: boolean): number => run(map, x, y, !approachHorizontal);
+
+/**
+ * Is (x, y) inside a junction box — where roads cross, of any width? True when traffic runs at least
+ * JUNCTION_RUN tiles through it both ways (Maddy 2026-10-01: 2-wide streets/avenues, 3-wide freeways,
+ * freeways meeting freeways). Runs stop at limited-access barriers, so a frontage road beside a freeway
+ * isn't a crossing. The renderer clears a box of lane paint and draws crosswalks on its approaches.
+ */
+export function junctionBox(map: GameMap, x: number, y: number): boolean {
+  if (!roadish(map, x, y)) return false;
+  return run(map, x, y, true) >= JUNCTION_RUN && run(map, x, y, false) >= JUNCTION_RUN;
 }
 
 /**
