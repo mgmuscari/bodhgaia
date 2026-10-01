@@ -8,22 +8,16 @@
 // IO module (touches WebGL/DOM) — not on the pure-ui allowlist.
 import { GridTextureBridge } from './gridTextureBridge';
 import { SatelliteShader } from './satelliteShader';
-import { SpriteBatch, buildSpriteAtlas, FLOATS_PER_INSTANCE, GlowBatch, GLOW_FLOATS, extractLightPoints } from './spriteBatch';
-import type { LightPoint } from './spriteBatch';
+import { GlowBatch, GLOW_FLOATS, extractLightPoints } from './glowBatch';
+import type { LightPoint } from './glowBatch';
 import { DAYSPEED, dayNightBrightness } from './lighting';
-import { carPose, pedPose, ambientAlpha } from './ambientContent';
-import { isRoadKind } from '../engine/fabric';
-import { TravelMode } from '../citizens/modes';
+import { carPose, ambientAlpha } from './ambientContent';
 import type { AmbientState } from './ambientContent';
-import type { AmbientSprites } from './ambientSprites';
 import type { GameMap } from '../engine/map';
 import type { Camera } from './camera';
 
-type Rect = readonly [number, number, number, number];
-/** A light-bearing building footprint (world coords) — the renderer collects these; the glow pass casts
- *  a faint window/beacon glow from each (Maddy: windows/hazard blinkies should cast glows too). */
-/** A light-bearing building. `lit`/`blink` are a skin's own emission maps (authoritative when set);
- *  without them the glow uses the ambient-sprite light map for the kind+footprint. */
+/** A light-bearing building footprint (world coords) with the skin's emission maps — the renderer collects
+ *  these; the glow pass casts a faint window/beacon glow from each lit pixel. */
 export type EmissiveBuilding = { x: number; y: number; w: number; h: number; kind: number; lit?: CanvasImageSource; blink?: CanvasImageSource };
 
 const SUN: readonly [number, number] = [0.65, 0.78]; // sun direction in tile space (shadows trace toward it)
@@ -47,20 +41,8 @@ export class GpuRenderer {
   private canvas: HTMLCanvasElement | null = null;
   private lastBaseVersion = -1;
   private readonly bridge: GridTextureBridge;
-  // GPU sprite layer (the moving agents, lit by the SAME pass as the ground — Maddy).
-  private batch: SpriteBatch | null = null;
-  private carRects: (Rect | null)[] = [];
-  private carLightRects: (Rect | null)[] = [];
-  private pedRects: (Rect | null)[] = [];
-  private cycRects: (Rect | null)[] = [];
-  private cycLightRects: (Rect | null)[] = [];
-  private cruiserRect: Rect | null = null;
-  private cruiserLightRect: Rect | null = null;
-  private instData = new Float32Array(0);
   private glow: GlowBatch | null = null;
   private glowData = new Float32Array(0);
-  // Building emissive light POINTS (the actual lit window/beacon pixels) so glow casts from real lights.
-  private buildingPoints = new Map<string, { lights: LightPoint[]; blink: LightPoint[] }>();
   // Light points extracted from SKIN emission maps, cached per image (the maps are shared per variant).
   private skinPoints = new WeakMap<object, LightPoint[]>();
 
@@ -93,50 +75,12 @@ export class GpuRenderer {
     this.gl = gl;
     this.shader = new SatelliteShader(gl);
     this.shader.uploadFull(this.bridge);
-    this.batch = new SpriteBatch(gl);
     this.glow = new GlowBatch(gl);
     return canvas;
   }
 
-  /** Build the GPU agent atlas from the loaded sprites (cars + their emission maps). Index-aligned with
-   *  ambient car `tint`. Called when the sprite catalog loads/changes. */
-  setAgentSprites(sprites: AmbientSprites): void {
-    if (!this.batch) return;
-    const entries: { name: string; img: CanvasImageSource }[] = [];
-    sprites.cars.forEach((img, i) => entries.push({ name: `car${i}`, img }));
-    sprites.carLights.forEach((img, i) => { if (img) entries.push({ name: `carL${i}`, img }); });
-    sprites.peds.forEach((img, i) => entries.push({ name: `ped${i}`, img }));
-    sprites.cyclists.forEach((img, i) => entries.push({ name: `cyc${i}`, img }));
-    sprites.cyclistLights.forEach((img, i) => { if (img) entries.push({ name: `cycL${i}`, img }); });
-    if (sprites.police[0]) entries.push({ name: 'cruiser', img: sprites.police[0] });
-    if (sprites.emission['police/cruiser']) entries.push({ name: 'cruiserL', img: sprites.emission['police/cruiser'] });
-    if (entries.length === 0) return;
-    const atlas = buildSpriteAtlas(entries);
-    this.batch.setAtlas(atlas.canvas);
-    this.carRects = sprites.cars.map((_, i) => atlas.rects.get(`car${i}`) ?? null);
-    this.carLightRects = sprites.cars.map((_, i) => atlas.rects.get(`carL${i}`) ?? null);
-    this.pedRects = sprites.peds.map((_, i) => atlas.rects.get(`ped${i}`) ?? null);
-    this.cycRects = sprites.cyclists.map((_, i) => atlas.rects.get(`cyc${i}`) ?? null);
-    this.cycLightRects = sprites.cyclists.map((_, i) => atlas.rects.get(`cycL${i}`) ?? null);
-    this.cruiserRect = atlas.rects.get('cruiser') ?? null;
-    this.cruiserLightRect = atlas.rects.get('cruiserL') ?? null;
-    // Extract the bright light POINTS from each BUILDING light map so glow casts from the real lit
-    // window/beacon pixels (Maddy: buildings get radial glow from the light map). Movers use geometric
-    // sprite-relative cones (their headlights are static at the front), so they need no extraction.
-    this.buildingPoints.clear();
-    for (const [key, img] of Object.entries(sprites.emission)) {
-      if (!key.startsWith('building/')) continue;
-      const isBlink = key.endsWith('/blink');
-      const stem = key.slice('building/'.length).replace(/\/blink$/, '');
-      const e = this.buildingPoints.get(stem) ?? { lights: [], blink: [] };
-      const pts = extractLightPoints(img, 8, 0.26, 8); // buildings: more windows
-      if (isBlink) e.blink = pts; else e.lights = pts;
-      this.buildingPoints.set(stem, e);
-    }
-  }
-
-  /** Draw the moving agents as instanced quads in the base canvas (AFTER render()), lit by the shared
-   *  lighting. Headlights/taillights are emission, night-gated; parked cars are off. */
+  /** Cast the agents' and buildings' light onto the ground (AFTER render()). The agents themselves are
+   *  pixel art on the Canvas2D layer above. */
   renderAgents(
     ambient: AmbientState,
     camera: Camera,
@@ -144,79 +88,11 @@ export class GpuRenderer {
     cssHeight: number,
     timeSec: number,
     buildings: readonly EmissiveBuilding[] = [],
-    drawBodies = true,
   ): void {
-    const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
     const gl = this.gl;
     if (!gl) return;
-    // the sprite batch draws agent BODIES only when asked and when it has sprites (a pixel-art skin draws
-    // its agents on the Canvas2D layer instead); the glow pools below are cast either way
-    const bodies = drawBodies && !!this.batch && this.carRects.length > 0;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
-    const map = this.map;
-    const total = ambient.cars.length + ambient.peds.length + ambient.cruisers.length;
-    if (this.instData.length < total * FLOATS_PER_INSTANCE) this.instData = new Float32Array(total * FLOATS_PER_INSTANCE);
-    const data = this.instData;
-    let count = 0;
-    const push = (px: number, py: number, rot: number, sz: number, rect: Rect, er: Rect, emit: number): void => {
-      const o = count * FLOATS_PER_INSTANCE;
-      data[o] = px; data[o + 1] = py; data[o + 2] = rot; data[o + 3] = sz; data[o + 4] = sz;
-      data[o + 5] = rect[0]; data[o + 6] = rect[1]; data[o + 7] = rect[2]; data[o + 8] = rect[3];
-      data[o + 9] = er[0]; data[o + 10] = er[1]; data[o + 11] = er[2]; data[o + 12] = er[3];
-      data[o + 13] = emit;
-      count++;
-    };
-    if (bodies) {
-      // Cars: headlights/taillights emission, night-gated; parked = off.
-      const nCars = this.carRects.length;
-      for (const c of ambient.cars) {
-        const ci = (((c.tint ?? 0) % nCars) + nCars) % nCars;
-        const rect = this.carRects[ci];
-        if (!rect) continue;
-        const pose = carPose(c, alpha); // smooth round turns; kerb-parallel when parked
-        const lr = c.parked ? null : this.carLightRects[ci];
-        push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.58, rect, lr ?? rect, lr ? night : 0);
-      }
-      // Pedestrians + cyclists (cyclists = bike-mode peds): a STABLE per-person sprite pick; cyclists get
-      // a small headlight (night). Skip those inside a building / riding a car.
-      const nPed = this.pedRects.length;
-      const nCyc = this.cycRects.length;
-      for (const p of ambient.peds) {
-        if (p.phase === 'inside' || p.phase === 'driving') continue;
-        const seed = ((p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0);
-        const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-        const pose = pedPose(p, (x, y) => map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!), alpha);
-        const ox = pose.x - p.x;
-        const oy = pose.y - p.y;
-        const rot = Math.atan2(pose.hx, -pose.hy);
-        if (isBike && nCyc > 0) {
-          const i = (Math.imul(seed, 2654435761) >>> 0) % nCyc;
-          const rect = this.cycRects[i];
-          if (!rect) continue;
-          const lr = this.cycLightRects[i];
-          push(p.x + ox, p.y + oy, rot, 0.46, rect, lr ?? rect, lr ? night : 0);
-        } else if (nPed > 0) {
-          const rect = this.pedRects[(Math.imul(seed, 2654435761) >>> 0) % nPed];
-          if (!rect) continue;
-          push(p.x + ox, p.y + oy, rot, 0.4, rect, rect, 0);
-        }
-      }
-      // Cruisers: a black car (rotated to heading) with an ALWAYS-on flashing red/blue bar (emergency).
-      if (this.cruiserRect) {
-        const flash = Math.floor(timeSec * 1000 / 180) % 2 === 0 ? 1 : 0.45;
-        for (const c of ambient.cruisers) {
-          const pose = carPose(c, alpha);
-          const lr = this.cruiserLightRect;
-          push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.55, this.cruiserRect, lr ?? this.cruiserRect, lr ? flash : 0);
-        }
-      }
-    }
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    if (count > 0 && this.batch) {
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      this.batch.render(data, count, origin, view, timeSec, DAYSPEED);
-    }
     this.renderGlow(ambient, origin, view, timeSec, night, buildings);
     gl.disable(gl.BLEND); // leave blend OFF so the next frame's opaque base pass isn't additive
   }
@@ -274,10 +150,7 @@ export class GpuRenderer {
     for (const bld of buildings) {
       const span = Math.max(bld.w, bld.h);
       const isPower = bld.kind >= 24 && bld.kind <= 30;
-      const pts =
-        bld.lit || bld.blink
-          ? { lights: this.pointsOf(bld.lit), blink: this.pointsOf(bld.blink) }
-          : this.buildingPoints.get(`b-${bld.kind}-${bld.w === 1 && bld.h === 1 ? 'c' : `${bld.w}x${bld.h}`}`);
+      const pts = bld.lit || bld.blink ? { lights: this.pointsOf(bld.lit), blink: this.pointsOf(bld.blink) } : undefined;
       const at = (p: LightPoint): [number, number] => [bld.x + (0.5 + p.ox) * bld.w, bld.y + (0.5 + p.oy) * bld.h];
       if (pts && (isPower || night > 0.02)) {
         for (const p of pts.lights) {
@@ -345,11 +218,9 @@ export class GpuRenderer {
 
   dispose(): void {
     this.shader?.dispose();
-    this.batch?.dispose();
     this.glow?.dispose();
     this.canvas?.remove();
     this.shader = null;
-    this.batch = null;
     this.glow = null;
     this.gl = null;
     this.canvas = null;

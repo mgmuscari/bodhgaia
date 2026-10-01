@@ -27,7 +27,6 @@ import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlan
 import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { loadTileset } from './ui/tilesetLoader';
-import { loadAmbientSprites } from './ui/ambientSprites';
 import { tilesetDef } from './ui/tileset';
 
 /** The game's one skin: the code-painted Super (16-bit) pixel art. */
@@ -154,13 +153,11 @@ export function main(): void {
   // stays the default + fallback. Toggled via ?shader now (settings toggle next).
   let gpuRenderer: GpuRenderer | null = null;
   let smogOverlay: SmogOverlay | null = null;
-  let loadedSprites: Awaited<ReturnType<typeof loadAmbientSprites>> | null = null;
   const mountGpu = (): boolean => {
     try {
       gpuRenderer = new GpuRenderer(world.map);
       gpuRenderer.mount();
       gpuRenderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-      if (loadedSprites) gpuRenderer.setAgentSprites(loadedSprites); // re-apply atlas on (re)mount
       // GPU smog overlay (z2, above the sprite canvas) — the atmospheric haze on top of everything.
       smogOverlay = new SmogOverlay(world.map.width, world.map.height);
       smogOverlay.mount();
@@ -184,14 +181,6 @@ export function main(): void {
     renderer.setGpuMode(false);
   };
   if (gpuParam || settings.renderer === 'gpu') mountGpu();
-
-  // Ambient sprites (cars/flora/smog/props): load once, drawn under a tileset (micro-machine cars,
-  // smog plumes). Resilient — a missing sprite just isn't drawn; never blocks the render loop.
-  void loadAmbientSprites().then((sprites) => {
-    loadedSprites = sprites;
-    renderer.setAmbientSprites(sprites);
-    gpuRenderer?.setAgentSprites(sprites); // GPU agent atlas (cars lit by the shared base pass)
-  });
 
   // Tileset skin: the procedural look paints instantly (above); a non-procedural skin loads its
   // committed PNGs async and hot-swaps in when ready (applyTileset invalidates the cached base →
@@ -1011,7 +1000,7 @@ export function main(): void {
     // it samples the freshest baked tiles. The base re-uploads only when its version changed.
     gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion(), renderer.renderProfile().shaderLife);
     // GPU agents: the moving sprites lit by the SAME pass as the ground (drawn over the base, under UI).
-    if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList(), !renderer.drawsAgentArt());
+    if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList());
     // GPU smog overlay (z2, above sprites): the atmospheric haze, now on the GPU instead of CPU plumes.
     if (smogOverlay && ambientOn) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, ambientState.pollution, ambientState.wind);
     // Sim-gated (Y5): re-derive the dock/panel signatures + refresh on change ONLY

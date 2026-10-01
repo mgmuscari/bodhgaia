@@ -37,7 +37,6 @@ import { isPowerConsumer } from '../growth/power';
 import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import type { AmbientState } from './ambientContent';
-import type { AmbientSprites } from './ambientSprites';
 import { makeWaterFrames, makeGrassSheen, cloudFbm, buildWaterSloshFlipbook, WATER_SLOSH_ROTS, WATER_SLOSH_FRAMES } from './waterAnimation';
 import { dayNightBrightness, cloudShadow } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
@@ -102,14 +101,6 @@ const ASPHALT_GROUND_COLOR = '#3a3833'; // paved-over redlined open ground
 const ASPHALT_GROUND_ALPHA = 0.72; // strength at full redline grade (faded by depaveAsphalt near greens)
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
 const ENCAMPMENT_WEAR = 225; // wear at/above which the heaviest-worn empty tile shows an encampment tent
-
-// Kinds that get a sparse flora-canopy accent under a tileset (the vegetated greens).
-const GREEN_FLORA_KINDS: ReadonlySet<number> = new Set([
-  BuiltKind.Parklet,
-  BuiltKind.CommunityGarden,
-  BuiltKind.Park,
-  BuiltKind.RewildedLand,
-]);
 
 // Dharmapunk-warm terrain palette: [base, accent] per tile kind. The accent is
 // dithered in for subtle texture (deep/shallow water, gold-green meadows).
@@ -715,9 +706,6 @@ export class Renderer {
   private roadVariants = 0;
   // building variant count (base + baked #1..#n), cycled per parcel under a tileset to break repeats.
   private buildingVariants = 0;
-  // Ambient sprite catalog (cars/flora/smog/props), loaded async; null until set. Under a tileset,
-  // cars draw as tiny rotated car sprites ("micro machines") and smog plumes drift over polluted tiles.
-  private ambientSprites: AmbientSprites | null = null;
   // Procedural water tiles: frame 0 is the static base (baked into the atlas); the set is the tileable
   // texture scrolled at low alpha for the animated swirl/waves. [] = no tileset.
   private waterFrames: CanvasImageSource[] = [];
@@ -857,13 +845,6 @@ export class Renderer {
     this.grassSheen = this.profile.ambientMotion ? makeGrassSheen(BASE_TILE) : null;
     this.buildWaterSlosh();
     this.invalidateBase();
-  }
-
-  /** Publish the ambient sprite catalog (cars/flora/smog/props). Drawn per-frame in drawSprites;
-   *  no base invalidation needed (sprites aren't baked into the cached base). */
-  setAmbientSprites(sprites: AmbientSprites): void {
-    this.ambientSprites = sprites;
-    this.invalidateBase(); // flora canopies are baked into the cached base — repaint once loaded
   }
 
   /** Toggle the GPU hybrid path: when on, the Canvas2D base goes transparent (the WebGL layer below
@@ -1175,16 +1156,6 @@ export class Renderer {
             }
           }
 
-          // Flora canopies: a sparse tree/shrub sprite over the green-amenity kinds (parks, gardens,
-          // rewilded land) under a tileset — Google-Maps-style canopy dots. Baked into the cached base
-          // (static, hash-gated to ~⅗ of tiles so it reads as accents, not a solid mat).
-          const flora = this.profile.flora ? this.ambientSprites?.flora : undefined;
-          if (flora && flora.length > 0 && GREEN_FLORA_KINDS.has(built) && surfaceVariantIndex(tx, ty, 5) < 3) {
-            const img = flora[surfaceVariantIndex(tx * 7, ty * 13, flora.length)]!;
-            const fs = ts * 0.82;
-            ctx.drawImage(img, dx + (ts - fs) / 2, dy + (ts - fs) / 2, fs, fs);
-          }
-
           // Limited-access DIVIDER: a concrete barrier on each edge where a freeway abuts a surface
           // road (a frontage avenue) — you physically can't cross there, only at a ramp. Per-tile
           // (depends on neighbour kinds), drawn OVER the road like the power poles, not an atlas key.
@@ -1367,12 +1338,6 @@ export class Renderer {
                 const lit = this.emissionImage(base + sfx);
                 const blink = this.emissionImage(`${base}/blink${sfx}`);
                 if (lit || blink) this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: base, kind: pp.kind, lit, blink });
-              } else if (this.profile.bakedLightMaps) {
-                const form = pp.width === 1 && pp.height === 1 ? 'c' : `${pp.width}x${pp.height}`;
-                const ekey = `building/b-${pp.kind}-${form}`;
-                if (this.ambientSprites?.emission[ekey]) {
-                  this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: ekey, kind: pp.kind });
-                }
               }
             }
           }
@@ -1400,8 +1365,6 @@ export class Renderer {
     // wear; discarded junk from GARBAGE_WEAR up; encampment tents from ENCAMPMENT_WEAR up — junk + tents
     // COEXIST, and a heavily-worn tile grows MULTIPLE tents (a tent houses more than one unhoused person).
     if (ambient) {
-      const tents = this.profile.agentSprites ? this.ambientSprites?.encampments : undefined;
-      const junk = this.profile.agentSprites ? this.ambientSprites?.junk : undefined;
       // a skin's own pixel-art encampment (tents + junk + beaten earth), at the art-pixel scale
       const skinTents = [0, 1, 2].map((i) => this.sprites.get(`@sprite/tent/${i}`)).filter((x): x is AtlasImage => !!x);
       const skinJunk = [0, 1, 2, 3].map((i) => this.sprites.get(`@sprite/junk/${i}`)).filter((x): x is AtlasImage => !!x);
@@ -1441,32 +1404,6 @@ export class Renderer {
         ctx.fillStyle = '#6e5d3f';
         ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
         ctx.globalAlpha = 1;
-        // JUNK (coexists with tents): 1–2 small pieces, scattered + jittered, more as the path deepens.
-        if (camera.zoom >= 2 && junk && junk.length > 0 && wear >= GARBAGE_WEAR) {
-          const pieces = wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1;
-          for (let pc = 0; pc < pieces; pc++) {
-            const hh = Math.imul((tileHash ^ Math.imul(pc + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 0;
-            const img = junk[(hh >>> 16) % junk.length]!;
-            const js = ts * (0.32 + ((hh & 0x7) / 7) * 0.12);
-            ctx.drawImage(img, sx + ((hh & 0xff) / 255) * (ts - js), sy + (((hh >>> 8) & 0xff) / 255) * (ts - js), js, js);
-          }
-        }
-        // TENTS: 1+ from ENCAMPMENT_WEAR, growing to several as the tile worsens (more unhoused gather).
-        if (camera.zoom >= 2 && tents && tents.length > 0 && wear >= ENCAMPMENT_WEAR) {
-          const nTents = Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12));
-          const es = ts * 0.5; // a tent, scaled down so several coexist on the tile
-          for (let tc = 0; tc < nTents; tc++) {
-            const hh = Math.imul((tileHash ^ Math.imul(tc + 7, 0x27d4eb2f)) >>> 0, 0x165667b1) >>> 0;
-            const img = tents[(hh >>> 16) % tents.length]!;
-            ctx.drawImage(img, sx + ((hh & 0xff) / 255) * (ts - es), sy + (((hh >>> 8) & 0xff) / 255) * (ts - es), es, es);
-          }
-        } else if (!this.profile.agentSprites && wear > 120) {
-          ctx.fillStyle = '#2e2a22'; // procedural fallback: trash specks
-          const specks: ReadonlyArray<readonly [number, number]> = [[0.3, 0.35], [0.65, 0.5], [0.45, 0.72]];
-          const n = wear > 210 ? 3 : wear > 170 ? 2 : 1;
-          const sp = Math.max(1, ts * 0.12);
-          for (let k = 0; k < n; k++) ctx.fillRect(Math.floor(sx + specks[k]![0] * ts), Math.floor(sy + specks[k]![1] * ts), sp, sp);
-        }
       }
     }
 
@@ -1798,11 +1735,6 @@ export class Renderer {
     // sides of a road; a PARKED car sits centred on its stall. Same trip-car, same colour.
     const carSize = Math.max(2, ts * 0.34);
     const parkedSize = Math.max(2, ts * 0.3);
-    // Under a tileset, cars are tiny rotated car SPRITES ("micro machines"); procedural keeps the
-    // tone-coded squares. Sprite is drawn a touch larger than the square so the little body reads.
-    // In GPU mode the moving cars are drawn by the GPU sprite batch (lit by the shared base pass), so
-    // skip the CPU car draw to avoid double-rendering (Maddy: move sprites to GPU for matched lighting).
-    const carSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.cars : undefined;
     for (const c of ambient.cars) {
       if (this.gpuMode && !agentArt) break; // cars rendered on GPU (unless the skin draws pixel-art agents)
       // A PARKED car (lot bay or kerb slot) carries its exact stall position in c.x/c.y, so it draws
@@ -1820,20 +1752,8 @@ export class Renderer {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const size = c.parked ? parkedSize : carSize;
-      if (carSprites && carSprites.length > 0) {
-        const img = carSprites[(c.tint ?? 0) % carSprites.length]!;
-        const hv = { dx: pose.hx, dy: pose.hy };
-        const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate CW to the heading
-        const ss = size * 1.7;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(img, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = CAR_COLORS[(c.tint ?? 0) % CAR_COLORS.length]!;
-        ctx.fillRect(Math.floor(sx - size / 2), Math.floor(sy - size / 2), size, size);
-      }
+      ctx.fillStyle = CAR_COLORS[(c.tint ?? 0) % CAR_COLORS.length]!;
+      ctx.fillRect(Math.floor(sx - size / 2), Math.floor(sy - size / 2), size, size);
     }
     // (Smog is drawn LAST — the top layer, above cars/peds — see end of drawSprites.)
 
@@ -1858,7 +1778,6 @@ export class Renderer {
     // lit normally (dims at night). The flashing red/blue light bar is drawn LATER, after the lighting
     // buffer, so the LIGHTS evade shading (a flasher glows full-bright; the car doesn't — Maddy).
     const cruiserSize = Math.max(2, ts * 0.26);
-    const policeSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.police : undefined;
     for (const c of ambient.cruisers) {
       if (this.gpuMode && !agentArt) break; // cruisers rendered on GPU in gpuMode
       const pose = carPose(c, alpha);
@@ -1870,19 +1789,8 @@ export class Renderer {
       }
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
-      if (policeSprites && policeSprites.length > 0) {
-        const hv = { dx: pose.hx, dy: pose.hy };
-        const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate to heading (like cars)
-        const ss = ts * 0.55;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(policeSprites[0]!, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = '#1c2235'; // procedural fallback: dark cruiser body
-        ctx.fillRect(Math.floor(sx - cruiserSize / 2), Math.floor(sy - cruiserSize / 2), cruiserSize, cruiserSize);
-      }
+      ctx.fillStyle = '#1c2235'; // procedural fallback: dark cruiser body
+      ctx.fillRect(Math.floor(sx - cruiserSize / 2), Math.floor(sy - cruiserSize / 2), cruiserSize, cruiserSize);
     }
 
     // Trains: a snake of cars riding the rails (Maddy: rails need trains). Each cell is drawn as a
@@ -1940,8 +1848,6 @@ export class Renderer {
     // The sprite is FIXED per ped (a stable hash of its identity) — NOT cycled through the frames: the
     // frames are different-coloured PEOPLE, not gait frames, so cycling them flashed "rainbow road"
     // (Maddy). Procedural (or missing sprites) keeps the tone-coded mode dots.
-    const pedSprites = this.profile.agentSprites ? this.ambientSprites?.peds : undefined;
-    const cyclistSprites = this.profile.agentSprites ? this.ambientSprites?.cyclists : undefined;
     const pedSize = Math.max(1, ts * 0.16);
     for (const p of ambient.peds) {
       if (this.gpuMode && !agentArt) break; // peds/cyclists rendered on GPU in gpuMode
@@ -1958,24 +1864,8 @@ export class Renderer {
       }
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
-      const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      const set = isBike ? cyclistSprites : pedSprites;
-      if (set && set.length > 0) {
-        // a STABLE per-ped pick (its household/car id) → one consistent person, never cycling
-        const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
-        const img = set[(Math.imul(seed, 2654435761) >>> 0) % set.length]!;
-        const hv = { dx: pose.hx, dy: pose.hy };
-        const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate CW to heading (like cars)
-        const ss = ts * (isBike ? 0.46 : 0.4);
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(img, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = MODE_COLORS[p.mode ?? TravelMode.Walk] ?? MODE_COLORS[TravelMode.Walk]!;
-        ctx.fillRect(sx - pedSize / 2, sy - pedSize / 2, pedSize, pedSize);
-      }
+      ctx.fillStyle = MODE_COLORS[p.mode ?? TravelMode.Walk] ?? MODE_COLORS[TravelMode.Walk]!;
+      ctx.fillRect(sx - pedSize / 2, sy - pedSize / 2, pedSize, pedSize);
     }
 
     // Bird flocks: tiny dot clusters. Centre on the tile (+0.5) for the same
@@ -2109,39 +1999,17 @@ export class Renderer {
     // folded into the streetlight light-pollution system.)
     const flashRed = Math.floor(performance.now() / 180) % 2 === 0;
     const lb = Math.max(1, ts * 0.2);
-    // The diffusion EMISSION map (red/blue bar + headlights, baked aligned to the albedo). Drawn
-    // additively so it GLOWS over the body and evades shading; the red/blue BLINK is the bar's two
-    // halves (red left / blue right of the 16px map) emphasized in alternation.
-    const cruiserLights = !this.gpuMode ? this.ambientSprites?.emission['police/cruiser'] : undefined;
-    const HALF = 8, SRCH = 16; // the light map is the 16px sprite grid
     for (const c of ambient.cruisers) {
       if (this.gpuMode || agentArt) break; // GPU / the pixel-art cruiser carries its own bar
       const pose = carPose(c, alpha);
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
-      if (cruiserLights) {
-        const hv = { dx: pose.hx, dy: pose.hy };
-        const angle = Math.atan2(hv.dx, -hv.dy); // match the body sprite's heading rotation
-        const ss = ts * 0.55;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.globalCompositeOperation = 'lighter'; // additive → emissive glow (evades shading)
-        ctx.imageSmoothingEnabled = false;
-        ctx.globalAlpha = 0.5; // baseline: both lights glow softly
-        ctx.drawImage(cruiserLights, -ss / 2, -ss / 2, ss, ss);
-        ctx.globalAlpha = 1; // blink: emphasize the active half brighter
-        if (flashRed) ctx.drawImage(cruiserLights, 0, 0, HALF, SRCH, -ss / 2, -ss / 2, ss / 2, ss);
-        else ctx.drawImage(cruiserLights, HALF, 0, HALF, SRCH, 0, -ss / 2, ss / 2, ss);
-        ctx.restore(); // restores compositeOp/alpha/smoothing
-      } else {
-        // procedural fallback: a soft glow + the bright bar (the glow sells "emissive" even in daylight)
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = flashRed ? '#ff3b30' : '#3b6bff';
-        ctx.fillRect(Math.floor(sx - lb), Math.floor(sy - lb), Math.ceil(lb * 2), Math.ceil(lb * 2));
-        ctx.globalAlpha = 1;
-        ctx.fillRect(Math.floor(sx - lb / 2), Math.floor(sy - lb / 2), Math.ceil(lb), Math.ceil(lb * 0.7));
-      }
+      // procedural fallback: a soft glow + the bright bar (the glow sells "emissive" even in daylight)
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = flashRed ? '#ff3b30' : '#3b6bff';
+      ctx.fillRect(Math.floor(sx - lb), Math.floor(sy - lb), Math.ceil(lb * 2), Math.ceil(lb * 2));
+      ctx.globalAlpha = 1;
+      ctx.fillRect(Math.floor(sx - lb / 2), Math.floor(sy - lb / 2), Math.ceil(lb), Math.ceil(lb * 0.7));
     }
 
     // Vehicle headlights/taillights + lit bus windows — STATIC emission maps over the moving sprite,
@@ -2162,65 +2030,12 @@ export class Renderer {
       }
       ctx.restore();
     }
-    const carLights = !this.gpuMode && !agentArt && this.profile.agentSprites ? this.ambientSprites?.carLights : undefined; // GPU draws car emission in gpuMode
-    if (night > 0.02 && carLights && carLights.length > 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = night;
-      for (const c of ambient.cars) {
-        if (c.parked) continue; // a parked car is OFF — no headlights/taillights (Maddy)
-        const li = carLights[(c.tint ?? 0) % carLights.length];
-        if (!li) continue;
-        const pose = carPose(c, alpha);
-        const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
-        if (!onScreen(sx, sy)) continue;
-        const size = c.parked ? parkedSize : carSize;
-        const hv = { dx: pose.hx, dy: pose.hy };
-        const angle = Math.atan2(hv.dx, -hv.dy);
-        const ss = size * 1.7;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(li, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      }
-      ctx.restore();
-    }
-    const cyclistLights = !this.gpuMode && !agentArt && this.profile.agentSprites ? this.ambientSprites?.cyclistLights : undefined; // GPU draws cyclist emission in gpuMode
-    if (night > 0.02 && cyclistLights && cyclistLights.length > 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = night;
-      for (const p of ambient.peds) {
-        if (p.phase === 'inside' || p.phase === 'driving') continue;
-        if ((p.mode ?? TravelMode.Walk) !== TravelMode.Bike) continue;
-        const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
-        const li = cyclistLights[(Math.imul(seed, 2654435761) >>> 0) % cyclistLights.length];
-        if (!li) continue;
-        const pose = pedPose(p, onRoadAt, alpha);
-        const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
-        if (!onScreen(sx, sy)) continue;
-        const hv = { dx: pose.hx, dy: pose.hy };
-        const angle = Math.atan2(hv.dx, -hv.dy);
-        const ss = ts * 0.46;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(li, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      }
-      ctx.restore();
-    }
-
     // Light-bearing BUILDINGS (collected in drawBase): overlay the emission map additively over the
     // whole footprint, evading shading. Two layers — the STATIC glow (furnace/windows) draws steady;
     // the BLINK layer (red aviation/hazard beacons) draws only on the on-phase, so the glow no longer
     // flickers WITH the hazard lights (Maddy: the glow should be static, only the beacons blink).
     if (this.emissiveBuildings.length > 0) {
       const now = performance.now();
-      const emission = this.ambientSprites?.emission;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.imageSmoothingEnabled = false;
@@ -2232,14 +2047,14 @@ export class Renderer {
         // Power plants (24–30) run 24/7 → glow always on; everything else is lit WINDOWS → night-gated.
         const isPower = b.kind >= 24 && b.kind <= 30;
         const a = isPower ? 1 : night;
-        const stat = b.lit ?? (this.hasSkinEmission ? undefined : emission?.[b.key]);
+        const stat = b.lit;
         if (stat && a > 0.02) {
           ctx.globalAlpha = a;
           ctx.drawImage(stat, sx, sy, w, h);
         }
         // Hazard beacons blink on a PER-BUILDING phase + period (hashed from its anchor), so beacons
         // across the map don't pulse in unison (Maddy: global blink reads fake). Always-on (aviation).
-        const blinkImg = b.blink ?? (this.hasSkinEmission ? undefined : emission?.[`${b.key}/blink`]);
+        const blinkImg = b.blink;
         if (blinkImg) {
           const hash = (((b.x * 73856093) ^ (b.y * 19349663)) >>> 0);
           const period = 420 + (hash % 6) * 90; // 420..870 ms, varies per building
