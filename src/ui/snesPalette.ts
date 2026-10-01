@@ -32,6 +32,10 @@ export const C = {
   waterShallow: [56, 104, 208],
   wave: [104, 152, 232],
   foam: [200, 224, 248],
+  // polluted water (a palette swap of the water tiles, never marks on them)
+  murkHi: [80, 128, 144],
+  murk: [48, 88, 136],
+  murkLo: [40, 72, 112],
   // paving
   paveHi: [200, 200, 192],
   pave: [168, 168, 160],

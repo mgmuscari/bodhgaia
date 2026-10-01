@@ -69,6 +69,23 @@ function dirVector8(d: number): [number, number] {
   return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
 }
 
+/** Water pollution smoothed over a tile's 3×3 WATER neighbourhood, so murk shades across a bay or a pond
+ *  instead of sitting as a hard square on the one tile the runoff landed on. */
+function murkAt(map: GameMap, poll: ReadonlyMap<number, number>, x: number, y: number): number {
+  let sum = 0;
+  let n = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!map.inBounds(x + dx, y + dy)) continue;
+      const j = map.idx(x + dx, y + dy);
+      if (map.water[j] === 0) continue;
+      sum += poll.get(j) ?? 0;
+      n++;
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
+
 /** Wash level 1..3 (0 = none) for a 0..255 field — the dithered @wash/* overlays step, never fade. */
 function washLevel(v: number): number {
   return v >= 170 ? 3 : v >= 90 ? 2 : v > 0 ? 1 : 0;
@@ -207,6 +224,7 @@ export class Renderer {
   // This frame's cast headlights (headlights.ts), for the GPU glow pass, and the lit-silhouette cache:
   // per sprite image, per 8-way light direction, the warm near-half of its pixels.
   private beams: HeadlightBeam[] = [];
+  private murkSig = 0; // signature of the water-pollution levels the cached base was drawn with
   private readonly litCache = new WeakMap<object, (HTMLCanvasElement | null)[]>();
 
   constructor(
@@ -386,8 +404,12 @@ export class Renderer {
 
         const tkind = kindOf(map, i);
         const terrainKey = `${tkind}-${bandOf(map.elevation[i]!)}`;
-        const terrain = this.atlas.get(pickVariantKey(terrainKey, tx, ty, this.tileVariants)) ?? this.atlas.get(terrainKey)!;
         const isWater = tkind === 'ocean' || tkind === 'lake' || tkind === 'river';
+        const picked = pickVariantKey(terrainKey, tx, ty, this.tileVariants);
+        // polluted water is the same tile palette-swapped toward murk (snesTileset murkTiles), by level
+        const murk = isWater && ambient ? washLevel(murkAt(map, ambient.waterPollution, tx, ty)) : 0;
+        const terrain =
+          (murk > 0 ? this.atlas.get(`${picked}~m${murk}`) : undefined) ?? this.atlas.get(picked) ?? this.atlas.get(terrainKey)!;
         ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
 
         // ASPHALT GROUND: redlined OPEN ground reads as paved-over disinvestment (env-justice arc);
@@ -687,6 +709,13 @@ export class Renderer {
    * sprites on top, culled to the viewport — the O(visible sprites) draw.
    */
   renderFrame(world: WorldState, camera: Camera, ambient: AmbientState): void {
+    // murky water lives in the cached base: rebuild it when any tile crosses a pollution level
+    let sig = 0;
+    for (const [tile, poll] of ambient.waterPollution) sig ^= Math.imul(tile * 4 + washLevel(poll) + 1, 0x9e3779b1); // order-free
+    if (sig !== this.murkSig) {
+      this.murkSig = sig;
+      this.baseDirty = true;
+    }
     this.composite(world, camera, ambient); // ambient → drawBase bakes wear/junk/tents under the agents
     this.drawSprites(world, camera, ambient);
   }
@@ -708,17 +737,6 @@ export class Renderer {
 
     // (Desire-path WEAR + its JUNK/TENTS are now baked into the cached BASE in drawBase — ground level,
     // under the moving agents — so they no longer draw over pedestrians here.)
-
-    // Water pollution: runoff murks the coastal water green-brown in dithered steps as it accumulates.
-    for (const [tile, poll] of ambient.waterPollution) {
-      const wx = tile % mapW;
-      const wy = (tile - wx) / mapW;
-      const { dx, dy } = camera.tileOrigin(wx, wy);
-      if (dx < -ts || dx > w + ts || dy < -ts || dy > h + ts) continue;
-      const level = washLevel(poll);
-      const murk = level > 0 ? this.sprites.get(`@wash/water/${level}/${surfaceVariantIndex(wx, wy, 3)}`) : undefined;
-      if (murk) ctx.drawImage(murk, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
-    }
 
     // Building health + power, as pixel icons at the tile pixel scale: a heart / raincloud badge in the
     // top-left of a clearly thriving / suffering home (the visible output of the citizen-transit-health
