@@ -22,7 +22,7 @@ import {
 } from './renderKey';
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
-import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox } from './decoration';
+import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners } from './decoration';
 import { isPowerConsumer } from '../growth/power';
 import { carPose, pedPose, ambientAlpha, trainPoses } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
@@ -402,6 +402,8 @@ export class Renderer {
     };
     // Power poles (props), drawn AFTER the tile loop so no later tile paints over one.
     const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
+    // Traffic signals on stroad corners, drawn after the tile loop too (they reach over neighbouring lanes).
+    const signals: { x: number; y: number; corners: number }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
         const i = map.idx(tx, ty);
@@ -520,6 +522,16 @@ export class Renderer {
             if (corners !== 0) ink(`@road/curbCorner/${corners}`, dx, dy); // block corners the curbs miss
             const zebras = crosswalkMask(map, tx, ty);
             if (zebras !== 0) ink(`@road/zebra/${zebras}`, dx, dy); // crossings on the approaches to a junction
+            // stroad junctions: a stop bar and a lane arrow on each lane entering the box; signals on its corners
+            const bars = stopBarMask(map, tx, ty);
+            for (const e of [N, E, S, W]) {
+              if (bars & e) {
+                ink(`@road/stop/${e}`, dx, dy);
+                ink(`@road/arrow/${e}`, dx, dy);
+              }
+            }
+            const sig = signalCorners(map, tx, ty);
+            if (sig !== 0) signals.push({ x: tx, y: ty, corners: sig });
             if (curb !== 0) ink(`@road/curb/${curb}`, dx, dy);
 
             // Level-crossing PAINT: the white stop line a road has at a rail/tram crossing, on each
@@ -654,6 +666,10 @@ export class Renderer {
     for (const pl of poles) {
       const o = camera.tileOrigin(pl.x, pl.y);
       ink(`@road/pole/${pl.axis}`, o.dx, o.dy);
+    }
+    for (const sg of signals) {
+      const o = camera.tileOrigin(sg.x, sg.y);
+      for (const c of [1, 2, 4, 8]) if (sg.corners & c) ink(`@road/signal/${c}`, o.dx, o.dy);
     }
 
     // Parked cars are no longer painted into the static base — they are the trip-cars that

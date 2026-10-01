@@ -311,10 +311,51 @@ describe('crosswalks on wide approaches', () => {
     expect(crosswalkMask(m, 11, 9) & 1).toBe(1); // south approach, north edge
     expect(crosswalkMask(m, 10, 3)).toBe(0); // mid-block
   });
-  it('freeways get no crosswalks', () => {
+  it('an at-grade freeway crossing is a stroad: its freeway approaches get crosswalks too (Maddy 2026-10-01)', () => {
+    const m = stroad();
+    expect(crosswalkMask(m, 10, 7) & 4).toBe(4); // freeway lane north of the crossing, its south edge
+    expect(crosswalkMask(m, 10, 3)).toBe(0); // mid-freeway
+  });
+});
+
+
+// A 3-wide N–S freeway (x 9..11) crossed at grade by a street on a row of RAMPS (y 8) — the stroad.
+function stroad(): GameMap {
+  const m = new GameMap(24, 24);
+  for (let y = 0; y < 24; y++) for (let x = 9; x <= 11; x++) m.setBuilt(x, y, BuiltKind.RoadHighway);
+  for (let x = 0; x < 24; x++) m.setBuilt(x, 8, x >= 9 && x <= 11 ? BuiltKind.RoadRamp : BuiltKind.RoadStreet);
+  return m;
+}
+
+import { stopBarMask, signalCorners } from '../../src/ui/decoration';
+
+describe('stroad intersections (Maddy 2026-10-01: "should have stroad intersection vibes")', () => {
+  it('stop bars on the lanes entering the box — right-hand traffic: northbound on the east, southbound on the west', () => {
+    const m = stroad();
+    expect(stopBarMask(m, 11, 9)).toBe(1); // east lane, south of the box: northbound, stops at its north edge
+    expect(stopBarMask(m, 9, 7)).toBe(4); // west lane, north of the box: southbound, stops at its south edge
+    expect(stopBarMask(m, 9, 9)).toBe(0); // west lane south of the box carries traffic AWAY from it
+    expect(stopBarMask(m, 11, 7)).toBe(0);
+    expect(stopBarMask(m, 10, 9)).toBe(0); // the spine (median) carries no lane
+    expect(stopBarMask(m, 11, 3)).toBe(0); // nowhere near a box
+  });
+
+  it('a 1-wide street approach keeps its plain crosswalk (no stop bar)', () => {
+    const m = stroad();
+    expect(stopBarMask(m, 8, 8)).toBe(0);
+  });
+
+  it('signals stand on the diagonal outer corners of a multi-tile box (NW and SE), on the sidewalk corner', () => {
+    const m = stroad();
+    expect(signalCorners(m, 9, 8)).toBe(1); // west end of the crossing: the NW corner
+    expect(signalCorners(m, 11, 8)).toBe(4); // east end: the SE corner
+    expect(signalCorners(m, 10, 8)).toBe(0); // the middle of the crossing
+  });
+
+  it('a plain 1-wide 4-way gets no signals (small junctions stay clean)', () => {
     const m = new GameMap(24, 24);
-    for (let y = 0; y < 24; y++) for (let x = 9; x <= 11; x++) m.setBuilt(x, y, BuiltKind.RoadHighway);
     for (let x = 0; x < 24; x++) m.setBuilt(x, 8, BuiltKind.RoadStreet);
-    expect(crosswalkMask(m, 10, 7)).toBe(0);
+    for (let y = 0; y < 24; y++) m.setBuilt(10, y, BuiltKind.RoadStreet);
+    expect(signalCorners(m, 10, 8)).toBe(0);
   });
 });
