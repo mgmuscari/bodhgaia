@@ -53,6 +53,9 @@ export interface SimDeps {
   seed: string;
   ecoMeans?: { soil: number; flora: number; fauna: number };
   civicMeans?: { belonging: number; voice: number; trust: number };
+  /** 'tick' (default): effort accrues every sim tick, the original endless counter. 'economy': the
+   *  stock-and-flow economy (src/economy) owns effort, so the tick accrues nothing. */
+  effortAccrual?: 'tick' | 'economy';
   /** This cadence's found O-D trips — published for the renderer (cars ARE trips).
    *  Renderer-facing output, not part of the world hash (the laid `map.traffic` is). */
   trips?: Trip[];
@@ -84,11 +87,10 @@ export interface SimTickResult {
  */
 export function simTick(deps: SimDeps, tick: number): SimTickResult {
   // 1. Effort every tick, on the prior recompute's cached means.
-  const effortGained = accrue(
-    deps.tech,
-    { parcels: deps.world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans },
-    1,
-  );
+  const effortGained =
+    deps.effortAccrual === 'economy'
+      ? 0
+      : accrue(deps.tech, { parcels: deps.world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }, 1);
 
   // 2. Traffic is AGENT-DRIVEN now (the 1989 aggregate field is retired): the live travelers
   //    (citizen cars in the ambient layer) lay a live traffic density as they actually drive, route
