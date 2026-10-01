@@ -61,6 +61,17 @@ export class TechState {
   }
 
   /**
+   * Unlock `id` WITHOUT charging effort — for a practice whose project has already paid its way over time
+   * (the economy's projects). Still refuses an unknown id, a repeat, or unmet prereqs.
+   */
+  grant(id: string): boolean {
+    const r = this.canUnlock(id);
+    if (!r.ok && r.reason !== 'effort') return false;
+    this.unlockedSet.add(id);
+    return true;
+  }
+
+  /**
    * Spend `n` communal effort. The guarded SECOND debit path beside {@link unlock}:
    * build-tools' applyTool calls this instead of mutating the public field, so the
    * u32-snapshot effort invariant stays enforced in one place (single-writer

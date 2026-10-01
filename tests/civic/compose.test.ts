@@ -159,3 +159,14 @@ describe('simTick: fabric isolation on pure runs (no placements)', () => {
     expect(deps.world.parcels.snapshotBytes()).toEqual(parcelsBefore);
   });
 });
+
+
+describe('simTick: effort can be handed to the economy (Maddy 2026-09-30: no endless accrual)', () => {
+  it("with effortAccrual 'economy' the tick accrues nothing", () => {
+    const deps = { ...makeDeps(), effortAccrual: 'economy' as const };
+    const before = deps.tech.effort;
+    const r = simTick(deps, 1);
+    expect(r.effortGained).toBe(0);
+    expect(deps.tech.effort).toBe(before);
+  });
+});
