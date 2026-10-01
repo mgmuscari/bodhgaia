@@ -17,6 +17,7 @@ const NAME_OF: ReadonlyMap<number, string> = new Map<number, string>([
   [BuiltKind.BikePath, 'Bike Path'],
   [BuiltKind.Streetcar, 'Streetcar'],
   [BuiltKind.QuietStreet, 'Quiet Street'],
+  [BuiltKind.RoadRamp, 'Ramp'], // where a street crosses or joins a freeway
   [BuiltKind.ElevatedRail, 'Elevated Rail'],
   [BuiltKind.Promenade, 'Promenade'],
   [BuiltKind.PlantedMedian, 'Planted Median'],
