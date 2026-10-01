@@ -6,7 +6,8 @@
 // two-frame walk; heading doesn't read at that size.
 //
 // Keys: @sprite/car/{tint}/{dir8}, @sprite/car-light/{dir8} (headlights + taillights, additive at night),
-// @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame}.
+// @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame},
+// @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant}.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
@@ -127,6 +128,41 @@ function smogPuff(size: number, variant: number): Pixels {
   return p;
 }
 
+// Trains: a locomotive (cab window at the nose) and silver carriages, ~0.8 tile long, as wide as the
+// rail gauge. k edge, b body, w window, r/m loco body + roof gear, g windshield.
+const TRAIN_CAR_E = ['.kkkkkkkkkkk.', 'kbbbbbbbbbbbk', 'kbwbwbwbwbwbk', 'kbwbwbwbwbwbk', 'kbbbbbbbbbbbk', '.kkkkkkkkkkk.'];
+const TRAIN_LOCO_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'krmmmmmmmrrgk', 'krmmmmmmmrrgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
+
+/** The north-east frame of an east-facing body: the drawing laid along the diagonal, each target pixel
+ *  taking the nearest source pixel (a pixel-art turn — jaggies, never a blur). `len`/`wid` are the
+ *  turned body's size in art pixels (a diagonal reads longer per pixel, so it is drawn a little shorter). */
+function turnNE(east: Pixels, len: number, wid: number): Pixels {
+  const n = Math.ceil((len + wid) / Math.SQRT2);
+  const out = blank(n, n);
+  const c = n / 2;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const dx = x + 0.5 - c;
+      const dy = y + 0.5 - c;
+      const u = (dx - dy) / Math.SQRT2; // along the heading (north-east)
+      const v = (dx + dy) / Math.SQRT2; // across, to its right (south-east)
+      if (Math.abs(u) > len / 2 || Math.abs(v) > wid / 2) continue;
+      const sx = Math.min(east.w - 1, Math.floor(((u + len / 2) / len) * east.w));
+      const sy = Math.min(east.h - 1, Math.floor(((v + wid / 2) / wid) * east.h));
+      const i = (sy * east.w + sx) * 4;
+      if (east.data[i + 3] === 0) continue;
+      out.data.set(east.data.subarray(i, i + 4), (y * n + x) * 4);
+    }
+  }
+  return out;
+}
+
+// Birds: a five-pixel gull, wings up / wings down.
+const BIRD_FRAMES = [
+  ['k...k', '.k.k.', '..k..'],
+  ['..k..', '.k.k.', 'k...k'],
+];
+
 /** Paint every SNES agent sprite into `out`. */
 export function paintSnesAgents(out: Map<string, Pixels>): void {
   BODIES.forEach(([hi, mid, lo], t) => {
@@ -147,6 +183,13 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
     };
     eightWays(glyph(COP_E, cols), glyph(COP_NE, cols)).forEach((f, d) => out.set(`@sprite/cop/${d}/${phase}`, f));
   }
+  const carCols = { k: C.slateLo, b: C.paveHi, w: C.glassLo };
+  const locoCols = { k: C.roofRedLo, r: C.roofRed, m: C.slate, g: C.glass };
+  for (const [part, rows, cols] of [['car', TRAIN_CAR_E, carCols], ['loco', TRAIN_LOCO_E, locoCols]] as const) {
+    const east = glyph(rows, cols);
+    eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => out.set(`@sprite/train/${part}/${d}`, f));
+  }
+  BIRD_FRAMES.forEach((rows, f) => out.set(`@sprite/bird/${f}`, glyph(rows, { k: C.ink })));
   SMOG_PX.forEach((size, i) => {
     for (const v of [0, 1]) out.set(`@sprite/smog/${i}/${v}`, smogPuff(size, v));
   });

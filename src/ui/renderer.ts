@@ -17,6 +17,7 @@ import {
   edgeKey,
   emissionKey,
   variantIndexOf,
+  surfaceVariantIndex,
   type FootprintPos,
 } from './renderKey';
 import { iconKey } from './tileset';
@@ -59,8 +60,10 @@ const E = 2;
 const S = 4;
 const W = 8;
 
-const ASPHALT_GROUND_COLOR = '#3a3833'; // paved-over redlined open ground
-const ASPHALT_GROUND_ALPHA = 0.72; // strength at full redline grade (faded by depaveAsphalt near greens)
+/** Wash level 1..3 (0 = none) for a 0..255 field — the dithered @wash/* overlays step, never fade. */
+function washLevel(v: number): number {
+  return v >= 170 ? 3 : v >= 90 ? 2 : v > 0 ? 1 : 0;
+}
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
 const ENCAMPMENT_WEAR = 225; // wear at/above which the heaviest-worn empty tile shows an encampment tent
 
@@ -207,7 +210,7 @@ export class Renderer {
     this.edges = ns('@edge/');
     this.roadInk = ns('@road/');
     this.skinEmission = ns('@emit/');
-    this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/')]);
+    this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/'), ...ns('@wash/')]);
     this.lazyImages = skin.lazy ?? null;
   }
 
@@ -339,13 +342,10 @@ export class Renderer {
         // the player DE-PAVES it back to living ground by greening/rewilding nearby (depaveAsphalt
         // fades it near greens). Cached in the base (redline is static; greens invalidate on build).
         // Drawn over open terrain only (built tiles cover their own ground).
-        const pave = depaveAsphalt(map, tx, ty);
-        if (pave > 0) {
-          ctx.globalAlpha = (pave / 255) * ASPHALT_GROUND_ALPHA;
-          ctx.fillStyle = ASPHALT_GROUND_COLOR;
-          ctx.fillRect(dx, dy, Math.ceil(ts), Math.ceil(ts));
-          ctx.globalAlpha = 1;
-        }
+        // (not under forest canopy: woods read as woods, the paved-over ground is the open land around them)
+        const pave = tkind === 'forest' ? 0 : washLevel(depaveAsphalt(map, tx, ty));
+        const paved = pave > 0 ? this.sprites.get(`@wash/asphalt/${pave}/${surfaceVariantIndex(tx, ty, 3)}`) : undefined;
+        if (paved) ctx.drawImage(paved, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
 
         const built = map.built[i]!;
 
@@ -413,17 +413,13 @@ export class Renderer {
             const cellKey = footprintCellKey(built, fp.width, fp.height, tx - fp.x, ty - fp.y, tier);
             if (this.atlas.has(cellKey)) builtKey = pickVariantKey(cellKey, fp.x, fp.y, this.tileVariants);
           }
-          // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, pave a road band ACROSS
-          // the track UNDER the rails (so the rails read as running through the asphalt — drawn before
-          // the rail tile). The white stop lines go on top, after.
-          const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
-          if (xMask !== 0) {
-            ctx.fillStyle = '#3a3833'; // asphalt of the crossing roadway
-            if (xMask & (N | S)) ctx.fillRect(dx + ts * 0.28, dy, Math.ceil(ts * 0.44), Math.ceil(ts)); // road runs N–S
-            if (xMask & (E | W)) ctx.fillRect(dx, dy + ts * 0.28, Math.ceil(ts), Math.ceil(ts * 0.44)); // road runs E–W
-          }
           const builtTile = this.atlas.get(builtKey);
           if (builtTile) ctx.drawImage(builtTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+          // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, the road's asphalt band runs
+          // ACROSS the track with the rails showing through it; the white stop lines go on top, after.
+          const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
+          if (xMask & (N | S)) ink('@road/xband/v', dx, dy); // road runs N–S
+          if (xMask & (E | W)) ink('@road/xband/h', dx, dy); // road runs E–W
           // Limited-access DIVIDER: a concrete barrier on each edge where a freeway abuts a surface
           // road (a frontage avenue) — you physically can't cross there, only at a ramp. Per-tile
           // (depends on neighbour kinds), drawn OVER the road like the power poles, not an atlas key.
@@ -480,10 +476,11 @@ export class Renderer {
           if (deck !== 0) {
             const deckTile = this.atlas.get(builtRenderKey(deck, deckMask(map, tx, ty), 'c', 0));
             if (deckTile) {
-              const lift = Math.max(1, Math.round(ts * 0.2));
-              ctx.fillStyle = 'rgba(8, 6, 14, 0.32)'; // the overpass's shadow on the road
-              ctx.fillRect(dx + Math.round(ts * 0.1), dy + Math.round(ts * 0.12), ts, ts);
-              ctx.drawImage(deckTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy - lift, ts, ts);
+              // lift and shadow offset in whole art pixels, the shadow a half-tone dither
+              const ps = ts / BASE_TILE;
+              const shade = this.sprites.get('@wash/shadow');
+              if (shade) ctx.drawImage(shade, 0, 0, BASE_TILE, BASE_TILE, dx + 2 * ps, dy + 2 * ps, ts, ts);
+              ctx.drawImage(deckTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy - 3 * ps, ts, ts);
             }
           }
 
@@ -658,17 +655,16 @@ export class Renderer {
     // (Desire-path WEAR + its JUNK/TENTS are now baked into the cached BASE in drawBase — ground level,
     // under the moving agents — so they no longer draw over pedestrians here.)
 
-    // Water pollution: runoff murks the coastal water green-brown, deepening with accumulation.
+    // Water pollution: runoff murks the coastal water green-brown in dithered steps as it accumulates.
     for (const [tile, poll] of ambient.waterPollution) {
       const wx = tile % mapW;
       const wy = (tile - wx) / mapW;
-      const { sx, sy } = camera.worldToScreen(wx, wy);
-      if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
-      ctx.globalAlpha = 0.72 * (poll / 255);
-      ctx.fillStyle = '#46502f';
-      ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
+      const { dx, dy } = camera.tileOrigin(wx, wy);
+      if (dx < -ts || dx > w + ts || dy < -ts || dy > h + ts) continue;
+      const level = washLevel(poll);
+      const murk = level > 0 ? this.sprites.get(`@wash/water/${level}/${surfaceVariantIndex(wx, wy, 3)}`) : undefined;
+      if (murk) ctx.drawImage(murk, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
     }
-    ctx.globalAlpha = 1;
 
     // Building health + power, as pixel icons at the tile pixel scale: a heart / raincloud badge in the
     // top-left of a clearly thriving / suffering home (the visible output of the citizen-transit-health
@@ -739,11 +735,9 @@ export class Renderer {
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
     }
 
-    // Trains: a snake of cars riding the rails (Maddy: rails need trains). Each cell is drawn as a
-    // car oriented along the LOCAL track direction (toward the next-newer cell); the head is the
-    // locomotive (interpolated for smooth motion + a bright nose).
-    const carLen = Math.max(3, ts * 0.82);
-    const carWid = Math.max(2, ts * 0.46);
+    // Trains: a snake of cars riding the rails (Maddy: rails need trains). Each cell is drawn in the
+    // 8-way frame of the LOCAL track direction (toward the car ahead); the head is the locomotive
+    // (interpolated for smooth motion).
     for (const tr of ambient.trains) {
       for (let c = tr.cells.length - 1; c >= 0; c--) {
         // position: the head rides its interpolated (hx,hy); the rest sit on their tile centres.
@@ -758,7 +752,7 @@ export class Renderer {
           cy = (idx - (cx)) / mapW;
         }
         const { sx, sy } = camera.worldToScreen(cx + 0.5, cy + 0.5);
-        if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
+        if (!onScreen(sx, sy)) continue;
         // heading: toward the car AHEAD (cell c-1) so each car aligns with the track; the head uses
         // its committed dir. The car ahead of cell 1 is the head at its interpolated (hx,hy).
         let hx: number;
@@ -774,15 +768,8 @@ export class Renderer {
           hx = ax - cx;
           hy = ay - cy;
         }
-        const angle = Math.atan2(hx, -hy); // sprite long axis faces north; rotate to the track heading
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.fillStyle = c === 0 ? '#b8392f' : '#c9ccd6'; // red locomotive, silver cars
-        ctx.fillRect(-carWid / 2, -carLen / 2, carWid, carLen);
-        ctx.fillStyle = '#2b2f3a'; // window band
-        ctx.fillRect(-carWid / 2, -carLen * 0.18, carWid, Math.max(1, carLen * 0.22));
-        ctx.restore();
+        const img = this.sprites.get(`@sprite/train/${c === 0 ? 'loco' : 'car'}/${heading8(hx, hy)}`);
+        if (img) this.drawArt(ctx, img, cx + 0.5, cy + 0.5, camera);
       }
     }
 
@@ -802,17 +789,17 @@ export class Renderer {
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
     }
 
-    // Bird flocks: tiny dot clusters. Centre on the tile (+0.5) for the same
-    // grid convention as cars/peds (boids spawn clustered on the tile corner).
-    ctx.fillStyle = '#2b2433';
-    const birdSize = Math.max(1, ts * 0.1);
-    for (const f of ambient.birds) {
-      for (const b of f.birds) {
+    // Bird flocks: little gulls flapping out of phase. Centre on the tile (+0.5) for the same grid
+    // convention as cars/peds (boids spawn clustered on the tile corner).
+    const flap = performance.now() / 160;
+    ambient.birds.forEach((f, fi) => {
+      f.birds.forEach((b, bi) => {
         const { sx, sy } = camera.worldToScreen(b.x + 0.5, b.y + 0.5);
-        if (!onScreen(sx, sy)) continue;
-        ctx.fillRect(sx - birdSize / 2, sy - birdSize / 2, birdSize, birdSize);
-      }
-    }
+        if (!onScreen(sx, sy)) return;
+        const img = this.sprites.get(`@sprite/bird/${Math.floor(flap + fi * 3 + bi) % 2}`);
+        if (img) this.drawArt(ctx, img, b.x + 0.5, b.y + 0.5, camera);
+      });
+    });
 
     // Smog plumes — TOP layer (above cars/peds, Maddy): translucent puffs over polluted tiles, streaming
     // downwind along the prevailing wind (loop + triangle fade so they don't pop), billowing as they go.

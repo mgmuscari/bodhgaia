@@ -558,3 +558,61 @@ describe('snes sprites — encampments at the art-pixel scale (Maddy 2026-09-30)
     expect(count('@wear/3')).toBeGreaterThan(count('@wear/1')); // more wear, more beaten earth
   });
 });
+
+describe('snes washes — dithered pixel overlays instead of translucent per-tile fills', () => {
+  const cover = (k: string): number => {
+    const p = tiles.get(k)!;
+    let n = 0;
+    for (let i = 3; i < p.data.length; i += 4) if (p.data[i] === 255) n++;
+    return n / (p.w * p.h);
+  };
+
+  it('water pollution and redlined asphalt: 3 levels × 3 variants that thicken, never solid, hard pixels', () => {
+    for (const fam of ['water', 'asphalt']) {
+      for (let v = 0; v < 3; v++) {
+        let prev = 0;
+        for (let l = 1; l <= 3; l++) {
+          const k = `@wash/${fam}/${l}/${v}`;
+          const p = tiles.get(k);
+          expect(p, k).toBeDefined();
+          for (let i = 3; i < p!.data.length; i += 4) expect([0, 255]).toContain(p!.data[i]);
+          expect(cover(k), k).toBeGreaterThan(prev);
+          expect(cover(k), k).toBeLessThan(0.85);
+          prev = cover(k);
+        }
+      }
+    }
+  });
+
+  it('washes are clumped patches, not a checkerboard dither (a district-wide dither reads as noise)', () => {
+    for (const k of ['@wash/water/2/0', '@wash/asphalt/2/1']) {
+      const p = tiles.get(k)!;
+      const on = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < p.w && y < p.h && p.data[(y * p.w + x) * 4 + 3] === 255;
+      let lit = 0;
+      let clumped = 0;
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+        if (!on(x, y)) continue;
+        lit++;
+        if ([on(x + 1, y), on(x - 1, y), on(x, y + 1), on(x, y - 1)].filter(Boolean).length >= 2) clumped++;
+      }
+      expect(clumped / lit, k).toBeGreaterThan(0.6);
+    }
+    expect([...tiles.get('@wash/asphalt/2/0')!.data]).not.toEqual([...tiles.get('@wash/asphalt/2/1')!.data]);
+  });
+
+  it('the overpass shadow is a half-tone dither', () => {
+    expect(cover('@wash/shadow')).toBeGreaterThan(0.4);
+    expect(cover('@wash/shadow')).toBeLessThan(0.6);
+  });
+
+  it('a level crossing paves a road band across the rails, with the rails running through it', () => {
+    const v = tiles.get('@road/xband/v')!; // road runs N-S across an E-W railway
+    const a = (x: number, y: number): number => v.data[(y * v.w + x) * 4 + 3]!;
+    expect(a(0, 0)).toBe(0); // outside the band stays the rail tile
+    expect(a(8, 0)).toBe(255); // the band reaches both edges
+    expect(a(8, 15)).toBe(255);
+    const at = (x: number, y: number): number[] => [...v.data.subarray((y * v.w + x) * 4, (y * v.w + x) * 4 + 3)];
+    expect(at(8, 5)).not.toEqual(at(8, 7)); // a rail row differs from the asphalt beside it
+    expect(tiles.has('@road/xband/h')).toBe(true);
+  });
+});

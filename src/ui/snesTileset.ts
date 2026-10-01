@@ -10,7 +10,7 @@
 
 import { BASE_TILE } from './camera';
 import type { PaintedSkin } from './tileset';
-import { blank, disc, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
+import { blank, disc, dither, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
 import { snesRoadTiles } from './snesRoads';
@@ -316,7 +316,90 @@ function pedTile(mask: number): Pixels {
   return p;
 }
 
+/** A level crossing: the road's asphalt band across the track, with the rails (on the rail tile's own
+ *  rows) running through it. `axis` is the ROAD's direction; drawn over the rail tile. */
+function crossingBand(axis: 'v' | 'h'): Pixels {
+  const p = blank(T, T);
+  for (let a = 0; a < T; a++) {
+    for (let b = 4; b <= 11; b++) {
+      const [x, y] = axis === 'v' ? [b, a] : [a, b];
+      px(p, x, y, hash2(x, y, 6400) % 7 === 0 ? C.asphaltLo : C.asphalt);
+    }
+  }
+  for (const r of [5, 10]) {
+    for (let b = 4; b <= 11; b++) {
+      // the rails cross perpendicular to the road: rail on row r, its shadow on the next
+      const [x, y] = axis === 'v' ? [b, r] : [r, b];
+      const [sx, sy] = axis === 'v' ? [b, r + 1] : [r + 1, b];
+      px(p, x, y, C.paveHi);
+      px(p, sx, sy, C.slateLo);
+    }
+  }
+  return p;
+}
+
+/** A clumpy value-noise field over one tile (0..255 per pixel): hashed lattice values every 4 px,
+ *  bilinearly blended, wrapping at the tile edge so a patch never ends in a hard tile seam. */
+function clumpField(seed: number): number[] {
+  const L = 4; // lattice step (px); T / L lattice cells, wrapping
+  const n = T / L;
+  const lat = (i: number, j: number): number => hash2(((i % n) + n) % n, ((j % n) + n) % n, seed) & 255;
+  const field: number[] = [];
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      const i = Math.floor(x / L);
+      const j = Math.floor(y / L);
+      const fx = (x % L) / L;
+      const fy = (y % L) / L;
+      const top = lat(i, j) * (1 - fx) + lat(i + 1, j) * fx;
+      const bot = lat(i, j + 1) * (1 - fx) + lat(i + 1, j + 1) * fx;
+      field.push(top * (1 - fy) + bot * fy);
+    }
+  }
+  return field;
+}
+
+/** The pixels of a clump field above its `cover` quantile — the patch, sized exactly to that coverage. */
+function patch(field: readonly number[], cover: number): boolean[] {
+  const cut = [...field].sort((a, b) => b - a)[Math.max(0, Math.round(field.length * cover) - 1)]!;
+  return field.map((v) => v >= cut);
+}
+
+/** Ground washes — the pixel-art twin of a translucent tile tint: clumped patches (cracked asphalt mats,
+ *  algae slicks) in three thicknesses × three variants the renderer picks per tile, so a district-wide
+ *  wash reads as patchy ground rather than a uniform screen. Plus the half-tone overpass shadow. */
+function washTiles(out: Map<string, Pixels>): void {
+  const COVER = [0.18, 0.38, 0.62];
+  for (let v = 0; v < 3; v++) {
+    const wf = clumpField(6500 + v);
+    const af = clumpField(6600 + v);
+    COVER.forEach((cover, i) => {
+      // runoff murk on polluted water: dark algae mats with silt where the slick thins
+      const water = blank(T, T);
+      const wp = patch(wf, cover);
+      const core = patch(wf, cover * 0.55);
+      wp.forEach((on, k) => {
+        if (on) px(water, k % T, Math.floor(k / T), core[k] ? C.leafDk : C.dirtLo);
+      });
+      out.set(`@wash/water/${i + 1}/${v}`, water);
+      // redlined open ground paved over: asphalt mats creeping across the grass, cracked
+      const asphalt = blank(T, T);
+      patch(af, cover).forEach((on, k) => {
+        const x = k % T;
+        const y = Math.floor(k / T);
+        if (on) px(asphalt, x, y, hash2(x, y, 6700 + v) % 6 === 0 ? C.asphaltLo : C.asphalt);
+      });
+      out.set(`@wash/asphalt/${i + 1}/${v}`, asphalt);
+    });
+  }
+  const shadow = blank(T, T); // a half-tone drop shadow (the overpass deck's — small, so a dither reads)
+  dither(shadow, 0, 0, T, T, C.ink, 8);
+  out.set('@wash/shadow', shadow);
+}
+
 function transportTiles(out: Map<string, Pixels>): void {
+  out.set('@road/xband/v', crossingBand('v'));
+  out.set('@road/xband/h', crossingBand('h'));
   // full road tiles (lane paint in the palette) + the per-tile street furniture overlays
   snesRoadTiles(out, [1, 2, 3, 7, 10], [1, 2, 3]);
   for (let m = 0; m < 16; m++) {
@@ -529,6 +612,7 @@ export function paintSnesSkin(): PaintedSkin {
   transportTiles(eager);
   edgeTiles(eager);
   encampmentTiles(eager);
+  washTiles(eager);
   paintSnesAgents(eager);
   for (const name of Object.keys(ICONS)) eager.set(`@icon/${name}`, icon(name));
   return { eager, lazy: { keys: buildingKeys(), paint: buildingPainter() } };
