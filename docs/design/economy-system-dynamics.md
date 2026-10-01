@@ -121,3 +121,28 @@ Meadows' twelve leverage points, from weakest to strongest, map onto what the pr
 - **Displacement feeds the unhoused count.**
 - **Communal effort becomes the economy's effort stock.** Tech costs and community builds spend it; the
   old endless accrual is retired.
+
+## Decisions (Maddy, 2026-09-30)
+
+1. **Projects take time.** Commons builds and Commons practices run over several in-game days, drawing
+   effort (and funds, where they cost money) each day. An under-staffed project stalls. Delays are where
+   the dynamics live.
+2. **Re-tier the Commons tree by leverage point after the wiring**: first make the economy real in the
+   game, then reorganise the practices from parameters to paradigm.
+3. **Practices cost effort plus funds.** A practice can also need money, tying the commons to the budget.
+   Commons builds draw effort; the built fabric (roads, plants, services) draws funds.
+
+## Wiring sequence
+
+1. **Projects** (pure, `src/economy/projects.ts`): a queue of in-progress works, each with total effort and
+   funds and a duration. They draw per tick, stall when effort or funds run dry, and complete into the
+   world.
+2. **City readings**: aggregate occupancy, wellbeing, land value, protected share, the tax base by class,
+   and the upkeep and tending tables from the live city. Goodwill reads and writes civic trust.
+3. **The economy tick** on the in-game hour. Retire the endless effort accrual; route tool builds and tech
+   unlocks through projects.
+4. **UI**:
+   - a top bar (funds, effort with its capacity, burnout, approval, goodwill);
+   - a Budget window (R/C/I tax sliders, the police line, upkeep);
+   - project progress on the map.
+5. **Graphs window**: the stocks' behaviour over time, the in-game version of the chart above.
