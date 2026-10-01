@@ -47,6 +47,10 @@ const trafficDir = path.join(root, 'src/traffic');
 // transcendental-free. Occupancy arrives via an injected accessor, so growth
 // imports only engine + citizens — never ui/civic/ecology/worldgen.
 const growthDir = path.join(root, 'src/growth');
+// src/economy is scanned fail-closed: the stock-and-flow economy is a pure function of (state, city
+// readings, levers) and must stay headless (no DOM) and transcendental-free. The city hands it plain
+// aggregates, so it imports nothing from ui/civic/ecology/worldgen.
+const economyDir = path.join(root, 'src/economy');
 
 // DOM globals that must never appear in headless layers.
 const FORBIDDEN_DOM = /\b(window|document|HTMLCanvasElement|requestAnimationFrame|navigator|localStorage)\b/;
@@ -87,6 +91,7 @@ const ecologyFiles = tsFiles(ecologyDir);
 const civicFiles = tsFiles(civicDir);
 const trafficFiles = tsFiles(trafficDir);
 const growthFiles = tsFiles(growthDir);
+const economyFiles = tsFiles(economyDir);
 
 // Pure-ui allowlist: ui modules that carry NO DOM and NO transcendental Math, so
 // they can be headless-tested like the engine/worldgen layers. The src/ui dir as
@@ -153,6 +158,7 @@ describe('architecture guard: headless + deterministic', () => {
     ...civicFiles,
     ...trafficFiles,
     ...growthFiles,
+    ...economyFiles,
   ]) {
     const rel = path.relative(root, file);
     it(`${rel} is DOM-free, ui-free, and transcendental-Math-free`, () => {
@@ -423,4 +429,20 @@ describe('architecture guard self-check', () => {
     expect(FORBIDDEN_DOM.test(code)).toBe(false);
     expect(FORBIDDEN_MATH.test(code)).toBe(false);
   });
+});
+
+describe('architecture guard: src/economy scanned fail-closed', () => {
+  it('scans src/economy and finds at least one file', () => {
+    expect(economyFiles.length).toBeGreaterThan(0);
+  });
+  for (const file of economyFiles) {
+    const rel = path.relative(root, file);
+    it(`${rel} (economy) does not import from ui/civic/ecology/worldgen`, () => {
+      const code = stripComments(fs.readFileSync(file, 'utf8'));
+      expect(UI_IMPORT.test(code), `${rel} imports from ui`).toBe(false);
+      expect(CIVIC_IMPORT.test(code), `${rel} imports from civic`).toBe(false);
+      expect(ECOLOGY_IMPORT.test(code), `${rel} imports from ecology`).toBe(false);
+      expect(WORLDGEN_IMPORT.test(code), `${rel} imports from worldgen`).toBe(false);
+    });
+  }
 });
