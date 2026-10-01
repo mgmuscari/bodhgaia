@@ -111,17 +111,16 @@ constraint.
 5. **Messages + decision events + advisor.**
 6. **Approval-gated powers** (bonds, ballot measures, eminent domain …) per the decisions below.
 
-## Open decisions (Maddy's)
+## Decisions (Maddy, 2026-09-30)
 
-1. **Eminent domain.** It is the tool urban renewal used, and the opening indicts it.
-   - Offer it as an approval-gated *taking* that visibly displaces and costs goodwill?
-   - Offer only consent-based acquisition (a CLT buyout)?
-   - Offer both, as distinct tools?
-2. **Police in the budget.** The fork dropped police budgets.
-   - Keep the police apparatus outside the player's ledger (it acts on the city)?
-   - Or make it a budget line the player can cut and redirect to Circles?
-3. **Tax model.**
-   - the classic city-builder per-class R/C/I rate sliders on property value?
-   - A single rate?
-   - A land-value tax: tax land, not buildings, which discourages speculation and fits the city's politics?
-4. **Stakes.** Is there a fail state (a recall when approval stays low), or soft consequences only?
+1. **Eminent domain → both, as two tools.**
+   - A *taking*: approval-gated; it visibly displaces residents into the unhoused count and costs goodwill.
+     The apparatus is felt, not borrowed.
+   - A *community land buyout*: consent-based, into a CLT, costs funds.
+2. **Police → a budget line the player can cut.** Funding police feeds the police-violence field; cutting
+   it and redirecting to Circles (restorative) is a real lever. This revises the foundation PRD's
+   "no police budget" — the apparatus enters the ledger so that defunding can be a choice.
+3. **Taxes → per-class R/C/I sliders** on property value (classic the classic city-builder). The displacement loop in §D
+   still applies through rents.
+4. **Stakes → soft consequences only.** No game over. Empty funds degrade services; low approval locks
+   powers.
