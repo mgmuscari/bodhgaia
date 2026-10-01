@@ -44,6 +44,11 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   map (placed, then raised over hours by effort drawn as a project) to honour "projects take time" fully.
 - 🟡 **Displacement is counted, not yet enacted** — rent-driven displacement adds to the unhoused count, but
   doesn't yet empty specific homes (occupancy). Next: evict from the most rent-burdened unprotected homes.
+- 🟢 **Freeway end cap draws oddly** (Maddy 2026-10-01, "a corner case — literally") — seed lotus (96–98, 57):
+  the N–S freeway runs one tile past its last crossing (the box at y 56) and stops at the water. That
+  1-tile stub gets lane paint / bend marks with nowhere to go (a curved line, a stray arrow). Treat a
+  freeway stub beyond a box as an end cap: no lane paint, a barrier across its end (or let worldgen not
+  leave the stub at all).
 - 🔴 **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
   trains which we should support") — a road and a railway can't share a tile today. Needs a level-crossing
   tile both `canDrive` and `railTraversable` accept (built by dragging a road across track, or vice
