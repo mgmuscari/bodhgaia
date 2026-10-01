@@ -117,7 +117,6 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/dockContent.ts',
   'src/ui/ambientContent.ts',
   'src/ui/parkingContent.ts',
-  'src/ui/glyphContent.ts',
   'src/ui/toolMenuContent.ts',
   'src/ui/dockLayout.ts',
   'src/ui/techLayout.ts',
@@ -130,8 +129,6 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/snesBuildings.ts',
   'src/ui/snesRoads.ts',
   'src/ui/snesAgents.ts',
-  'src/ui/tilesetExport.ts',
-  'src/ui/satelliteManifest.ts',
   'src/ui/satelliteFormat.ts',
   'src/ui/gridTextureBridge.ts',
 ];

@@ -1,9 +1,8 @@
-// GPU render path (Increment 1 of the hybrid shader): a WebGL2 canvas stacked UNDER the Canvas2D
-// sprite/UI canvas. It renders the MAP via the SatelliteShader (procedural pass for now; baked-tile
-// albedo is Increment 2), driven by the LIVE camera so it pans/zooms with the game. The Canvas2D
-// layer goes transparent (renderer.setGpuMode) and draws only sprites/decorations/UI on top. The CPU
-// path stays the no-WebGL fallback. Animations (water/grass/clouds/shadows) run on the GPU here, so
-// the per-frame CPU water cost (Maddy's perf hit over large seas) goes away when GPU mode is on.
+// GPU render path: a WebGL2 canvas stacked UNDER the Canvas2D sprite/UI canvas. It lights the CPU-baked
+// pixel-art base (SatelliteShader: day/night + contact shadows) and casts the emissive glow (headlights,
+// cruiser bars, lit windows), driven by the LIVE camera so it pans/zooms with the game. The Canvas2D
+// layer goes transparent (renderer.setGpuMode) and draws the agents/decorations/UI on top. The CPU path
+// stays the no-WebGL fallback.
 //
 // IO module (touches WebGL/DOM) — not on the pure-ui allowlist.
 import { GridTextureBridge } from './gridTextureBridge';
@@ -194,7 +193,6 @@ export class GpuRenderer {
     timeSec: number,
     base: TexImageSource,
     baseVersion: number,
-    shaderLife = true,
   ): void {
     if (!this.shader || !this.gl) return;
     this.shader.uploadDirty(this.bridge);
@@ -207,7 +205,7 @@ export class GpuRenderer {
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED, motion: shaderLife ? 1 : 0 });
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED });
   }
 
   /** Force a base re-upload on the next render (e.g. after a resize changes the base canvas size). */

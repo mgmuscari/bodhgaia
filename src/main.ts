@@ -19,18 +19,14 @@ import { createRng } from './engine/rng';
 import { cityName } from './engine/names';
 import { FixedTickLoop } from './engine/loop';
 import { Camera } from './ui/camera';
-import { Renderer, exportProceduralTiles } from './ui/renderer';
-import { mountSatelliteDemo } from './ui/satelliteShader';
+import { Renderer } from './ui/renderer';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
 import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, liveInspectLine, applyLiveCaps } from './ui/ambientContent';
 import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
-import { loadTileset } from './ui/tilesetLoader';
-import { tilesetDef } from './ui/tileset';
-
-/** The game's one skin: the code-painted Super (16-bit) pixel art. */
-const SKIN = 'snes';
+import { materializeSkin } from './ui/tilesetLoader';
+import { paintSnesSkin } from './ui/snesTileset';
 import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
@@ -88,15 +84,6 @@ export function main(): void {
 
   const params = new URLSearchParams(window.location.search);
 
-  // Dev route: ?shaderdemo mounts the hybrid satellite procedural pass on a synthetic world and
-  // returns — it never boots the live game, so it's safe to open in a scratch browser without
-  // touching an in-progress playtest. See docs/art/satellite-shader.md.
-  if (params.has('shaderdemo')) {
-    const handle = mountSatelliteDemo(canvas, { size: 64 });
-    (window as unknown as { __satDemo?: unknown }).__satDemo = handle;
-    return;
-  }
-
   const seed = params.get('seed') ?? DEFAULT_SEED;
 
   // Settings: live caps apply NOW (perf ceilings the agent layer reads); the world size feeds
@@ -143,7 +130,9 @@ export function main(): void {
     zoom: 2,
   });
 
-  const renderer = new Renderer(canvas);
+  // The one aesthetic (Maddy 2026-09-30): the code-painted Super (16-bit) skin, materialized before the
+  // first frame (eager tiles now, buildings + light maps on first draw).
+  const renderer = new Renderer(canvas, materializeSkin(paintSnesSkin()));
   renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
   if (canvas.style.position === '') canvas.style.position = 'relative'; // sit ABOVE the GPU canvas (z-index 0)
   canvas.style.zIndex = '1';
@@ -181,15 +170,6 @@ export function main(): void {
     renderer.setGpuMode(false);
   };
   if (gpuParam || settings.renderer === 'gpu') mountGpu();
-
-  // Tileset skin: the procedural look paints instantly (above); a non-procedural skin loads its
-  // committed PNGs async and hot-swaps in when ready (applyTileset invalidates the cached base →
-  // the next frame repaints). A partial/missing tileset falls back per-key to the painter.
-  // The ONE skin-swap path (boot, settings menu, dev handle): load/paint the skin's tiles, then rebuild
-  // the atlas under the skin's render profile (applyTileset invalidates the cached base).
-  const applySkin = (id: string): Promise<void> =>
-    loadTileset(id).then((overrides) => renderer.applyTileset(overrides, tilesetDef(id).profile));
-  void applySkin(SKIN); // the one aesthetic (Maddy 2026-09-30: retire the other graphics sets)
 
   // Two named dirty chokepoints (CRITIC-YP2). markDirty invalidates the cached
   // renderer base (map/camera/overlay changed); markPreviewDirty only requests a
@@ -325,13 +305,6 @@ export function main(): void {
     ambient: ambientState,
     tech,
     power: () => powerGrid,
-    // Build-time tileset-generator export (docs/art/satellite-tileset.md §5.6): dump every
-    // procedural atlas tile + diffusion spec as the ControlNet structural guides. Pulled via
-    // Playwright against the dev server; never used on a render path.
-    exportTiles: exportProceduralTiles,
-    // Hot-swap a tileset skin at runtime (same path as the settings dropdown) — for live verification
-    // and quick A/B without hunting the menu. e.g. window.bodhitropolis.setTileset('satellite').
-    setTileset: applySkin,
   };
 
   // Opening challenge overlay. Computed from the same world, mounted over the
@@ -998,8 +971,8 @@ export function main(): void {
     }
     // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so
     // it samples the freshest baked tiles. The base re-uploads only when its version changed.
-    gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion(), renderer.renderProfile().shaderLife);
-    // GPU agents: the moving sprites lit by the SAME pass as the ground (drawn over the base, under UI).
+    gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion());
+    // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
     if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList());
     // GPU smog overlay (z2, above sprites): the atmospheric haze, now on the GPU instead of CPU plumes.
     if (smogOverlay && ambientOn) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, ambientState.pollution, ambientState.wind);

@@ -220,9 +220,8 @@ function buildingPainter(): (key: string) => Pixels | null {
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────────────────────────
-// Roads come in as the asphalt SURFACE (`@surface/road#n`): the renderer paints its per-mask lane
-// markings over it, so every autotile and wide slab stays correct. Rail, streetcar, elevated rail,
-// bike paths and promenades are full mask tiles. Mask bits: N=1 E=2 S=4 W=8.
+// Roads are full mask tiles with their lane paint (snesRoads.ts), as are rail, streetcar, elevated rail,
+// bike paths and promenades. Mask bits: N=1 E=2 S=4 W=8.
 
 function asphalt(v: number): Pixels {
   const p = blank(T, T);
@@ -318,7 +317,6 @@ function pedTile(mask: number): Pixels {
 }
 
 function transportTiles(out: Map<string, Pixels>): void {
-  for (let v = 0; v < 3; v++) out.set(`@surface/road#${v}`, asphalt(v));
   // full road tiles (lane paint in the palette) + the per-tile street furniture overlays
   snesRoadTiles(out, [1, 2, 3, 7, 10], [1, 2, 3]);
   for (let m = 0; m < 16; m++) {

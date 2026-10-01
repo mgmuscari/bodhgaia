@@ -1,5 +1,5 @@
-// Pure render-decoration predicates: the DECISION half of the renderer's wide-body
-// slab + power-line decoration pass. Each is a deterministic function of (map, x, y)
+// Pure render-decoration predicates: the DECISION half of the renderer's road paint, curb, crossing
+// and power-pole decoration pass. Each is a deterministic function of (map, x, y)
 // alone — DOM-free and transcendental-Math-free, so the renderer shell (renderer.ts)
 // holds ZERO branching of its own and these can be headless-tested over GameMap
 // fixtures. On the architecture pure-ui allowlist (tests/architecture.test.ts).
@@ -36,38 +36,7 @@ export function wideRoadAt(map: GameMap, x: number, y: number): boolean {
   return false;
 }
 
-/**
- * True iff a power pole falls on the tile at (x, y): the tile must be a RoadStreet
- * or RoadAvenue (NOT highway, NOT rail/transit, NOT building/empty/water), and the
- * pole spacing must land here. A tile with an E or W road neighbour runs
- * horizontally → pole iff x % POLE_SPACING === 0; else a tile with an N or S road
- * neighbour runs vertically → pole iff y % POLE_SPACING === 0; an isolated road
- * tile carries no pole. Deterministic in (map, x, y) only.
- */
-export function powerPoleAt(map: GameMap, x: number, y: number): boolean {
-  if (!map.inBounds(x, y)) return false;
-  const self = map.getBuilt(x, y);
-  if (self !== BuiltKind.RoadStreet && self !== BuiltKind.RoadAvenue) return false;
-  if (roadAt(map, x + 1, y) || roadAt(map, x - 1, y)) return x % POLE_SPACING === 0;
-  if (roadAt(map, x, y + 1) || roadAt(map, x, y - 1)) return y % POLE_SPACING === 0;
-  return false; // isolated road tile
-}
-
-/**
- * The wire segments to draw from a pole at (x, y): the subset of {[1,0], [0,1]}
- * (E, S) whose neighbour is a road tile of the same run. The renderer shell just
- * draws a segment toward each returned offset — this is the ONLY wire decision, so
- * the shell holds no branching logic. Empty when {@link powerPoleAt} is false.
- */
-export function poleWireDirs(map: GameMap, x: number, y: number): ReadonlyArray<readonly [number, number]> {
-  if (!powerPoleAt(map, x, y)) return [];
-  const out: Array<readonly [number, number]> = [];
-  if (roadAt(map, x + 1, y)) out.push([1, 0]);
-  if (roadAt(map, x, y + 1)) out.push([0, 1]);
-  return out;
-}
-
-// ── Curb-side power poles (skin path) ──────────────────────────────────────────────────────────────
+// ── Curb-side power poles ──────────────────────────────────────────────────────────────────────
 // Poles are PROPS (no wires — Maddy 2026-09-30: wires were clutter) standing on the OUTER curb of a
 // street — the north curb of an E-W run, the west curb of an N-S run — mid-block, never mid-road on a
 // multi-row avenue, and tucked into the tile corner where they land on a T. Independent of how the
