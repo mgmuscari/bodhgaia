@@ -343,7 +343,9 @@ export class Renderer {
         // fades it near greens). Cached in the base (redline is static; greens invalidate on build).
         // Drawn over open terrain only (built tiles cover their own ground).
         // (not under forest canopy: woods read as woods, the paved-over ground is the open land around them)
-        const pave = tkind === 'forest' ? 0 : washLevel(depaveAsphalt(map, tx, ty));
+        // only heavily redlined ground shows mats at all, so most open land reads green
+        const grade = tkind === 'forest' ? 0 : depaveAsphalt(map, tx, ty);
+        const pave = grade >= 230 ? 3 : grade >= 190 ? 2 : grade >= 150 ? 1 : 0;
         const paved = pave > 0 ? this.sprites.get(`@wash/asphalt/${pave}/${surfaceVariantIndex(tx, ty, 3)}`) : undefined;
         if (paved) ctx.drawImage(paved, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
 
