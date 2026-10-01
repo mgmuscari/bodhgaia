@@ -584,6 +584,10 @@ describe('snes washes — dithered pixel overlays instead of translucent per-til
     }
   });
 
+  it('redlined asphalt keeps open ground mostly green (Maddy 2026-09-30): even the heaviest mat < 1/4 of a tile', () => {
+    for (let v = 0; v < 3; v++) expect(cover(`@wash/asphalt/3/${v}`)).toBeLessThan(0.25);
+  });
+
   it('washes are clumped patches, not a checkerboard dither (a district-wide dither reads as noise)', () => {
     for (const k of ['@wash/water/2/0', '@wash/asphalt/2/1']) {
       const p = tiles.get(k)!;

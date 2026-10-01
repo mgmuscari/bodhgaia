@@ -370,6 +370,8 @@ function patch(field: readonly number[], cover: number): boolean[] {
  *  wash reads as patchy ground rather than a uniform screen. Plus the half-tone overpass shadow. */
 function washTiles(out: Map<string, Pixels>): void {
   const COVER = [0.18, 0.38, 0.62];
+  // open ground stays mostly green (Maddy 2026-09-30): paved-over mats are scattered, never a carpet
+  const PAVED = [0.05, 0.11, 0.2];
   for (let v = 0; v < 3; v++) {
     const wf = clumpField(6500 + v);
     const af = clumpField(6600 + v);
@@ -384,7 +386,7 @@ function washTiles(out: Map<string, Pixels>): void {
       out.set(`@wash/water/${i + 1}/${v}`, water);
       // redlined open ground paved over: asphalt mats creeping across the grass, cracked
       const asphalt = blank(T, T);
-      patch(af, cover).forEach((on, k) => {
+      patch(af, PAVED[i]!).forEach((on, k) => {
         const x = k % T;
         const y = Math.floor(k / T);
         if (on) px(asphalt, x, y, hash2(x, y, 6700 + v) % 6 === 0 ? C.asphaltLo : C.asphalt);
