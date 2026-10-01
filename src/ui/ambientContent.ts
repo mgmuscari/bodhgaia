@@ -808,6 +808,35 @@ export interface LateralProfile {
   exit: number;
 }
 
+/** The leg direction (0=N, 1=E, 2=S, 3=W) from tile index `a` to the adjacent tile index `b`. */
+function stepDir(a: number, b: number, W: number): number {
+  const dx = (b % W) - (a % W);
+  const dy = Math.floor(b / W) - Math.floor(a / W);
+  return dx > 0 ? 1 : dx < 0 ? 3 : dy > 0 ? 2 : 0;
+}
+
+/**
+ * Every car of a train posed like any other sprite mover (Maddy 2026-09-30): car k crosses its tile
+ * cells[k] toward cells[k−1] (the locomotive toward its target) at the locomotive's own progress, so the
+ * whole consist interpolates together, and each car's previous leg (from the tile behind it) gives it the
+ * same quarter-arc bend through a corner that moverPose draws for cars — one car after another, a tile
+ * apart. Head first.
+ */
+export function trainPoses(t: Train, W: number): Pose[] {
+  const p = Math.min(1, Math.max(0, 1 - (Math.abs(t.tx - t.hx) + Math.abs(t.ty - t.hy))));
+  const poses: Pose[] = [];
+  for (let k = 0; k < t.cells.length; k++) {
+    const a = t.cells[k]!;
+    const ax = a % W;
+    const ay = Math.floor(a / W);
+    const dir = k === 0 ? t.dir : stepDir(a, t.cells[k - 1]!, W);
+    const prevDir = k + 1 < t.cells.length ? stepDir(t.cells[k + 1]!, a, W) : dir;
+    const leg: Mover = { x: ax + DIR_DX[dir]! * p, y: ay + DIR_DY[dir]! * p, tx: ax + DIR_DX[dir]!, ty: ay + DIR_DY[dir]!, dir, prevDir } as Mover;
+    poses.push(moverPose(leg, 0));
+  }
+  return poses;
+}
+
 export function moverPose(m: Mover, lateral: number | LateralProfile): Pose {
   const prof = typeof lateral === 'number' ? { entry: lateral, mid: lateral, exit: lateral } : lateral;
   const latAt = (p: number): number => (p < 0.5 ? prof.entry + (prof.mid - prof.entry) * p * 2 : prof.mid + (prof.exit - prof.mid) * (p * 2 - 1));
