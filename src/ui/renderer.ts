@@ -35,6 +35,7 @@ import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roa
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
+import { AGENT_TINTS, heading8, personKey } from './snesAgents';
 import type { AmbientState } from './ambientContent';
 import type { AmbientSprites } from './ambientSprites';
 import { makeWaterFrames, makeGrassSheen, cloudFbm, buildWaterSloshFlipbook, WATER_SLOSH_ROTS, WATER_SLOSH_FRAMES } from './waterAnimation';
@@ -873,6 +874,26 @@ export class Renderer {
     this.invalidateBase();
   }
 
+  /** True when the skin supplies pixel-art agents (cars/cruisers/people) — drawn on the Canvas2D layer at
+   *  the art-pixel scale in both modes, so the GPU sprite batch skips its bodies. */
+  drawsAgentArt(): boolean {
+    return this.sprites.has('@sprite/car/0/0');
+  }
+
+  /** Draw a native pixel-art sprite centred on world point (wx, wy), at exactly one art pixel per tile
+   *  pixel, its top-left snapped to the same art-pixel grid the tiles are drawn on (no half-pixel smear). */
+  private drawArt(ctx: CanvasRenderingContext2D, img: AtlasImage, wx: number, wy: number, camera: Camera): void {
+    const w = (img as HTMLCanvasElement).width;
+    const h = (img as HTMLCanvasElement).height;
+    const ax = Math.round(wx * BASE_TILE - w / 2); // art-pixel coordinates of the top-left
+    const ay = Math.round(wy * BASE_TILE - h / 2);
+    const tx = Math.floor(ax / BASE_TILE);
+    const ty = Math.floor(ay / BASE_TILE);
+    const o = camera.tileOrigin(tx, ty);
+    const ps = camera.tileSize / BASE_TILE;
+    ctx.drawImage(img, o.dx + (ax - tx * BASE_TILE) * ps, o.dy + (ay - ty * BASE_TILE) * ps, w * ps, h * ps);
+  }
+
   /** A skin light map by key — eager, or materialized on first use from the lazy source. */
   private emissionImage(key: string): AtlasImage | undefined {
     return this.skinEmission.get(key) ?? (this.lazyImages?.keys.has(key) ? this.lazyImages.get(key) : undefined);
@@ -1553,6 +1574,8 @@ export class Renderer {
    *  glow at the DPR transform, culled to the viewport. Cosmetic shell — live-pass tuned. */
   private drawSprites(world: WorldState, camera: Camera, ambient: AmbientState): void {
     const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
+    // a pixel-art skin draws its own agents here (both modes) at the art-pixel scale, 8-way frames
+    const agentArt = this.drawsAgentArt();
     const onRoadAt = (x: number, y: number): boolean => world.map.inBounds(x, y) && isRoadKind(world.map.built[world.map.idx(x, y)]!);
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -1781,13 +1804,19 @@ export class Renderer {
     // skip the CPU car draw to avoid double-rendering (Maddy: move sprites to GPU for matched lighting).
     const carSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.cars : undefined;
     for (const c of ambient.cars) {
-      if (this.gpuMode) break; // cars rendered on GPU
+      if (this.gpuMode && !agentArt) break; // cars rendered on GPU (unless the skin draws pixel-art agents)
       // A PARKED car (lot bay or kerb slot) carries its exact stall position in c.x/c.y, so it draws
       // ON the stall (+0.5) — never warped to the lane centre. A MOVING car rides its lane (laneOffset,
       // right of heading) so opposing traffic separates. Parked cars use the smaller size.
       // carPose: a moving car rides its lane smoothly round turns (moverPose); a parked one sits on its
       // stall, a kerb-parked one parallel to the kerb
       const pose = carPose(c, alpha);
+      if (agentArt) {
+        const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
+        const img = this.sprites.get(`@sprite/car/${tint}/${heading8(pose.hx, pose.hy)}`);
+        if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+        continue;
+      }
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const size = c.parked ? parkedSize : carSize;
@@ -1831,8 +1860,14 @@ export class Renderer {
     const cruiserSize = Math.max(2, ts * 0.26);
     const policeSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.police : undefined;
     for (const c of ambient.cruisers) {
-      if (this.gpuMode) break; // cruisers rendered on GPU in gpuMode
+      if (this.gpuMode && !agentArt) break; // cruisers rendered on GPU in gpuMode
       const pose = carPose(c, alpha);
+      if (agentArt) {
+        const phase = Math.floor(performance.now() / 180) % 2; // the bar flashes red/blue
+        const img = this.sprites.get(`@sprite/cop/${heading8(pose.hx, pose.hy)}/${phase}`);
+        if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+        continue;
+      }
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       if (policeSprites && policeSprites.length > 0) {
@@ -1909,9 +1944,18 @@ export class Renderer {
     const cyclistSprites = this.profile.agentSprites ? this.ambientSprites?.cyclists : undefined;
     const pedSize = Math.max(1, ts * 0.16);
     for (const p of ambient.peds) {
-      if (this.gpuMode) break; // peds/cyclists rendered on GPU in gpuMode
+      if (this.gpuMode && !agentArt) break; // peds/cyclists rendered on GPU in gpuMode
       if (p.phase === 'inside' || p.phase === 'driving') continue; // inside a building, or riding its car
       const pose = pedPose(p, onRoadAt, alpha);
+      if (agentArt) {
+        const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
+        const moving = p.tx !== p.x || p.ty !== p.y;
+        const frame = moving ? Math.floor(performance.now() / 220 + (seed & 7)) % 2 : 0; // a two-step walk
+        const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
+        const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame));
+        if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+        continue;
+      }
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
@@ -2068,7 +2112,7 @@ export class Renderer {
     const cruiserLights = !this.gpuMode ? this.ambientSprites?.emission['police/cruiser'] : undefined;
     const HALF = 8, SRCH = 16; // the light map is the 16px sprite grid
     for (const c of ambient.cruisers) {
-      if (this.gpuMode) break; // cruiser emission rendered on GPU in gpuMode
+      if (this.gpuMode || agentArt) break; // GPU / the pixel-art cruiser carries its own bar
       const pose = carPose(c, alpha);
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
@@ -2102,7 +2146,20 @@ export class Renderer {
     // lighting pass). Aligned to the sprite arrays by the SAME index the sprite draw uses.
     const nightT = performance.now() / 1000;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
-    const carLights = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.carLights : undefined; // GPU draws car emission in gpuMode
+    if (agentArt && night > 0.02) {
+      // pixel-art headlights + taillights, additive at night, on the art grid with the car body
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = night;
+      for (const c of ambient.cars) {
+        if (c.parked) continue; // a parked car is OFF
+        const pose = carPose(c, alpha);
+        const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
+        if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      }
+      ctx.restore();
+    }
+    const carLights = !this.gpuMode && !agentArt && this.profile.agentSprites ? this.ambientSprites?.carLights : undefined; // GPU draws car emission in gpuMode
     if (night > 0.02 && carLights && carLights.length > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -2127,7 +2184,7 @@ export class Renderer {
       }
       ctx.restore();
     }
-    const cyclistLights = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.cyclistLights : undefined; // GPU draws cyclist emission in gpuMode
+    const cyclistLights = !this.gpuMode && !agentArt && this.profile.agentSprites ? this.ambientSprites?.cyclistLights : undefined; // GPU draws cyclist emission in gpuMode
     if (night > 0.02 && cyclistLights && cyclistLights.length > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
