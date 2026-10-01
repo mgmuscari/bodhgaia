@@ -26,7 +26,7 @@ import { isPowerConsumer } from '../growth/power';
 import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import type { AmbientState } from './ambientContent';
-import { dayNightBrightness, cloudShadow } from './lighting';
+import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 
 /** Precomputed CSS for the sparse-overlay scrim (see OverlaySource.dimBase). */
@@ -158,7 +158,6 @@ export class Renderer {
   // no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
   private gpuMode = false;
   private baseTexVersion = 0; // bumped each base rebuild so the GPU path knows to re-upload the base texture
-  private lightBuf: HTMLCanvasElement | null = null; // GPU mode: low-res sprite-lighting darkness buffer
   // Cached base pass (terrain + built + overlay) on an offscreen canvas. Rebuilt
   // ONLY when invalidated (map/camera/overlay change), then blitted 1:1 onto the
   // visible canvas each frame. The hover preview and the ambient sprites live in
@@ -840,48 +839,19 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
 
-    // GPU mode: light the sprite layer to MATCH the ground. Dim each sprite by the lighting (day/night
-    // × cloud) at ITS tile, from the SAME math the shader uses (lighting.ts) — so sprites read as lit to
-    // the exact tile level, not a flat wash (Maddy: the flat dim was distracting). A low-res darkness
-    // buffer (alpha = 1 − light) is source-atop'd over the sprite pixels; transparent gaps stay clear.
+    // GPU mode: light the sprite layer to MATCH the ground — the same day/night dim + night cool the shader
+    // applies (lighting.ts mirrors it), source-atop over the sprite pixels so transparent gaps stay clear.
+    // Uniform across the view: the ground's only spatial light is building contact shadow, which sprites
+    // standing in the street don't take.
     if (this.gpuMode) {
-      const BW = 80;
-      const BH = 50;
-      if (!this.lightBuf) {
-        this.lightBuf = document.createElement('canvas');
-        this.lightBuf.width = BW;
-        this.lightBuf.height = BH;
-      }
-      const bctx = this.lightBuf.getContext('2d');
-      if (bctx) {
-        const t = performance.now() / 1000;
-        const day = dayNightBrightness(t); // uniform across the view
-        const tl = camera.screenToWorld(0, 0);
-        const brc = camera.screenToWorld(w, h);
-        const spanX = brc.wx - tl.wx;
-        const spanY = brc.wy - tl.wy;
-        const id = bctx.createImageData(BW, BH);
-        for (let by = 0; by < BH; by++) {
-          for (let bx = 0; bx < BW; bx++) {
-            const wx = tl.wx + (bx / BW) * spanX;
-            const wy = tl.wy + (by / BH) * spanY;
-            const light = day * (1 - cloudShadow(wx, wy, t));
-            const i = (by * BW + bx) * 4;
-            id.data[i] = 6;
-            id.data[i + 1] = 9;
-            id.data[i + 2] = 22; // cool dark
-            id.data[i + 3] = Math.round((1 - light) * 255);
-          }
-        }
-        bctx.putImageData(id, 0, 0);
+      const dark = 1 - dayNightBrightness(performance.now() / 1000);
+      if (dark > 0.004) {
+        ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = 'source-atop';
-        const sm = ctx.imageSmoothingEnabled;
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(this.lightBuf, 0, 0, BW, BH, 0, 0, this.base.width, this.base.height);
-        ctx.imageSmoothingEnabled = sm;
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        ctx.fillStyle = `rgba(6, 9, 22, ${dark.toFixed(3)})`; // cool dark
+        ctx.fillRect(0, 0, this.base.width, this.base.height);
+        ctx.restore();
       }
     }
 
@@ -912,7 +882,8 @@ export class Renderer {
       ctx.globalCompositeOperation = 'lighter';
       ctx.imageSmoothingEnabled = false;
       for (const b of this.emissiveBuildings) {
-        const { sx, sy } = camera.worldToScreen(b.x, b.y);
+        // on the tile grid the building itself was drawn on, so each lit window lands on its art pixel
+        const { dx: sx, dy: sy } = camera.tileOrigin(b.x, b.y);
         const w = b.w * ts;
         const h = b.h * ts;
         if (!onScreen(sx + w / 2, sy + h / 2)) continue;

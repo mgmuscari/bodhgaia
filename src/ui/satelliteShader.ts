@@ -6,6 +6,7 @@
 // Not allowlisted as pure-UI: it holds the WebGL2 program. The GLSL *source builders* below are pure
 // (no GL/DOM) so the CPU↔GPU enum contract is unit-testable; the GL class is browser-only.
 import { SatType } from './satelliteFormat';
+import { ART_GRID_GLSL } from './artGrid';
 import { GridTextureBridge } from './gridTextureBridge';
 
 /** How far (tiles) a building's shadow reaches across the ground — short contact shadows (Maddy
@@ -51,6 +52,7 @@ uniform float u_dayspeed; // >0 slowly rotates the sun (day/night sweep); 0 = fi
 in vec2 v_uv;
 out vec4 fragColor;
 
+${ART_GRID_GLSL}
 vec4 cell(vec2 c) { return texture(u_data, (c + 0.5) / u_grid); }
 void main() {
   vec2 g = u_origin + v_uv * u_view; // screen UV → world cell space (camera pan/zoom)
@@ -61,7 +63,8 @@ void main() {
   // ALBEDO = the CPU-baked per-cell pixel art (terrain + building + lines/markings/props already
   // composited by the CPU base pass), unanimated — the GPU adds only light: day/night and shadows.
   vec3 col = texture(u_base, v_uv).rgb;
-  int type = int(cell(floor(g)).r * 255.0 + 0.5); // this cell's kind (roofs take no cast shadow)
+  vec2 ga = artPixel(g); // light is evaluated once per ART pixel, never across one
+  int type = int(cell(floor(ga)).r * 255.0 + 0.5); // this cell's kind (roofs take no cast shadow)
 
   // Day/night: the sun ARCS east→west across the sky (NOT a full orbit around the map — that read as
   // flat-earth, Maddy). Altitude = sin(day): >0 daytime, <0 night. Azimuth sweeps via cos(day), with a
@@ -79,7 +82,7 @@ void main() {
     shadowStrength = u_shadow * dayAmt;          // soft → none at night
     shadowLen = mix(0.6, 1.0, 1.0 - dayAmt);     // a little longer when the sun is low — never past a tile
   }
-  // Soft CONTACT shadows: march a few sub-tile steps toward the sun from THIS pixel (not its cell), at
+  // Soft CONTACT shadows: march a few sub-tile steps toward the sun from THIS art pixel (not its cell), at
   // most SHADOW_REACH tiles; the nearest building found darkens it by a falloff that fades to nothing
   // at the reach, scaled by the building's height — a short, diffuse gradient on the lee side. Roofs
   // are skipped (the art carries its own drop shadows).
@@ -89,7 +92,7 @@ void main() {
     vec2 stepv = normalize(sun);
     for (int i = 1; i <= 6; i++) {
       float d = float(i) / 6.0 * SHADOW_REACH * shadowLen;
-      vec2 sc = floor(g + stepv * d);
+      vec2 sc = floor(ga + stepv * d);
       if (sc.x < 0.0 || sc.y < 0.0 || sc.x >= u_grid.x || sc.y >= u_grid.y) break;
       vec4 nd = cell(sc);
       int nt = int(nd.r * 255.0 + 0.5);
