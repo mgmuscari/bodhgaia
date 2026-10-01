@@ -5,9 +5,9 @@
 // the overlay-suppression gate be unit-tested rather than left to manual QA.
 
 import { Branch, type TechNode } from '../tech/tree';
-import { BuiltKind } from '../engine/fabric';
+import { BuiltKind, isTransportKind } from '../engine/fabric';
 import { builtKindName } from '../engine/builtNames';
-import { footprintCellKey } from './renderKey';
+import { builtRenderKey, footprintCellKey } from './renderKey';
 import type { TechState } from '../tech/state';
 
 export type NodeStatus = 'locked' | 'affordable' | 'unlocked';
@@ -66,6 +66,9 @@ const BRANCH_ART: Record<Branch, string> = {
   [Branch.AnarchoCommunism]: '@ui/tech',
 };
 
+/** A granted kind's picture: a transport kind as an east-west run of its own tile, a building as its 1×1 drawing. */
+const kindArt = (k: BuiltKind): string => (isTransportKind(k) ? builtRenderKey(k, 10, 'c', 0) : footprintCellKey(k, 1, 1, 0, 0, 0));
+
 /** `road-diets` → `Road diets`. */
 const capabilityLabel = (c: string): string => {
   const words = c.replace(/-/g, ' ');
@@ -99,7 +102,7 @@ export function nodeViewOf(
     cost: n.cost,
     status: statusOf(n, state),
     missing: n.prereqs.filter((p) => !state.unlocked.has(p)).map((p) => byId.get(p)?.name ?? p),
-    art: n.grants.kinds?.length ? footprintCellKey(n.grants.kinds[0]!, 1, 1, 0, 0, 0) : BRANCH_ART[n.branch],
+    art: n.grants.kinds?.length ? kindArt(n.grants.kinds[0]!) : BRANCH_ART[n.branch],
     grants: [...(n.grants.kinds ?? []).map((k) => builtKindName(k)), ...(n.grants.capabilities ?? []).map(capabilityLabel)],
     branchTitle: BRANCH_TITLES[n.branch],
   };

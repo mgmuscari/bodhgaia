@@ -107,6 +107,8 @@ describe('tech card content', () => {
     expect(parklets.art).toBe(footprintCellKey(48, 1, 1, 0, 0, 0)); // the parklet's own tile
     const walk = nodeViewOf(byId.get('walkable-streets')!, byId, freshState());
     expect(walk.art).toMatch(/^@ui\//);
+    // a transit practice shows its track/road tile, not a (nonexistent) building cell
+    expect(nodeViewOf(byId.get('streetcar-revival')!, byId, freshState()).art).toMatch(/^streetcar-/);
   });
   it('lists what a node grants in words', () => {
     const parklets = nodeViewOf(byId.get('parklets')!, byId, freshState());
