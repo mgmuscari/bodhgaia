@@ -119,6 +119,9 @@ the no-WebGL fallback. Shippable increments (each verifiable via `?shader`):
   over the baked albedo. (Foundation already has procedural water/grass/glints/shadows.)
 
 ### 6 — Theme mechanic
+- 💡 **"Falling Down" jams** (Maddy 2026-09-30, agreed it fits the car-dependence critique) — a driver
+  jammed past the give-up rung with no route out parks in place and walks off (household −3 wellbeing).
+  Lean in: make abandoned-in-traffic cars a visible jam signal, and/or a congestion beat on the Pulse panel.
 - ✅ **Asphalt-ground = redline / healing de-paves** (`be377120`) — `depaveAsphalt` (pure): redlined OPEN
   ground reads as asphalt (paved-over disinvestment), faded toward 0 by nearby player greens (park/
   garden/rewild/parklet) → the player DE-PAVES by rewilding (never "redevelops"). Cached base, procedural
