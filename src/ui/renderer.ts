@@ -26,6 +26,9 @@ import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, 
 import { isPowerConsumer } from '../growth/power';
 import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
+import { castHeadlights, type Body } from './headlights';
+import type { HeadlightBeam } from './gpuRenderer';
+import { CAR_LENGTH, CAR_WIDTH } from './ambientContent';
 import type { AmbientState } from './ambientContent';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
@@ -59,6 +62,12 @@ const N = 1;
 const E = 2;
 const S = 4;
 const W = 8;
+
+/** Unit vector of 8-way direction `d` (0 = N, clockwise) — the inverse of snesAgents.heading8. */
+function dirVector8(d: number): [number, number] {
+  const D = Math.SQRT1_2;
+  return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
+}
 
 /** Wash level 1..3 (0 = none) for a 0..255 field — the dithered @wash/* overlays step, never fade. */
 function washLevel(v: number): number {
@@ -195,6 +204,10 @@ export class Renderer {
   // Building emission maps (@emit/*), eager or materialized on first use from the lazy source.
   private readonly skinEmission: Map<string, AtlasImage>;
   private readonly lazyImages: LazyImages | null;
+  // This frame's cast headlights (headlights.ts), for the GPU glow pass, and the lit-silhouette cache:
+  // per sprite image, per 8-way light direction, the warm near-half of its pixels.
+  private beams: HeadlightBeam[] = [];
+  private readonly litCache = new WeakMap<object, (HTMLCanvasElement | null)[]>();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -250,6 +263,45 @@ export class Renderer {
    *  glow pass casts a faint window/beacon glow from each (Maddy: windows/blinkies cast glow too). */
   emissiveBuildingList(): readonly { x: number; y: number; w: number; h: number; kind: number; lit?: AtlasImage; blink?: AtlasImage }[] {
     return this.emissiveBuildings;
+  }
+
+  /** This frame's headlight rays — cut where they hit — for the GPU glow pass. */
+  headlightBeams(): readonly HeadlightBeam[] {
+    return this.beams;
+  }
+
+  /** The warm RIM of a sprite lit by light travelling along 8-way direction `dir`: the opaque pixels within
+   *  two art pixels of its edge facing the lamp (the face the beam actually strikes), in one colour, for
+   *  an additive pass. Cached per image + dir. */
+  private litSilhouette(img: AtlasImage, dir: number): HTMLCanvasElement | null {
+    let byDir = this.litCache.get(img as object);
+    if (!byDir) {
+      byDir = new Array(8).fill(undefined);
+      this.litCache.set(img as object, byDir);
+    }
+    const hit = byDir[dir];
+    if (hit !== undefined) return hit;
+    const src = img as HTMLCanvasElement;
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    const cx = c.getContext('2d');
+    if (!cx) return (byDir[dir] = null);
+    cx.drawImage(src, 0, 0);
+    const id = cx.getImageData(0, 0, c.width, c.height);
+    const v = dirVector8(dir); // the light's travel direction; the lamp is back along it
+    const solid = (x: number, y: number): boolean =>
+      x >= 0 && y >= 0 && x < c.width && y < c.height && id.data[(y * c.width + x) * 4 + 3]! > 0;
+    const rim: boolean[] = [];
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        // lit if a step or two back toward the lamp leaves the sprite — the struck face
+        rim.push(solid(x, y) && (!solid(Math.round(x - v[0]), Math.round(y - v[1])) || !solid(Math.round(x - 2 * v[0]), Math.round(y - 2 * v[1]))));
+      }
+    }
+    rim.forEach((on, k) => id.data.set(on ? [248, 216, 88, 255] : [0, 0, 0, 0], k * 4)); // C.flower, warm
+    cx.putImageData(id, 0, 0);
+    return (byDir[dir] = c);
   }
 
   /** Increments each time the base is rebuilt — the GPU path re-uploads the base texture only when this
@@ -699,6 +751,19 @@ export class Renderer {
     // Cars carry their own colour (c.tint), the same moving and parked, in the 8-way heading frame
     // nearest their heading. carPose: a moving car rides its lane (right of heading) smoothly round turns
     // (moverPose); a parked one sits on its stall, a kerb-parked one parallel to the kerb.
+    // Every vehicle and person on screen is also a BODY headlights can stop at (headlights.ts); the
+    // sprite each one drew is kept so a body a beam hits can be lit.
+    const nightT = performance.now() / 1000;
+    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
+    const bodies: Body[] = [];
+    const bodyArt: { img: AtlasImage; x: number; y: number }[] = [];
+    const bodyMul: number[] = [];
+    const addBody = (x: number, y: number, hx: number, hy: number, len: number, wid: number, mul: number, img: AtlasImage | undefined): void => {
+      if (!img) return;
+      bodies.push({ x, y, hx, hy, len, wid, lights: mul > 0.02 });
+      bodyArt.push({ img, x, y });
+      bodyMul.push(mul);
+    };
     for (const c of ambient.cars) {
       const pose = carPose(c, alpha);
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
@@ -706,6 +771,7 @@ export class Renderer {
       const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
       const img = this.sprites.get(`@sprite/car/${tint}/${heading8(pose.hx, pose.hy)}`);
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, c.parked ? 0 : night, img);
     }
     // (Smog is drawn LAST — the top layer, above cars/peds — see end of drawSprites.)
 
@@ -735,6 +801,7 @@ export class Renderer {
       if (!onScreen(sx, sy)) continue;
       const img = this.sprites.get(`@sprite/cop/${heading8(pose.hx, pose.hy)}/${copPhase}`);
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
     }
 
     // Trains: a snake of cars riding the rails (Maddy: rails need trains). Each cell is drawn in the
@@ -789,7 +856,11 @@ export class Renderer {
       const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
       const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame));
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
+    // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).
+    const cast = castHeadlights(world.map, bodies);
+    this.beams = cast.beams.map((b) => ({ ...b, mul: bodyMul[b.source]! }));
 
     // Bird flocks: little gulls flapping out of phase. Centre on the tile (+0.5) for the same grid
     // convention as cars/peds (boids spawn clustered on the tile corner).
@@ -846,8 +917,20 @@ export class Renderer {
 
     // Vehicle headlights/taillights — NIGHT-GATED (off at midday, ramping on at dusk) and evading shading
     // (drawn here, after the sprite lighting pass), on the art grid with the car body.
-    const nightT = performance.now() / 1000;
-    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
+    // What a headlight hits is lit on the side facing the lamp — additive, after the lighting pass so it
+    // evades the night dim, on the art grid with the sprite it lights.
+    if (cast.lit.size > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const [i, l] of cast.lit) {
+        const art = bodyArt[i]!;
+        const glow = this.litSilhouette(art.img, heading8(l.fx, l.fy));
+        if (!glow) continue;
+        ctx.globalAlpha = Math.min(0.7, 0.25 + l.light * bodyMul[l.source]! * 0.5);
+        this.drawArt(ctx, glow, art.x, art.y, camera);
+      }
+      ctx.restore();
+    }
     if (night > 0.02) {
       // pixel-art headlights + taillights, additive at night, on the art grid with the car body
       ctx.save();

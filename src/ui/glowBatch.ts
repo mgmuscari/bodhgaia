@@ -16,7 +16,7 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLSh
 // ── Glow pass: emissive lights cast a soft ADDITIVE pool onto surrounding tiles (Maddy: "car
 //    headlights illuminating road in front"; emissive lights casting glow). Each source is a colored
 //    radial falloff quad, blended ONE,ONE over the scene so it brightens the ground + sprites around it.
-export const GLOW_FLOATS = 12; // pos(2) fwd(2) len(1) halfwidth(1) color(3) intensity(1) [+2 pad]
+export const GLOW_FLOATS = 12; // pos(2) fwd(2) len(1) halfwidth(1) color(3) intensity(1) cut(1) [+1 pad]
 
 /** Glow vertex stage: a cone (headlights) or radial (bars, beacons, windows) quad per light source. */
 export function buildGlowVertex(): string {
@@ -28,10 +28,11 @@ layout(location=3) in float a_len;       // cone forward length in cells (0 = ra
 layout(location=4) in float a_halfwidth; // cone half-width at the tip / radial radius
 layout(location=5) in vec3 a_color;
 layout(location=6) in float a_intensity;
+layout(location=7) in float a_cut;       // a cone stops here (where its headlight hit something)
 uniform vec2 u_origin; uniform vec2 u_view;
 const float ART_PX = ${ART_PX.toFixed(1)};
 out vec2 v_world; out vec3 v_color; out float v_int;
-flat out vec2 v_pos; flat out vec2 v_fwd; flat out float v_len; flat out float v_hw;
+flat out vec2 v_pos; flat out vec2 v_fwd; flat out float v_len; flat out float v_hw; flat out float v_cut;
 void main(){
   // the source sits on the art grid, like the sprite casting it (renderer.drawArt rounds to art pixels);
   // the quad grows by an art pixel so the per-art-pixel falloff is never clipped mid-pixel
@@ -49,7 +50,7 @@ void main(){
   vec2 ndc = ((world - u_origin)/u_view)*2.0 - 1.0;
   gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
   v_world = world; v_color = a_color; v_int = a_intensity;
-  v_pos = pos; v_fwd = a_fwd; v_len = a_len; v_hw = a_halfwidth;
+  v_pos = pos; v_fwd = a_fwd; v_len = a_len; v_hw = a_halfwidth; v_cut = a_cut;
 }`;
 }
 
@@ -59,7 +60,7 @@ export function buildGlowFragment(): string {
   return `#version 300 es
 precision highp float;
 in vec2 v_world; in vec3 v_color; in float v_int;
-flat in vec2 v_pos; flat in vec2 v_fwd; flat in float v_len; flat in float v_hw;
+flat in vec2 v_pos; flat in vec2 v_fwd; flat in float v_len; flat in float v_hw; flat in float v_cut;
 out vec4 fragColor;
 ${ART_GRID_GLSL}
 void main(){
@@ -68,7 +69,7 @@ void main(){
   if (v_len > 0.0) {
     float fd = dot(rel, v_fwd);                       // distance ahead along travel
     float t = fd / v_len;
-    if (t < 0.0 || t > 1.0) discard;
+    if (t < 0.0 || t > 1.0 || fd > v_cut) discard;      // stopped by what the beam hit
     vec2 side = vec2(-v_fwd.y, v_fwd.x);
     float hw = mix(v_hw * 0.22, v_hw, t);
     float lf = dot(rel, side) / hw;                   // lateral fraction from the centerline (symmetric)
@@ -116,7 +117,7 @@ export class GlowBatch {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.inst);
     const stride = GLOW_FLOATS * 4;
     const ptr = (loc: number, size: number, off: number): void => { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, off * 4); gl.vertexAttribDivisor(loc, 1); };
-    ptr(1, 2, 0); ptr(2, 2, 2); ptr(3, 1, 4); ptr(4, 1, 5); ptr(5, 3, 6); ptr(6, 1, 9);
+    ptr(1, 2, 0); ptr(2, 2, 2); ptr(3, 1, 4); ptr(4, 1, 5); ptr(5, 3, 6); ptr(6, 1, 9); ptr(7, 1, 10);
     gl.bindVertexArray(null);
   }
 
