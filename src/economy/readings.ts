@@ -73,11 +73,13 @@ const GATHERING = new Set<number>([
 ]);
 /** Tax base per occupied unit at full land value, by class (commerce and industry assess higher). Calibrated
  *  on three seeds so an inherited city opens a little in deficit at 7% (lotus ~0.94 of upkeep, harbor ~0.97,
- *  oak ~0.65): its Moses-era road network costs more
+ *  oak ~0.65) — measured once the live fields have SETTLED (~3 min in: road decay, wear and smog ramp from
+ *  zero and halve land value; the t=0 calibration left lotus at 0.38 — Maddy 2026-10-01, ×2.4 for r and c).
+ *  Its Moses-era road network costs more
  *  to keep than the disinvested tax base brings in — the highways are part of the bill. Industry is assessed
  *  per job with NO land-value factor (its own smoke zeroes the land under it, so a land-value assessment
  *  made every works pay $0 — Maddy 2026-10-01); `i` is 7.65 × ~0.25, a works' typical land value elsewhere. */
-export const BASE_PER_UNIT = { r: 4.25, c: 10.2, i: 1.9 } as const;
+export const BASE_PER_UNIT = { r: 10.2, c: 24.5, i: 1.9 } as const;
 /** Jobs a shop or works holds per density level, at full condition (occupancy counts households only). */
 const JOBS_PER_DENSITY = 6;
 
