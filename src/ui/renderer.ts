@@ -31,7 +31,7 @@ import {
 import { surfaceKey, iconKey, PROCEDURAL_PROFILE, type RenderProfile } from './tileset';
 import type { LazyImages } from './tilesetLoader';
 import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
-import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask } from './decoration';
+import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout } from './decoration';
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
@@ -777,6 +777,9 @@ export class Renderer {
   // The skin's @road/* street-furniture overlays (curbs, barriers, stop lines, lanes, median, poles,
   // wires) on the art grid; a feature without one keeps its procedural drawing.
   private roadInk = new Map<string, AtlasImage>();
+  // The skin's native pixel-art sprites (@sprite/*) and worn-ground overlays (@wear/*), drawn at exactly
+  // one art pixel per tile pixel (ts / BASE_TILE).
+  private sprites = new Map<string, AtlasImage>();
   // The skin's @emit/* building emission maps (empty → use the ambient sprite light maps).
   private skinEmission = new Map<string, AtlasImage>();
   // The skin's on-demand image source (lazy building tiles + light maps), and whether it has light maps.
@@ -801,6 +804,7 @@ export class Renderer {
     this.lazyImages = overrides?.lazy ?? null;
     this.hasSkinEmission = this.skinEmission.size > 0 || [...(overrides?.lazy?.keys ?? [])].some((k) => k.startsWith('@emit/'));
     this.roadInk = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@road/')));
+    this.sprites = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@sprite/') || k.startsWith('@wear/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -841,6 +845,7 @@ export class Renderer {
     this.lazyImages = overrides?.lazy ?? null;
     this.hasSkinEmission = this.skinEmission.size > 0 || [...(overrides?.lazy?.keys ?? [])].some((k) => k.startsWith('@emit/'));
     this.roadInk = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@road/')));
+    this.sprites = new Map([...(overrides ?? [])].filter(([k]) => k.startsWith('@sprite/') || k.startsWith('@wear/')));
     this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
     this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
     // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
@@ -1376,17 +1381,45 @@ export class Renderer {
     if (ambient) {
       const tents = this.profile.agentSprites ? this.ambientSprites?.encampments : undefined;
       const junk = this.profile.agentSprites ? this.ambientSprites?.junk : undefined;
+      // a skin's own pixel-art encampment (tents + junk + beaten earth), at the art-pixel scale
+      const skinTents = [0, 1, 2].map((i) => this.sprites.get(`@sprite/tent/${i}`)).filter((x): x is AtlasImage => !!x);
+      const skinJunk = [0, 1, 2, 3].map((i) => this.sprites.get(`@sprite/junk/${i}`)).filter((x): x is AtlasImage => !!x);
+      const skinWear = this.sprites.has('@wear/1');
+      const ps = ts / BASE_TILE; // one art pixel
       const mapW2 = world.map.width;
       for (const [tile, wear] of ambient.wear) {
         const wx = tile % mapW2;
         const wy = (tile - wx) / mapW2;
         const { sx, sy } = camera.worldToScreen(wx, wy);
         if (sx < -ts || sx > this.cssWidth + ts || sy < -ts || sy > this.cssHeight + ts) continue;
+        const tileHash = Math.imul(((wx * 73856093) ^ (wy * 19349663)) >>> 0, 0x9e3779b1) >>> 0;
+        if (skinWear) {
+          // beaten earth in three depths (no translucent wash over the pixel art)
+          const level = wear >= 200 ? 3 : wear >= 120 ? 2 : wear >= 50 ? 1 : 0;
+          const o = camera.tileOrigin(wx, wy);
+          const img = level > 0 ? this.sprites.get(`@wear/${level}`) : undefined;
+          if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, o.dx, o.dy, ts, ts);
+          if (camera.zoom >= 2 && skinTents.length > 0 && wear >= GARBAGE_WEAR) {
+            const nJunk = wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1;
+            const nTents = wear >= ENCAMPMENT_WEAR ? Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12)) : 0;
+            const pick = (set: AtlasImage[], k: number): AtlasImage =>
+              set[(Math.imul((tileHash ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 16) % set.length]!;
+            const items = [
+              ...Array.from({ length: nTents }, (_, k) => pick(skinTents, k)),
+              ...Array.from({ length: skinJunk.length > 0 ? nJunk : 0 }, (_, k) => pick(skinJunk, k + 7)),
+            ];
+            const sizes = items.map((img) => ({ w: (img as HTMLCanvasElement).width, h: (img as HTMLCanvasElement).height }));
+            encampmentLayout(tileHash, sizes).forEach((spot, k) => {
+              const sz = sizes[k]!;
+              ctx.drawImage(items[k]!, o.dx + spot.x * ps, o.dy + spot.y * ps, sz.w * ps, sz.h * ps);
+            });
+          }
+          continue;
+        }
         ctx.globalAlpha = 0.7 * (wear / 255); // browns the green underneath, proportional to wear
         ctx.fillStyle = '#6e5d3f';
         ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
         ctx.globalAlpha = 1;
-        const tileHash = Math.imul(((wx * 73856093) ^ (wy * 19349663)) >>> 0, 0x9e3779b1) >>> 0;
         // JUNK (coexists with tents): 1–2 small pieces, scattered + jittered, more as the path deepens.
         if (camera.zoom >= 2 && junk && junk.length > 0 && wear >= GARBAGE_WEAR) {
           const pieces = wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1;

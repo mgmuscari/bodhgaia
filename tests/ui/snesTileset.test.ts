@@ -532,3 +532,37 @@ describe('snes skin — buildings are materialized lazily (Maddy 2026-09-30: the
     expect(skin.lazy!.paint('@emit/b-61-2x2-0')).toBe(null); // a park has no lights
   });
 });
+
+describe('snes sprites — encampments at the art-pixel scale (Maddy 2026-09-30)', () => {
+  it('paints tents and junk as small native-resolution sprites on a transparent ground', () => {
+    for (const k of ['@sprite/tent/0', '@sprite/tent/1', '@sprite/tent/2', '@sprite/junk/0', '@sprite/junk/1', '@sprite/junk/2', '@sprite/junk/3']) {
+      const t = tiles.get(k);
+      expect(t, k).toBeDefined();
+      expect(t!.w, k).toBeLessThanOrEqual(8);
+      expect(t!.h, k).toBeLessThanOrEqual(7);
+      if (k.includes('tent')) expect(t!.data[3], `${k} corner`).toBe(0); // an outlined sprite, not a tile
+    }
+  });
+
+  it('tents are ink-outlined (they read as structures, like the buildings)', () => {
+    for (const k of ['@sprite/tent/0', '@sprite/tent/1', '@sprite/tent/2']) expect(hasInk(tiles.get(k)!), k).toBe(true);
+  });
+
+  it('paints three worn-ground overlays (no translucent brown wash)', () => {
+    for (const k of ['@wear/1', '@wear/2', '@wear/3']) {
+      const t = tiles.get(k)!;
+      expect([t.w, t.h]).toEqual([16, 16]);
+      let on = 0;
+      for (let i = 3; i < t.data.length; i += 4) if (t.data[i] === 255) on++;
+      expect(on, k).toBeGreaterThan(0);
+      expect(on, k).toBeLessThan(256);
+    }
+    const count = (k: string): number => {
+      let n = 0;
+      const t = tiles.get(k)!;
+      for (let i = 3; i < t.data.length; i += 4) if (t.data[i] === 255) n++;
+      return n;
+    };
+    expect(count('@wear/3')).toBeGreaterThan(count('@wear/1')); // more wear, more beaten earth
+  });
+});

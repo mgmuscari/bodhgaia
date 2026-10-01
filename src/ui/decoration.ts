@@ -211,3 +211,47 @@ export function crosswalkMask(map: GameMap, x: number, y: number): number {
   if (junction(x - 1, y)) m |= 8;
   return m;
 }
+
+/**
+ * Where an encampment's sprites sit inside its 16-px tile, in WHOLE art pixels (so they land on the same
+ * pixel grid as the tiles) and never overlapping (Maddy 2026-09-30: all pixel art on one scale). The tile
+ * is four 8×8 quadrants, dealt out in a per-tile hashed order: each tent takes a quadrant; junk takes the
+ * next free quadrant, two junk pieces sharing one (top and bottom halves) when the tents have the rest.
+ * Each sprite is jittered within its cell. Sizes are art pixels; tents must fit 8×8, junk 8×4.
+ */
+export function encampmentLayout(tileHash: number, sizes: ReadonlyArray<{ w: number; h: number }>): Array<{ x: number; y: number }> {
+  const h0 = tileHash >>> 0;
+  // a hashed permutation of the four quadrants
+  const quads = [0, 1, 2, 3];
+  for (let i = 3; i > 0; i--) {
+    const j = (Math.imul(h0 ^ (i * 0x9e3779b1), 0x85ebca6b) >>> 0) % (i + 1);
+    [quads[i], quads[j]] = [quads[j]!, quads[i]!];
+  }
+  const jitter = (k: number, span: number): number =>
+    span <= 0 ? 0 : (Math.imul(h0 ^ Math.imul(k + 1, 0x27d4eb2f), 0x165667b1) >>> 0) % (span + 1);
+  const out: Array<{ x: number; y: number }> = [];
+  let q = 0;
+  let sharedQuad = -1; // a quadrant holding one junk piece in its top half
+  sizes.forEach((sz, i) => {
+    const isTent = sz.h > 4;
+    let quad: number;
+    let top = 0;
+    let cellH = 8;
+    if (isTent || q < 4) {
+      quad = quads[Math.min(q, 3)]!;
+      q++;
+      if (!isTent) {
+        sharedQuad = quad;
+        cellH = 4; // junk keeps to the top half, leaving the bottom for a second piece
+      }
+    } else {
+      quad = sharedQuad >= 0 ? sharedQuad : quads[3]!;
+      top = 4;
+      cellH = 4;
+    }
+    const qx = (quad & 1) * 8;
+    const qy = (quad >> 1) * 8;
+    out.push({ x: qx + jitter(i * 2, 8 - sz.w), y: qy + top + jitter(i * 2 + 1, cellH - sz.h) });
+  });
+  return out;
+}
