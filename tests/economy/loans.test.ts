@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createEconomy, stepEconomy, loanOffer, takeLoan, type CityReading, type Levers } from '../../src/economy/model';
+import { createEconomy, stepEconomy, loanOffer, takeLoan, ECON, type CityReading, type Levers } from '../../src/economy/model';
 
 // Taxes and loans (Maddy 2026-10-01: "once you go negative you can't dig back out"). A loan adds to the
 // treasury now and is repaid hourly with interest over its term; the rate rises as approval falls (a
@@ -53,5 +53,28 @@ describe('loans', () => {
     const s = createEconomy(0);
     const offer = loanOffer(s, city, lev);
     expect(takeLoan(s, offer, offer.limit + 1)).toBeNull();
+  });
+});
+
+// A relief grant (Maddy 2026-10-01): the first time the treasury goes under, outside money arrives once —
+// with strings attached (a receivership's oversight costs approval).
+describe('relief grant', () => {
+  const broke: CityReading = { ...city, base: { r: 0, c: 0, i: 0 } }; // a deficit of the whole upkeep
+
+  it('arrives the first hour the city goes negative: days of upkeep, at a cost in approval', () => {
+    const s = stepEconomy(createEconomy(50), broke, lev);
+    expect(s.reliefTaken).toBe(true);
+    expect(s.funds).toBeCloseTo(50 - broke.upkeep + ECON.reliefDays * 24 * broke.upkeep, 6);
+    expect(s.approval).toBeLessThan(stepEconomy(createEconomy(5000), broke, lev).approval);
+  });
+
+  it('comes once', () => {
+    let s = stepEconomy(createEconomy(50), broke, lev);
+    s = { ...s, funds: -10 };
+    expect(stepEconomy(s, broke, lev).funds).toBeLessThan(0);
+  });
+
+  it('a solvent city never takes it', () => {
+    expect(stepEconomy(createEconomy(5000), broke, lev).reliefTaken).toBe(false);
   });
 });

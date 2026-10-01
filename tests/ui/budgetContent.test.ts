@@ -32,3 +32,12 @@ describe('budgetView — the Budget window', () => {
     expect(new Set(v.borrow).size).toBe(v.borrow.length);
   });
 });
+
+describe('the way out of debt, said plainly', () => {
+  it('names the relief grant once it has come, and the ways still open', () => {
+    expect(budgetView(createEconomy(0), city, lev).relief).toBeNull();
+    const taken = budgetView({ ...createEconomy(0), reliefTaken: true }, city, lev);
+    expect(taken.relief).toMatch(/once/);
+    expect(budgetView(createEconomy(0), city, lev).waysOut.join(' ')).toMatch(/freeway/i);
+  });
+});

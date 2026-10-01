@@ -81,7 +81,7 @@ import { branchColumns, effortLine, panelSignature } from './ui/techContent';
 import { techLayout } from './ui/techLayout';
 import { mountTechPanel } from './ui/techPanel';
 import { availableTools, previewTool, applyTool, toolDef, type ToolId, type Wallet } from './tools/tools';
-import { createEconomy, effortCapacity, loanOffer, takeLoan, type CityReading } from './economy/model';
+import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading } from './economy/model';
 import { readCity } from './economy/readings';
 import { economyHour, practiceProject, DEFAULT_LEVERS, type EconomyRun } from './economy/run';
 import { projectProgress } from './economy/projects';
@@ -452,9 +452,12 @@ export function main(): void {
     const trust = deps.civicMeans ? (deps.civicMeans.trust / 255) * 100 : econ.state.goodwill;
     econ = { ...econ, state: { ...econ.state, goodwill: trust, effort: tech.effort } };
     const before = econ.state.funds;
+    const hadRelief = econ.state.reliefTaken;
     const r = economyHour(econ, city);
     econ = r.run;
-    econFundsPerHour = econ.state.funds - before;
+    const reliefNow = econ.state.reliefTaken && !hadRelief;
+    // the grant is a one-off, not the hour's flow
+    econFundsPerHour = econ.state.funds - before - (reliefNow ? ECON.reliefDays * 24 * city.upkeep : 0);
     tech.effort = Math.floor(econ.state.effort);
     // the hour's goodwill shock lands on every neighbourhood's trust
     if (econ.state.shock !== 0) {
@@ -476,6 +479,7 @@ export function main(): void {
     toolbar.refresh();
     techPanel.refresh(); // projects advanced (no-op while the panel is closed)
     budgetPanel.refresh();
+    if (reliefNow) budgetPanel.open(); // the grant and its strings, shown as they arrive
     pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
   };
 

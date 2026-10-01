@@ -16,6 +16,8 @@ export interface BudgetPanelDeps {
 }
 
 export interface BudgetPanelHandle {
+  /** Open it (no-op if already open) — e.g. the moment a relief grant arrives. */
+  open(): void;
   toggle(): boolean;
   visible(): boolean;
   /** Re-read the view (the economy ticked) — no-op while hidden. */
@@ -90,6 +92,12 @@ export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps):
     row.append(a, b);
     return row;
   };
+  const note = (text: string): HTMLElement => {
+    const p = document.createElement('div');
+    p.className = 'budget-note';
+    p.textContent = text;
+    return p;
+  };
   const heading = (text: string): HTMLElement => {
     const h = document.createElement('div');
     h.className = 'budget-heading';
@@ -143,6 +151,8 @@ export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps):
         return b;
       }),
       ...v.loans.map((l) => line(`Owed ${money(l.principalLeft)}`, `${perHour(-l.payment)} · ${Math.ceil(l.hoursLeft / 24)} days left`, 'budget-note')),
+      ...(v.relief ? [note(v.relief)] : []),
+      ...(v.net < 0 ? [heading('Ways out'), ...v.waysOut.map(note)] : []),
     );
   }
 
@@ -161,6 +171,9 @@ export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps):
   }
 
   return {
+    open: () => {
+      if (!open) setOpen(true);
+    },
     toggle: () => {
       setOpen(!open);
       return open;

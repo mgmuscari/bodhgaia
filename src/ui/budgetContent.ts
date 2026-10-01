@@ -2,7 +2,7 @@
 // its rate, upkeep, police, loan repayments and the net — plus the loans being repaid and what the city could
 // borrow now (Maddy 2026-10-01: "we need taxes and loans, once you go negative you can't dig back out").
 
-import { loanOffer, type CityReading, type EconomyState, type Levers, type Loan, type LoanOffer } from '../economy/model';
+import { ECON, loanOffer, type CityReading, type EconomyState, type Levers, type Loan, type LoanOffer } from '../economy/model';
 
 export interface BudgetView {
   classes: Array<{ id: 'r' | 'c' | 'i'; label: string; rate: number; perHour: number }>;
@@ -15,7 +15,18 @@ export interface BudgetView {
   offer: LoanOffer;
   /** Round sums the city could borrow now (within the limit). */
   borrow: number[];
+  /** The relief grant, once it has come (it comes once); null before. */
+  relief: string | null;
+  /** The ways out of a deficit, said plainly (the window shows them when the city is short). */
+  waysOut: string[];
 }
+
+/** The levers a short city has (tools.ts: FREEWAY_SALVAGE, the volunteer works; this panel: taxes, loans). */
+const WAYS_OUT = [
+  'Tear out freeway: each tile pays salvage and its upkeep stops',
+  'Volunteers raise clinics, schools, co-ops and clean energy with effort when funds run short',
+  'Raise a tax a point, or borrow',
+];
 
 const CLASSES = [
   ['r', 'Residential'],
@@ -40,5 +51,7 @@ export function budgetView(s: EconomyState, city: CityReading, lev: Levers): Bud
     loans: s.loans,
     offer,
     borrow,
+    relief: s.reliefTaken ? `A relief grant came once, under outside oversight (−${ECON.reliefApproval} approval)` : null,
+    waysOut: WAYS_OUT,
   };
 }
