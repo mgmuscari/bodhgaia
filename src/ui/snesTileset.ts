@@ -440,6 +440,61 @@ function edgeTiles(out: Map<string, Pixels>): void {
   }
 }
 
+// ── Encampment sprites + worn ground ─────────────────────────────────────────────────────────────
+// Native-resolution pixel art drawn at exactly one art pixel per tile pixel (Maddy 2026-09-30: all pixel
+// art on one scale). Tents are homes — dome tents in a few colours with a door, and a tarp lean-to over
+// a crate — ink-outlined like the buildings; junk is a few loose pixels. Glyph rows: '#' body, '+' lit,
+// '-' shade, 'd' door/dark, plus per-sprite extras. Desire-path WEAR is a dithered beaten-earth overlay
+// in three depths instead of a translucent wash.
+
+function glyphSprite(rows: readonly string[], colours: Record<string, RGB>, ink: boolean): Pixels {
+  const w = Math.max(...rows.map((r) => r.length));
+  const pad = ink ? 1 : 0;
+  const p = blank(w + pad * 2, rows.length + pad * 2);
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const c = colours[row[x]!];
+      if (c) px(p, x + pad, y + pad, c);
+    }
+  });
+  if (ink) outline(p, C.ink);
+  return p;
+}
+
+const DOME = ['.++#.', '++###', '+#d##', '-#d--'];
+const TENTS: ReadonlyArray<Pixels> = [
+  glyphSprite(DOME, { '+': C.roofBlueHi, '#': C.roofBlue, '-': C.roofBlueLo, d: C.ink }, true),
+  glyphSprite(DOME, { '+': C.leafHi, '#': C.leaf, '-': C.leafLo, d: C.ink }, true),
+  // the tarp lean-to: a blue tarp on two poles over a crate
+  glyphSprite(['+++##', '#####', 'p.c.p', 'p.c.p'], { '+': C.roofBlueHi, '#': C.roofBlue, p: C.roofBrownLo, c: C.roofBrownHi }, true),
+];
+
+const JUNK: ReadonlyArray<Pixels> = [
+  glyphSprite(['ccccc', 'c-c-c', 'ccccc'], { c: C.cream, '-': C.creamLo }, false), // a mattress
+  glyphSprite(['b...b', 'bbbbb', 'bbbbb'], { b: C.roofBrown }, false), // an old couch
+  glyphSprite(['.s.', 'sds', 'dsd'], { s: C.slate, d: C.slateLo }, false), // bin bags
+  glyphSprite(['.p..', 'ppd.', 'dppd'], { p: C.paveLo, d: C.dirtLo }, false), // debris
+];
+
+/** Beaten earth at wear depth 1..3: a hashed dither of dirt over the grass, denser as the path deepens. */
+function wear(level: number): Pixels {
+  const p = blank(T, T);
+  const density = [0, 3, 6, 10][level]!; // of 16
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      const h = hash2(x, y, 9000 + level) % 16;
+      if (h < density) px(p, x, y, h < density / 3 ? C.dirtLo : C.dirt);
+    }
+  }
+  return p;
+}
+
+function encampmentTiles(out: Map<string, Pixels>): void {
+  TENTS.forEach((t, i) => out.set(`@sprite/tent/${i}`, t));
+  JUNK.forEach((t, i) => out.set(`@sprite/junk/${i}`, t));
+  for (let level = 1; level <= 3; level++) out.set(`@wear/${level}`, wear(level));
+}
+
 // ── Status icons ─────────────────────────────────────────────────────────────────────────────────
 // 8×8 badges on a transparent ground, drawn as 6×6 glyphs then ink-outlined: the blinking lightning bolt
 // of an unpowered zone (straight out of the SNES original), a heart for a thriving home, a raincloud for
@@ -474,6 +529,7 @@ export function paintSnesSkin(): PaintedSkin {
   terrainTiles(eager);
   transportTiles(eager);
   edgeTiles(eager);
+  encampmentTiles(eager);
   for (const name of Object.keys(ICONS)) eager.set(`@icon/${name}`, icon(name));
   return { eager, lazy: { keys: buildingKeys(), paint: buildingPainter() } };
 }
