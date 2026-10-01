@@ -827,10 +827,10 @@ export class Renderer {
       addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
     }
 
-    // Trains: every car is a mover crossing its own tile (trainPoses), so the whole consist glides and
-    // rounds a bend in quarter arcs one car after another; each car in the 8-way frame of its heading.
+    // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
+    // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
     for (const tr of ambient.trains) {
-      trainPoses(tr, mapW).forEach((q, k) => {
+      trainPoses(tr, mapW, alpha).forEach((q, k) => {
         const { sx, sy } = camera.worldToScreen(q.x, q.y);
         if (!onScreen(sx, sy)) return;
         const img = this.sprites.get(`@sprite/train/${k === 0 ? 'loco' : 'car'}/${heading8(q.hx, q.hy)}`);

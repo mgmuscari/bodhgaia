@@ -53,3 +53,26 @@ describe('trainPoses', () => {
     for (let k = 1; k < qs.length; k++) expect(qs[k - 1]!.y - qs[k]!.y).toBeCloseTo(1, 6);
   });
 });
+
+import { syncTrainLegs, snapshotMovers, type AmbientState } from '../../src/ui/ambientContent';
+
+describe('trains run on the shared mover path (Maddy 2026-09-30: "move train sprites into the same mover code")', () => {
+  it('each car is a Mover the substep snapshot covers, so a frame between substeps blends like a car', () => {
+    const t = train(L, 1, 0.2);
+    syncTrainLegs(t, W);
+    expect(t.cars).toHaveLength(L.length);
+    const before = trainPoses(t, W);
+    snapshotMovers({ cars: [], cruisers: [], peds: [], trains: [t] } as unknown as AmbientState);
+    // one substep: the locomotive moves on, the legs re-sync (keeping their snapshots)
+    t.hx += 0.16;
+    syncTrainLegs(t, W);
+    const after = trainPoses(t, W);
+    const at0 = trainPoses(t, W, 0);
+    const half = trainPoses(t, W, 0.5);
+    at0.forEach((q, k) => expect(Math.hypot(q.x - before[k]!.x, q.y - before[k]!.y), `alpha 0, car ${k}`).toBeLessThan(1e-9));
+    half.forEach((q, k) => {
+      expect(q.x).toBeCloseTo((before[k]!.x + after[k]!.x) / 2, 9);
+      expect(q.y).toBeCloseTo((before[k]!.y + after[k]!.y) / 2, 9);
+    });
+  });
+});
