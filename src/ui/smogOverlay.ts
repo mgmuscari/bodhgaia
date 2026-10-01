@@ -69,7 +69,7 @@ export class SmogOverlay {
   mount(): void {
     const canvas = document.createElement('canvas');
     canvas.id = 'gpu-smog';
-    canvas.style.cssText = 'position:fixed;top:0;bottom:0;left:var(--sidebar-w);right:0;display:block;pointer-events:none;z-index:2;';
+    canvas.style.cssText = 'position:fixed;top:0;left:var(--sidebar-w);width:calc(100% - var(--sidebar-w));height:100%;display:block;pointer-events:none;z-index:2;';
     const gl = canvas.getContext('webgl2', { premultipliedAlpha: false });
     if (!gl) throw new Error('WebGL2 unavailable');
     document.body.appendChild(canvas);
