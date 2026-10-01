@@ -54,6 +54,7 @@ import {
   spawnTargetFor,
   FUEL_TANK,
   stepOccupancy,
+  OCC_SETTLE_PASSES,
   liveInspectLine,
   accumulateWaterRunoff,
   accumulateGroundPollution,
@@ -1797,6 +1798,62 @@ describe('population: occupancy evolves with conditions (agent-emergent)', () =>
     for (let i = 0; i < 80; i++) stepOccupancy(state, map);
     expect(state.occupancy.get(t)!).toBeLessThan(9);
     expect(state.occupancy.get(t)!).toBeGreaterThan(0); // floored — a decayed home thins but never empties
+  });
+});
+
+describe('population: residents move on the gap from what they expect (Maddy 2026-10-01: the inherited city emptied before you could act)', () => {
+  const home = () => {
+    const map = new GameMap(8, 8);
+    map.built[map.idx(3, 3)] = BuiltKind.HouseSingle;
+    const t = map.idx(3, 3);
+    const state = createAmbientState();
+    setHouseholds(state, [{ x: 3, y: 3, count: 9 }]);
+    return { map, t, state };
+  };
+  // the live fields materialise the inherited decay over the opening minutes: land value slides 59 → 25
+  const settle = (h: ReturnType<typeof home>) => {
+    for (let i = 0; i < OCC_SETTLE_PASSES; i++) {
+      h.state.landValue.set(h.t, i < 40 ? 59 - (34 * i) / 40 : 25);
+      stepOccupancy(h.state, h.map);
+    }
+  };
+
+  it('the inherited city is the residents’ normal: it holds through the opening and only leaks slowly after', () => {
+    const h = home();
+    settle(h);
+    expect(h.state.occupancy.get(h.t)!).toBeGreaterThan(9 * 0.95);
+    for (let i = 0; i < 300; i++) stepOccupancy(h.state, h.map);
+    expect(h.state.occupancy.get(h.t)!).toBeGreaterThan(9 * 0.9);
+  });
+
+  it('a repair after the opening draws people in; a new harm drives them out', () => {
+    const up = home();
+    settle(up);
+    up.state.landValue.set(up.t, 105); // a park, a clinic in reach
+    for (let i = 0; i < 60; i++) stepOccupancy(up.state, up.map);
+    expect(up.state.occupancy.get(up.t)!).toBeGreaterThan(9 + 2);
+    const down = home();
+    settle(down);
+    down.state.pollution.set(down.t, 255); // a new smokestack upwind
+    for (let i = 0; i < 60; i++) stepOccupancy(down.state, down.map);
+    expect(down.state.occupancy.get(down.t)!).toBeLessThan(9 - 2);
+  });
+
+  it('expectations catch up: a change pulls hard at first, then the drift dies away (gains are kept)', () => {
+    const h = home();
+    settle(h);
+    h.state.landValue.set(h.t, 105);
+    const at = (n: number) => {
+      for (let i = 0; i < n; i++) stepOccupancy(h.state, h.map);
+      return h.state.occupancy.get(h.t)!;
+    };
+    const a0 = h.state.occupancy.get(h.t)!;
+    const early = at(30) - a0;
+    at(3000);
+    const b0 = h.state.occupancy.get(h.t)!;
+    const late = at(30) - b0;
+    expect(late).toBeLessThan(early / 4);
+    expect(b0).toBeGreaterThan(9 + 2);
   });
 });
 
