@@ -14,7 +14,7 @@ import { gradeLetter } from './worldgen/redline';
 import { ecologyReport } from './ecology/report';
 import { biodiversityField } from './ecology/biodiversity';
 import { Water } from './engine/map';
-import { isRoadKind } from './engine/fabric';
+import { isRoadKind, BuiltKind } from './engine/fabric';
 import { createRng } from './engine/rng';
 import { cityName } from './engine/names';
 import { FixedTickLoop } from './engine/loop';
@@ -27,6 +27,22 @@ import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { materializeSkin } from './ui/tilesetLoader';
 import { paintSnesSkin } from './ui/snesTileset';
+import { footprintCellKey } from './ui/renderKey';
+
+/** The tab icon is one of the game's own painted tiles (a house), scaled up nearest-neighbour. */
+function setPixelFavicon(tile: CanvasImageSource | undefined): void {
+  if (!tile) return;
+  const c = document.createElement('canvas');
+  c.width = 32;
+  c.height = 32;
+  const ctx = c.getContext('2d');
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tile, 0, 0, 32, 32);
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(document.createElement('link'));
+  link.rel = 'icon';
+  link.href = c.toDataURL('image/png');
+}
 import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
@@ -132,7 +148,9 @@ export function main(): void {
 
   // The one aesthetic (Maddy 2026-09-30): the code-painted Super (16-bit) skin, materialized before the
   // first frame (eager tiles now, buildings + light maps on first draw).
-  const renderer = new Renderer(canvas, materializeSkin(paintSnesSkin()));
+  const skin = materializeSkin(paintSnesSkin());
+  const renderer = new Renderer(canvas, skin);
+  setPixelFavicon(skin.lazy?.get(footprintCellKey(BuiltKind.HouseSingle, 1, 1, 0, 0, 0)));
   renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
   if (canvas.style.position === '') canvas.style.position = 'relative'; // sit ABOVE the GPU canvas (z-index 0)
   canvas.style.zIndex = '1';

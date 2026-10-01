@@ -32,12 +32,10 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - 🟡 **Tech tree cards overlap** — card text spills into the next card; "Needs:" lines are cut off.
 - 🟢 **Settings typo** — "GPU jeujés the baked tiles…".
 - 🟢 **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
-- 🟡 **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — Super is the only skin now, but
-  a few things are still flat Canvas2D fills off the art grid: **trains** (rotated rectangles), **birds**
-  (dots), and the translucent per-tile washes — **water pollution** (a hard-edged dark rectangle on the sea),
-  redlined **asphalt ground**, the **level-crossing** band, the **overpass** drop shadow. Give each a
-  pixel-art sprite/overlay (8-way train cars like the cars; dithered pollution/asphalt overlays).
-- 🟢 **favicon 404** — `public/` went away with the satellite PNGs; ship a pixel-art favicon.
+- ✅ **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — trains (8-way loco + carriages),
+  birds (flapping gulls), water pollution + redlined asphalt (clumped pixel patches), level crossings (road
+  band over the rails), overpass shadow (half-tone, whole-art-pixel offsets) are all pixel art now.
+- ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
 - 🔴 **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
   smoothly but the white consist cars "tick along locked to the tiles behind it" (snap per-tile, no lerp).
   The loco is interpolated; give the trailing cars the same smooth interpolation along the track.

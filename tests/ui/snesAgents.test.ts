@@ -92,3 +92,40 @@ describe('snes smog — pixel puffs replace the diffusion plume sprites', () => 
     }
   });
 });
+
+describe('snes trains + birds — the last flat-shape agents, as pixel art', () => {
+  it('locomotive and carriage in 8 headings, ~0.8 tile long, on the shared palette', () => {
+    for (const part of ['loco', 'car']) {
+      for (let d = 0; d < 8; d++) {
+        const p = tiles.get(`@sprite/train/${part}/${d}`);
+        expect(p, `${part}/${d}`).toBeDefined();
+        if (d % 2 === 0) {
+          expect(Math.max(p!.w, p!.h), `${part}/${d} length`).toBeGreaterThanOrEqual(12);
+          expect(Math.max(p!.w, p!.h), `${part}/${d} length`).toBeLessThanOrEqual(14);
+        }
+        for (let i = 0; i < p!.data.length; i += 4) {
+          if (p!.data[i + 3] === 0) continue;
+          const rgb = [p!.data[i], p!.data[i + 1], p!.data[i + 2]];
+          expect(SNES_PALETTE.some((c) => c[0] === rgb[0] && c[1] === rgb[1] && c[2] === rgb[2])).toBe(true);
+        }
+      }
+    }
+    // the locomotive reads differently from its carriages
+    expect([...tiles.get('@sprite/train/loco/2')!.data]).not.toEqual([...tiles.get('@sprite/train/car/2')!.data]);
+  });
+
+  it('a diagonal frame is a turned body, not the straight one (no rotated-sprite smear)', () => {
+    const e = tiles.get('@sprite/train/car/2')!;
+    const ne = tiles.get('@sprite/train/car/1')!;
+    expect(ne.w).toBe(ne.h);
+    expect(ne.w).toBeLessThan(e.w);
+    expect(opaque(ne)).toBeGreaterThan(opaque(e) * 0.6);
+  });
+
+  it('birds flap through two frames', () => {
+    const a = tiles.get('@sprite/bird/0')!;
+    const b = tiles.get('@sprite/bird/1')!;
+    expect(opaque(a)).toBeGreaterThan(0);
+    expect([...a.data]).not.toEqual([...b.data]);
+  });
+});
