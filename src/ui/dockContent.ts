@@ -7,8 +7,10 @@
 
 /** One dock meta button: which control it is, its label, and whether it's active. */
 export interface MetaButton {
-  id: 'tech' | 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' | 'life';
+  id: 'tech' | 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' | 'life' | 'restore' | 'settings' | 'help';
   label: string;
+  /** The pixel icon drawn as the button face (uiIcons.ts); the label becomes its tooltip. */
+  art: string;
   active: boolean;
 }
 
@@ -22,6 +24,9 @@ const META_LABELS: Record<MetaButton['id'], string> = {
   coverage: 'Coverage (V)',
   power: 'Power (U)',
   life: 'Life (L)',
+  restore: 'Restoration (G)',
+  settings: 'Settings (,)',
+  help: 'Help (?)',
 };
 
 /**
@@ -36,15 +41,20 @@ export function metaButtons(
   panelOpen: boolean,
   activeOverlay: { kind: 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' } | null,
   ambientOn: boolean,
+  open: { restore?: boolean; settings?: boolean; help?: boolean } = {},
 ): MetaButton[] {
+  const b = (id: MetaButton['id'], active: boolean): MetaButton => ({ id, label: META_LABELS[id], art: `@ui/${id}`, active });
   return [
-    { id: 'tech', label: META_LABELS.tech, active: panelOpen },
-    { id: 'eco', label: META_LABELS.eco, active: activeOverlay?.kind === 'eco' },
-    { id: 'civic', label: META_LABELS.civic, active: activeOverlay?.kind === 'civic' },
-    { id: 'redline', label: META_LABELS.redline, active: activeOverlay?.kind === 'redline' },
-    { id: 'police', label: META_LABELS.police, active: activeOverlay?.kind === 'police' },
-    { id: 'coverage', label: META_LABELS.coverage, active: activeOverlay?.kind === 'coverage' },
-    { id: 'power', label: META_LABELS.power, active: activeOverlay?.kind === 'power' },
-    { id: 'life', label: META_LABELS.life, active: ambientOn },
+    b('tech', panelOpen),
+    b('eco', activeOverlay?.kind === 'eco'),
+    b('civic', activeOverlay?.kind === 'civic'),
+    b('redline', activeOverlay?.kind === 'redline'),
+    b('police', activeOverlay?.kind === 'police'),
+    b('coverage', activeOverlay?.kind === 'coverage'),
+    b('power', activeOverlay?.kind === 'power'),
+    b('life', ambientOn),
+    b('restore', open.restore ?? false),
+    b('settings', open.settings ?? false),
+    b('help', open.help ?? false),
   ];
 }

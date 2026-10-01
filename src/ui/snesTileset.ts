@@ -15,6 +15,7 @@ import { C } from './snesPalette';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
 import { snesRoadTiles } from './snesRoads';
 import { paintSnesAgents } from './snesAgents';
+import { paintUiIcons } from './uiIcons';
 import { builtRenderKey, emissionKey, footprintCellKey, edgeKey, BLOB, BLOB_MASKS } from './renderKey';
 
 const T = BASE_TILE;
@@ -640,6 +641,7 @@ export function paintSnesSkin(): PaintedSkin {
   washTiles(eager);
   paintSnesAgents(eager);
   for (const name of Object.keys(ICONS)) eager.set(`@icon/${name}`, icon(name));
+  for (const [k, p] of paintUiIcons()) eager.set(k, p); // the tool palette's icons
   return { eager, lazy: { keys: buildingKeys(), paint: buildingPainter() } };
 }
 

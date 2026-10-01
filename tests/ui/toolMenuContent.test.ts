@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   categoryOf,
-  toolIcon,
+  toolArt,
   buildToolMenu,
   CATEGORY_ORDER,
   type ToolCategory,
@@ -11,6 +11,7 @@ import {
 import { availableTools, toolDef } from '../../src/tools/tools';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
+import { footprintCellKey } from '../../src/ui/renderKey';
 
 function freshTech(effort: number) {
   const t = createTechState(TECH_TREE);
@@ -40,13 +41,19 @@ describe('categoryOf', () => {
   });
 });
 
-describe('toolIcon', () => {
-  it('gives modes and kinds distinct pictorial glyphs', () => {
-    expect(toolIcon(toolDef('inspect')!)).toBe('🔍');
-    expect(toolIcon(toolDef('bulldoze')!)).toBe('🧨');
-    expect(toolIcon(toolDef('build-4')!)).toBe('🚆'); // Rail
-    expect(toolIcon(toolDef('build-16')!)).toBe('🏠');
-    expect(toolIcon(toolDef('build-53')!)).toBe('⚡'); // EnergyNode
+describe('toolArt — pixel art keys, not emoji (Maddy 2026-09-30: icons instead of text)', () => {
+  it('modes use the UI icons; build tools use their own game tile', () => {
+    expect(toolArt(toolDef('inspect')!)).toBe('@ui/inspect');
+    expect(toolArt(toolDef('bulldoze')!)).toBe('@ui/bulldoze');
+    expect(toolArt(toolDef('build-4')!)).toBe('rail-10'); // Rail: an east-west run of track
+    expect(toolArt(toolDef('build-1')!)).toBe('road-1-10'); // a street
+    expect(toolArt(toolDef('build-16')!)).toBe(footprintCellKey(16, 1, 1, 0, 0, 0)); // a house
+    expect(toolArt(toolDef('build-53')!)).toBe(footprintCellKey(53, 1, 1, 0, 0, 0)); // EnergyNode
+  });
+  it('every category tile carries art', () => {
+    const view = buildToolMenu(availableTools(freshTech(0)), null, 999, null);
+    expect(view.categories.length).toBeGreaterThan(0);
+    for (const c of view.categories) expect(c.art, c.id).toMatch(/^(@ui\/|b-|road-|streetcar-)/);
   });
 });
 
