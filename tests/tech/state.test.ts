@@ -188,3 +188,20 @@ describe('TechState snapshot determinism', () => {
     expect(run(['walkable-streets'], 100)).not.toEqual(run(['walkable-streets'], 200));
   });
 });
+
+
+describe('TechState.grant — a practice its project has paid for', () => {
+  it('unlocks without charging effort once the prereqs are in', () => {
+    const t = createTechState(TECH_TREE);
+    t.effort = 7;
+    expect(t.grant('walkable-streets')).toBe(true);
+    expect(t.unlocked.has('walkable-streets')).toBe(true);
+    expect(t.effort).toBe(7);
+  });
+  it('refuses while prereqs are unmet, and twice', () => {
+    const t = createTechState(TECH_TREE);
+    expect(t.grant('road-diets')).toBe(false);
+    expect(t.grant('walkable-streets')).toBe(true);
+    expect(t.grant('walkable-streets')).toBe(false);
+  });
+});
