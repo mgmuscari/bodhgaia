@@ -1,22 +1,22 @@
-// Toolbar dock: the thin DOM shell that renders the always-on tool dock. It holds
-// NO logic worth unit-testing — the category bucketing, icon mapping, and the
-// menu view-model are all PURE and tested in ui/toolMenuContent.ts; the meta-button
-// flags in ui/dockContent.ts. This shell only APPLIES those.
+// Tool palette: the thin DOM shell for the left-docked sidebar (Maddy 2026-09-30: "icons instead of text
+// for buttons, and keeping the menu bar docked on the left side, with the game window to its right, not
+// overlapped"). It holds NO logic worth unit-testing — categorization and art keys are pure and tested in
+// ui/toolMenuContent.ts, the map/panel buttons in ui/dockContent.ts. This shell only APPLIES those.
 //
-// Layout (top→bottom): an open category's FLYOUT of tool tiles, then a main row of
-// top-level MODES (inspect/bulldoze) + CATEGORY tiles (Transit … Energy), then the
-// meta row ([Tech][Eco][Civic][Life]), then the status line. Clicking a category
-// tile toggles its flyout; clicking a tool/mode selects it.
+// Layout (top→bottom, a 2-column grid of icon buttons, SNES SimCity style): the modes (inspect,
+// bulldoze), the build categories, then the map toggles and panels. A category opens a FLYOUT beside the
+// sidebar with its tools, each shown as the very tile it builds. Labels, costs and hotkeys live in a
+// pixel tooltip. The status line (inspect readouts, legend captions) is a bar along the bottom of the map.
 //
-// Render discipline: render() runs only on discrete events (select / category
-// toggle / unlock) and the sim-gated dirty check — NOT per frame — so it rebuilds
-// the modes/categories/flyout content with replaceChildren. The click listeners are
-// delegated to the STABLE containers (bound once at mount), so rebuilding their
-// children never loses a click. ZERO game imports: content arrives as plain data.
+// Render discipline: render() runs only on discrete events (select / category toggle / unlock) and the
+// sim-gated dirty check — NOT per frame. Click listeners are delegated to the STABLE containers (bound
+// once at mount), so rebuilding their children never loses a click. ZERO game imports.
 
 import type { ToolMenuView, ToolCategory } from './toolMenuContent';
 import type { MetaButton } from './dockContent';
-import { clampDockPosition } from './dockLayout';
+
+/** The sidebar's width (CSS px) — the map pane starts right of it. */
+export const SIDEBAR_W = 112;
 
 export interface ToolbarDeps {
   /** Re-derive the current dock view (assembled in main.ts from pure modules). */
@@ -25,211 +25,147 @@ export interface ToolbarDeps {
   onSelect(id: string): void;
   /** A category tile was clicked; the host toggles which flyout is open then refreshes. */
   onToggleCategory(id: ToolCategory): void;
-  /** Re-derive the meta buttons ([Tech][Eco][Civic][Life] + active flags). Optional. */
+  /** Re-derive the map/panel buttons (+ active flags). Optional. */
   getMetaButtons?(): MetaButton[];
-  /** A meta button was clicked. Optional (wired in main's wiring task). */
+  /** A map/panel button was clicked. Optional. */
   onMeta?(id: MetaButton['id']): void;
+  /** The image for an art key (a game tile or `@ui/` icon), or undefined if none. */
+  art(key: string): CanvasImageSource | undefined;
 }
 
 export interface ToolbarHandle {
-  /** Re-derive and re-render the dock from getMenu(). */
+  /** Re-derive and re-render the palette from getMenu(). */
   refresh(): void;
-  /** Show (or clear with null) the minimal status line — e.g. the inspect readout. */
+  /** Show (or clear with null) the status line — e.g. the inspect readout. */
   setStatus(text: string | null): void;
-  /** Re-derive and re-apply the meta buttons' labels + active state. */
+  /** Re-derive and re-apply the map/panel buttons. */
   refreshMeta(): void;
-  /** Pulse the dock to announce a freshly-unlocked tool. */
+  /** Pulse the palette to announce a freshly-unlocked tool. */
   flash(): void;
 }
 
 const FLASH_CLASS = 'toolbar-tool-flash';
 const FLASH_MS = 1000;
-const META_IDS: ReadonlySet<string> = new Set(['tech', 'eco', 'civic', 'life']);
-const DOCK_POS_KEY = 'bodhi-dock-pos';
+const ICON_PX = 16; // art is drawn at its native 16 px and scaled ×2 by CSS (pixelated)
 
-function modeButton(icon: string, label: string, selected: boolean): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.className = selected ? 'toolbar-mode toolbar-mode-selected' : 'toolbar-mode';
-  btn.textContent = `${icon} ${label}`;
-  return btn;
-}
-
-/**
- * Build and mount the tool dock into `container`. Returns a handle so the host can
- * refresh the dock (selection / affordability / open-category changes), refresh the
- * meta buttons, flash on an unlock, and set the status line. Clicking a tool calls
- * deps.onSelect(id); a category calls deps.onToggleCategory(id); a meta button
- * deps.onMeta(id). The status line is a sibling, so refresh never wipes it.
- */
 export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): ToolbarHandle {
-  const dock = document.createElement('div');
-  dock.className = 'toolbar';
+  const bar = document.createElement('nav');
+  bar.className = 'toolbar';
 
-  // Drag grip: the dock's fixed bottom-center spot blocks the lower map once techs
-  // unlock, so the player drags it out of the way. The grip is the only drag
-  // surface (tool clicks must not move the dock); positioning math is the pure,
-  // unit-tested clampDockPosition. The position persists across reloads.
-  const grip = document.createElement('div');
-  grip.className = 'toolbar-grip';
-  grip.textContent = '⠿ drag';
+  const modesEl = document.createElement('div');
+  modesEl.className = 'toolbar-grid';
+  const catsEl = document.createElement('div');
+  catsEl.className = 'toolbar-grid';
+  const meta = document.createElement('div');
+  meta.className = 'toolbar-grid';
+  const rule = (): HTMLElement => {
+    const hr = document.createElement('div');
+    hr.className = 'toolbar-rule';
+    return hr;
+  };
+  bar.append(modesEl, rule(), catsEl, rule(), meta);
 
   const flyout = document.createElement('div');
   flyout.className = 'toolbar-flyout';
   flyout.hidden = true;
 
-  const mainRow = document.createElement('div');
-  mainRow.className = 'toolbar-main';
-
-  const modesEl = document.createElement('div');
-  modesEl.className = 'toolbar-modes';
-
-  const catsEl = document.createElement('div');
-  catsEl.className = 'toolbar-cats';
-
-  mainRow.append(modesEl, catsEl);
-
-  const meta = document.createElement('div');
-  meta.className = 'toolbar-meta';
-
   const status = document.createElement('div');
   status.className = 'toolbar-status';
   status.hidden = true;
 
-  dock.append(grip, flyout, mainRow, meta, status);
-  container.appendChild(dock);
+  const tip = document.createElement('div');
+  tip.className = 'ui-tip';
+  tip.hidden = true;
 
-  // Switch the dock from its default bottom-center anchor (CSS) to an absolute
-  // top-left position. Called the first time it's dragged (or on restore).
-  function applyPosition(x: number, y: number): void {
-    dock.style.left = `${x}px`;
-    dock.style.top = `${y}px`;
-    dock.style.bottom = 'auto';
-    dock.style.transform = 'none';
-  }
+  container.append(bar, flyout, status, tip);
 
-  function persist(x: number, y: number): void {
-    try {
-      window.localStorage.setItem(DOCK_POS_KEY, JSON.stringify({ x, y }));
-    } catch {
-      /* storage may be unavailable (private mode) — dragging still works this session */
+  /** An icon button showing `art`, with `label` as its tooltip. */
+  function iconButton(art: string, label: string, cls: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.className = `icon-btn ${cls}`;
+    btn.dataset.tip = label;
+    btn.setAttribute('aria-label', label);
+    const c = document.createElement('canvas');
+    c.width = ICON_PX;
+    c.height = ICON_PX;
+    const img = deps.art(art);
+    const ctx = c.getContext('2d');
+    if (img && ctx) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, 0, 0, ICON_PX, ICON_PX);
     }
+    btn.appendChild(c);
+    return btn;
   }
-
-  // Grip drag: anchor the pointer offset within the dock, then move the dock to the
-  // clamped pointer position on each move. window-level move/up so the drag survives
-  // the pointer leaving the grip.
-  let dragOffX = 0;
-  let dragOffY = 0;
-  const onMove = (e: PointerEvent): void => {
-    const r = dock.getBoundingClientRect();
-    const { x, y } = clampDockPosition(
-      e.clientX - dragOffX,
-      e.clientY - dragOffY,
-      r.width,
-      r.height,
-      window.innerWidth,
-      window.innerHeight,
-    );
-    applyPosition(x, y);
-  };
-  const onUp = (): void => {
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-    const r = dock.getBoundingClientRect();
-    persist(r.left, r.top);
-  };
-  grip.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    const r = dock.getBoundingClientRect();
-    dragOffX = e.clientX - r.left;
-    dragOffY = e.clientY - r.top;
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  });
 
   const metaButtonEls = new Map<string, HTMLButtonElement>();
 
   function render(): void {
     const view = deps.getMenu();
-
-    // Modes (inspect / bulldoze): always present, top-level.
-    const modeEls = view.modes.map((m) => {
-      const btn = modeButton(m.icon, m.label, m.selected);
-      btn.dataset.toolId = m.id;
-      return btn;
-    });
-    modesEl.replaceChildren(...modeEls);
-
-    // Category tiles.
-    const catEls = view.categories.map((c) => {
-      const btn = document.createElement('button');
-      let cls = 'toolbar-cat';
-      if (c.active) cls += ' toolbar-cat-active';
-      if (c.hasSelected) cls += ' toolbar-cat-hassel';
-      btn.className = cls;
-      btn.dataset.catId = c.id;
-      btn.textContent = `${c.icon} ${c.label} (${c.count})`;
-      return btn;
-    });
-    catsEl.replaceChildren(...catEls);
-
-    // Flyout: the open category's tools (hidden when nothing is open).
+    modesEl.replaceChildren(
+      ...view.modes.map((m) => {
+        const btn = iconButton(m.art, m.label, m.selected ? 'is-selected' : '');
+        btn.dataset.toolId = m.id;
+        return btn;
+      }),
+    );
+    catsEl.replaceChildren(
+      ...view.categories.map((c) => {
+        const cls = [c.active ? 'is-open' : '', c.hasSelected ? 'is-selected' : ''].join(' ');
+        const btn = iconButton(c.art, `${c.label} (${c.count})`, cls);
+        btn.dataset.catId = c.id;
+        return btn;
+      }),
+    );
     if (view.open === null || view.rows.length === 0) {
       flyout.replaceChildren();
       flyout.hidden = true;
     } else {
-      const tiles = view.rows.map((r) => {
-        const btn = document.createElement('button');
-        let cls = 'toolbar-flyitem';
-        if (r.selected) cls += ' toolbar-flyitem-selected';
-        if (!r.affordable) cls += ' toolbar-flyitem-unaffordable';
-        btn.className = cls;
-        btn.dataset.toolId = r.id;
-        btn.textContent = `${r.icon} ${r.label}`;
-        return btn;
-      });
-      flyout.replaceChildren(...tiles);
+      flyout.replaceChildren(
+        ...view.rows.map((r) => {
+          const cls = [r.selected ? 'is-selected' : '', r.affordable ? '' : 'is-unaffordable'].join(' ');
+          const btn = iconButton(r.art, r.label, cls);
+          btn.dataset.toolId = r.id;
+          return btn;
+        }),
+      );
+      flyout.style.gridTemplateColumns = `repeat(${Math.min(4, view.rows.length)}, 44px)`; // sized to its tools
+      // open beside its category button
+      const anchor = catsEl.querySelector(`[data-cat-id="${view.open}"]`) as HTMLElement | null;
+      flyout.style.top = `${anchor ? anchor.getBoundingClientRect().top : 0}px`;
       flyout.hidden = false;
     }
   }
 
   function refreshMeta(): void {
-    const items = deps.getMetaButtons?.() ?? [];
-    for (const m of items) {
+    for (const m of deps.getMetaButtons?.() ?? []) {
       let btn = metaButtonEls.get(m.id);
       if (!btn) {
-        btn = document.createElement('button');
+        btn = iconButton(m.art, m.label, '');
         btn.dataset.metaId = m.id;
         metaButtonEls.set(m.id, btn);
+        meta.appendChild(btn);
       }
-      btn.className = m.active ? 'toolbar-meta-button toolbar-meta-active' : 'toolbar-meta-button';
-      btn.textContent = m.label;
-      meta.appendChild(btn);
+      btn.classList.toggle('is-selected', m.active);
     }
   }
 
   function setStatus(text: string | null): void {
-    if (text === null) {
-      status.hidden = true;
-      status.textContent = '';
-    } else {
-      status.textContent = text;
-      status.hidden = false;
-    }
+    status.textContent = text ?? '';
+    status.hidden = text === null;
   }
 
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   function flash(): void {
-    dock.classList.add(FLASH_CLASS);
+    bar.classList.add(FLASH_CLASS);
     if (flashTimer !== null) clearTimeout(flashTimer);
     flashTimer = setTimeout(() => {
-      dock.classList.remove(FLASH_CLASS);
+      bar.classList.remove(FLASH_CLASS);
       flashTimer = null;
     }, FLASH_MS);
   }
 
-  // Delegated listeners on the STABLE containers (bound once). Rebuilding their
-  // children via replaceChildren never detaches these, so no click is ever lost.
+  // Delegated listeners on the STABLE containers (bound once).
   const onToolClick = (e: Event): void => {
     const el = (e.target as HTMLElement).closest('[data-tool-id]') as HTMLElement | null;
     const id = el?.dataset.toolId;
@@ -245,25 +181,28 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
   meta.addEventListener('click', (e) => {
     const el = (e.target as HTMLElement).closest('[data-meta-id]') as HTMLElement | null;
     const id = el?.dataset.metaId;
-    if (id !== undefined && META_IDS.has(id)) deps.onMeta?.(id as MetaButton['id']);
+    if (id !== undefined) deps.onMeta?.(id as MetaButton['id']);
   });
+
+  // The pixel tooltip: label (+ cost / hotkey) beside whichever icon is under the pointer.
+  const onOver = (e: Event): void => {
+    const el = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    tip.textContent = el.dataset.tip ?? '';
+    tip.style.left = `${r.right + 6}px`;
+    tip.style.top = `${r.top + 4}px`;
+    tip.hidden = false;
+  };
+  const onOut = (): void => {
+    tip.hidden = true;
+  };
+  for (const host of [bar, flyout]) {
+    host.addEventListener('pointerover', onOver);
+    host.addEventListener('pointerout', onOut);
+  }
 
   render();
   refreshMeta();
-
-  // Restore a persisted position (clamped to the current viewport — the window may
-  // have been resized since). Done after the first render so the dock has a size.
-  try {
-    const saved = window.localStorage.getItem(DOCK_POS_KEY);
-    if (saved) {
-      const { x, y } = JSON.parse(saved) as { x: number; y: number };
-      const r = dock.getBoundingClientRect();
-      const c = clampDockPosition(x, y, r.width, r.height, window.innerWidth, window.innerHeight);
-      applyPosition(c.x, c.y);
-    }
-  } catch {
-    /* malformed/unavailable storage — keep the default bottom-center anchor */
-  }
-
   return { refresh: render, setStatus, refreshMeta, flash };
 }

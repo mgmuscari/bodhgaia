@@ -241,7 +241,7 @@ export class Renderer {
     this.edges = ns('@edge/');
     this.roadInk = ns('@road/');
     this.skinEmission = ns('@emit/');
-    this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/'), ...ns('@wash/')]);
+    this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/'), ...ns('@wash/'), ...ns('@ui/')]);
     this.lazyImages = skin.lazy ?? null;
   }
 
@@ -281,6 +281,11 @@ export class Renderer {
    *  glow pass casts a faint window/beacon glow from each (Maddy: windows/blinkies cast glow too). */
   emissiveBuildingList(): readonly { x: number; y: number; w: number; h: number; kind: number; lit?: AtlasImage; blink?: AtlasImage }[] {
     return this.emissiveBuildings;
+  }
+
+  /** The image for an art key — a UI icon or sprite, else a tile (painting it on first use). */
+  artImage(key: string): AtlasImage | undefined {
+    return this.sprites.get(key) ?? this.atlas.get(key);
   }
 
   /** This frame's headlight rays — cut where they hit — for the GPU glow pass. */

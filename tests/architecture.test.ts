@@ -118,7 +118,6 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/ambientContent.ts',
   'src/ui/parkingContent.ts',
   'src/ui/toolMenuContent.ts',
-  'src/ui/dockLayout.ts',
   'src/ui/techLayout.ts',
   'src/ui/settings.ts',
   'src/ui/controlsContent.ts',
