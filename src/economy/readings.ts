@@ -71,8 +71,13 @@ const GATHERING = new Set<number>([
   BuiltKind.Civic,
   BuiltKind.Park,
 ]);
-/** Tax base per occupied unit at full land value, by class (commerce and industry assess higher). */
-const BASE_PER_UNIT = { r: 1, c: 3, i: 2 } as const;
+/** Tax base per occupied unit at full land value, by class (commerce and industry assess higher). Calibrated
+ *  on three seeds so an inherited city opens a little in deficit at 7% (lotus ~0.94 of upkeep, harbor ~0.97,
+ *  oak ~0.65): its Moses-era road network costs more
+ *  to keep than the disinvested tax base brings in — the highways are part of the bill. */
+export const BASE_PER_UNIT = { r: 4.25, c: 10.2, i: 7.65 } as const;
+/** Jobs a shop or works holds per density level, at full condition (occupancy counts households only). */
+const JOBS_PER_DENSITY = 6;
 
 export interface CityInputs {
   map: GameMap;
@@ -106,8 +111,12 @@ export function readCity(inp: CityInputs): CityReading {
       households += occ;
       if (PROTECTED.has(p.kind)) protectedHouseholds += occ;
       base.r += occ * lv * BASE_PER_UNIT.r;
-    } else if (COMMERCIAL.has(p.kind)) base.c += occ * lv * BASE_PER_UNIT.c;
-    else if (INDUSTRIAL.has(p.kind)) base.i += occ * lv * BASE_PER_UNIT.i;
+    } else if (COMMERCIAL.has(p.kind) || INDUSTRIAL.has(p.kind)) {
+      // a workplace's tax base is its jobs: density, scaled by how well the building is kept
+      const jobs = p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
+      if (COMMERCIAL.has(p.kind)) base.c += jobs * lv * BASE_PER_UNIT.c;
+      else base.i += jobs * lv * BASE_PER_UNIT.i;
+    }
     upkeep += UPKEEP.get(p.kind) ?? 0;
     tending += TENDING.get(p.kind) ?? 0;
     if (GATHERING.has(p.kind)) gathering++;
