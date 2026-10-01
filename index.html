@@ -11,15 +11,24 @@
         margin: 0;
         padding: 0;
         height: 100%;
-        background: #14121f;
+        background: var(--ui-ink);
         overflow: hidden;
       }
       canvas {
         display: block;
         image-rendering: pixelated;
       }
+      /* UI kit (uiTheme.ts): every frame is a palette 9-slice drawn at whole-pixel scale */
+      body {
+        image-rendering: pixelated;
+        font-family: var(--ui-font);
+        -webkit-font-smoothing: none;
+      }
+      button, select, input {
+        font-family: var(--ui-font);
+      }
 
-      /* Opening challenge overlay: dark panel on the #14121f ground, meadow-gold
+      /* Opening challenge overlay: dark panel on the var(--ui-ink) ground, meadow-gold
          accent (matches renderer PALETTE.meadow), monospace pixel feel. */
       .opening-overlay {
         position: fixed;
@@ -27,88 +36,91 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(20, 18, 31, 0.82);
+        background: rgba(24, 24, 40, 0.72);
         z-index: 10;
-        font-family: "Courier New", ui-monospace, monospace;
-        color: #e6e2d0;
+        font-family: var(--ui-font);
+        color: var(--ui-text);
       }
       .opening-panel {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         box-sizing: border-box;
         max-width: 46rem;
         max-height: 88vh;
         overflow-y: auto;
         margin: 1.5rem;
         padding: 1.75rem 2rem;
-        background: #1c1a2a;
-        border: 2px solid #969e4a;
-        box-shadow: 0 0 0 4px #14121f, 0 12px 40px rgba(0, 0, 0, 0.5);
         line-height: 1.5;
       }
       .opening-name {
         margin: 0 0 0.75rem;
         font-size: 2rem;
         letter-spacing: 0.04em;
-        color: #c8c264;
-        text-shadow: 2px 2px 0 #14121f;
+        color: var(--ui-accent);
+        text-shadow: 2px 2px 0 var(--ui-ink);
       }
       .opening-eras {
         margin: 0 0 1rem;
         padding: 0.75rem 0;
-        border-top: 1px solid #3a3850;
-        border-bottom: 1px solid #3a3850;
-        font-size: 0.86rem;
-        color: #b6b2c6;
+        border-top: 1px solid var(--ui-panel-hi);
+        border-bottom: 1px solid var(--ui-panel-hi);
+        font-size: 1.0rem;
+        color: var(--ui-muted);
       }
       .opening-eras p {
         margin: 0.2rem 0;
       }
       .opening-stats {
         margin: 0 0 1rem;
-        color: #d6d2be;
+        color: var(--ui-text);
       }
       .opening-stats p {
         margin: 0.25rem 0;
       }
       .opening-challenge p {
         margin: 0.6rem 0;
-        color: #e6e2d0;
+        color: var(--ui-text);
       }
       .opening-begin {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         margin-top: 1.25rem;
         padding: 0.6rem 1.6rem;
         font: inherit;
         font-size: 1rem;
         letter-spacing: 0.08em;
-        color: #14121f;
-        background: #c8c264;
-        border: none;
         cursor: pointer;
       }
       .opening-begin:hover,
       .opening-begin:focus {
-        background: #e0da82;
-        outline: 2px solid #e6e2d0;
+        background: var(--ui-accent);
+        outline: 2px solid var(--ui-text);
         outline-offset: 2px;
       }
 
       /* Tech panel: right-docked over the live map, toggled by T. Palette matches
-         the opening overlay (#1c1a2a panel, #969e4a meadow border). Internal
+         the opening overlay (var(--ui-panel) panel, var(--ui-accent) meadow border). Internal
          scroll keeps all seven branch columns reachable on short viewports. */
       /* Tech TREE: a large centered overlay (Civ-style) over the live map, toggled
          by T. Roots on the left, each tech right of its prereqs, connector lines
          beneath. 2D-scrolls within the panel when the tree is bigger than the view. */
       .tech-panel {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         position: fixed;
         inset: 4vh 3vw;
         z-index: 9;
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        background: #1c1a2a;
-        border: 2px solid #969e4a;
-        box-shadow: 0 0 0 4px #14121f, 0 16px 48px rgba(0, 0, 0, 0.6);
-        font-family: "Courier New", ui-monospace, monospace;
-        color: #e6e2d0;
+        font-family: var(--ui-font);
+        color: var(--ui-text);
       }
       .tech-panel[hidden] {
         display: none;
@@ -116,11 +128,11 @@
       .tech-panel-header {
         flex: 0 0 auto;
         padding: 0.85rem 1.25rem;
-        background: #1c1a2a;
-        border-bottom: 1px solid #3a3850;
+        background: var(--ui-panel);
+        border-bottom: 1px solid var(--ui-panel-hi);
         font-size: 1.05rem;
         letter-spacing: 0.03em;
-        color: #c8c264;
+        color: var(--ui-accent);
       }
       .tech-tree-wrap {
         flex: 1 1 auto;
@@ -137,55 +149,59 @@
         pointer-events: none;
       }
       .tech-edge {
-        stroke: #3a3850;
+        stroke: var(--ui-panel-hi);
         stroke-width: 2;
       }
       .tech-edge-active {
-        stroke: #6a8a4a;
+        stroke: var(--ui-good);
         stroke-width: 2.5;
       }
       .tech-node {
         box-sizing: border-box;
         padding: 0.4rem 0.55rem;
-        border: 1px solid #3a3850;
+        border: 1px solid var(--ui-panel-hi);
         border-radius: 2px;
-        background: #1c1a2a;
+        background: var(--ui-panel);
       }
       .tech-node-name {
-        font-size: 0.84rem;
+        font-size: 1.0rem;
       }
       .tech-node-flavor {
         margin-top: 0.18rem;
-        font-size: 0.72rem;
-        color: #8f8ba4;
+        font-size: 1.0rem;
+        color: var(--ui-muted);
       }
       .tech-node-missing {
         margin-top: 0.18rem;
-        font-size: 0.7rem;
-        color: #b98c7a;
+        font-size: 1.0rem;
+        color: var(--ui-bad);
       }
       .tech-node-locked {
         opacity: 0.55;
       }
       .tech-node-affordable {
-        border-color: #c8c264;
-        background: #221f33;
+        border-color: var(--ui-accent);
+        background: var(--ui-panel);
       }
       .tech-node-clickable {
         cursor: pointer;
       }
       .tech-node-clickable:hover {
-        background: #2a2740;
+        background: var(--ui-panel-hi);
       }
       .tech-node-unlocked {
-        border-color: #6a8a4a;
-        color: #cfe0b0;
+        border-color: var(--ui-good);
+        color: var(--ui-good);
       }
 
       /* Tool dock: always-on bottom bar over the live map. Palette matches the
-         tech panel (#1c1a2a panel, #969e4a meadow border, #c8c264 selection).
+         tech panel (var(--ui-panel) panel, var(--ui-accent) meadow border, var(--ui-accent) selection).
          Sits below the tech panel (z 9) and the opening overlay (z 10). */
       .toolbar {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         position: fixed;
         left: 50%;
         bottom: 0;
@@ -197,11 +213,8 @@
         gap: 0.35rem;
         max-width: 96vw;
         padding: 0.5rem 0.75rem;
-        background: rgba(28, 26, 42, 0.94);
-        border: 2px solid #969e4a;
         border-bottom: none;
-        box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
-        font-family: "Courier New", ui-monospace, monospace;
+        font-family: var(--ui-font);
       }
       .toolbar-tools {
         display: flex;
@@ -211,33 +224,32 @@
       }
       .toolbar-status {
         max-width: 100%;
-        font-size: 0.74rem;
+        font-size: 1.0rem;
         letter-spacing: 0.02em;
-        color: #b6b2c6;
+        color: var(--ui-muted);
         text-align: center;
       }
       .toolbar-status[hidden] {
         display: none;
       }
       .toolbar-tool {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         padding: 0.35rem 0.7rem;
         font: inherit;
-        font-size: 0.8rem;
+        font-size: 1.0rem;
         letter-spacing: 0.02em;
-        color: #e6e2d0;
-        background: #221f33;
-        border: 1px solid #3a3850;
-        border-radius: 2px;
         cursor: pointer;
         white-space: nowrap;
       }
       .toolbar-tool:hover {
-        background: #2a2740;
+        filter: brightness(1.08);
       }
       .toolbar-tool-selected {
-        border-color: #c8c264;
-        background: #2f2b46;
-        color: #c8c264;
+        border-image-source: var(--ui-frame-buttonDown);
+        color: var(--ui-accent);
       }
       .toolbar-tool-unaffordable {
         opacity: 0.45;
@@ -249,17 +261,17 @@
       .toolbar-grip {
         align-self: stretch;
         text-align: center;
-        font-size: 0.66rem;
+        font-size: 1.0rem;
         letter-spacing: 0.18em;
-        color: #6f6b84;
+        color: var(--ui-muted);
         cursor: move;
         user-select: none;
         padding: 0.1rem 0 0.25rem;
         margin-bottom: 0.1rem;
-        border-bottom: 1px solid #2a2840;
+        border-bottom: 1px solid var(--ui-panel-hi);
       }
       .toolbar-grip:hover {
-        color: #c8c264;
+        color: var(--ui-accent);
       }
       .toolbar-main {
         display: flex;
@@ -276,7 +288,7 @@
       }
       .toolbar-cats {
         padding-left: 0.5rem;
-        border-left: 1px solid #3a3850;
+        border-left: 1px solid var(--ui-panel-hi);
       }
       .toolbar-flyout {
         display: flex;
@@ -286,7 +298,7 @@
         max-width: 94vw;
         padding-bottom: 0.4rem;
         margin-bottom: 0.1rem;
-        border-bottom: 1px solid #3a3850;
+        border-bottom: 1px solid var(--ui-panel-hi);
       }
       .toolbar-flyout[hidden] {
         display: none;
@@ -294,35 +306,34 @@
       .toolbar-mode,
       .toolbar-cat,
       .toolbar-flyitem {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         padding: 0.35rem 0.7rem;
         font: inherit;
-        font-size: 0.8rem;
+        font-size: 1.0rem;
         letter-spacing: 0.02em;
-        color: #e6e2d0;
-        background: #221f33;
-        border: 1px solid #3a3850;
-        border-radius: 2px;
         cursor: pointer;
         white-space: nowrap;
       }
       .toolbar-mode:hover,
       .toolbar-cat:hover,
       .toolbar-flyitem:hover {
-        background: #2a2740;
+        filter: brightness(1.08);
       }
       .toolbar-cat {
-        font-size: 0.82rem;
+        font-size: 1.0rem;
       }
       .toolbar-mode-selected,
       .toolbar-cat-active,
       .toolbar-flyitem-selected {
-        border-color: #c8c264;
-        background: #2f2b46;
-        color: #c8c264;
+        border-image-source: var(--ui-frame-buttonDown);
+        color: var(--ui-text-dark);
       }
       /* A category that holds the selected tool but is closed: a quiet gold hint. */
       .toolbar-cat-hassel {
-        border-color: #8a8550;
+        border-color: var(--ui-accent);
       }
       .toolbar-flyitem-unaffordable {
         opacity: 0.45;
@@ -339,39 +350,38 @@
         gap: 0.4rem;
       }
       .toolbar-meta-button {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         padding: 0.28rem 0.6rem;
         font: inherit;
-        font-size: 0.72rem;
+        font-size: 1.0rem;
         letter-spacing: 0.04em;
-        color: #b6b2c6;
-        background: #1f1d2e;
-        border: 1px solid #3a3850;
-        border-radius: 2px;
         cursor: pointer;
         white-space: nowrap;
       }
       .toolbar-meta-button:hover {
-        background: #2a2740;
+        filter: brightness(1.08);
       }
       .toolbar-meta-active {
-        border-color: #c8c264;
-        background: #2f2b46;
-        color: #c8c264;
+        border-image-source: var(--ui-frame-buttonDown);
+        color: var(--ui-accent);
       }
 
       /* Unlock flash: a ~1s meadow-gold pulse on the whole dock when the tech tree
          grants a new tool (added once by the shell, removed after the timeout). */
       @keyframes toolbar-flash {
         0% {
-          border-color: #969e4a;
+          border-color: var(--ui-accent);
           box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
         }
         30% {
-          border-color: #e0da82;
+          border-color: var(--ui-accent);
           box-shadow: 0 0 20px 4px rgba(200, 194, 100, 0.85);
         }
         100% {
-          border-color: #969e4a;
+          border-color: var(--ui-accent);
           box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
         }
       }
@@ -383,51 +393,57 @@
          Its own dedicated dock (never the toolbar status), refreshed on the civic
          cadence so it never flickers. Palette matches the docks. */
       .pulse-dock {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         position: fixed;
         left: 50%;
         top: 0;
         transform: translateX(-50%);
         z-index: 8;
         padding: 0.35rem 0.9rem;
-        background: rgba(28, 26, 42, 0.94);
-        border: 2px solid #969e4a;
         border-top: none;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-        font-family: "Courier New", ui-monospace, monospace;
-        font-size: 0.82rem;
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
         letter-spacing: 0.03em;
-        color: #d8d4c2;
+        color: var(--ui-text);
         white-space: nowrap;
       }
       .restoration-panel {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         position: fixed;
         right: 0;
         top: 0;
         z-index: 8;
         padding: 0.4rem 0.8rem 0.55rem;
-        background: rgba(28, 26, 42, 0.94);
-        border: 2px solid #969e4a;
         border-top: none;
         border-right: none;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-        font-family: "Courier New", ui-monospace, monospace;
-        font-size: 0.8rem;
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
         letter-spacing: 0.02em;
-        color: #d8d4c2;
+        color: var(--ui-text);
       }
       .restoration-panel__title {
         font-weight: bold;
-        color: #c9d07a;
+        color: var(--ui-accent);
         margin-bottom: 0.3rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        font-size: 0.72rem;
+        font-size: 1.0rem;
       }
       .restoration-panel__body {
         white-space: pre;
         line-height: 1.5;
       }
       .settings-panel {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         position: fixed;
         left: 50%;
         top: 50%;
@@ -435,28 +451,27 @@
         z-index: 11;
         min-width: 18rem;
         padding: 0.7rem 1rem 0.9rem;
-        background: rgba(28, 26, 42, 0.97);
-        border: 2px solid #969e4a;
-        border-radius: 6px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
-        font-family: "Courier New", ui-monospace, monospace;
-        font-size: 0.8rem;
-        color: #d8d4c2;
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
+        color: var(--ui-text);
       }
       .settings-panel__title {
         font-weight: bold;
-        color: #c9d07a;
+        color: var(--ui-accent);
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        font-size: 0.74rem;
+        font-size: 1.0rem;
         margin-bottom: 0.5rem;
       }
       .settings-panel__close {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         position: absolute;
         right: 0.5rem;
         top: 0.45rem;
         cursor: pointer;
-        color: #c9d07a;
         font-weight: bold;
       }
       .settings-panel__section {
@@ -465,8 +480,8 @@
         padding-top: 0.45rem;
       }
       .settings-panel__heading {
-        color: #9aa0c0;
-        font-size: 0.68rem;
+        color: var(--ui-muted);
+        font-size: 1.0rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
         margin-bottom: 0.35rem;
@@ -479,61 +494,65 @@
         margin: 0.22rem 0;
       }
       .settings-panel button {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         font-family: inherit;
-        font-size: 0.74rem;
-        color: #d8d4c2;
-        background: rgba(60, 58, 84, 0.9);
-        border: 1px solid #969e4a;
-        border-radius: 4px;
+        font-size: 1.0rem;
         padding: 0.15rem 0.5rem;
         cursor: pointer;
       }
       .settings-panel button.is-active {
-        background: #969e4a;
-        color: #1c1a2a;
+        border-image-source: var(--ui-frame-buttonDown);
+        color: var(--ui-panel);
         font-weight: bold;
       }
       .settings-panel button:hover {
-        border-color: #c9d07a;
+        filter: brightness(1.08);
       }
       .settings-panel select,
       .settings-panel input {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         font-family: inherit;
-        font-size: 0.74rem;
-        color: #d8d4c2;
-        background: rgba(60, 58, 84, 0.9);
-        border: 1px solid #969e4a;
-        border-radius: 4px;
+        font-size: 1.0rem;
         padding: 0.1rem 0.3rem;
       }
       .settings-panel__note {
-        color: #b6b08c;
-        font-size: 0.66rem;
+        color: var(--ui-muted);
+        font-size: 1.0rem;
         line-height: 1.4;
         margin-top: 0.3rem;
       }
       /* Always-visible controls hint (bottom-left) — the discoverable entry to the help panel. */
       .controls-hint {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         position: fixed;
         left: 0.6rem;
         bottom: 0.6rem;
         z-index: 9;
         padding: 0.3rem 0.6rem;
-        background: rgba(28, 26, 42, 0.92);
-        border: 2px solid #969e4a;
-        border-radius: 5px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-        font-family: "Courier New", ui-monospace, monospace;
-        font-size: 0.74rem;
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
         letter-spacing: 0.03em;
-        color: #c9d07a;
+        color: var(--ui-accent);
         cursor: pointer;
       }
       .controls-hint:hover {
-        border-color: #c9d07a;
-        color: #e6ea9a;
+        border-color: var(--ui-accent);
+        color: var(--ui-accent);
       }
       .help-panel {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        background: none;
+        box-shadow: none;
         position: fixed;
         left: 50%;
         top: 50%;
@@ -541,28 +560,27 @@
         z-index: 11;
         min-width: 16rem;
         padding: 0.7rem 1.1rem 0.9rem;
-        background: rgba(28, 26, 42, 0.97);
-        border: 2px solid #969e4a;
-        border-radius: 6px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
-        font-family: "Courier New", ui-monospace, monospace;
-        font-size: 0.8rem;
-        color: #d8d4c2;
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
+        color: var(--ui-text);
       }
       .help-panel__close {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
         position: absolute;
         right: 0.5rem;
         top: 0.45rem;
         cursor: pointer;
-        color: #c9d07a;
         font-weight: bold;
       }
       .help-panel__title {
         font-weight: bold;
-        color: #c9d07a;
+        color: var(--ui-accent);
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        font-size: 0.74rem;
+        font-size: 1.0rem;
         margin-bottom: 0.5rem;
       }
       .help-panel__body {

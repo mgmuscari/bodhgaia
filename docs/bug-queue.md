@@ -30,7 +30,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - 🟡 **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
   cut off the top; the dock also runs off the bottom edge.
 - 🟡 **Tech tree cards overlap** — card text spills into the next card; "Needs:" lines are cut off.
-- 🟢 **Settings typo** — "GPU jeujés the baked tiles…".
+- ✅ **Settings typo** — the renderer note now describes what the GPU path does.
 - 🟢 **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
 - ✅ **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — trains (8-way loco + carriages),
   birds (flapping gulls), water pollution + redlined asphalt (clumped pixel patches), level crossings (road

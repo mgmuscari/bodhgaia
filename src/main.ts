@@ -20,6 +20,7 @@ import { cityName } from './engine/names';
 import { FixedTickLoop } from './engine/loop';
 import { Camera } from './ui/camera';
 import { Renderer } from './ui/renderer';
+import { installUiTheme } from './ui/uiTheme';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
 import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, liveInspectLine, applyLiveCaps } from './ui/ambientContent';
@@ -97,6 +98,7 @@ const SIM_TICK_MS = 100;
 export function main(): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing #game canvas');
+  installUiTheme(); // the pixel UI kit: palette variables, 9-slice frames, pixel font
 
   const params = new URLSearchParams(window.location.search);
 
