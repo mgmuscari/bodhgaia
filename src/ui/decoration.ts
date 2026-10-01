@@ -176,7 +176,7 @@ export function crosswalkMask(map: GameMap, x: number, y: number): number {
   // (a stroad) — never mid-freeway, never on its ramps
   const freeway = k === BuiltKind.RoadHighway;
   if (k !== BuiltKind.RoadStreet && k !== BuiltKind.RoadAvenue && k !== BuiltKind.QuietStreet && !freeway) return 0;
-  if (junctionBox(map, x, y)) return 0;
+  if (junctionBox(map, x, y) || endCapMask(map, x, y) !== 0) return 0;
   const legacyJunction = (jx: number, jy: number): boolean => lineRoadAt(map, jx, jy) && roadNeighbours(map, jx, jy).length >= 3;
   const oneWide = !wideRoadAt(map, x, y) && roadNeighbours(map, x, y).length <= 2;
   let m = 0;
@@ -267,6 +267,7 @@ function bandSides(map: GameMap, x: number, y: number, horizontal: boolean): { b
  */
 export function stopBarMask(map: GameMap, x: number, y: number): number {
   if (!roadish(map, x, y) || map.getBuilt(x, y) === BuiltKind.RoadRamp || junctionBox(map, x, y)) return 0;
+  if (endCapMask(map, x, y) !== 0) return 0; // a stub that leads nowhere has no lane into the box
   let m = 0;
   for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]] as const) {
     if (!stroadBox(map, x + dx, y + dy)) continue;
@@ -279,6 +280,24 @@ export function stopBarMask(map: GameMap, x: number, y: number): number {
     if (entering) m |= bit;
   }
   return m;
+}
+
+/**
+ * An END CAP: a wide road's last row past a junction box, leading nowhere (Maddy 2026-10-01: the freeway
+ * stub at lotus (96–98, 57)). Returns the dead-end edge's bit (N=1 E=2 S=4 W=8) — the side facing away from
+ * the box, where the road just stops — or 0. Only wide bands (≥ 2 across): a 1-wide street running past a
+ * junction keeps its ordinary dead-end paint. The renderer draws an end cap as plain asphalt with a barrier
+ * and hazard chevrons across the dead end, and nothing points traffic into it.
+ */
+export function endCapMask(map: GameMap, x: number, y: number): number {
+  if (!roadish(map, x, y) || junctionBox(map, x, y)) return 0;
+  for (const [dx, dy, deadBit] of [[0, -1, 4], [1, 0, 8], [0, 1, 1], [-1, 0, 2]] as const) {
+    // the box on one side (dx, dy), and no road at all on the other
+    if (!junctionBox(map, x + dx, y + dy) || roadish(map, x - dx, y - dy)) continue;
+    const across = bandSides(map, x, y, dx === 0);
+    if (across.before + across.after + 1 >= 2) return deadBit;
+  }
+  return 0;
 }
 
 /**

@@ -359,3 +359,41 @@ describe('stroad intersections (Maddy 2026-10-01: "should have stroad intersecti
     expect(signalCorners(m, 10, 8)).toBe(0);
   });
 });
+
+import { endCapMask } from '../../src/ui/decoration';
+
+describe('end caps (Maddy 2026-10-01: the freeway stub at lotus (96–98, 57))', () => {
+  // the freeway (x 9..11) runs down to a last crossing on ramps at y 8, then one stub row (y 9) and nothing
+  function stub(): GameMap {
+    const m = new GameMap(24, 24);
+    for (let y = 0; y <= 9; y++) for (let x = 9; x <= 11; x++) m.setBuilt(x, y, BuiltKind.RoadHighway);
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 8, x >= 9 && x <= 11 ? BuiltKind.RoadRamp : BuiltKind.RoadStreet);
+    return m;
+  }
+
+  it('the stub row past the last junction is an end cap, its dead end facing away from the box', () => {
+    const m = stub();
+    for (const x of [9, 10, 11]) expect(endCapMask(m, x, 9), `(${x},9)`).toBe(4);
+  });
+
+  it('an end cap gets no stop bar, arrow or crosswalk', () => {
+    const m = stub();
+    for (const x of [9, 10, 11]) {
+      expect(stopBarMask(m, x, 9)).toBe(0);
+      expect(crosswalkMask(m, x, 9)).toBe(0);
+    }
+  });
+
+  it('a freeway that carries on past the junction is not capped', () => {
+    const m = stroad();
+    expect(endCapMask(m, 10, 9)).toBe(0);
+    expect(endCapMask(m, 10, 3)).toBe(0);
+  });
+
+  it('a 1-wide street running one tile past a junction keeps its dead-end paint (not capped)', () => {
+    const m = new GameMap(24, 24);
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 8, BuiltKind.RoadStreet);
+    for (let y = 0; y <= 9; y++) m.setBuilt(10, y, BuiltKind.RoadStreet);
+    expect(endCapMask(m, 10, 9)).toBe(0);
+  });
+});

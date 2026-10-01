@@ -300,6 +300,27 @@ function laneArrow(edge: number): Pixels {
   return p;
 }
 
+/** An end cap: a concrete barrier across the dead end, striped red and white, with yellow hazard chevrons on
+ *  the asphalt in front of it. `edge` is the dead-end side (N=1 E=2 S=4 W=8). */
+function endCap(edge: number): Pixels {
+  const p = blank(T, T);
+  sides(edge, (set) => {
+    for (let a = 0; a < T; a++) {
+      set(a, 0, ((a >> 1) & 1) === 0 ? C.signal : C.line); // the barrier's hazard stripes
+      set(a, 1, C.paveHi);
+      set(a, 2, C.paveLo); // its shadow on the road
+    }
+    // chevrons pointing at the barrier
+    for (let a = 1; a < T; a += 5) {
+      for (let k = 0; k < 3; k++) {
+        set(a + k, 5 + k, C.lineYellow);
+        set(a + 4 - k, 5 + k, C.lineYellow);
+      }
+    }
+  }, p);
+  return p;
+}
+
 /** A traffic signal on the corner of a stroad box: a pole on the sidewalk corner, a mast arm reaching over
  *  the lanes, and a three-lamp head (red, amber, green). Corner bits NW=1 NE=2 SE=4 SW=8. */
 function signal(corner: number): Pixels {
@@ -363,6 +384,7 @@ export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly numb
     out.set(`@road/arrow/${e}`, laneArrow(e));
   }
   for (const c of [1, 2, 4, 8]) out.set(`@road/signal/${c}`, signal(c));
+  for (const e of [N, E, S, W]) out.set(`@road/endcap/${e}`, endCap(e));
   for (const a of ['h', 'v'] as const) {
     out.set(`@road/flane/${a}`, freewayLane(a));
     out.set(`@road/turn/${a}`, turnLane(a));
