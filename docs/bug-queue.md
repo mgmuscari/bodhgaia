@@ -39,6 +39,11 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   across bays and ponds, but a 1-tile-wide creek can still show a 2-tile murk rectangle. Consider letting
   murk fade across a tile (shore-style edge overlay keyed on neighbour level) rather than per-tile only.
 - ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
+- 🔴 **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
+  trains which we should support") — a road and a railway can't share a tile today. Needs a level-crossing
+  tile both `canDrive` and `railTraversable` accept (built by dragging a road across track, or vice
+  versa), the crossing art (road band over the rails + stop lines, already painted as `@road/xband`), and
+  right-of-way: cars hold at the stop line while a train occupies or approaches the crossing.
 - 🔴 **Trains: smooth turns + whole-consist motion** (Maddy 2026-09-30) — "rail passenger cars don't animate
   correctly, and we should have natural turns for rails that trains go around like other sprite movers."
   Make the consist one path-follower (cars at fixed arc-length spacing behind the loco along the rail

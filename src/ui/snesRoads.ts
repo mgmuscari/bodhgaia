@@ -41,7 +41,7 @@ interface Line {
 }
 
 /** Signed lateral offset + an along-path parameter for pixel (x, y), or null where no lane runs. */
-function pathFrame(mask: number, x: number, y: number): { s: number; t: number } | null {
+export function pathFrame(mask: number, x: number, y: number): { s: number; t: number } | null {
   const px = x + 0.5;
   const py = y + 0.5;
   if (mask === (N | S)) return { s: px - 8, t: py };

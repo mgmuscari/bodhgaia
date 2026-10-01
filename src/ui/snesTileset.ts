@@ -13,7 +13,7 @@ import type { PaintedSkin } from './tileset';
 import { blank, disc, dither, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
-import { snesRoadTiles } from './snesRoads';
+import { snesRoadTiles, pathFrame } from './snesRoads';
 import { paintSnesAgents } from './snesAgents';
 import { paintUiIcons } from './uiIcons';
 import { builtRenderKey, emissionKey, footprintCellKey, edgeKey, BLOB, BLOB_MASKS } from './renderKey';
@@ -247,33 +247,49 @@ function arms(mask: number, half: number, f: (x: number, y: number) => void): vo
   if (mask & 2) box(lo, lo, T - 1, hi);
 }
 
-/** Twin rails (+ optional ties) along each connected axis. */
-function track(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB): void {
-  const vert = (mask & 5) !== 0 || mask === 0;
-  const horz = (mask & 10) !== 0;
-  if (ties) {
-    arms(mask, 5, (x, y) => {
-      if ((vert && (y % 3 === 1) && x >= 3 && x <= 12) || (horz && (x % 3 === 1) && y >= 3 && y <= 12)) px(p, x, y, ties);
-    });
+/** The 2-arm paths a track mask is laid as: a straight or a bend as itself; a T as a WYE (the through
+ *  line plus a curve off the stub arm each way, like a real turnout); a 4-way as a diamond crossing. */
+function trackPaths(mask: number): number[] {
+  const arms = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
+  if (arms === 0) return [5]; // an isolated stub: lay it north–south
+  if (arms <= 2) return [mask];
+  if (arms === 4) return [5, 10];
+  const through = (mask & 5) === 5 ? 5 : 10;
+  const stub = mask & ~through;
+  return [through, ...(through === 5 ? [1, 4] : [2, 8]).map((a) => stub | a)];
+}
+
+/** Visit every pixel within `half` px of a track path's centre line, with its signed offset s and along t. */
+function alongTrack(mask: number, half: number, f: (x: number, y: number, s: number, t: number) => void): void {
+  const paths = trackPaths(mask);
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      for (const m of paths) {
+        const fr = pathFrame(m, x, y);
+        if (fr && Math.abs(fr.s) <= half) f(x, y, fr.s, fr.t);
+      }
+    }
   }
-  arms(mask, 3, (x, y) => {
-    const onV = (mask & 5) !== 0 || mask === 0 ? x === 5 || x === 10 : false;
-    const onH = (mask & 10) !== 0 ? y === 5 || y === 10 : false;
-    if (onV && (y < 8 ? (mask & 1) || y >= 5 : (mask & 4) || y <= 10)) {
-      px(p, x, y, rail);
-      px(p, x + 1, y, shadow);
-    }
-    if (onH && (x < 8 ? (mask & 8) || x >= 5 : (mask & 2) || x <= 10)) {
-      px(p, x, y, rail);
-      px(p, x, y + 1, shadow);
-    }
+}
+
+/** Twin rails (+ optional sleepers) laid along the track's paths — straight, curved round a bend, a wye at
+ *  a junction — the same geometry the road paint uses (snesRoads.pathFrame), so track and roads turn alike. */
+function track(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB): void {
+  if (ties) alongTrack(mask, 4.5, (x, y, _s, t) => {
+    if (Math.floor(t) % 3 === 1) px(p, x, y, ties);
+  });
+  alongTrack(mask, 4, (x, y, s) => {
+    if (Math.abs(Math.abs(s - 1) - 2.5) < 0.5) px(p, x, y, shadow); // the rail's shadow, one px outboard
+  });
+  alongTrack(mask, 3, (x, y, s) => {
+    if (Math.abs(Math.abs(s) - 2.5) < 0.5) px(p, x, y, rail);
   });
 }
 
 function railTile(mask: number): Pixels {
   const p = blank(T, T);
   fill(p, C.grass);
-  arms(mask, 6, (x, y) => px(p, x, y, hash2(x, y, 6200) % 4 === 0 ? C.dirtLo : C.dirt)); // ballast bed
+  alongTrack(mask, 6, (x, y) => px(p, x, y, hash2(x, y, 6200) % 4 === 0 ? C.dirtLo : C.dirt)); // ballast bed
   track(p, mask, C.roofBrownLo, C.paveHi, C.slateLo);
   return p;
 }
@@ -287,11 +303,7 @@ function streetcarTile(mask: number): Pixels {
 function elevTile(mask: number): Pixels {
   const p = blank(T, T);
   fill(p, C.grassLo); // the shadow the viaduct throws on the ground
-  arms(mask, 6, (x, y) => px(p, x, y, C.pave)); // deck
-  arms(mask, 6, (x, y) => {
-    const edge = x === 2 || x === 13 || y === 2 || y === 13;
-    if (edge) px(p, x, y, C.paveHi); // parapet
-  });
+  alongTrack(mask, 6, (x, y, s) => px(p, x, y, Math.abs(s) > 5 ? C.paveHi : C.pave)); // deck, parapets on its edges
   track(p, mask, null, C.line, C.paveLo);
   return p;
 }
