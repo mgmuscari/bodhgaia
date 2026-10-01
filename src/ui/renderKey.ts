@@ -164,50 +164,6 @@ export function surfaceVariantIndex(x: number, y: number, count: number): number
   return (h >>> 0) % count;
 }
 
-/** A dihedral (square-symmetry) tile transform: `rot` quarter-turns in [0,4) plus a mirror. */
-export interface DihedralTransform {
-  rot: number;
-  flip: boolean;
-}
-
-/**
- * The dihedral transform tile (x, y) uses to break the repeated-texture "plaid" of a baked,
- * ISOTROPIC terrain tile (grass/meadow/bare/forest/water — NOT river, which is directional). A
- * direction-neutral spread hash (mirroring {@link surfaceVariantIndex}, so adjacent tiles land far
- * apart) yields all 8 states: 2 bits rotation + 1 bit mirror. Deterministic, integer ops only
- * (allowlist-safe). The renderer applies it only under an active tileset, so the procedural path
- * stays byte-identical.
- */
-export function terrainTileTransform(x: number, y: number): DihedralTransform {
-  let h = Math.imul((x | 0) ^ 0x9e3779b1, 0x85ebca6b);
-  h = Math.imul(h ^ ((y | 0) + 0x27d4eb2f), 0xc2b2ae35);
-  h ^= h >>> 13;
-  return { rot: (h >>> 0) & 3, flip: ((h >>> 3) & 1) === 1 };
-}
-
-/** A continuous per-tile texture transform: `rot` in turns [0,1), `scale` ≥ √2 so any rotation still
- *  covers the tile when clipped to its bounds. */
-export interface TileStochastic {
-  rot: number;
-  scale: number;
-}
-
-/**
- * Stochastic per-tile transform for HYBRIDIZING a baked texture with itself across cells — a random
- * rotation + scale (deterministic by tile), drawn clipped to the tile, so the same baked water tile
- * never reads twice the same way (kills the plaid). Scale stays in [√2, …] so a rotated tile always
- * covers its clipped square (no empty corners). Integer hashing only (allowlist-safe); the caller
- * turns `rot` into radians.
- */
-export function waterTileTransform(x: number, y: number): TileStochastic {
-  let h = Math.imul((x | 0) ^ 0x9e3779b1, 0x85ebca6b);
-  h = Math.imul(h ^ ((y | 0) + 0x27d4eb2f), 0xc2b2ae35);
-  h ^= h >>> 13;
-  const rot = (h >>> 0) / 4294967296; // 0..1 turns
-  const scale = 1.42 + (((h >>> 8) & 0xff) / 255) * 0.32; // 1.42..1.74 (≥ √2)
-  return { rot, scale };
-}
-
 /**
  * The exhaustive, deterministic enumeration of every key {@link builtRenderKey}
  * can return. Order is stable (road kinds × masks, then each transport prefix ×

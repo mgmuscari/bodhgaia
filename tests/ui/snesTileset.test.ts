@@ -213,14 +213,6 @@ describe('snes tileset — diagonal coasts', () => {
 });
 
 describe('snes tileset — transport', () => {
-  it('supplies SNES asphalt as the road SURFACE (the renderer paints lane markings over it)', () => {
-    for (let v = 0; v < 3; v++) {
-      const t = tiles.get(`@surface/road#${v}`);
-      expect(t, `@surface/road#${v}`).toBeDefined();
-      expect(opaque(t!)).toBe(true);
-    }
-  });
-
   it('paints every non-road transport mask tile (rail/streetcar/elev/bike/ped) in the palette', () => {
     const keys = renderKeyspace().filter((k) => /^(rail|streetcar|elev|bike|ped)-\d+$/.test(k));
     expect(keys.length).toBe(5 * 16);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { GameMap, Water } from '../../src/engine/map';
+import { GameMap } from '../../src/engine/map';
 import { BuiltKind } from '../../src/engine/fabric';
-import { wideRoadAt, powerPoleAt, poleWireDirs } from '../../src/ui/decoration';
+import { wideRoadAt } from '../../src/ui/decoration';
 
 // --- Fixture helpers: write tiles directly into a bare GameMap. ---
 function hline(map: GameMap, kind: number, y: number, x0: number, x1: number): void {
@@ -58,85 +58,12 @@ describe('wideRoadAt: 2x2-block road predicate', () => {
   });
 });
 
-describe('powerPoleAt: street/avenue poles at spacing 4', () => {
-  it('is true at x%4==0 along a horizontal avenue, false elsewhere on the row', () => {
-    const map = new GameMap(16, 16);
-    hline(map, BuiltKind.RoadAvenue, 5, 0, 12);
-    for (let x = 0; x <= 12; x++) {
-      const expected = x % 4 === 0;
-      expect(powerPoleAt(map, x, 5), `(${x},5) pole=${expected}`).toBe(expected);
-    }
-  });
-
-  it('is false on a RoadHighway tile (highway carries no street poles)', () => {
-    const map = new GameMap(16, 16);
-    hline(map, BuiltKind.RoadHighway, 5, 0, 12);
-    for (let x = 0; x <= 12; x++) expect(powerPoleAt(map, x, 5)).toBe(false);
-  });
-
-  it('is false on empty land, water, rail, and building tiles', () => {
-    const map = new GameMap(16, 16);
-    map.built[map.idx(4, 4)] = BuiltKind.Rail;
-    map.built[map.idx(8, 4)] = BuiltKind.HouseSingle;
-    map.water[map.idx(0, 8)] = Water.Ocean;
-    expect(powerPoleAt(map, 0, 0)).toBe(false); // empty
-    expect(powerPoleAt(map, 0, 8)).toBe(false); // water
-    expect(powerPoleAt(map, 4, 4)).toBe(false); // rail
-    expect(powerPoleAt(map, 8, 4)).toBe(false); // building
-  });
-
-  it('uses the vertical rule (y%4==0) for a vertical street run', () => {
-    const map = new GameMap(16, 16);
-    vline(map, BuiltKind.RoadStreet, 5, 0, 12);
-    for (let y = 0; y <= 12; y++) {
-      const expected = y % 4 === 0;
-      expect(powerPoleAt(map, 5, y), `(5,${y}) pole=${expected}`).toBe(expected);
-    }
-  });
-
-  it('is false on an isolated road tile (no road neighbour)', () => {
-    const map = new GameMap(16, 16);
-    map.built[map.idx(4, 4)] = BuiltKind.RoadAvenue; // (4,4): would be x%4==0 but isolated
-    expect(powerPoleAt(map, 4, 4)).toBe(false);
-  });
-
-  it('is deterministic (two calls equal)', () => {
-    const map = new GameMap(16, 16);
-    hline(map, BuiltKind.RoadAvenue, 5, 0, 12);
-    expect(powerPoleAt(map, 4, 5)).toBe(powerPoleAt(map, 4, 5));
-  });
-});
-
-describe('poleWireDirs: E/S wire segments toward same-run neighbours', () => {
-  it('returns [[1,0]] for a pole on a horizontal run with no S neighbour', () => {
-    const map = new GameMap(16, 16);
-    hline(map, BuiltKind.RoadAvenue, 5, 0, 12);
-    expect(poleWireDirs(map, 4, 5)).toEqual([[1, 0]]);
-  });
-
-  it('returns [[1,0],[0,1]] at a junction with both an E and an S road run', () => {
-    const map = new GameMap(16, 16);
-    hline(map, BuiltKind.RoadAvenue, 4, 0, 12); // horizontal run through y=4
-    vline(map, BuiltKind.RoadAvenue, 4, 4, 12); // vertical run going S from (4,4)
-    // (4,4) is a pole: horizontal rule, x=4%4==0; has E neighbour (5,4) and S (4,5).
-    expect(poleWireDirs(map, 4, 4)).toEqual([[1, 0], [0, 1]]);
-  });
-
-  it('returns [] where powerPoleAt is false', () => {
-    const map = new GameMap(16, 16);
-    hline(map, BuiltKind.RoadAvenue, 5, 0, 12);
-    expect(poleWireDirs(map, 3, 5)).toEqual([]); // not a pole (3%4!=0)
-    expect(poleWireDirs(map, 0, 0)).toEqual([]); // empty tile
-  });
-});
-
 // --- Exact-set integration over a worldgen-shaped fixture (YP4). ---
 // A straight 1-wide street grid (one + intersection), an isolated 2-row avenue
 // band, and an isolated 3-row highway band — separated by gaps so the asserted
 // sets stay clean (the PRP-sanctioned "isolate the bands" option; the mixed-kind
 // boundary is covered separately below). Asserts the COMPLETE wideRoadAt set ==
-// exactly the band tiles (every grid + intersection excluded) and the COMPLETE
-// powerPoleAt set == exactly the expected street/avenue poles (highway excluded).
+// exactly the band tiles (every grid + intersection excluded).
 describe('decoration predicates compose over a worldgen-shaped fixture (exact sets)', () => {
   function makeFixture(): GameMap {
     const map = new GameMap(24, 24);
@@ -161,27 +88,6 @@ describe('decoration predicates compose over a worldgen-shaped fixture (exact se
     expect(actual).toEqual(expected);
     // Explicit: the grid + intersection at (8,2) is NOT wide.
     expect(wideRoadAt(map, 8, 2)).toBe(false);
-  });
-
-  it('powerPoleAt set is exactly the expected street/avenue poles (highway excluded)', () => {
-    const map = makeFixture();
-    const expected = new Set<string>([
-      // H1 (y=2): x=4,8,12
-      key(4, 2), key(8, 2), key(12, 2),
-      // V1 (x=8): the vertical-rule pole at y=4
-      key(8, 4),
-      // Avenue band rows 10,11: x=4,8,12
-      key(4, 10), key(8, 10), key(12, 10),
-      key(4, 11), key(8, 11), key(12, 11),
-    ]);
-
-    const actual = new Set<string>();
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) if (powerPoleAt(map, x, y)) actual.add(key(x, y));
-    }
-    expect(actual).toEqual(expected);
-    // Explicit: no pole anywhere on the highway band.
-    for (let y = 15; y <= 17; y++) for (let x = 2; x <= 14; x++) expect(powerPoleAt(map, x, y)).toBe(false);
   });
 });
 

@@ -28,7 +28,7 @@ describe('satelliteShader: fragment contract', () => {
   it('binds the data-map and frame uniforms', () => {
     expect(f).toContain('u_data');
     expect(f).toContain('u_grid');
-    expect(f).toContain('u_time'); // animated water
+    expect(f).toContain('u_time'); // the day/night sun arc
     expect(f).toContain('u_sun'); //  raymarched shadows
     expect(f).toContain('fragColor');
   });
@@ -41,11 +41,17 @@ describe('satelliteShader: fragment contract', () => {
     expect(f).toMatch(/u_origin\s*\+\s*v_uv\s*\*\s*u_view/);
   });
 
-  it('scales the photographic "life" by u_motion (pixel-art skins turn it off)', () => {
-    expect(f).toContain('uniform float u_motion');
-    // the water UV warp and the cloud shadow — the two effects that smear pixel art — are both gated
-    expect(f).toMatch(/baseUv \+= \(flow \* 0\.5\) \/ u_view \* u_motion/);
-    expect(f).toMatch(/cloud\) \* 0\.20 \* u_motion/);
+  it('samples the pixel-art base unwarped — the shader adds light, never motion', () => {
+    expect(f).toContain('texture(u_base, v_uv)');
+    expect(f).not.toContain('u_motion');
+    expect(f).not.toMatch(/fbm\(/); // no animated noise (water swell, clouds) smearing the pixels
+  });
+
+  it('declares every per-cell value it reads (an undeclared `type` fails the GPU compile → silent CPU fallback)', () => {
+    const main = f.slice(f.indexOf('void main()'));
+    for (const name of ['type', 'ci']) {
+      if (new RegExp(`\\b${name}\\b`).test(main)) expect(main, name).toMatch(new RegExp(`\\b(int|vec2|float|vec4) ${name}\\b`));
+    }
   });
 
   it('shadows are short contact shadows: reach at most ~1 tile, soft, and faint (Maddy 2026-09-30)', () => {

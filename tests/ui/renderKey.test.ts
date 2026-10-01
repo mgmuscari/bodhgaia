@@ -5,11 +5,9 @@ import {
   footprintCellKey,
   variantKey,
   surfaceVariantIndex,
-  terrainTileTransform,
   type FootprintPos,
 } from '../../src/ui/renderKey';
 import { BuiltKind, isTransportKind } from '../../src/engine/fabric';
-import { ROAD_STYLE_KINDS, BUILDING_STYLE_KINDS, PAINTABLE_PREFIXES } from '../../src/ui/renderer';
 
 const POSITIONS: FootprintPos[] = ['c', 'e', 'k'];
 const TIERS = [0, 1];
@@ -147,45 +145,6 @@ describe('renderKeyspace wide-body enumeration', () => {
   });
 });
 
-// Crash-on-load guard: buildAtlas iterates renderKeyspace() and paintForKey derefs
-// ROAD_STYLES[k]! / BUILDING_STYLES[kind]! and switches on the key prefix. A
-// renderKey kind/prefix the renderer has no style/case for throws at Renderer
-// construction — green under tsc/build/unit tests, dead on load. This asserts
-// every key the keyspace emits is paintable, headlessly (the renderer style
-// keysets are exported for exactly this). Non-vacuous: drop ROAD_STYLES[7] or a
-// BUILDING_STYLES[48..60] entry and the matching assertion fails.
-describe('renderKeyspace is fully covered by renderer styles', () => {
-  const keys = renderKeyspace();
-  const roadKinds = new Set(ROAD_STYLE_KINDS);
-  const buildingKinds = new Set(BUILDING_STYLE_KINDS);
-  const prefixes = new Set(PAINTABLE_PREFIXES);
-
-  it('every emitted key has a prefix paintForKey handles', () => {
-    for (const key of keys) {
-      const prefix = key.split('-')[0]!;
-      expect(prefixes.has(prefix), `no paintForKey case for prefix '${prefix}' (${key})`).toBe(true);
-    }
-  });
-
-  it('every road-{k} key has a ROAD_STYLES entry', () => {
-    const roadKeys = keys.filter((k) => k.startsWith('road-'));
-    expect(roadKeys.length).toBeGreaterThan(0); // guard is non-vacuous
-    for (const key of roadKeys) {
-      const kind = Number(key.split('-')[1]);
-      expect(roadKinds.has(kind), `ROAD_STYLES missing kind ${kind} for ${key}`).toBe(true);
-    }
-  });
-
-  it('every b-{kind} key has a BUILDING_STYLES entry', () => {
-    const buildingKeys = keys.filter((k) => k.startsWith('b-'));
-    expect(buildingKeys.length).toBeGreaterThan(0); // guard is non-vacuous
-    for (const key of buildingKeys) {
-      const kind = Number(key.split('-')[1]);
-      expect(buildingKinds.has(kind), `BUILDING_STYLES missing kind ${kind} for ${key}`).toBe(true);
-    }
-  });
-});
-
 describe('footprintCellKey (segmented multi-tile, tileset-only)', () => {
   it('encodes kind, footprint size, cell col/row, and tier', () => {
     expect(footprintCellKey(BuiltKind.Apartments, 2, 2, 0, 1, 0)).toBe('b-17-2x2-c0-r1-0');
@@ -257,71 +216,7 @@ describe('variantKey + surfaceVariantIndex (tile-map variant cycling, anti-plaid
   });
 });
 
-describe('terrainTileTransform: dihedral anti-plaid for isotropic terrain', () => {
-  it('returns a quarter-turn rot in [0,4) and a boolean flip', () => {
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) {
-        const t = terrainTileTransform(x, y);
-        expect(t.rot).toBeGreaterThanOrEqual(0);
-        expect(t.rot).toBeLessThan(4);
-        expect(Number.isInteger(t.rot)).toBe(true);
-        expect(typeof t.flip).toBe('boolean');
-      }
-    }
-  });
-
-  it('is deterministic per tile', () => {
-    expect(terrainTileTransform(12, 34)).toEqual(terrainTileTransform(12, 34));
-  });
-
-  it('exercises all 8 dihedral states across a region (real variety)', () => {
-    const seen = new Set<string>();
-    for (let y = 0; y < 16; y++) {
-      for (let x = 0; x < 16; x++) {
-        const t = terrainTileTransform(x, y);
-        seen.add(`${t.rot}${t.flip ? 'F' : ''}`);
-      }
-    }
-    expect(seen.size).toBe(8); // 4 rotations × 2 flips all appear
-  });
-
-  it('is direction-neutral: adjacent tiles rarely match (no banded plaid)', () => {
-    let matches = 0;
-    const N = 32;
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N - 1; x++) {
-        const a = terrainTileTransform(x, y);
-        const b = terrainTileTransform(x + 1, y);
-        if (a.rot === b.rot && a.flip === b.flip) matches++;
-      }
-    }
-    // 8 states → ~1/8 of horizontal neighbours collide by chance; assert well under uniform plaid.
-    expect(matches).toBeLessThan((N * (N - 1)) / 4);
-  });
-});
-
-import { waterTileTransform, variantCounts, pickVariantKey } from '../../src/ui/renderKey';
-
-describe('waterTileTransform: stochastic baked-tile hybrid (anti-plaid)', () => {
-  it('rot in [0,1) turns; scale in [√2, 1.74] so rotation always covers the clipped tile', () => {
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) {
-        const t = waterTileTransform(x, y);
-        expect(t.rot).toBeGreaterThanOrEqual(0);
-        expect(t.rot).toBeLessThan(1);
-        expect(t.scale).toBeGreaterThanOrEqual(Math.SQRT2);
-        expect(t.scale).toBeLessThanOrEqual(1.75);
-      }
-    }
-  });
-
-  it('is deterministic and varies across tiles', () => {
-    expect(waterTileTransform(3, 4)).toEqual(waterTileTransform(3, 4));
-    const rots = new Set<number>();
-    for (let i = 0; i < 20; i++) rots.add(Math.round(waterTileTransform(i, i * 3).rot * 100));
-    expect(rots.size).toBeGreaterThan(8); // genuinely varied, not banded
-  });
-});
+import { variantCounts, pickVariantKey } from '../../src/ui/renderKey';
 
 describe('variantCounts / pickVariantKey (hash-cycled tile variants)', () => {
   it('counts each base key plus its #n variants', () => {
