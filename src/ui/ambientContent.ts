@@ -808,6 +808,47 @@ export interface LateralProfile {
   exit: number;
 }
 
+/** The leg direction (0=N, 1=E, 2=S, 3=W) from tile index `a` to the adjacent tile index `b`. */
+function stepDir(a: number, b: number, W: number): number {
+  const dx = (b % W) - (a % W);
+  const dy = Math.floor(b / W) - Math.floor(a / W);
+  return dx > 0 ? 1 : dx < 0 ? 3 : dy > 0 ? 2 : 0;
+}
+
+/**
+ * Re-sync a train's car movers to its trail (call after each substep): car k crosses its tile cells[k]
+ * toward cells[k−1] (the locomotive toward its target) at the locomotive's own progress, so the consist
+ * moves as one, and each car's previous leg (from the tile behind it) gives it moverPose's quarter-arc bend
+ * at a corner — one car after another, a tile apart. The Mover objects persist, keeping their snapshots.
+ */
+export function syncTrainLegs(t: Train, W: number): Mover[] {
+  const p = Math.min(1, Math.max(0, 1 - (Math.abs(t.tx - t.hx) + Math.abs(t.ty - t.hy))));
+  const cars = (t.cars ??= []);
+  cars.length = t.cells.length;
+  for (let k = 0; k < t.cells.length; k++) {
+    const a = t.cells[k]!;
+    const ax = a % W;
+    const ay = Math.floor(a / W);
+    const dir = k === 0 ? t.dir : stepDir(a, t.cells[k - 1]!, W);
+    const prevDir = k + 1 < t.cells.length ? stepDir(t.cells[k + 1]!, a, W) : dir;
+    const m = (cars[k] ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 } as Mover);
+    m.x = ax + DIR_DX[dir]! * p;
+    m.y = ay + DIR_DY[dir]! * p;
+    m.tx = ax + DIR_DX[dir]!;
+    m.ty = ay + DIR_DY[dir]!;
+    m.dir = dir;
+    m.prevDir = prevDir;
+  }
+  return cars;
+}
+
+/** Every car of a train posed on the shared mover path ({@link movingPose}), head first; `alpha`
+ *  interpolates between substeps exactly as for cars. */
+export function trainPoses(t: Train, W: number, alpha = 1): Pose[] {
+  const cars = t.cars && t.cars.length === t.cells.length ? t.cars : syncTrainLegs(t, W);
+  return cars.map((m) => movingPose(m, 0, alpha));
+}
+
 export function moverPose(m: Mover, lateral: number | LateralProfile): Pose {
   const prof = typeof lateral === 'number' ? { entry: lateral, mid: lateral, exit: lateral } : lateral;
   const latAt = (p: number): number => (p < 0.5 ? prof.entry + (prof.mid - prof.entry) * p * 2 : prof.mid + (prof.exit - prof.mid) * (p * 2 - 1));
@@ -902,7 +943,7 @@ function snapPose(m: Mover, lateral: number | ((mv: Mover) => LateralProfile)): 
  * on a 60–120 Hz display). Cosmetic state only; the world hash never sees it.
  */
 export function snapshotMovers(state: AmbientState): void {
-  for (const list of [state.cars, state.cruisers, state.peds]) {
+  for (const list of [state.cars, state.cruisers, state.peds, state.trains.flatMap((t) => t.cars ?? [])]) {
     for (const m of list) {
       const sn = (m.snap ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 });
       sn.x = m.x;
@@ -929,8 +970,14 @@ export function carPose(c: Car, alpha = 1): Pose {
     const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.lotIdx !== undefined ? 1 : c.dir;
     return { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! };
   }
-  const now = moverPose(c, LANE);
-  const before = alpha < 1 ? snapPose(c, LANE) : null;
+  return movingPose(c, LANE, alpha);
+}
+
+/** A moving mover's draw pose: moverPose now, blended `alpha` of the way from its pose before the latest
+ *  substep — the one path cars, cruisers and train cars share. */
+function movingPose(m: Mover, lateral: number, alpha: number): Pose {
+  const now = moverPose(m, lateral);
+  const before = alpha < 1 ? snapPose(m, lateral) : null;
   return before ? blendPose(before, now, alpha) : now;
 }
 
@@ -1112,6 +1159,9 @@ export interface Train {
   tx: number;
   ty: number;
   dir: number;
+  /** One Mover per car (head first), re-synced each substep by syncTrainLegs — the same movers cars and
+   *  peds are, so the substep snapshot and pose blending cover trains too. */
+  cars?: Mover[];
 }
 
 /** A parking lot the ambient layer can store cars in: its centre, its bounding box (for the
@@ -3596,6 +3646,7 @@ function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
     t.hx += DIR_DX[t.dir]! * TRAIN_SPEED;
     t.hy += DIR_DY[t.dir]! * TRAIN_SPEED;
   }
+  syncTrainLegs(t, map.width);
   return true;
 }
 

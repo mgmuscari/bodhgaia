@@ -29,13 +29,25 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   driving the game from the Chrome extension). Fix: only apply the safety net when the pointer isn't captured.
 - 🟡 **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
   cut off the top; the dock also runs off the bottom edge.
-- 🟡 **Tech tree cards overlap** — card text spills into the next card; "Needs:" lines are cut off.
-- 🟢 **Settings typo** — "GPU jeujés the baked tiles…".
+- ✅ **Tech tree cards overlap** — rebuilt as branch lanes of fixed-size cards with a detail pane.
+- ✅ **Settings typo** — the renderer note now describes what the GPU path does.
 - 🟢 **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
 - ✅ **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — trains (8-way loco + carriages),
   birds (flapping gulls), water pollution + redlined asphalt (clumped pixel patches), level crossings (road
   band over the rails), overpass shadow (half-tone, whole-art-pixel offsets) are all pixel art now.
+- 🟢 **Murky water still steps at tile edges in narrow creeks** — the 3×3-smoothed murk level reads fine
+  across bays and ponds, but a 1-tile-wide creek can still show a 2-tile murk rectangle. Consider letting
+  murk fade across a tile (shore-style edge overlay keyed on neighbour level) rather than per-tile only.
 - ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
+- 🔴 **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
+  trains which we should support") — a road and a railway can't share a tile today. Needs a level-crossing
+  tile both `canDrive` and `railTraversable` accept (built by dragging a road across track, or vice
+  versa), the crossing art (road band over the rails + stop lines, already painted as `@road/xband`), and
+  right-of-way: cars hold at the stop line while a train occupies or approaches the crossing.
+- 🔴 **Trains: smooth turns + whole-consist motion** (Maddy 2026-09-30) — "rail passenger cars don't animate
+  correctly, and we should have natural turns for rails that trains go around like other sprite movers."
+  Make the consist one path-follower (cars at fixed arc-length spacing behind the loco along the rail
+  polyline) using the moverPose quarter-arc turns, so every car interpolates and banks through bends.
 - 🔴 **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
   smoothly but the white consist cars "tick along locked to the tiles behind it" (snap per-tile, no lerp).
   The loco is interpolated; give the trailing cars the same smooth interpolation along the track.

@@ -4,6 +4,8 @@ import { describe, it, expect } from 'vitest';
 import { techLayout } from '../../src/ui/techLayout';
 import { TECH_TREE } from '../../src/tech/tree';
 import { createTechState } from '../../src/tech/state';
+import { BRANCH_ORDER, nodeViewOf } from '../../src/ui/techContent';
+import { footprintCellKey } from '../../src/ui/renderKey';
 
 function freshState() {
   return createTechState(TECH_TREE);
@@ -78,5 +80,43 @@ describe('techLayout', () => {
 
   it('is deterministic for equal state', () => {
     expect(techLayout(TECH_TREE, freshState())).toEqual(techLayout(TECH_TREE, freshState()));
+  });
+
+  it('gives each branch its own lane of rows, in branch order (Maddy 2026-09-30: fix how the tree renders)', () => {
+    const layout = techLayout(TECH_TREE, freshState());
+    expect(layout.lanes.map((l) => l.branch)).toEqual([...BRANCH_ORDER]);
+    let next = 0;
+    for (const lane of layout.lanes) {
+      expect(lane.row0).toBe(next); // lanes stack with no gaps or overlaps
+      expect(lane.rows).toBeGreaterThan(0);
+      next = lane.row0 + lane.rows;
+      for (const n of layout.nodes.filter((m) => m.branch === lane.branch)) {
+        expect(n.row).toBeGreaterThanOrEqual(lane.row0);
+        expect(n.row).toBeLessThan(lane.row0 + lane.rows);
+      }
+    }
+    expect(next).toBe(layout.rows);
+  });
+});
+
+
+describe('tech card content', () => {
+  const byId = new Map(TECH_TREE.map((n) => [n.id, n]));
+  it('a card that grants a building shows that building; a capability card shows its branch icon', () => {
+    const parklets = nodeViewOf(byId.get('parklets')!, byId, freshState());
+    expect(parklets.art).toBe(footprintCellKey(48, 1, 1, 0, 0, 0)); // the parklet's own tile
+    const walk = nodeViewOf(byId.get('walkable-streets')!, byId, freshState());
+    expect(walk.art).toMatch(/^@ui\//);
+    // a transit practice shows its track/road tile, not a (nonexistent) building cell
+    expect(nodeViewOf(byId.get('streetcar-revival')!, byId, freshState()).art).toMatch(/^streetcar-/);
+  });
+  it('lists what a node grants in words', () => {
+    const parklets = nodeViewOf(byId.get('parklets')!, byId, freshState());
+    expect(parklets.grants.join(' ')).toMatch(/Parklet/i);
+    const walk = nodeViewOf(byId.get('walkable-streets')!, byId, freshState());
+    expect(walk.grants.length).toBeGreaterThan(0);
+  });
+  it('names its branch', () => {
+    expect(nodeViewOf(byId.get('parklets')!, byId, freshState()).branchTitle).toBe('New Urbanism');
   });
 });

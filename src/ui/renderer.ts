@@ -24,7 +24,7 @@ import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
+import { carPose, pedPose, ambientAlpha, trainPoses } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
@@ -241,7 +241,7 @@ export class Renderer {
     this.edges = ns('@edge/');
     this.roadInk = ns('@road/');
     this.skinEmission = ns('@emit/');
-    this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/'), ...ns('@wash/')]);
+    this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/'), ...ns('@wash/'), ...ns('@ui/')]);
     this.lazyImages = skin.lazy ?? null;
   }
 
@@ -281,6 +281,11 @@ export class Renderer {
    *  glow pass casts a faint window/beacon glow from each (Maddy: windows/blinkies cast glow too). */
   emissiveBuildingList(): readonly { x: number; y: number; w: number; h: number; kind: number; lit?: AtlasImage; blink?: AtlasImage }[] {
     return this.emissiveBuildings;
+  }
+
+  /** The image for an art key — a UI icon or sprite, else a tile (painting it on first use). */
+  artImage(key: string): AtlasImage | undefined {
+    return this.sprites.get(key) ?? this.atlas.get(key);
   }
 
   /** This frame's headlight rays — cut where they hit — for the GPU glow pass. */
@@ -822,42 +827,16 @@ export class Renderer {
       addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
     }
 
-    // Trains: a snake of cars riding the rails (Maddy: rails need trains). Each cell is drawn in the
-    // 8-way frame of the LOCAL track direction (toward the car ahead); the head is the locomotive
-    // (interpolated for smooth motion).
+    // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
+    // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
     for (const tr of ambient.trains) {
-      for (let c = tr.cells.length - 1; c >= 0; c--) {
-        // position: the head rides its interpolated (hx,hy); the rest sit on their tile centres.
-        let cx: number;
-        let cy: number;
-        if (c === 0) {
-          cx = tr.hx;
-          cy = tr.hy;
-        } else {
-          const idx = tr.cells[c]!;
-          cx = idx % mapW;
-          cy = (idx - (cx)) / mapW;
-        }
-        const { sx, sy } = camera.worldToScreen(cx + 0.5, cy + 0.5);
-        if (!onScreen(sx, sy)) continue;
-        // heading: toward the car AHEAD (cell c-1) so each car aligns with the track; the head uses
-        // its committed dir. The car ahead of cell 1 is the head at its interpolated (hx,hy).
-        let hx: number;
-        let hy: number;
-        if (c === 0) {
-          const v = dirVector(tr.dir);
-          hx = v.dx;
-          hy = v.dy;
-        } else {
-          const ahead = tr.cells[c - 1]!;
-          const ax = c - 1 === 0 ? tr.hx : ahead % mapW;
-          const ay = c - 1 === 0 ? tr.hy : (ahead - (ahead % mapW)) / mapW;
-          hx = ax - cx;
-          hy = ay - cy;
-        }
-        const img = this.sprites.get(`@sprite/train/${c === 0 ? 'loco' : 'car'}/${heading8(hx, hy)}`);
-        if (img) this.drawArt(ctx, img, cx + 0.5, cy + 0.5, camera);
-      }
+      trainPoses(tr, mapW, alpha).forEach((q, k) => {
+        const { sx, sy } = camera.worldToScreen(q.x, q.y);
+        if (!onScreen(sx, sy)) return;
+        const img = this.sprites.get(`@sprite/train/${k === 0 ? 'loco' : 'car'}/${heading8(q.hx, q.hy)}`);
+        if (img) this.drawArt(ctx, img, q.x, q.y, camera);
+        addBody(q.x, q.y, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
+      });
     }
 
     // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a

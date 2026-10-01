@@ -668,3 +668,37 @@ describe('polluted water is a palette swap, not marks on the water (Maddy 2026-0
     expect([...tiles.keys()].some((k) => k.startsWith('@wash/water/'))).toBe(false);
   });
 });
+
+describe('rail track curves (Maddy 2026-09-30: track turns and junctions smoothed like the road paint)', () => {
+  const RAIL = [232, 232, 216].join(); // C.line is not used; rails are C.paveHi
+  const railPx = (key: string): Array<[number, number]> => {
+    const p = tiles.get(key)!;
+    const out: Array<[number, number]> = [];
+    for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+      const i = (y * p.w + x) * 4;
+      if (p.data[i] === 200 && p.data[i + 1] === 200 && p.data[i + 2] === 192) out.push([x, y]); // C.paveHi
+    }
+    return out;
+  };
+  void RAIL;
+
+  it('a corner tile lays both rails on quarter circles round the inner corner, not an L', () => {
+    const pts = railPx('rail-6'); // E|S: the curve's centre is the tile's bottom-right corner
+    expect(pts.length).toBeGreaterThan(10);
+    for (const [x, y] of pts) {
+      const r = Math.hypot(x + 0.5 - 16, y + 0.5 - 16);
+      expect(Math.min(Math.abs(r - 5.5), Math.abs(r - 10.5)), `(${x},${y}) r=${r.toFixed(2)}`).toBeLessThanOrEqual(0.75);
+    }
+  });
+
+  it('straight track keeps its two rails on columns 5 and 10', () => {
+    for (const [x] of railPx('rail-5')) expect([5, 10]).toContain(x);
+  });
+
+  it('a T junction branches with curves (a wye), and a 4-way is a diamond crossing', () => {
+    const t = railPx('rail-7'); // N|E|S: through N–S plus curves off to the east
+    expect(t.some(([x, y]) => x > 11 && y > 3 && y < 12)).toBe(true); // a curved rail heads east
+    const plus = railPx('rail-15');
+    expect(plus.some(([x]) => x === 5) && plus.some(([, y]) => y === 5)).toBe(true);
+  });
+});

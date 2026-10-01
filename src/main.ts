@@ -20,6 +20,8 @@ import { cityName } from './engine/names';
 import { FixedTickLoop } from './engine/loop';
 import { Camera } from './ui/camera';
 import { Renderer } from './ui/renderer';
+import { SIDEBAR_W } from './ui/toolbar';
+import { installUiTheme } from './ui/uiTheme';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
 import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, liveInspectLine, applyLiveCaps } from './ui/ambientContent';
@@ -97,6 +99,7 @@ const SIM_TICK_MS = 100;
 export function main(): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing #game canvas');
+  installUiTheme(); // the pixel UI kit: palette variables, 9-slice frames, pixel font
 
   const params = new URLSearchParams(window.location.search);
 
@@ -136,7 +139,9 @@ export function main(): void {
   // suppress its `T` toggle underneath it (init: up unless `?nointro=1`).
   let overlayActive = params.get('nointro') !== '1';
 
-  let cssWidth = window.innerWidth;
+  // the map pane sits right of the docked tool palette, never under it
+  document.documentElement.style.setProperty('--sidebar-w', `${SIDEBAR_W}px`);
+  let cssWidth = window.innerWidth - SIDEBAR_W;
   let cssHeight = window.innerHeight;
   const camera = new Camera({
     mapWidth: world.map.width,
@@ -152,7 +157,9 @@ export function main(): void {
   const renderer = new Renderer(canvas, skin);
   setPixelFavicon(skin.lazy?.get(footprintCellKey(BuiltKind.HouseSingle, 1, 1, 0, 0, 0)));
   renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-  if (canvas.style.position === '') canvas.style.position = 'relative'; // sit ABOVE the GPU canvas (z-index 0)
+  canvas.style.position = 'fixed'; // the map pane, ABOVE the GPU canvas (z-index 0)
+  canvas.style.left = 'var(--sidebar-w)';
+  canvas.style.top = '0';
   canvas.style.zIndex = '1';
 
   // GPU hybrid path (Increment 1): a WebGL2 canvas under the Canvas2D sprite/UI layer, driven by the
@@ -353,6 +360,7 @@ export function main(): void {
   // the opening overlay is up (isOverlayActive), so it never toggles beneath it.
   const techPanel = mountTechPanel(document.body, {
     getContent: () => ({ effort: effortLine(tech), layout: techLayout(TECH_TREE, tech) }),
+    art: (key) => renderer.artImage(key),
     // Cheap per-tick header source (no branchColumns derive) for refreshHeader (Y5).
     getEffort: () => effortLine(tech),
     onUnlock: (id) => {
@@ -392,6 +400,9 @@ export function main(): void {
   // meta row ([Tech][Eco][Civic]) mirrors the T/E/C keys: getMetaButtons derives
   // the active flags from the live panel/overlay state; onMeta routes a click to
   // the SAME closures the keys use (techPanel.toggle / cycleOverlay).
+  // Panels the palette opens; mounted further down, so the palette reaches them through this holder
+  // (reading their consts before they're declared would throw).
+  const panels: { restore?: { toggle(): boolean; visible(): boolean }; settings?: { toggle(): boolean; visible(): boolean }; help?: { toggle(): boolean; visible(): boolean } } = {};
   const toolbar = mountToolbar(document.body, {
     getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory),
     onSelect: (id) => {
@@ -407,12 +418,21 @@ export function main(): void {
       toolbar.refresh();
     },
     getMetaButtons: () =>
-      metaButtons(techPanel.isOpen(), activeOverlay && { kind: activeOverlay.kind }, ambientOn),
+      metaButtons(techPanel.isOpen(), activeOverlay && { kind: activeOverlay.kind }, ambientOn, {
+        restore: panels.restore?.visible() ?? false,
+        settings: panels.settings?.visible() ?? false,
+        help: panels.help?.visible() ?? false,
+      }),
     onMeta: (id) => {
       if (id === 'tech') techPanel.toggle();
       else if (id === 'life') setAmbient(!ambientOn); // same toggle the L key calls
-      else cycleOverlay(id); // 'eco' | 'civic' | 'redline' — the SAME closure the E/C/R keys call
+      else if (id === 'restore') panels.restore?.toggle();
+      else if (id === 'settings') panels.settings?.toggle();
+      else if (id === 'help') panels.help?.toggle();
+      else cycleOverlay(id); // a map overlay — the SAME closure its letter key calls
+      toolbar.refreshMeta();
     },
+    art: (key) => renderer.artImage(key),
   });
 
   // Sim-cadence gating (Y5): the heavy availableTools / branchColumns derivations +
@@ -482,6 +502,7 @@ export function main(): void {
   // population, building health, ecology, air/ground/water pollution) with improvement-oriented trend
   // arrows. Hidden by default; sampled on the civic cadence vs the previous sample only while shown.
   const restorationPanel = mountRestorationPanel(document.body);
+  panels.restore = restorationPanel;
   let prevRestoration: RestorationSample | null = null;
 
   // Settings panel (',' key): live caps apply instantly via applyLiveCaps; world size persists for the
@@ -513,6 +534,9 @@ export function main(): void {
   // Always-visible controls hint (bottom-left) → opens a full keybinding reference. Makes every key
   // (Settings included) discoverable; toggled by the hint, the ✕, or '?'/'h'.
   const helpPanel = mountHelpPanel(document.body);
+  panels.help = helpPanel;
+  panels.settings = settingsPanel;
+  toolbar.refreshMeta();
 
   // Composite heatmap overlay: a SINGLE active overlay (eco or civic, never both),
   // cycled by E (off → soil → flora → fauna → biodiversity → off) and C (off →
@@ -879,7 +903,7 @@ export function main(): void {
   });
 
   window.addEventListener('resize', () => {
-    cssWidth = window.innerWidth;
+    cssWidth = window.innerWidth - SIDEBAR_W;
     cssHeight = window.innerHeight;
     camera.setViewport(cssWidth, cssHeight);
     renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
