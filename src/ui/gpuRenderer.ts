@@ -9,6 +9,7 @@ import { GridTextureBridge } from './gridTextureBridge';
 import { SatelliteShader } from './satelliteShader';
 import { GlowBatch, GLOW_FLOATS, extractLightPoints } from './glowBatch';
 import type { LightPoint } from './glowBatch';
+import { BEAM_REACH, type Beam } from './headlights';
 import { DAYSPEED, dayNightBrightness } from './lighting';
 import { carPose, ambientAlpha } from './ambientContent';
 import type { AmbientState } from './ambientContent';
@@ -18,6 +19,8 @@ import type { Camera } from './camera';
 /** A light-bearing building footprint (world coords) with the skin's emission maps — the renderer collects
  *  these; the glow pass casts a faint window/beacon glow from each lit pixel. */
 export type EmissiveBuilding = { x: number; y: number; w: number; h: number; kind: number; lit?: CanvasImageSource; blink?: CanvasImageSource };
+/** A cast headlight (headlights.ts) with its strength (night for cars, more for a cruiser). */
+export type HeadlightBeam = Beam & { mul: number };
 
 const SUN: readonly [number, number] = [0.65, 0.78]; // sun direction in tile space (shadows trace toward it)
 /** Peak building-shadow darkening (0..1) — faint, so shadows read as soft contact shade. */
@@ -87,63 +90,64 @@ export class GpuRenderer {
     cssHeight: number,
     timeSec: number,
     buildings: readonly EmissiveBuilding[] = [],
+    beams: readonly HeadlightBeam[] = [],
   ): void {
     const gl = this.gl;
     if (!gl) return;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    this.renderGlow(ambient, origin, view, timeSec, night, buildings);
+    this.renderGlow(ambient, origin, view, timeSec, night, buildings, beams);
     gl.disable(gl.BLEND); // leave blend OFF so the next frame's opaque base pass isn't additive
   }
 
   /** Emissive GLOW: soft additive light cast onto the surrounding tiles (Maddy: "car headlights
    *  illuminating road in front" as a forward CONE; windows/hazard blinkies cast faint glows too).
-   *  Headlights = forward cone (night); cruiser bars flash red/blue (radial); building windows a faint
+   *  Headlights = forward cones cut where they hit (headlights.ts), splashing a wall they stop at;
+   *  cruiser bars flash red/blue (radial); building windows a faint
    *  warm pool (night), power plants a faint warm glow + a blinking red beacon glow. Additive (ONE,ONE). */
-  private renderGlow(ambient: AmbientState, origin: readonly [number, number], view: readonly [number, number], timeSec: number, night: number, buildings: readonly EmissiveBuilding[]): void {
+  private renderGlow(ambient: AmbientState, origin: readonly [number, number], view: readonly [number, number], timeSec: number, night: number, buildings: readonly EmissiveBuilding[], beams: readonly HeadlightBeam[]): void {
     const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
     const gl = this.gl;
     if (!gl || !this.glow) return;
-    const cap = ambient.cars.length + ambient.cruisers.length + buildings.length * 2;
-    if (this.glowData.length < cap * GLOW_FLOATS) this.glowData = new Float32Array(cap * GLOW_FLOATS);
-    const g = this.glowData;
+    let g = this.glowData;
     let n = 0;
-    // pos(2) fwd(2) len(1) halfwidth(1) color(3) intensity(1)
-    const cone = (x: number, y: number, fx: number, fy: number, len: number, hw: number, r: number, gr: number, b: number, inten: number): void => {
+    // pos(2) fwd(2) len(1) halfwidth(1) color(3) intensity(1) cut(1); the buffer grows to fit (a lit
+    // building adds one pool per lit window)
+    const cone = (x: number, y: number, fx: number, fy: number, len: number, hw: number, r: number, gr: number, b: number, inten: number, cut = len): void => {
       const o = n * GLOW_FLOATS;
+      if (o + GLOW_FLOATS > g.length) {
+        const bigger = new Float32Array(Math.max(64, g.length * 2) + GLOW_FLOATS);
+        bigger.set(g);
+        g = this.glowData = bigger;
+      }
       g[o] = x; g[o + 1] = y; g[o + 2] = fx; g[o + 3] = fy; g[o + 4] = len; g[o + 5] = hw;
-      g[o + 6] = r; g[o + 7] = gr; g[o + 8] = b; g[o + 9] = inten;
+      g[o + 6] = r; g[o + 7] = gr; g[o + 8] = b; g[o + 9] = inten; g[o + 10] = cut;
       n++;
     };
     const radial = (x: number, y: number, radius: number, r: number, gr: number, b: number, inten: number): void => cone(x, y, 0, 0, 0, radius, r, gr, b, inten);
-    // A MOVER's lights, SPRITE-RELATIVE: two warm CONES cast forward from the front headlights along the
-    // travel direction, + a red taillight pool at the rear. `cx,cy` is the sprite centre (lane-offset
-    // included), `fwd` the travel unit, `side` its perpendicular. `mul` scales intensity (cruiser flash).
-    const carGlow = (cx: number, cy: number, fwd: { dx: number; dy: number }, mul: number): void => {
-      const sx = -fwd.dy;
-      const sy = fwd.dx; // perpendicular (the car's lateral axis)
-      const fxC = cx + fwd.dx * 0.18;
-      const fyC = cy + fwd.dy * 0.18; // front bumper
-      cone(fxC + sx * 0.11, fyC + sy * 0.11, fwd.dx, fwd.dy, 1.7, 0.22, 1.0, 0.92, 0.74, 0.12 * mul);
-      cone(fxC - sx * 0.11, fyC - sy * 0.11, fwd.dx, fwd.dy, 1.7, 0.22, 1.0, 0.92, 0.74, 0.12 * mul);
-      radial(cx - fwd.dx * 0.24, cy - fwd.dy * 0.24, 0.4, 1.0, 0.18, 0.12, 0.16 * mul); // red taillight at the rear
-    };
+    // Headlights: each lamp's warm cone, cut where its ray stopped; a lamp that stops at a wall splashes
+    // a small pool on it. (The vehicle or person a beam stops at is lit on the sprite layer.)
+    for (const b of beams) {
+      cone(b.x, b.y, b.fx, b.fy, BEAM_REACH, 0.22, 1.0, 0.92, 0.74, 0.12 * b.mul, b.cut);
+      if (b.hit === 'wall') radial(b.x + b.fx * b.cut, b.y + b.fy * b.cut, 0.3, 1.0, 0.92, 0.74, 0.2 * b.mul);
+    }
+    // Taillights: a red pool behind every moving car and cruiser.
+    const tail = (x: number, y: number, hx: number, hy: number, mul: number): void =>
+      radial(x - hx * 0.24, y - hy * 0.24, 0.4, 1.0, 0.18, 0.12, 0.16 * mul);
     if (night > 0.02) {
       for (const c of ambient.cars) {
         if (c.parked) continue;
         const pose = carPose(c, alpha);
-        carGlow(pose.x, pose.y, { dx: pose.hx, dy: pose.hy }, night);
+        tail(pose.x, pose.y, pose.hx, pose.hy, night);
       }
     }
-    // Cruisers: headlights + taillight always, PLUS a flashing red/blue roof-bar pool (emergency).
+    // Cruisers: a flashing red/blue roof-bar pool (emergency), day and night.
     const blue = Math.floor(timeSec * 1000 / 180) % 2 === 0;
     for (const c of ambient.cruisers) {
       const pose = carPose(c, alpha);
-      const cx = pose.x;
-      const cy = pose.y;
-      carGlow(cx, cy, { dx: pose.hx, dy: pose.hy }, Math.max(night, 0.5));
-      if (blue) radial(cx, cy, 0.75, 0.3, 0.45, 1.0, 0.5);
-      else radial(cx, cy, 0.75, 1.0, 0.25, 0.2, 0.5);
+      tail(pose.x, pose.y, pose.hx, pose.hy, Math.max(night, 0.5));
+      if (blue) radial(pose.x, pose.y, 0.75, 0.3, 0.45, 1.0, 0.5);
+      else radial(pose.x, pose.y, 0.75, 1.0, 0.25, 0.2, 0.5);
     }
     // Buildings: RADIAL glow from the light map's actual lit pixels (windows / beacons), not the center.
     for (const bld of buildings) {

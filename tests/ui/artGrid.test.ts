@@ -38,6 +38,8 @@ describe('every light/shadow/haze shader samples on the art grid', () => {
     expect(buildGlowFragment()).toContain(ART_GRID_GLSL);
     expect(buildGlowFragment()).toMatch(/artPixel\(v_world\)/);
     expect(buildGlowVertex()).toMatch(/round\(a_pos \* ART_PX\) \/ ART_PX/);
+    // a headlight cone stops where its (art-pixel) ray hit something
+    expect(buildGlowFragment()).toMatch(/fd > v_cut\) discard/);
   });
 
   it('the smog haze is sampled per art pixel', () => {

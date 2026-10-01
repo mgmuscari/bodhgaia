@@ -132,6 +132,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/artGrid.ts',
   'src/ui/snesParts.ts',
   'src/ui/snesBigBuildings.ts',
+  'src/ui/headlights.ts',
   'src/ui/satelliteFormat.ts',
   'src/ui/gridTextureBridge.ts',
 ];
