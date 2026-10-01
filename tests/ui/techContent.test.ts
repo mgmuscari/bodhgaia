@@ -14,7 +14,7 @@ import { createTechState, TechState } from '../../src/tech/state';
 
 /** Build a NodeView inline for the pure-helper tests. */
 function node(id: string, status: NodeStatus, over: Partial<NodeView> = {}): NodeView {
-  return { id, name: id, flavor: '', cost: 1, status, missing: [], ...over };
+  return { id, name: id, flavor: '', cost: 1, status, missing: [], art: '@ui/tech', grants: [], branchTitle: 'New Urbanism', ...over };
 }
 
 /** Build a single-column BranchColumn wrapping the given nodes. */
