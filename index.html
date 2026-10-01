@@ -606,6 +606,50 @@
         white-space: pre;
         line-height: 1.6;
       }
+      /* Budget window: docked against the sidebar, over the map's left edge */
+      .budget-panel {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        position: fixed;
+        left: calc(var(--sidebar-w) + 0.5rem);
+        top: 3.2rem;
+        z-index: 10;
+        width: 22rem;
+        max-height: calc(100vh - 4rem);
+        overflow-y: auto;
+        padding: 0.5rem 0.8rem 0.7rem;
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
+        color: var(--ui-text);
+      }
+      .budget-panel[hidden] { display: none; }
+      .budget-head { display: flex; justify-content: space-between; align-items: center; }
+      .budget-title {
+        font-weight: bold; color: var(--ui-accent); text-transform: uppercase; letter-spacing: 0.08em;
+      }
+      .budget-close, .budget-borrow {
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+        color: var(--ui-text-dark);
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
+        cursor: pointer;
+      }
+      .budget-close:active, .budget-borrow:active { border-image-source: var(--ui-frame-buttonDown); }
+      .budget-borrow { margin: 0.25rem 0.3rem 0.1rem 0; padding: 0 0.3rem; }
+      .budget-section { margin-top: 0.55rem; }
+      .budget-heading {
+        color: var(--ui-accent); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.2rem;
+      }
+      .budget-row { display: grid; grid-template-columns: 4.5rem 1fr 8.5rem; gap: 0.4rem; align-items: center; }
+      .budget-row input { width: 100%; accent-color: var(--ui-accent); }
+      .budget-value { text-align: right; font-variant-numeric: tabular-nums; }
+      .budget-line { display: flex; justify-content: space-between; gap: 1rem; font-variant-numeric: tabular-nums; }
+      .budget-good { color: var(--ui-good); }
+      .budget-bad { color: var(--ui-bad); }
+      .budget-note { opacity: 0.8; font-size: 0.9rem; }
+      .pulse-dock { cursor: pointer; }
       /* The palette's Help icon replaces the floating controls hint */
       .controls-hint {
         display: none;

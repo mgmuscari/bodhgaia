@@ -21,6 +21,7 @@ export const UI_ICONS = [
   'help',
   'settings',
   'restore',
+  'budget',
 ] as const;
 export type UiIcon = (typeof UI_ICONS)[number];
 
@@ -185,6 +186,13 @@ const PAINT: Record<UiIcon, (p: Pixels) => void> = {
     disc(p, 8, 8, 5, C.slateHi); // the gear
     disc(p, 8, 8, 2, C.ink);
     px(p, 6, 5, C.line);
+  },
+  budget: (p) => {
+    disc(p, 8, 8, 6, C.roofBrown); // a gold coin, its rim
+    disc(p, 8, 8, 5, C.gold);
+    disc(p, 7, 7, 3, C.flower); // the shine
+    glyph(p, 6, 4, ['.ww.', 'w...', '.ww.', '...w', 'www.'], { w: C.roofBrownLo }); // an S…
+    vline(p, 7, 3, 9, C.roofBrownLo); // …struck through: $
   },
   restore: (p) => {
     rect(p, 2, 3, 12, 10, C.cream); // a chart, rising
