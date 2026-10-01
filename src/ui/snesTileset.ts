@@ -14,6 +14,7 @@ import { blank, disc, fill, hash2, getPx, isOpaque, outline, px, slice, type Pix
 import { C } from './snesPalette';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
 import { snesRoadTiles } from './snesRoads';
+import { paintSnesAgents } from './snesAgents';
 import { builtRenderKey, emissionKey, footprintCellKey, edgeKey, BLOB, BLOB_MASKS } from './renderKey';
 
 const T = BASE_TILE;
@@ -530,6 +531,7 @@ export function paintSnesSkin(): PaintedSkin {
   transportTiles(eager);
   edgeTiles(eager);
   encampmentTiles(eager);
+  paintSnesAgents(eager);
   for (const name of Object.keys(ICONS)) eager.set(`@icon/${name}`, icon(name));
   return { eager, lazy: { keys: buildingKeys(), paint: buildingPainter() } };
 }

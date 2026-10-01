@@ -137,10 +137,21 @@ export class GpuRenderer {
 
   /** Draw the moving agents as instanced quads in the base canvas (AFTER render()), lit by the shared
    *  lighting. Headlights/taillights are emission, night-gated; parked cars are off. */
-  renderAgents(ambient: AmbientState, camera: Camera, cssWidth: number, cssHeight: number, timeSec: number, buildings: readonly EmissiveBuilding[] = []): void {
+  renderAgents(
+    ambient: AmbientState,
+    camera: Camera,
+    cssWidth: number,
+    cssHeight: number,
+    timeSec: number,
+    buildings: readonly EmissiveBuilding[] = [],
+    drawBodies = true,
+  ): void {
     const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
     const gl = this.gl;
-    if (!gl || !this.batch || this.carRects.length === 0) return;
+    if (!gl) return;
+    // the sprite batch draws agent BODIES only when asked and when it has sprites (a pixel-art skin draws
+    // its agents on the Canvas2D layer instead); the glow pools below are cast either way
+    const bodies = drawBodies && !!this.batch && this.carRects.length > 0;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
     const map = this.map;
     const total = ambient.cars.length + ambient.peds.length + ambient.cruisers.length;
@@ -155,51 +166,53 @@ export class GpuRenderer {
       data[o + 13] = emit;
       count++;
     };
-    // Cars: headlights/taillights emission, night-gated; parked = off.
-    const nCars = this.carRects.length;
-    for (const c of ambient.cars) {
-      const ci = (((c.tint ?? 0) % nCars) + nCars) % nCars;
-      const rect = this.carRects[ci];
-      if (!rect) continue;
-      const pose = carPose(c, alpha); // smooth round turns; kerb-parallel when parked
-      const lr = c.parked ? null : this.carLightRects[ci];
-      push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.58, rect, lr ?? rect, lr ? night : 0);
-    }
-    // Pedestrians + cyclists (cyclists = bike-mode peds): a STABLE per-person sprite pick; cyclists get
-    // a small headlight (night). Skip those inside a building / riding a car.
-    const nPed = this.pedRects.length;
-    const nCyc = this.cycRects.length;
-    for (const p of ambient.peds) {
-      if (p.phase === 'inside' || p.phase === 'driving') continue;
-      const seed = ((p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0);
-      const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      const pose = pedPose(p, (x, y) => map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!), alpha);
-      const ox = pose.x - p.x;
-      const oy = pose.y - p.y;
-      const rot = Math.atan2(pose.hx, -pose.hy);
-      if (isBike && nCyc > 0) {
-        const i = (Math.imul(seed, 2654435761) >>> 0) % nCyc;
-        const rect = this.cycRects[i];
+    if (bodies) {
+      // Cars: headlights/taillights emission, night-gated; parked = off.
+      const nCars = this.carRects.length;
+      for (const c of ambient.cars) {
+        const ci = (((c.tint ?? 0) % nCars) + nCars) % nCars;
+        const rect = this.carRects[ci];
         if (!rect) continue;
-        const lr = this.cycLightRects[i];
-        push(p.x + ox, p.y + oy, rot, 0.46, rect, lr ?? rect, lr ? night : 0);
-      } else if (nPed > 0) {
-        const rect = this.pedRects[(Math.imul(seed, 2654435761) >>> 0) % nPed];
-        if (!rect) continue;
-        push(p.x + ox, p.y + oy, rot, 0.4, rect, rect, 0);
+        const pose = carPose(c, alpha); // smooth round turns; kerb-parallel when parked
+        const lr = c.parked ? null : this.carLightRects[ci];
+        push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.58, rect, lr ?? rect, lr ? night : 0);
       }
-    }
-    // Cruisers: a black car (rotated to heading) with an ALWAYS-on flashing red/blue bar (emergency).
-    if (this.cruiserRect) {
-      const flash = Math.floor(timeSec * 1000 / 180) % 2 === 0 ? 1 : 0.45;
-      for (const c of ambient.cruisers) {
-        const pose = carPose(c, alpha);
-        const lr = this.cruiserLightRect;
-        push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.55, this.cruiserRect, lr ?? this.cruiserRect, lr ? flash : 0);
+      // Pedestrians + cyclists (cyclists = bike-mode peds): a STABLE per-person sprite pick; cyclists get
+      // a small headlight (night). Skip those inside a building / riding a car.
+      const nPed = this.pedRects.length;
+      const nCyc = this.cycRects.length;
+      for (const p of ambient.peds) {
+        if (p.phase === 'inside' || p.phase === 'driving') continue;
+        const seed = ((p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0);
+        const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
+        const pose = pedPose(p, (x, y) => map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!), alpha);
+        const ox = pose.x - p.x;
+        const oy = pose.y - p.y;
+        const rot = Math.atan2(pose.hx, -pose.hy);
+        if (isBike && nCyc > 0) {
+          const i = (Math.imul(seed, 2654435761) >>> 0) % nCyc;
+          const rect = this.cycRects[i];
+          if (!rect) continue;
+          const lr = this.cycLightRects[i];
+          push(p.x + ox, p.y + oy, rot, 0.46, rect, lr ?? rect, lr ? night : 0);
+        } else if (nPed > 0) {
+          const rect = this.pedRects[(Math.imul(seed, 2654435761) >>> 0) % nPed];
+          if (!rect) continue;
+          push(p.x + ox, p.y + oy, rot, 0.4, rect, rect, 0);
+        }
+      }
+      // Cruisers: a black car (rotated to heading) with an ALWAYS-on flashing red/blue bar (emergency).
+      if (this.cruiserRect) {
+        const flash = Math.floor(timeSec * 1000 / 180) % 2 === 0 ? 1 : 0.45;
+        for (const c of ambient.cruisers) {
+          const pose = carPose(c, alpha);
+          const lr = this.cruiserLightRect;
+          push(pose.x, pose.y, Math.atan2(pose.hx, -pose.hy), 0.55, this.cruiserRect, lr ?? this.cruiserRect, lr ? flash : 0);
+        }
       }
     }
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    if (count > 0) {
+    if (count > 0 && this.batch) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       this.batch.render(data, count, origin, view, timeSec, DAYSPEED);
