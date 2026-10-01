@@ -81,11 +81,13 @@ import { branchColumns, effortLine, panelSignature } from './ui/techContent';
 import { techLayout } from './ui/techLayout';
 import { mountTechPanel } from './ui/techPanel';
 import { availableTools, previewTool, applyTool, toolDef, type ToolId, type Wallet } from './tools/tools';
-import { createEconomy, effortCapacity, type CityReading } from './economy/model';
+import { createEconomy, effortCapacity, loanOffer, takeLoan, type CityReading } from './economy/model';
 import { readCity } from './economy/readings';
 import { economyHour, practiceProject, DEFAULT_LEVERS, type EconomyRun } from './economy/run';
 import { projectProgress } from './economy/projects';
 import { economyLine } from './ui/economyContent';
+import { budgetView } from './ui/budgetContent';
+import { mountBudgetPanel } from './ui/budgetPanel';
 import { isLineTool } from './ui/lineTools';
 import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
 import { buildToolMenu, type ToolCategory } from './ui/toolMenuContent';
@@ -383,6 +385,28 @@ export function main(): void {
   let econCapacity = 0;
   let econPrimed = false; // the opening reserve is set on the first hour with live occupancy to read
   let econFundsPerHour = 0;
+  let lastCity: CityReading | null = null; // the last hour's reading (the Budget window projects from it)
+  const cityForBudget = (): CityReading => lastCity ?? readNow({ blackouts: 0, policeViolence: 0, takings: 0 });
+  const leversNow = () => ({ ...econ.levers, spendEffort: 0, spendFunds: 0 });
+  // The Budget window: tax sliders, the police line, the hourly ledger, and loans (Maddy 2026-10-01: "we need
+  // taxes and loans, once you go negative you can't dig back out")
+  const budgetPanel = mountBudgetPanel(document.body, {
+    getView: () => budgetView(econ.state, cityForBudget(), leversNow()),
+    onTax: (cls, rate) => {
+      econ = { ...econ, levers: { ...econ.levers, tax: { ...econ.levers.tax, [cls]: rate } } };
+    },
+    onPolice: (perHour) => {
+      econ = { ...econ, levers: { ...econ.levers, police: perHour } };
+    },
+    onBorrow: (amount) => {
+      const next = takeLoan(econ.state, loanOffer(econ.state, cityForBudget(), leversNow()), amount);
+      if (!next) return;
+      econ = { ...econ, state: next };
+      toolbar.refresh(); // the fabric may be affordable again
+      pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
+    },
+    onToggle: () => toolbar.refreshMeta(),
+  });
   let econSlot = gameClock(performance.now() / 1000).slot;
   const violenceTotal = (): number => {
     let sum = 0;
@@ -418,6 +442,7 @@ export function main(): void {
     const harms = { blackouts: consumers > 0 ? (dark / consumers) * 2 : 0, policeViolence: Math.max(0, violence - prevViolence) / 50, takings: 0 };
     prevViolence = violence;
     const city = readNow(harms);
+    lastCity = city;
     econCapacity = effortCapacity(city);
     if (!econPrimed && econCapacity > 0) {
       econPrimed = true;
@@ -450,6 +475,7 @@ export function main(): void {
     }
     toolbar.refresh();
     techPanel.refresh(); // projects advanced (no-op while the panel is closed)
+    budgetPanel.refresh();
     pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
   };
 
@@ -534,6 +560,7 @@ export function main(): void {
         restore: panels.restore?.visible() ?? false,
         settings: panels.settings?.visible() ?? false,
         help: panels.help?.visible() ?? false,
+        budget: budgetPanel.visible(),
       }),
     onMeta: (id) => {
       if (id === 'tech') techPanel.toggle();
@@ -541,6 +568,7 @@ export function main(): void {
       else if (id === 'restore') panels.restore?.toggle();
       else if (id === 'settings') panels.settings?.toggle();
       else if (id === 'help') panels.help?.toggle();
+      else if (id === 'budget') budgetPanel.toggle();
       else cycleOverlay(id); // a map overlay — the SAME closure its letter key calls
       toolbar.refreshMeta();
     },
@@ -875,6 +903,15 @@ export function main(): void {
     event.preventDefault();
     cycleOverlay(kind);
   });
+
+  // B toggles the Budget window; a click on the top bar (funds and the rest) opens it too
+  window.addEventListener('keydown', (event) => {
+    if (overlayActive || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key !== 'b' && event.key !== 'B') return;
+    event.preventDefault();
+    budgetPanel.toggle();
+  });
+  document.querySelector('.pulse-dock')?.addEventListener('click', () => budgetPanel.toggle());
 
   // L toggles ambient life, gated like E/C (suppressed while the opening overlay is
   // up so it never fires beneath it).
