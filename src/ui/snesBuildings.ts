@@ -11,11 +11,13 @@ import { blank, disc, hash2, hline, px, rect, vline, type Pixels, type RGB } fro
 import { C } from './snesPalette';
 import {
   T, ROOF_RED, ROOF_BLUE, ROOF_BROWN, ROOF_SLATE, ROOF_GREEN, HOUSE_ROOFS, CONCRETE, key,
-  lot, place, gable, flat, sawtooth, wall, windows, door, tree, stack, tank, frame,
+  lot, place, gable, flat, sawtooth, wall, windows, door, tree, tank, frame,
   type Ramp,
 } from './snesParts';
 
-// The shared parts kit (lot, place, roofs, walls, windows, stacks, tanks…) lives in snesParts.ts.
+// The shared parts kit (lot, place, roofs, walls, windows, stacks, tanks…) lives in snesParts.ts; the
+// large site-plan buildings (power, industry, shops, offices) in snesBigBuildings.ts.
+import { coalPlant, gasPlant, hydroPlant, nuclearPlant, industrial, commercial, offices } from './snesBigBuildings';
 
 // ── Kinds ──────────────────────────────────────────────────────────────────────────────────────────
 // Each painter: (W, H, v) → pristine footprint image. W/H are pixel sizes (16·tiles). `v` is the
@@ -116,59 +118,8 @@ const projects: Painter = (W, H, v) => {
   return p;
 };
 
-const commercial: Painter = (W, H, v) => {
-  const p = lot(W, H, 'pave', 190 + v);
-  const L = blank(W, H);
-  const x = 1;
-  const w = W - 3;
-  const roofH = Math.max(4, H >> 2);
-  const y = Math.max(1, H - 12 - roofH);
-  flat(L, x, y, w, roofH, ROOF_SLATE, 19 + v);
-  const sign = v % 3 === 0 ? C.gold : v % 3 === 1 ? C.cyan : C.signal;
-  hline(L, x, x + w - 1, y + roofH, sign); // the sign band
-  const wy = y + roofH + 1;
-  // striped awning over the shopfront
-  for (let i = 0; i < w; i++) {
-    const stripe = ((i >> 1) & 1) === 0 ? (v % 2 === 0 ? C.signal : C.roofBlue) : C.line;
-    vline(L, x + i, wy, wy + 1, stripe);
-  }
-  wall(L, x, wy + 2, w, 5, C.cream, C.creamLo);
-  rect(L, x + 1, wy + 3, w - 2, 2, C.glass);
-  for (let i = x + 1; i < x + w - 1; i += 5) px(L, i, wy + 3, C.glassHi);
-  for (let d = x + 3; d < x + w - 2; d += 9) door(L, d, wy + 3, 2, 3);
-  place(p, L);
-  // parking stripes in front
-  for (let sx = 3; sx < W - 2; sx += 4) vline(p, sx, H - 3, H - 2, C.line);
-  return p;
-};
 
-const offices: Painter = (W, H, v) => {
-  const p = lot(W, H, 'pave', 200 + v);
-  block(p, 2, 1, W - 5, H - 3, 5, C.pave, C.paveLo, CONCRETE, 20 + v, true);
-  return p;
-};
 
-const industrial: Painter = (W, H, v) => {
-  const p = lot(W, H, 'dirt', 210 + v);
-  const L = blank(W, H);
-  const x = 1;
-  const w = W - 4;
-  const roofH = Math.max(5, (H * 7) >> 4);
-  const y = 3;
-  sawtooth(L, x, y, w, roofH);
-  wall(L, x, y + roofH, w, Math.max(4, H - roofH - 6), C.brick, C.brickLo);
-  rect(L, x + 2, y + roofH + 1, 4, Math.max(2, H - roofH - 8), C.slateLo); // loading door
-  hline(L, x + 2, x + 5, y + roofH + 1, C.slate);
-  windows(L, x + 8, y + roofH + 1, w - 9, 2, 3, 3, 2, 1);
-  stack(L, x + w - 3, 0, y + roofH - 1, 2 + (W >> 5));
-  place(p, L);
-  // drums in the yard
-  for (let bx = 2; bx < W - 3; bx += 6) {
-    px(p, bx, H - 2, C.roofBlue);
-    px(p, bx + 1, H - 2, C.roofBlueLo);
-  }
-  return p;
-};
 
 const parking: Painter = (W, H) => {
   const p = lot(W, H, 'asphalt', 220);
@@ -291,63 +242,9 @@ const school: Painter = (W, H, v) => {
   return p;
 };
 
-const coalPlant: Painter = (W, H, v) => {
-  const p = lot(W, H, 'dirt', 240 + v);
-  // coal heap
-  disc(p, W - 6, H - 5, Math.max(2, W >> 4), C.ink);
-  disc(p, W - 7, H - 6, Math.max(1, (W >> 4) - 1), C.asphaltLo);
-  const L = blank(W, H);
-  const w = Math.max(8, (W * 9) >> 4);
-  const y = Math.max(4, H >> 3);
-  flat(L, 1, y, w, Math.max(4, H >> 2), ROOF_SLATE, 24);
-  wall(L, 1, y + Math.max(4, H >> 2), w, Math.max(4, H >> 2), C.brickLo, C.ink);
-  windows(L, 2, y + Math.max(4, H >> 2) + 1, w - 2, 2, 4, 3, 2, 1);
-  for (let i = 0; i < (W >= 32 ? 2 : 1); i++) stack(L, w + 3 + i * 5, 0, y + (H >> 1), 3);
-  place(p, L);
-  return p;
-};
 
-const gasPlant: Painter = (W, H, v) => {
-  const p = lot(W, H, 'pave', 250 + v);
-  const L = blank(W, H);
-  const r = Math.max(2, (Math.min(W, H) >> 3) + 1);
-  for (let ty = r + 1; ty + r < H - 2; ty += r * 2 + 3) {
-    for (let tx = r + 1; tx + r < W - 1; tx += r * 2 + 3) tank(L, tx, ty, r, C.pave, C.paveHi);
-  }
-  place(p, L);
-  for (let y = 2; y < H - 1; y += 6) hline(p, 0, W - 1, y, C.gold); // pipe runs
-  return p;
-};
 
-const hydroPlant: Painter = (W, H, v) => {
-  const p = lot(W, H, 'pave', 260 + v);
-  rect(p, 0, 0, W, H >> 2, C.water); // the reservoir behind the dam
-  hline(p, 2, 5, 2, C.wave);
-  const L = blank(W, H);
-  rect(L, 0, H >> 2, W, 3, C.paveHi); // dam crest
-  wall(L, 1, (H >> 2) + 3, W - 3, Math.max(5, H >> 2), C.pave, C.paveLo);
-  for (let x = 3; x < W - 4; x += 5) rect(L, x, (H >> 2) + 4, 2, 3, C.waterShallow); // spillway gates
-  place(p, L);
-  rect(p, 0, H - 4, W, 3, C.waterShallow); // tailrace
-  hline(p, 1, W - 2, H - 3, C.foam);
-  return p;
-};
 
-const nuclearPlant: Painter = (W, H, v) => {
-  const p = lot(W, H, 'pave', 270 + v);
-  const L = blank(W, H);
-  const r = Math.max(3, W >> 3);
-  tank(L, r + 2, r + 2, r, C.pave, C.paveHi); // cooling tower, seen from above
-  disc(L, r + 2, r + 2, Math.max(1, r - 2), C.paveLo); // its throat
-  tank(L, W - r - 3, H - r - 4, Math.max(2, r - 1), C.paveHi, C.line); // reactor dome
-  const bx = 2;
-  const by = Math.min(H - 8, 2 * r + 6);
-  flat(L, bx, by, Math.max(6, W >> 1), 4, CONCRETE, 27);
-  wall(L, bx, by + 4, Math.max(6, W >> 1), 3, C.pave, C.paveLo);
-  place(p, L);
-  px(p, W - r - 3, H - r - 4, C.gold);
-  return p;
-};
 
 const windTurbine: Painter = (W, H, v) => {
   const p = lot(W, H, 'grass', 280 + v);
