@@ -14,21 +14,35 @@ import { gradeLetter } from './worldgen/redline';
 import { ecologyReport } from './ecology/report';
 import { biodiversityField } from './ecology/biodiversity';
 import { Water } from './engine/map';
-import { isRoadKind } from './engine/fabric';
+import { isRoadKind, BuiltKind } from './engine/fabric';
 import { createRng } from './engine/rng';
 import { cityName } from './engine/names';
 import { FixedTickLoop } from './engine/loop';
 import { Camera } from './ui/camera';
-import { Renderer, exportProceduralTiles } from './ui/renderer';
-import { mountSatelliteDemo } from './ui/satelliteShader';
+import { Renderer } from './ui/renderer';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
 import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, liveInspectLine, applyLiveCaps } from './ui/ambientContent';
 import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
-import { loadTileset } from './ui/tilesetLoader';
-import { loadAmbientSprites } from './ui/ambientSprites';
-import { PROCEDURAL } from './ui/tileset';
+import { materializeSkin } from './ui/tilesetLoader';
+import { paintSnesSkin } from './ui/snesTileset';
+import { footprintCellKey } from './ui/renderKey';
+
+/** The tab icon is one of the game's own painted tiles (a house), scaled up nearest-neighbour. */
+function setPixelFavicon(tile: CanvasImageSource | undefined): void {
+  if (!tile) return;
+  const c = document.createElement('canvas');
+  c.width = 32;
+  c.height = 32;
+  const ctx = c.getContext('2d');
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tile, 0, 0, 32, 32);
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(document.createElement('link'));
+  link.rel = 'icon';
+  link.href = c.toDataURL('image/png');
+}
 import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
@@ -75,6 +89,7 @@ import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
 import { computePowerGrid, plantOutput, isPowerConsumer, plantPollution } from './growth/power';
+import { gameClock } from './ui/lighting';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -84,15 +99,6 @@ export function main(): void {
   if (!canvas) throw new Error('missing #game canvas');
 
   const params = new URLSearchParams(window.location.search);
-
-  // Dev route: ?shaderdemo mounts the hybrid satellite procedural pass on a synthetic world and
-  // returns — it never boots the live game, so it's safe to open in a scratch browser without
-  // touching an in-progress playtest. See docs/art/satellite-shader.md.
-  if (params.has('shaderdemo')) {
-    const handle = mountSatelliteDemo(canvas, { size: 64 });
-    (window as unknown as { __satDemo?: unknown }).__satDemo = handle;
-    return;
-  }
 
   const seed = params.get('seed') ?? DEFAULT_SEED;
 
@@ -140,7 +146,11 @@ export function main(): void {
     zoom: 2,
   });
 
-  const renderer = new Renderer(canvas);
+  // The one aesthetic (Maddy 2026-09-30): the code-painted Super (16-bit) skin, materialized before the
+  // first frame (eager tiles now, buildings + light maps on first draw).
+  const skin = materializeSkin(paintSnesSkin());
+  const renderer = new Renderer(canvas, skin);
+  setPixelFavicon(skin.lazy?.get(footprintCellKey(BuiltKind.HouseSingle, 1, 1, 0, 0, 0)));
   renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
   if (canvas.style.position === '') canvas.style.position = 'relative'; // sit ABOVE the GPU canvas (z-index 0)
   canvas.style.zIndex = '1';
@@ -150,13 +160,11 @@ export function main(): void {
   // stays the default + fallback. Toggled via ?shader now (settings toggle next).
   let gpuRenderer: GpuRenderer | null = null;
   let smogOverlay: SmogOverlay | null = null;
-  let loadedSprites: Awaited<ReturnType<typeof loadAmbientSprites>> | null = null;
   const mountGpu = (): boolean => {
     try {
       gpuRenderer = new GpuRenderer(world.map);
       gpuRenderer.mount();
       gpuRenderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-      if (loadedSprites) gpuRenderer.setAgentSprites(loadedSprites); // re-apply atlas on (re)mount
       // GPU smog overlay (z2, above the sprite canvas) — the atmospheric haze on top of everything.
       smogOverlay = new SmogOverlay(world.map.width, world.map.height);
       smogOverlay.mount();
@@ -180,21 +188,6 @@ export function main(): void {
     renderer.setGpuMode(false);
   };
   if (gpuParam || settings.renderer === 'gpu') mountGpu();
-
-  // Ambient sprites (cars/flora/smog/props): load once, drawn under a tileset (micro-machine cars,
-  // smog plumes). Resilient — a missing sprite just isn't drawn; never blocks the render loop.
-  void loadAmbientSprites().then((sprites) => {
-    loadedSprites = sprites;
-    renderer.setAmbientSprites(sprites);
-    gpuRenderer?.setAgentSprites(sprites); // GPU agent atlas (cars lit by the shared base pass)
-  });
-
-  // Tileset skin: the procedural look paints instantly (above); a non-procedural skin loads its
-  // committed PNGs async and hot-swaps in when ready (applyTileset invalidates the cached base →
-  // the next frame repaints). A partial/missing tileset falls back per-key to the painter.
-  if (settings.tileset !== PROCEDURAL) {
-    void loadTileset(settings.tileset).then((overrides) => renderer.applyTileset(overrides));
-  }
 
   // Two named dirty chokepoints (CRITIC-YP2). markDirty invalidates the cached
   // renderer base (map/camera/overlay changed); markPreviewDirty only requests a
@@ -259,10 +252,15 @@ export function main(): void {
   // capacity vs demand → which consumers are powered). Recomputed on placement + the
   // civic cadence; published to the renderer (unpowered consumers get a red pip) and
   // read by inspect. Derived from the hashed built layer → never hashed itself.
-  let powerGrid = computePowerGrid(world.map, world.parcels);
+  let powerGrid = computePowerGrid(world.map, world.parcels, gameClock(performance.now() / 1000));
   let powerSig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
+  // The grid is solved for the current in-game hour (time-varying demand + rolling blackouts), and
+  // re-solved every in-game hour from the frame loop below.
+  let powerSlot = gameClock(performance.now() / 1000).slot;
   const recomputePower = (): boolean => {
-    powerGrid = computePowerGrid(world.map, world.parcels);
+    const clock = gameClock(performance.now() / 1000);
+    powerSlot = clock.slot;
+    powerGrid = computePowerGrid(world.map, world.parcels, clock);
     renderer.setPowerGrid(powerGrid.poweredAnchors);
     const sig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
     const changed = sig !== powerSig;
@@ -325,14 +323,6 @@ export function main(): void {
     ambient: ambientState,
     tech,
     power: () => powerGrid,
-    // Build-time tileset-generator export (docs/art/satellite-tileset.md §5.6): dump every
-    // procedural atlas tile + diffusion spec as the ControlNet structural guides. Pulled via
-    // Playwright against the dev server; never used on a render path.
-    exportTiles: exportProceduralTiles,
-    // Hot-swap a tileset skin at runtime (same path as the settings dropdown) — for live verification
-    // and quick A/B without hunting the menu. e.g. window.bodhitropolis.setTileset('satellite').
-    setTileset: (id: string): Promise<void> =>
-      loadTileset(id).then((overrides) => renderer.applyTileset(overrides)),
   };
 
   // Opening challenge overlay. Computed from the same world, mounted over the
@@ -507,12 +497,6 @@ export function main(): void {
     onWorldChange: (worldSettings: WorldSettings): void => {
       settings = clampSettings({ ...settings, world: { ...worldSettings } });
       saveSettings(settings); // takes effect on the next load (regenerate)
-    },
-    onTilesetChange: (tileset: string): void => {
-      settings = clampSettings({ ...settings, tileset });
-      saveSettings(settings);
-      // Hot-swap the skin live (no regen): load its PNGs, then rebuild the atlas + invalidate base.
-      void loadTileset(settings.tileset).then((overrides) => renderer.applyTileset(overrides));
     },
     onRendererChange: (mode): void => {
       settings = clampSettings({ ...settings, renderer: mode });
@@ -977,6 +961,8 @@ export function main(): void {
   let last = performance.now();
   let lastBaseRefresh = 0;
   const frame = (now: number): void => {
+    // a new in-game hour: demand re-draws and the blackout may roll to another block
+    if (gameClock(now / 1000).slot !== powerSlot && recomputePower()) markDirty();
     // Sim path is VERBATIM today's — two independent clocks (YP3): `last` drives the
     // sim (its FixedTickLoop clamp owns catch-up); never fold the ambient dt into it.
     sim.advance(now - last);
@@ -1004,8 +990,8 @@ export function main(): void {
     // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so
     // it samples the freshest baked tiles. The base re-uploads only when its version changed.
     gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion());
-    // GPU agents: the moving sprites lit by the SAME pass as the ground (drawn over the base, under UI).
-    if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList());
+    // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
+    if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
     // GPU smog overlay (z2, above sprites): the atmospheric haze, now on the GPU instead of CPU plumes.
     if (smogOverlay && ambientOn) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, ambientState.pollution, ambientState.wind);
     // Sim-gated (Y5): re-derive the dock/panel signatures + refresh on change ONLY

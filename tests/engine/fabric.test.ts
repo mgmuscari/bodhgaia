@@ -21,6 +21,7 @@ import {
   depaveAsphalt,
   rampMarkingMask,
   freewayMedianAxis,
+  freewayCrossing,
   freewayAxis,
   freewayLaneBoundaryMask,
   freewayCenterLaneAxis,
@@ -1598,5 +1599,66 @@ describe('overpasses (the elevated deck layer — grade-separated transit over r
     expect(deckMask(m, 3, 4)).toBe(0b1010);
     // a bare road tile (no deck) has no deck mask
     expect(deckMask(m, 6, 4)).toBe(0);
+  });
+});
+
+describe('freeway corridors crossed by ramp decks (Maddy 2026-09-30: blank freeway downtown)', () => {
+  // live seed "lotus" x 96..98: a 3-wide N-S freeway with a full-width RAMP row every 4 tiles (streets
+  // crossing on decks) — each freeway chunk is 3×3, so measured alone it has no longer axis
+  function crossedFreeway(): GameMap {
+    const map = new GameMap(9, 14);
+    for (let y = 0; y < 14; y++) {
+      for (let x = 3; x <= 5; x++) map.setBuilt(x, y, y % 4 === 0 ? BuiltKind.RoadRamp : BuiltKind.RoadHighway);
+    }
+    return map;
+  }
+
+  it('the ramp rows continue the corridor, so a chunk tile still has its lengthwise axis', () => {
+    const map = crossedFreeway();
+    expect(freewayAxis(map, 3, 2)).toBe('v');
+    expect(freewayAxis(map, 5, 6)).toBe('v');
+  });
+
+  it('…and the centre column still carries the median', () => {
+    const map = crossedFreeway();
+    expect(freewayMedianAxis(map, 4, 2)).toBe('v');
+    expect(freewayMedianAxis(map, 3, 2)).toBe(null);
+  });
+
+  it('the ramp tiles themselves stay unmarked by the freeway rules (they keep their own paint)', () => {
+    const map = crossedFreeway();
+    expect(freewayAxis(map, 4, 4)).toBe(null);
+    expect(freewayMedianAxis(map, 4, 4)).toBe(null);
+  });
+});
+
+describe('freewayCrossing — an at-grade road crossing a freeway is a clear junction box', () => {
+  // live seed "lotus" (97,37): a 2-row avenue (rows 6-7 here) crossing a 3-wide N-S freeway (x 3..5):
+  // the avenue's north row crosses on RAMP tiles, its south row on plain HIGHWAY tiles
+  function crossing(): GameMap {
+    const map = new GameMap(10, 14);
+    for (let y = 0; y < 14; y++) for (let x = 3; x <= 5; x++) map.setBuilt(x, y, BuiltKind.RoadHighway);
+    for (let x = 0; x < 10; x++) {
+      if (x >= 3 && x <= 5) map.setBuilt(x, 6, BuiltKind.RoadRamp);
+      else {
+        map.setBuilt(x, 6, BuiltKind.RoadAvenue);
+        map.setBuilt(x, 7, BuiltKind.RoadAvenue);
+      }
+    }
+    return map;
+  }
+
+  it('flags the freeway and ramp tiles the cross road passes over', () => {
+    const map = crossing();
+    for (let x = 3; x <= 5; x++) {
+      expect(freewayCrossing(map, x, 6), `ramp ${x}`).toBe(true);
+      expect(freewayCrossing(map, x, 7), `highway ${x}`).toBe(true);
+    }
+  });
+
+  it('plain freeway lanes away from the crossing are not a crossing', () => {
+    const map = crossing();
+    expect(freewayCrossing(map, 4, 2)).toBe(false);
+    expect(freewayCrossing(map, 4, 11)).toBe(false);
   });
 });

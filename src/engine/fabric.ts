@@ -884,6 +884,54 @@ export function rampMarkingMask(map: GameMap, x: number, y: number): number {
 export const FREEWAY_WIDTH = 3;
 
 /**
+ * Is (x, y) — a freeway or ramp tile — part of an AT-GRADE CROSSING: a street/avenue that passes over the
+ * freeway here and continues on BOTH sides? Walks across the corridor (freeway + ramp tiles, at most
+ * CROSSING_SPAN) on each axis; a crossing is where both ends land on a surface road. Such tiles are a
+ * junction box: no freeway lane lines, no median, no ramp-axis dashes painted through them (Maddy
+ * 2026-09-30, the avenue at (97,37)). Render-only.
+ */
+const CROSSING_SPAN = 4;
+export function freewayCrossing(map: GameMap, x: number, y: number): boolean {
+  const k = map.getBuilt(x, y);
+  if (k !== BuiltKind.RoadHighway && k !== BuiltKind.RoadRamp) return false;
+  const corridor = (px: number, py: number): boolean => {
+    if (!map.inBounds(px, py)) return false;
+    const c = map.getBuilt(px, py);
+    return c === BuiltKind.RoadHighway || c === BuiltKind.RoadRamp;
+  };
+  const surface = (px: number, py: number): boolean => {
+    if (!map.inBounds(px, py)) return false;
+    const c = map.getBuilt(px, py);
+    return c === BuiltKind.RoadStreet || c === BuiltKind.RoadAvenue || c === BuiltKind.QuietStreet;
+  };
+  const endBeyond = (dx: number, dy: number): boolean => {
+    let px = x;
+    let py = y;
+    for (let i = 0; i < CROSSING_SPAN; i++) {
+      px += dx;
+      py += dy;
+      if (!corridor(px, py)) return surface(px, py);
+    }
+    return false; // the corridor runs on — this is along the freeway, not across it
+  };
+  return (endBeyond(1, 0) && endBeyond(-1, 0)) || (endBeyond(0, 1) && endBeyond(0, -1));
+}
+
+/**
+ * A tile that continues a freeway CORRIDOR for run-length measurement: the freeway itself, or a RAMP
+ * deck carrying a street across it. Without the ramps, a freeway crossed by a street every few tiles
+ * measures as a string of 3×3 chunks with no longer axis — and loses its lanes and median entirely
+ * (Maddy 2026-09-30, downtown). Ramp tiles themselves still return null from the freeway predicates.
+ */
+function corridorTile(map: GameMap): (px: number, py: number) => boolean {
+  return (px, py) => {
+    if (!map.inBounds(px, py)) return false;
+    const k = map.getBuilt(px, py);
+    return k === BuiltKind.RoadHighway || k === BuiltKind.RoadRamp;
+  };
+}
+
+/**
  * The axis a freeway MEDIAN jersey barrier runs along on tile (x, y), or null if (x, y) isn't a
  * median tile. A freeway corridor is 3 wide (centre spine + 2 flanks); the median sits on the CENTRE
  * tile and runs LENGTHWISE (Maddy 2026-06-19: "barriers in the middle tile lengthwise"). 'v' = a
@@ -894,8 +942,7 @@ export const FREEWAY_WIDTH = 3;
  */
 export function freewayMedianAxis(map: GameMap, x: number, y: number): 'v' | 'h' | null {
   if (map.getBuilt(x, y) !== BuiltKind.RoadHighway) return null;
-  const hwy = (px: number, py: number): boolean =>
-    map.inBounds(px, py) && map.getBuilt(px, py) === BuiltKind.RoadHighway;
+  const hwy = corridorTile(map);
   // Measure the contiguous freeway run through (x, y) on BOTH axes. The median runs along the
   // LENGTHWISE (longer) axis; the tile must sit at the centre of the strictly-SHORTER (width) band,
   // which must be an odd ≥3 cross-section (a real centre lane). Comparing run lengths is what
@@ -927,8 +974,7 @@ export function freewayMedianAxis(map: GameMap, x: number, y: number): 'v' | 'h'
  */
 export function freewayAxis(map: GameMap, x: number, y: number): 'v' | 'h' | null {
   if (map.getBuilt(x, y) !== BuiltKind.RoadHighway) return null;
-  const hwy = (px: number, py: number): boolean =>
-    map.inBounds(px, py) && map.getBuilt(px, py) === BuiltKind.RoadHighway;
+  const hwy = corridorTile(map);
   let wl = 0;
   while (hwy(x - wl - 1, y)) wl++;
   let wr = 0;

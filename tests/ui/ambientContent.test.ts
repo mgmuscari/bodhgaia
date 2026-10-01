@@ -11,7 +11,7 @@ import { createCivicState } from '../../src/civic/state';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { simTick, type SimDeps } from '../../src/civic/compose';
-import { parkingLots, parkingStalls, STALLS_PER_AXIS } from '../../src/ui/parkingContent';
+import { parkingLots, parkingStalls, STALLS_PER_TILE } from '../../src/ui/parkingContent';
 import { layField, decayField } from '../../src/citizens/field';
 import { StopCategory } from '../../src/citizens/itinerary';
 import { TravelMode } from '../../src/citizens/modes';
@@ -67,6 +67,16 @@ import {
   spawnCruisers,
   stepCruisers,
   nextPatrolStep,
+  CAR_LENGTH,
+  CAR_WIDTH,
+  rerouteIfStuck,
+  spaceClear,
+  STUCK_REPATH,
+  STUCK_UTURN,
+  STUCK_GIVE_UP,
+  uTurnIfStuck,
+  skipJammedStop,
+  JAM_SKIP_PENALTY,
   huntTarget,
   policePhase,
   stepArrests,
@@ -1922,7 +1932,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
       for (const n of perLot.values()) maxPerLot = Math.max(maxPerLot, n);
     }
     expect(anyLot).toBe(true);
-    expect(maxPerLot).toBeLessThanOrEqual(STALLS_PER_AXIS * STALLS_PER_AXIS); // <= 9 per 1x1 lot tile
+    expect(maxPerLot).toBeLessThanOrEqual(STALLS_PER_TILE); // <= the stalls of a 1x1 lot tile
   });
 
   it('binds a pedestrian to the parked car that walks to the destination building', () => {
@@ -3312,13 +3322,28 @@ describe('mover collision / following (Maddy: bounding boxes, no overlap, pause 
     expect(blockedAhead(buildMoverGrid([me, sidecar], W), W, me)).toBe(false);
   });
 
-  it('blocks cross-traffic only for the LOWER-priority vehicle (deadlock-free)', () => {
+  it('cross-traffic: the car with the other one ahead of it waits; the one already crossing goes', () => {
     // a south-bound car crossing just ahead of an east-bound car, in its lane
     const east = { x: 10, y: 10, dir: 1, tx: 10, ty: 10, id: 1 };
     const south = { x: 10.6, y: 10.2, dir: 2, tx: 10, ty: 10, id: 2 };
     const grid = buildMoverGrid([east, south], W);
     expect(blockedAhead(grid, W, east)).toBe(true); // east (id 1) yields to south (id 2)
     expect(blockedAhead(grid, W, south)).toBe(false); // south (higher id) never yields → cluster drains
+  });
+
+  it('a car turning into a stopped queue waits, whatever its priority (Maddy 2026-09-30: stacking at (115,40))', () => {
+    // a westbound car stopped on the ramp tile, and a HIGHER-id northbound car arriving under it to turn west
+    const queued = { x: 15, y: 40, dir: 3, tx: 14, ty: 40, id: 1 };
+    const turner = { x: 15, y: 40.4, dir: 0, tx: 15, ty: 40, id: 9 };
+    expect(blockedAhead(buildMoverGrid([queued, turner], W), W, turner)).toBe(true);
+  });
+
+  it('two vehicles on the exact same spot separate: the lower id waits, the higher goes', () => {
+    const a = { x: 15, y: 40, dir: 3, tx: 14, ty: 40, id: 3 };
+    const b = { x: 15, y: 40, dir: 3, tx: 14, ty: 40, id: 7 };
+    const grid = buildMoverGrid([a, b], W);
+    expect(blockedAhead(grid, W, a)).toBe(true);
+    expect(blockedAhead(grid, W, b)).toBe(false);
   });
 
   it('a rear car stops far enough that its front does not enter the car ahead', () => {
@@ -3328,5 +3353,164 @@ describe('mover collision / following (Maddy: bounding boxes, no overlap, pause 
     expect(blockedAhead(buildMoverGrid([lead, rear], W), W, rear)).toBe(false);
     const near = mk(10.7, 10, 1);
     expect(blockedAhead(buildMoverGrid([near, rear], W), W, rear)).toBe(true);
+  });
+});
+
+describe('police cruisers obey lane direction (Maddy 2026-09-30: cruisers cut across opposing freeway lanes)', () => {
+  // a clean 3-wide horizontal freeway: rows 2 (north lane, westbound), 3 (median), 4 (south lane, eastbound)
+  function freeway(): GameMap {
+    const map = new GameMap(24, 7);
+    for (let x = 0; x < 24; x++) for (let y = 2; y <= 4; y++) map.setBuilt(x, y, BuiltKind.RoadHighway);
+    return map;
+  }
+
+  it('never drives the wrong way down a one-way freeway lane, even chasing a target', () => {
+    const map = freeway();
+    // on the westbound north lane, having come from the east (fromDir = East), target far to the east
+    for (let i = 0; i < 20; i++) {
+      const d = nextPatrolStep(map, 10, 2, 1, ambientFork(`lane-${i}`), [], { x: 22, y: 2 });
+      expect(d, `try ${i}`).not.toBe(1); // East = against the lane
+    }
+  });
+
+  it('every step it picks on a freeway is one canDrive allows', () => {
+    const map = freeway();
+    for (const [x, y, from] of [[10, 2, 1], [10, 4, 3], [3, 4, 3]] as const) {
+      for (let i = 0; i < 10; i++) {
+        const d = nextPatrolStep(map, x, y, from, ambientFork(`cd-${x}-${y}-${i}`), [], { x: 12, y: 0 });
+        if (d < 0) continue;
+        expect(canDrive(map, x, y, x + [0, 1, 0, -1][d]!, y + [-1, 0, 1, 0][d]!), `(${x},${y}) → ${d}`).toBe(true);
+      }
+    }
+  });
+});
+
+import type { Mover } from "../../src/ui/ambientContent";
+
+describe('gridlock relief (Maddy 2026-09-30: traffic gridlocked — cars must repath when stopped long)', () => {
+  // two parallel E-W streets (rows 2 and 6) joined by N-S connectors at x=2 and x=12: a loop
+  function loop(): GameMap {
+    const map = new GameMap(16, 9);
+    for (let x = 2; x <= 12; x++) {
+      map.setBuilt(x, 2, BuiltKind.RoadStreet);
+      map.setBuilt(x, 6, BuiltKind.RoadStreet);
+    }
+    for (let y = 2; y <= 6; y++) {
+      map.setBuilt(2, y, BuiltKind.RoadStreet);
+      map.setBuilt(12, y, BuiltKind.RoadStreet);
+    }
+    return map;
+  }
+
+  it('a car stopped for STUCK_REPATH substeps re-plans round the blocked tile ahead', () => {
+    const map = loop();
+    const path = roadPath(map, 2, 2, 12, 2)!; // straight along row 2
+    const car = { x: 5, y: 2, dir: 1, tx: 6, ty: 2, path, leg: path.indexOf(map.idx(6, 2)) + 1, stuck: STUCK_REPATH } as Mover;
+    expect(rerouteIfStuck(map, car, new Map())).toBe(true);
+    expect(car.path!.includes(map.idx(6, 2))).toBe(false); // it avoids the tile it was stuck behind
+    expect(car.path![car.path!.length - 1]).toBe(map.idx(12, 2)); // same destination
+    expect(car.x).toBe(5); // it re-plans from where it stands (a tile centre)
+  });
+
+  it('does nothing before the threshold, or mid-leg', () => {
+    const map = loop();
+    const path = roadPath(map, 2, 2, 12, 2)!;
+    const early = { x: 5, y: 2, dir: 1, tx: 6, ty: 2, path, leg: 5, stuck: STUCK_REPATH - 1 } as Mover;
+    expect(rerouteIfStuck(map, early, new Map())).toBe(false);
+    const midLeg = { x: 5.4, y: 2, dir: 1, tx: 6, ty: 2, path, leg: 5, stuck: STUCK_REPATH } as Mover;
+    expect(rerouteIfStuck(map, midLeg, new Map())).toBe(false);
+  });
+
+  it('spaceClear: a departure point is clear only when no moving vehicle sits on it', () => {
+    const grid = buildMoverGrid([{ x: 5, y: 5, dir: 1, tx: 6, ty: 5 } as Mover], 16);
+    expect(spaceClear(grid, 16, 5, 5)).toBe(false);
+    expect(spaceClear(grid, 16, 8, 5)).toBe(true);
+  });
+});
+
+describe('kerb parking + lanes leave room for whole cars (Maddy 2026-09-30)', () => {
+  it('kerb stalls on a street never overlap each other, within a tile or with the next tile along', () => {
+    const map = new GameMap(12, 5);
+    for (let x = 0; x < 12; x++) map.setBuilt(x, 2, BuiltKind.RoadStreet); // kerbs north + south
+    const at = (tx: number) => curbStallOffsets(map, tx, 2).map((o) => ({ x: tx + o.dx, y: 2 + o.dy }));
+    const cars = [...at(5), ...at(6)]; // parked E-W (parallel to the kerb)
+    for (let i = 0; i < cars.length; i++) {
+      for (let j = i + 1; j < cars.length; j++) {
+        const a = cars[i]!;
+        const b = cars[j]!;
+        expect(Math.abs(a.x - b.x) < CAR_LENGTH && Math.abs(a.y - b.y) < CAR_WIDTH, `${a.x},${a.y} vs ${b.x},${b.y}`).toBe(false);
+      }
+    }
+  });
+
+  it('a car passing in its lane clears a kerb-parked car on the same side', () => {
+    const map = new GameMap(12, 5);
+    for (let x = 0; x < 12; x++) map.setBuilt(x, 2, BuiltKind.RoadStreet);
+    const kerbSouth = curbStallOffsets(map, 5, 2).find((o) => o.dir === 2)!; // the south kerb
+    const eastbound = laneOffset(1); // eastbound rides the south side
+    expect(Math.abs(kerbSouth.dy - eastbound.dy)).toBeGreaterThanOrEqual(CAR_WIDTH);
+  });
+
+  it('opposing lanes still pass each other cleanly', () => {
+    expect(Math.abs(laneOffset(1).dy - laneOffset(3).dy)).toBeGreaterThanOrEqual(CAR_WIDTH);
+  });
+});
+
+describe('jam escalation: U-turn, then skip the stop (Maddy 2026-09-30: deadlocked again after a while)', () => {
+  // row 4 and a parallel row 6 (x 3..12), joined at x=3 and x=12 — so there IS a way round a jam on row 4
+  function street(): GameMap {
+    const map = new GameMap(16, 9);
+    for (let x = 1; x <= 14; x++) map.setBuilt(x, 4, BuiltKind.RoadStreet);
+    for (let y = 1; y <= 7; y++) map.setBuilt(3, y, BuiltKind.RoadStreet);
+    for (let x = 3; x <= 12; x++) map.setBuilt(x, 6, BuiltKind.RoadStreet);
+    for (let y = 4; y <= 6; y++) map.setBuilt(12, y, BuiltKind.RoadStreet);
+    return map;
+  }
+
+  it('a car jammed MID-LEG for STUCK_UTURN turns back toward the tile it came from and re-plans from there', () => {
+    const map = street();
+    const path = roadPath(map, 3, 1, 12, 4)!; // down x=3 then east along row 4
+    const car = { x: 6.4, y: 4, dir: 1, tx: 7, ty: 4, path, leg: path.indexOf(map.idx(7, 4)) + 1, stuck: STUCK_UTURN } as Mover;
+    expect(uTurnIfStuck(map, car, new Map())).toBe(true);
+    expect(car.dir).toBe(3); // now heading west
+    expect([car.tx, car.ty]).toEqual([6, 4]); // back to the leg's start tile
+    expect(car.path![0]).toBe(map.idx(6, 4));
+    expect(car.stuck).toBe(0);
+  });
+
+  it('no U-turn where driving back is illegal (a one-way freeway lane)', () => {
+    const map = new GameMap(24, 7);
+    for (let x = 0; x < 24; x++) for (let y = 2; y <= 4; y++) map.setBuilt(x, y, BuiltKind.RoadHighway);
+    const car = { x: 10.5, y: 4, dir: 1, tx: 11, ty: 4, path: [map.idx(10, 4), map.idx(11, 4), map.idx(20, 4)], leg: 2, stuck: STUCK_UTURN } as Mover;
+    expect(uTurnIfStuck(map, car, new Map())).toBe(false);
+    expect(car.dir).toBe(1);
+  });
+
+  it('a citizen stuck too long skips its stop — heads on (here: home) and pays a small wellbeing penalty', () => {
+    const map = street();
+    const state = createAmbientState();
+    const home = map.idx(2, 3);
+    state.buildingHealth.set(home, 10);
+    const p = { x: 6, y: 4, dir: 1, tx: 7, ty: 4, homeTile: home, itinerary: ['work'], itinStep: 0, phase: 'driving' } as unknown as Mover;
+    skipJammedStop(state, p, map);
+    expect(state.buildingHealth.get(home)).toBe(10 - JAM_SKIP_PENALTY);
+    expect(JAM_SKIP_PENALTY).toBeGreaterThan(0);
+    expect(JAM_SKIP_PENALTY).toBeLessThan(10); // small
+    expect(['to-home', 'to-vehicle', 'driving']).toContain(p.phase); // no stops left → home
+  });
+
+  it('a driver who skips STAYS in the car (re-routed on) — or parks it; never leaves it in the lane', () => {
+    const map = street();
+    const state = createAmbientState();
+    const home = map.idx(2, 3);
+    const car = { x: 6.4, y: 4, dir: 1, tx: 7, ty: 4, owned: true, id: 42, path: [map.idx(6, 4), map.idx(7, 4)], leg: 2, stuck: STUCK_GIVE_UP } as Mover;
+    state.cars.push(car);
+    const p = { x: 6.4, y: 4, dir: 1, tx: 7, ty: 4, homeTile: home, carId: 42, itinerary: ['work'], itinStep: 0, phase: 'driving' } as unknown as Mover;
+    state.peds.push(p);
+    skipJammedStop(state, p, map);
+    // either it's still driving (a new route), or the car is parked before its owner walks off
+    if (p.phase === 'driving') expect(car.path).toBeDefined();
+    else expect(car.parked).toBe(true);
+    expect(p.phase).not.toBe('to-vehicle'); // no dismount-and-walk-back-to-the-car shuffle
   });
 });

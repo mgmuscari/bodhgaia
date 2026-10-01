@@ -58,8 +58,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// Imported AFTER the document stub so buildAtlas can run when Renderer constructs.
+// Imported AFTER the document stub so the skin materializes (one fake canvas per tile) and buildAtlas
+// can run when Renderer constructs.
 const { Renderer } = await import('../../src/ui/renderer');
+const { materializeSkin } = await import('../../src/ui/tilesetLoader');
+const { paintSnesSkin } = await import('../../src/ui/snesTileset');
+const SKIN = materializeSkin(paintSnesSkin());
 
 function makeWorld() {
   const map = new GameMap(16, 16);
@@ -73,7 +77,7 @@ function makeCamera(): Camera {
 
 describe('renderer base-cache split: base dims track resize', () => {
   it('sizes the offscreen base to the backing-store dims (cssW*dpr)', () => {
-    const r = new Renderer(makeFakeCanvas() as never);
+    const r = new Renderer(makeFakeCanvas() as never, SKIN);
     r.resize(800, 600, 2);
     const base = (r as unknown as { base: { width: number; height: number } }).base;
     expect(base.width).toBe(Math.round(800 * 2));
@@ -86,7 +90,7 @@ describe('renderer base-cache split: base dims track resize', () => {
 
 describe('renderer base-cache split: invalidateBase gates drawBase', () => {
   it('render() rebuilds the base only on the first frame and after invalidateBase', () => {
-    const r = new Renderer(makeFakeCanvas() as never);
+    const r = new Renderer(makeFakeCanvas() as never, SKIN);
     r.resize(320, 240, 1);
     const world = makeWorld();
     const camera = makeCamera();
@@ -101,7 +105,7 @@ describe('renderer base-cache split: invalidateBase gates drawBase', () => {
   });
 
   it('renderFrame() rebuilds the base only on the first frame and after invalidateBase', () => {
-    const r = new Renderer(makeFakeCanvas() as never);
+    const r = new Renderer(makeFakeCanvas() as never, SKIN);
     r.resize(320, 240, 1);
     const world = makeWorld();
     const camera = makeCamera();

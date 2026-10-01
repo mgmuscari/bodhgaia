@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayNightBrightness, cloudShadow, lightingAt } from '../../src/ui/lighting';
+import { dayNightBrightness, DAYSPEED } from '../../src/ui/lighting';
 
 // Shared scene lighting — the single definition the GPU shader (base) and the renderer (sprites) both
 // use, so a sprite is lit to the same level as the tile it's on (Maddy 2026-06-20).
@@ -16,24 +16,22 @@ describe('lighting (shared GPU/sprite scene lighting)', () => {
     const night = dayNightBrightness((3 * Math.PI) / 2 / 0.04);
     expect(noon).toBeGreaterThan(night);
   });
+});
 
-  it('cloud shadow stays in [0, 0.2] and varies across space', () => {
-    let min = 1;
-    let max = 0;
-    for (let x = 0; x < 30; x++) {
-      const c = cloudShadow(x * 2.3, x * 1.7, 5);
-      min = Math.min(min, c);
-      max = Math.max(max, c);
-      expect(c).toBeGreaterThanOrEqual(0);
-      expect(c).toBeLessThanOrEqual(0.2 + 1e-9);
-    }
-    expect(max).toBeGreaterThan(min); // not constant
+import { gameClock } from '../../src/ui/lighting';
+
+describe('gameClock — the in-game hour on the day/night wall clock', () => {
+  it('starts at sunrise (06:00) on load and reaches noon a quarter-day later', () => {
+    const day = (2 * Math.PI) / DAYSPEED; // seconds per in-game day
+    expect(gameClock(0).hour).toBe(6);
+    expect(gameClock(day / 4 + 0.01).hour).toBe(12);
+    expect(gameClock(day / 2 + 0.01).hour).toBe(18);
   });
 
-  it('lightingAt combines day×cloud×smog, monotonic in smog', () => {
-    const clear = lightingAt(10, 10, 4, 0);
-    const smoggy = lightingAt(10, 10, 4, 1);
-    expect(smoggy).toBeLessThan(clear); // smog darkens
-    expect(lightingAt(10, 10, 4, 0)).toBeLessThanOrEqual(dayNightBrightness(4) + 1e-9);
+  it('the slot counts in-game hours monotonically across days', () => {
+    const day = (2 * Math.PI) / DAYSPEED;
+    expect(gameClock(0).slot).toBe(0);
+    expect(gameClock(day + 0.01).slot).toBe(24);
+    expect(gameClock(day + 0.01).hour).toBe(6);
   });
 });

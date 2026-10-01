@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { SatType } from '../../src/ui/satelliteFormat';
 import { buildVertexSource, buildFragmentSource, glslDefines } from '../../src/ui/satelliteShader';
+import { SHADOW_REACH } from '../../src/ui/satelliteShader';
+import { SHADOW_STRENGTH } from '../../src/ui/gpuRenderer';
 
 // The GL program itself needs a WebGL2 context (browser-only, smoke-tested via the
 // ?shaderdemo route). What IS pure and worth pinning here is the GLSL *source*: the
@@ -26,7 +28,7 @@ describe('satelliteShader: fragment contract', () => {
   it('binds the data-map and frame uniforms', () => {
     expect(f).toContain('u_data');
     expect(f).toContain('u_grid');
-    expect(f).toContain('u_time'); // animated water
+    expect(f).toContain('u_time'); // the day/night sun arc
     expect(f).toContain('u_sun'); //  raymarched shadows
     expect(f).toContain('fragColor');
   });
@@ -37,6 +39,26 @@ describe('satelliteShader: fragment contract', () => {
     expect(f).toContain('u_origin');
     expect(f).toContain('u_view');
     expect(f).toMatch(/u_origin\s*\+\s*v_uv\s*\*\s*u_view/);
+  });
+
+  it('samples the pixel-art base unwarped — the shader adds light, never motion', () => {
+    expect(f).toContain('texture(u_base, v_uv)');
+    expect(f).not.toContain('u_motion');
+    expect(f).not.toMatch(/fbm\(/); // no animated noise (water swell, clouds) smearing the pixels
+  });
+
+  it('declares every per-cell value it reads (an undeclared `type` fails the GPU compile → silent CPU fallback)', () => {
+    const main = f.slice(f.indexOf('void main()'));
+    for (const name of ['type', 'ci']) {
+      if (new RegExp(`\\b${name}\\b`).test(main)) expect(main, name).toMatch(new RegExp(`\\b(int|vec2|float|vec4) ${name}\\b`));
+    }
+  });
+
+  it('shadows are short contact shadows: reach at most ~1 tile, soft, and faint (Maddy 2026-09-30)', () => {
+    expect(SHADOW_REACH).toBeLessThanOrEqual(1);
+    expect(SHADOW_STRENGTH).toBeLessThanOrEqual(0.25);
+    expect(f).toContain('SHADOW_REACH');
+    expect(f).not.toMatch(/mix\(1\.0, 2\.4/); // the old dawn/dusk stretch to 2.4 tiles is gone
   });
 
   it('carries the single-pass raymarched shadow loop', () => {
