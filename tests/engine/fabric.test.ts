@@ -1662,3 +1662,28 @@ describe('freewayCrossing — an at-grade road crossing a freeway is a clear jun
     expect(freewayCrossing(map, 4, 11)).toBe(false);
   });
 });
+describe('freewayCrossing — a freeway between frontage roads is not a crossing (Maddy 2026-10-01)', () => {
+  // live seed "lotus" rows 16–20: an E-W freeway band (rows 1..3 here) with a frontage street on each side,
+  // crossed by one street at x = 6 (a column of RAMP tiles through the band)
+  function frontage(): GameMap {
+    const map = new GameMap(14, 6);
+    for (let x = 0; x < 14; x++) {
+      map.setBuilt(x, 0, BuiltKind.RoadStreet);
+      for (let y = 1; y <= 3; y++) map.setBuilt(x, y, BuiltKind.RoadHighway);
+      map.setBuilt(x, 4, BuiltKind.RoadStreet);
+    }
+    for (let y = 1; y <= 3; y++) map.setBuilt(6, y, BuiltKind.RoadRamp);
+    return map;
+  }
+
+  it('the freeway between the frontage roads keeps its lanes (not a crossing)', () => {
+    const map = frontage();
+    for (const x of [1, 3, 9, 12]) for (let y = 1; y <= 3; y++) expect(freewayCrossing(map, x, y), `(${x},${y})`).toBe(false);
+  });
+
+  it('the street crossing through it on ramps still is', () => {
+    const map = frontage();
+    for (let y = 1; y <= 3; y++) expect(freewayCrossing(map, 6, y), `(6,${y})`).toBe(true);
+  });
+});
+

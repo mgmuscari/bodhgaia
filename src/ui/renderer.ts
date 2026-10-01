@@ -22,7 +22,7 @@ import {
 } from './renderKey';
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
-import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout } from './decoration';
+import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
 import { carPose, pedPose, ambientAlpha, trainPoses } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
@@ -402,6 +402,8 @@ export class Renderer {
     };
     // Power poles (props), drawn AFTER the tile loop so no later tile paints over one.
     const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
+    // Traffic signals on stroad corners, drawn after the tile loop too (they reach over neighbouring lanes).
+    const signals: { x: number; y: number; corners: number }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
         const i = map.idx(tx, ty);
@@ -464,8 +466,11 @@ export class Renderer {
           // line runs straight through the freeway instead of crossing the surface street it links.
           // the class this road tile is PAINTED as (a connector at a highway bend wears highway paint)
           const paintKind = isT ? roadPaintKind(map, tx, ty) : built;
-          // an at-grade road crossing a freeway is a junction box: clear paint, no lanes / median over it
-          const crossing = isT && freewayCrossing(map, tx, ty);
+          // a junction box — roads crossing, of any width (a street across a freeway, avenues meeting, a freeway
+          // meeting a freeway: decoration.junctionBox) — is clear asphalt: no lanes, seams or median over it
+          // an end cap (a wide road's stub past a junction, leading nowhere) is plain asphalt too, with a barrier
+          const capped = isT ? endCapMask(map, tx, ty) : 0;
+          const crossing = isT && (freewayCrossing(map, tx, ty) || junctionBox(map, tx, ty) || capped !== 0);
           const mask = crossing
             ? N | E | S | W
             : built === BuiltKind.RoadRamp && paintKind === BuiltKind.RoadRamp
@@ -482,7 +487,7 @@ export class Renderer {
           const pos: FootprintPos = isT ? 'c' : footprintPos(map, tx, ty, pid);
           // wideRoadAt is predicate-guarded (false for any non-road tile), so this
           // only ever flips the slab variant on for a 2-/3-row road corridor.
-          const wide = wideRoadAt(map, tx, ty);
+          const wide = !crossing && wideRoadAt(map, tx, ty);
           // road tiles are keyed by the class they're PAINTED as (a street linking highway runs at a bend
           // wears highway paint — decoration.roadPaintKind); everything else by its own kind. A tile picks
           // one of its painted variants by position hash (anti-plaid).
@@ -519,6 +524,17 @@ export class Renderer {
             if (corners !== 0) ink(`@road/curbCorner/${corners}`, dx, dy); // block corners the curbs miss
             const zebras = crosswalkMask(map, tx, ty);
             if (zebras !== 0) ink(`@road/zebra/${zebras}`, dx, dy); // crossings on the approaches to a junction
+            if (capped !== 0) ink(`@road/endcap/${capped}`, dx, dy); // the barrier across a stub's dead end
+            // stroad junctions: a stop bar and a lane arrow on each lane entering the box; signals on its corners
+            const bars = stopBarMask(map, tx, ty);
+            for (const e of [N, E, S, W]) {
+              if (bars & e) {
+                ink(`@road/stop/${e}`, dx, dy);
+                ink(`@road/arrow/${e}`, dx, dy);
+              }
+            }
+            const sig = signalCorners(map, tx, ty);
+            if (sig !== 0) signals.push({ x: tx, y: ty, corners: sig });
             if (curb !== 0) ink(`@road/curb/${curb}`, dx, dy);
 
             // Level-crossing PAINT: the white stop line a road has at a rail/tram crossing, on each
@@ -542,7 +558,7 @@ export class Renderer {
             // Freeway CENTER LANE (two-way left-turn / "suicide" lane): a surface street running
             // through the freeway middle. Draw the classic yellow solid-OUTER + dashed-INNER markings
             // on the flanking edges (the boundary with the freeway lanes). clAxis computed above.
-            if (clAxis !== null) ink(`@road/turn/${clAxis}`, dx, dy);
+            if (clAxis !== null && !crossing) ink(`@road/turn/${clAxis}`, dx, dy);
 
             // Freeway MEDIAN: a jersey barrier down the centre spine tile of the 3-wide corridor,
             // running lengthwise (separates the opposing carriageways). Per-tile; opens at ramps.
@@ -653,6 +669,10 @@ export class Renderer {
     for (const pl of poles) {
       const o = camera.tileOrigin(pl.x, pl.y);
       ink(`@road/pole/${pl.axis}`, o.dx, o.dy);
+    }
+    for (const sg of signals) {
+      const o = camera.tileOrigin(sg.x, sg.y);
+      for (const c of [1, 2, 4, 8]) if (sg.corners & c) ink(`@road/signal/${c}`, o.dx, o.dy);
     }
 
     // Parked cars are no longer painted into the static base — they are the trip-cars that

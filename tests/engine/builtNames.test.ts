@@ -38,6 +38,8 @@ describe('builtKindName', () => {
       const name = builtKindName(k as BuiltKind);
       expect(typeof name).toBe('string');
       expect(name.length).toBeGreaterThan(0);
+      // a real name, never the "Kind N" fallback (inspect showed "Kind 10" for a ramp — Maddy 2026-10-01)
+      if (k !== BuiltKind.None) expect(name, `kind ${k}`).not.toMatch(/^Kind \d+$/);
     }
   });
 });
