@@ -22,7 +22,7 @@ import {
 } from './renderKey';
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
-import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners } from './decoration';
+import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
 import { carPose, pedPose, ambientAlpha, trainPoses } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
@@ -468,7 +468,9 @@ export class Renderer {
           const paintKind = isT ? roadPaintKind(map, tx, ty) : built;
           // a junction box — roads crossing, of any width (a street across a freeway, avenues meeting, a freeway
           // meeting a freeway: decoration.junctionBox) — is clear asphalt: no lanes, seams or median over it
-          const crossing = isT && (freewayCrossing(map, tx, ty) || junctionBox(map, tx, ty));
+          // an end cap (a wide road's stub past a junction, leading nowhere) is plain asphalt too, with a barrier
+          const capped = isT ? endCapMask(map, tx, ty) : 0;
+          const crossing = isT && (freewayCrossing(map, tx, ty) || junctionBox(map, tx, ty) || capped !== 0);
           const mask = crossing
             ? N | E | S | W
             : built === BuiltKind.RoadRamp && paintKind === BuiltKind.RoadRamp
@@ -522,6 +524,7 @@ export class Renderer {
             if (corners !== 0) ink(`@road/curbCorner/${corners}`, dx, dy); // block corners the curbs miss
             const zebras = crosswalkMask(map, tx, ty);
             if (zebras !== 0) ink(`@road/zebra/${zebras}`, dx, dy); // crossings on the approaches to a junction
+            if (capped !== 0) ink(`@road/endcap/${capped}`, dx, dy); // the barrier across a stub's dead end
             // stroad junctions: a stop bar and a lane arrow on each lane entering the box; signals on its corners
             const bars = stopBarMask(map, tx, ty);
             for (const e of [N, E, S, W]) {
