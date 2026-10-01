@@ -1,14 +1,14 @@
 // Civ-style tech-tree layout: turn the prereq DAG into a positioned graph the
 // panel draws with connector lines. Each node sits in a COLUMN equal to its
 // dependency DEPTH (longest prereq chain from a root), so roots are on the left and
-// each tech sits to the right of everything it needs; within a column, nodes are
-// ordered by branch then cost for a stable vertical layout. Edges are the
+// each tech sits to the right of everything it needs; each BRANCH has its own lane
+// of rows, so a branch reads as one band and no two nodes share a cell. Edges are the
 // prereq→node pairs the shell draws as lines. Pure — no DOM, no transcendental
 // Math (on the architecture pure-ui allowlist) — so the layout is unit-tested.
 
 import { Branch, type TechNode } from '../tech/tree';
 import type { TechState } from '../tech/state';
-import { BRANCH_ORDER, nodeViewOf, type NodeView } from './techContent';
+import { BRANCH_ORDER, branchTitle, nodeViewOf, type NodeView } from './techContent';
 
 /** One positioned node: its display view, branch, and grid cell (col = depth). */
 export interface TechLayoutNode {
@@ -24,15 +24,22 @@ export interface TechEdge {
   to: string;
 }
 
+/** One branch's band of rows. */
+export interface TechLane {
+  branch: Branch;
+  title: string;
+  row0: number;
+  rows: number;
+}
+
 export interface TechLayout {
   nodes: TechLayoutNode[];
   edges: TechEdge[];
+  lanes: TechLane[];
   /** Grid extent — the shell sizes the scroll canvas from these. */
   cols: number;
   rows: number;
 }
-
-const BRANCH_INDEX = new Map<Branch, number>(BRANCH_ORDER.map((b, i) => [b, i]));
 
 /**
  * Dependency depth of every node: 0 for a root (no prereqs), else 1 + the max depth
@@ -72,32 +79,35 @@ export function techLayout(tree: readonly TechNode[], state: TechState): TechLay
   const byId = new Map(tree.map((n) => [n.id, n]));
   const depth = computeDepths(tree, byId);
 
-  // Bucket nodes by depth (column), then order each column for a stable layout.
-  const byCol = new Map<number, TechNode[]>();
   let cols = 0;
-  for (const n of tree) {
-    const c = depth.get(n.id) ?? 0;
-    if (c + 1 > cols) cols = c + 1;
-    const bucket = byCol.get(c);
-    if (bucket) bucket.push(n);
-    else byCol.set(c, [n]);
-  }
+  for (const n of tree) cols = Math.max(cols, (depth.get(n.id) ?? 0) + 1);
 
+  // Each branch gets its own LANE of rows (a Civ-style era band): within a lane a node's row is its slot
+  // among that branch's nodes of the same depth, and the lane is as tall as its busiest column. Lanes stack
+  // in BRANCH_ORDER, so no two nodes ever share a cell and every branch reads as one horizontal band.
   const nodes: TechLayoutNode[] = [];
+  const lanes: TechLane[] = [];
   let rows = 0;
-  for (let c = 0; c < cols; c++) {
-    const bucket = byCol.get(c) ?? [];
-    bucket.sort((a, b) => {
-      const ba = BRANCH_INDEX.get(a.branch) ?? 0;
-      const bb = BRANCH_INDEX.get(b.branch) ?? 0;
-      if (ba !== bb) return ba - bb;
+  for (const branch of BRANCH_ORDER) {
+    const own = tree.filter((n) => n.branch === branch);
+    const slots = new Map<number, number>(); // col → next free slot in this lane
+    const sorted = [...own].sort((a, b) => {
+      const da = depth.get(a.id) ?? 0;
+      const db = depth.get(b.id) ?? 0;
+      if (da !== db) return da - db;
       if (a.cost !== b.cost) return a.cost - b.cost;
       return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
     });
-    if (bucket.length > rows) rows = bucket.length;
-    bucket.forEach((n, row) => {
-      nodes.push({ view: nodeViewOf(n, byId, state), branch: n.branch, col: c, row });
-    });
+    let laneRows = 1;
+    for (const n of sorted) {
+      const c = depth.get(n.id) ?? 0;
+      const slot = slots.get(c) ?? 0;
+      slots.set(c, slot + 1);
+      if (slot + 1 > laneRows) laneRows = slot + 1;
+      nodes.push({ view: nodeViewOf(n, byId, state), branch, col: c, row: rows + slot });
+    }
+    lanes.push({ branch, title: branchTitle(branch), row0: rows, rows: laneRows });
+    rows += laneRows;
   }
 
   const edges: TechEdge[] = [];
@@ -107,5 +117,5 @@ export function techLayout(tree: readonly TechNode[], state: TechState): TechLay
     }
   }
 
-  return { nodes, edges, cols, rows };
+  return { nodes, edges, lanes, cols, rows };
 }
