@@ -39,6 +39,11 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   across bays and ponds, but a 1-tile-wide creek can still show a 2-tile murk rectangle. Consider letting
   murk fade across a tile (shore-style edge overlay keyed on neighbour level) rather than per-tile only.
 - ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
+- 🟡 **Commons builds don't take time yet** (economy wiring, 2026-09-30) — practices run as projects over
+  days, but placing a garden/parklet still spends its effort at once. Needs a construction-site state on the
+  map (placed, then raised over hours by effort drawn as a project) to honour "projects take time" fully.
+- 🟡 **Displacement is counted, not yet enacted** — rent-driven displacement adds to the unhoused count, but
+  doesn't yet empty specific homes (occupancy). Next: evict from the most rent-burdened unprotected homes.
 - 🔴 **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
   trains which we should support") — a road and a railway can't share a tile today. Needs a level-crossing
   tile both `canDrive` and `railTraversable` accept (built by dragging a road across track, or vice

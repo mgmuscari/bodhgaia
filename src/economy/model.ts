@@ -70,6 +70,9 @@ export interface EconomyState {
   rent: number;
   /** Households displaced so far (feeds the unhoused count). */
   displaced: number;
+  /** This hour's goodwill SHOCK — repairs, harms, displacement, police — without the drift toward neutral.
+   *  The running city applies it to civic trust, which owns goodwill's slower dynamics. */
+  shock: number;
   tick: number;
 }
 
@@ -109,7 +112,7 @@ export const ECON = {
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
 export function createEconomy(funds = 2000): EconomyState {
-  return { funds, effort: 0, burnout: 0, goodwill: ECON.goodwillNeutral, approval: 50, rent: 0.3, displaced: 0, tick: 0 };
+  return { funds, effort: 0, burnout: 0, goodwill: ECON.goodwillNeutral, approval: 50, rent: 0.3, displaced: 0, shock: 0, tick: 0 };
 }
 
 /** Effort capacity: how much organised time the city can hold at once. */
@@ -154,19 +157,14 @@ export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): Ec
   const displacedNow = city.households * (1 - city.protectedShare) * ECON.displaceRate * Math.max(0, rent - bearable);
 
   // ── Goodwill: slow drift home, slow gains, fast losses
-  const policeCost = ECON.policeGoodwillCost * lev.police;
-  const goodwill = clamp(
-    s.goodwill +
-      (ECON.goodwillNeutral - s.goodwill) * ECON.goodwillDrift +
-      ECON.goodwillPerRepair * city.repairs -
-      ECON.goodwillPerBlackout * city.harms.blackouts -
-      ECON.goodwillPerViolence * city.harms.policeViolence -
-      ECON.goodwillPerTaking * city.harms.takings -
-      ECON.goodwillPerDisplaced * displacedNow -
-      policeCost,
-    0,
-    100,
-  );
+  const shock =
+    ECON.goodwillPerRepair * city.repairs -
+    ECON.goodwillPerBlackout * city.harms.blackouts -
+    ECON.goodwillPerViolence * city.harms.policeViolence -
+    ECON.goodwillPerTaking * city.harms.takings -
+    ECON.goodwillPerDisplaced * displacedNow -
+    ECON.policeGoodwillCost * lev.police;
+  const goodwill = clamp(s.goodwill + (ECON.goodwillNeutral - s.goodwill) * ECON.goodwillDrift + shock, 0, 100);
 
   // ── Approval: perceived performance, a delayed read of wellbeing, goodwill, tax pain and the police bump
   // a neutral city (wellbeing ½, goodwill neutral, modest taxes) reads about 50
@@ -177,5 +175,5 @@ export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): Ec
   );
   const approval = s.approval + (actual - s.approval) * ECON.approvalLag;
 
-  return { funds, effort, burnout, goodwill, approval, rent, displaced: s.displaced + displacedNow, tick: s.tick + 1 };
+  return { funds, effort, burnout, goodwill, approval, rent, displaced: s.displaced + displacedNow, shock, tick: s.tick + 1 };
 }

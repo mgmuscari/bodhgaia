@@ -26,8 +26,7 @@ import {
   canPlaceOverpass,
   placeOverpass,
   removeOverpassAt,
-  overpassAt,
-} from '../engine/fabric';
+  overpassAt, isCommonsKind } from '../engine/fabric';
 import { builtKindName } from '../engine/builtNames';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { GameMap } from '../engine/map';
@@ -56,6 +55,20 @@ export interface ToolDef {
 }
 
 /** The minimal world a tool reads/writes: the map and its parcel store. */
+/** The treasury a tool can draw on (the economy's funds). */
+export interface Wallet {
+  funds: number;
+}
+
+/** Funds per unit of a tool's base cost, for the built fabric. */
+export const FUNDS_PER_COST = 40;
+
+/** What a tool costs under the economy: the commons in communal effort, the built fabric in funds. */
+export function toolPrice(tool: ToolDef): { effort: number; funds: number } {
+  if (tool.kind !== undefined && isCommonsKind(tool.kind)) return { effort: tool.cost, funds: 0 };
+  return { effort: 0, funds: tool.cost * FUNDS_PER_COST };
+}
+
 export interface ToolWorld {
   map: GameMap;
   parcels: ParcelStore;
@@ -67,6 +80,7 @@ export type ToolReason =
   | 'out-of-bounds'
   | 'occupied'
   | 'invalid-target'
+  | 'funds'
   | 'not-an-interior-lane'
   | 'nothing-to-bulldoze'
   | 'effort';
@@ -314,10 +328,18 @@ export function previewTool(
   tool: ToolDef,
   x: number,
   y: number,
+  wallet?: Wallet,
 ): PreviewResult {
   const g = geometryValid(world, tool, x, y);
   if (!g.valid) return g;
-  if (tool.cost > tech.effort) return { valid: false, reason: 'effort' };
+  if (!wallet) {
+    // no economy attached: the original single-purse pricing (effort for everything)
+    if (tool.cost > tech.effort) return { valid: false, reason: 'effort' };
+    return { valid: true };
+  }
+  const price = toolPrice(tool);
+  if (price.effort > tech.effort) return { valid: false, reason: 'effort' };
+  if (price.funds > wallet.funds) return { valid: false, reason: 'funds' };
   return { valid: true };
 }
 
@@ -367,15 +389,20 @@ export function applyTool(
   tool: ToolDef,
   x: number,
   y: number,
+  wallet?: Wallet,
 ): ApplyResult {
   if (tool.id === 'inspect') return { ok: true, info: inspectReadout(world, x, y) };
 
-  const p = previewTool(world, tech, tool, x, y);
+  const p = previewTool(world, tech, tool, x, y, wallet);
   if (!p.valid) return { ok: false, reason: p.reason };
 
-  // Effort first, through the guarded single-writer. previewTool already proved
-  // the geometry valid, so the fabric writer below cannot fail after the debit.
-  if (!tech.spend(tool.cost)) return { ok: false, reason: 'effort' };
+  // Pay first — effort through the guarded single-writer, funds from the wallet. previewTool already
+  // proved the geometry valid and the purse sufficient, so the fabric writer below cannot fail after it.
+  if (wallet) {
+    const price = toolPrice(tool);
+    if (!tech.spend(price.effort)) return { ok: false, reason: 'effort' };
+    wallet.funds -= price.funds;
+  } else if (!tech.spend(tool.cost)) return { ok: false, reason: 'effort' };
 
   const { map, parcels } = world;
   if (tool.id === 'bulldoze') {

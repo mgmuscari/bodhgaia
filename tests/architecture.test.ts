@@ -139,6 +139,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/headlights.ts',
   'src/ui/uiKit.ts',
   'src/ui/uiIcons.ts',
+  'src/ui/economyContent.ts',
   'src/ui/satelliteFormat.ts',
   'src/ui/gridTextureBridge.ts',
 ];

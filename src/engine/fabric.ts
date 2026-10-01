@@ -109,6 +109,22 @@ export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 export const isRoadKind = (k: number): boolean => k >= 1 && k <= 3;
 /** A planted median (the road-diet green strip, 11): a transport-slot tile that carries NO traffic. */
 export const isPlantedMedian = (k: number): boolean => k === BuiltKind.PlantedMedian;
+
+/** The commons: works neighbours raise and tend with communal effort rather than the treasury (gardens,
+ *  parklets, parks, wild land, the shared halls and workshops). The economy reads their tending; the tools
+ *  price them in effort, everything else in funds. */
+const COMMONS_KINDS: ReadonlySet<number> = new Set([
+  BuiltKind.Parklet,
+  BuiltKind.CommunityGarden,
+  BuiltKind.CompostHub,
+  BuiltKind.Park,
+  BuiltKind.RewildedLand,
+  BuiltKind.HealingCommons,
+  BuiltKind.Bazaar,
+  BuiltKind.MakerSpace,
+  BuiltKind.VerticalFarm,
+]);
+export const isCommonsKind = (k: number): boolean => COMMONS_KINDS.has(k);
 /** Elevated transit that can deck OVER a road as an overpass: elevated rail (8) or promenade (9). */
 export const isOverpassKind = (k: number): boolean =>
   k === BuiltKind.ElevatedRail || k === BuiltKind.Promenade;

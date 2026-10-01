@@ -39,6 +39,10 @@ export interface TechPanelDeps {
   onToggle?(open: boolean): void;
   /** The image for an art key (a game tile or `@ui/` icon). */
   art(key: string): CanvasImageSource | undefined;
+  /** A practice underway as a project: its progress 0..1 (undefined when not started). Optional. */
+  progress?(id: string): number | undefined;
+  /** What beginning a practice costs, in words (effort, funds, time). Optional. */
+  costLine?(id: string): string;
 }
 
 export interface TechPanelHandle {
@@ -208,12 +212,16 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
     const act = document.createElement('button');
     act.className = 'tech-detail-unlock';
     act.dataset.unlockId = v.id;
+    const prog = deps.progress?.(v.id);
     if (v.status === 'unlocked') {
-      act.textContent = 'Unlocked';
+      act.textContent = 'In practice';
+      act.disabled = true;
+    } else if (prog !== undefined) {
+      act.textContent = `Underway · ${Math.round(prog * 100)}%`;
       act.disabled = true;
     } else {
-      act.textContent = `Unlock · ${v.cost}`;
-      act.disabled = v.status !== 'affordable';
+      act.textContent = deps.costLine ? `Begin · ${deps.costLine(v.id)}` : `Unlock · ${v.cost}`;
+      act.disabled = v.missing.length > 0;
     }
     detail.appendChild(act);
   }
@@ -224,9 +232,10 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
     for (const n of layout.nodes) {
       const card = cardMap.get(n.view.id);
       if (!card) continue;
-      card.className = `tech-card ${techNodeClass(n.view)}${n.view.id === selected ? ' tech-card-selected' : ''}`;
+      const prog = deps.progress?.(n.view.id);
+      card.className = `tech-card ${techNodeClass(n.view)}${prog !== undefined ? ' tech-node-underway' : ''}${n.view.id === selected ? ' tech-card-selected' : ''}`;
       (card.querySelector('.tech-card-cost') as HTMLElement).textContent =
-        n.view.status === 'unlocked' ? 'unlocked' : `${n.view.cost} effort`;
+        n.view.status === 'unlocked' ? 'in practice' : prog !== undefined ? `underway ${Math.round(prog * 100)}%` : `${n.view.cost} effort`;
     }
     for (const [key, line] of edgeMap) {
       const from = key.slice(0, key.indexOf('->'));
@@ -263,7 +272,7 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
     const el = (e.target as HTMLElement).closest('[data-node-id]') as HTMLElement | null;
     const id = el?.dataset.nodeId;
     if (id === undefined) return;
-    if (id === selected) deps.onUnlock(id); // a second click on the chosen card unlocks it (if it can)
+    if (id === selected) deps.onUnlock(id); // a second click on the chosen card begins it (if it can)
     selected = id;
     render();
   });
