@@ -22,7 +22,7 @@ import {
 } from './renderKey';
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
-import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout } from './decoration';
+import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox } from './decoration';
 import { isPowerConsumer } from '../growth/power';
 import { carPose, pedPose, ambientAlpha, trainPoses } from './ambientContent';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
@@ -464,8 +464,9 @@ export class Renderer {
           // line runs straight through the freeway instead of crossing the surface street it links.
           // the class this road tile is PAINTED as (a connector at a highway bend wears highway paint)
           const paintKind = isT ? roadPaintKind(map, tx, ty) : built;
-          // an at-grade road crossing a freeway is a junction box: clear paint, no lanes / median over it
-          const crossing = isT && freewayCrossing(map, tx, ty);
+          // a junction box — roads crossing, of any width (a street across a freeway, avenues meeting, a freeway
+          // meeting a freeway: decoration.junctionBox) — is clear asphalt: no lanes, seams or median over it
+          const crossing = isT && (freewayCrossing(map, tx, ty) || junctionBox(map, tx, ty));
           const mask = crossing
             ? N | E | S | W
             : built === BuiltKind.RoadRamp && paintKind === BuiltKind.RoadRamp
@@ -482,7 +483,7 @@ export class Renderer {
           const pos: FootprintPos = isT ? 'c' : footprintPos(map, tx, ty, pid);
           // wideRoadAt is predicate-guarded (false for any non-road tile), so this
           // only ever flips the slab variant on for a 2-/3-row road corridor.
-          const wide = wideRoadAt(map, tx, ty);
+          const wide = !crossing && wideRoadAt(map, tx, ty);
           // road tiles are keyed by the class they're PAINTED as (a street linking highway runs at a bend
           // wears highway paint — decoration.roadPaintKind); everything else by its own kind. A tile picks
           // one of its painted variants by position hash (anti-plaid).
@@ -542,7 +543,7 @@ export class Renderer {
             // Freeway CENTER LANE (two-way left-turn / "suicide" lane): a surface street running
             // through the freeway middle. Draw the classic yellow solid-OUTER + dashed-INNER markings
             // on the flanking edges (the boundary with the freeway lanes). clAxis computed above.
-            if (clAxis !== null) ink(`@road/turn/${clAxis}`, dx, dy);
+            if (clAxis !== null && !crossing) ink(`@road/turn/${clAxis}`, dx, dy);
 
             // Freeway MEDIAN: a jersey barrier down the centre spine tile of the 3-wide corridor,
             // running lengthwise (separates the opposing carriageways). Per-tile; opens at ramps.
