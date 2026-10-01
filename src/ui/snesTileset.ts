@@ -338,6 +338,37 @@ function crossingBand(axis: 'v' | 'h'): Pixels {
   return p;
 }
 
+/** Polluted-water palette swaps, one per level: the water tile's own pixels, recoloured toward murk —
+ *  no marks added, so a polluted bay tessellates as calmly as clean water (Maddy 2026-09-30). */
+const MURK_SWAPS: ReadonlyArray<ReadonlyMap<string, RGB>> = [
+  new Map<string, RGB>([['wave', C.murkHi]]),
+  new Map<string, RGB>([['wave', C.murkHi], ['water', C.murk], ['waterShallow', C.murkHi]]),
+  new Map<string, RGB>([['wave', C.murkHi], ['water', C.murk], ['waterShallow', C.murk], ['waterDeep', C.murkLo], ['foam', C.murkHi]]),
+];
+
+/** Add `{waterKey}~m{1..3}` murk recolours for every painted water tile in `out`. */
+function murkTiles(out: Map<string, Pixels>): void {
+  const swaps = MURK_SWAPS.map((m) => {
+    const byKey = new Map<number, RGB>();
+    for (const [name, to] of m) {
+      const from = C[name as keyof typeof C];
+      byKey.set((from[0] << 16) | (from[1] << 8) | from[2], to);
+    }
+    return byKey;
+  });
+  for (const [k, clean] of [...out]) {
+    if (!/^(ocean|lake|river)-\d(#\d+)?$/.test(k)) continue;
+    swaps.forEach((swap, i) => {
+      const m: Pixels = { w: clean.w, h: clean.h, data: new Uint8ClampedArray(clean.data) };
+      for (let o = 0; o < m.data.length; o += 4) {
+        const to = swap.get((m.data[o]! << 16) | (m.data[o + 1]! << 8) | m.data[o + 2]!);
+        if (to) m.data.set(to, o);
+      }
+      out.set(`${k}~m${i + 1}`, m);
+    });
+  }
+}
+
 /** A clumpy value-noise field over one tile (0..255 per pixel): hashed lattice values every 4 px,
  *  bilinearly blended, wrapping at the tile edge so a patch never ends in a hard tile seam. */
 function clumpField(seed: number): number[] {
@@ -369,21 +400,12 @@ function patch(field: readonly number[], cover: number): boolean[] {
  *  algae slicks) in three thicknesses × three variants the renderer picks per tile, so a district-wide
  *  wash reads as patchy ground rather than a uniform screen. Plus the half-tone overpass shadow. */
 function washTiles(out: Map<string, Pixels>): void {
-  const COVER = [0.18, 0.38, 0.62];
+  const COVER = [0.18, 0.38, 0.62]; // one entry per level
   // open ground stays mostly green (Maddy 2026-09-30): paved-over mats are scattered, never a carpet
   const PAVED = [0.05, 0.11, 0.2];
   for (let v = 0; v < 3; v++) {
-    const wf = clumpField(6500 + v);
     const af = clumpField(6600 + v);
-    COVER.forEach((cover, i) => {
-      // runoff murk on polluted water: dark algae mats with silt where the slick thins
-      const water = blank(T, T);
-      const wp = patch(wf, cover);
-      const core = patch(wf, cover * 0.55);
-      wp.forEach((on, k) => {
-        if (on) px(water, k % T, Math.floor(k / T), core[k] ? C.leafDk : C.dirtLo);
-      });
-      out.set(`@wash/water/${i + 1}/${v}`, water);
+    COVER.forEach((_cover, i) => {
       // redlined open ground paved over: asphalt mats creeping across the grass, cracked
       const asphalt = blank(T, T);
       patch(af, PAVED[i]!).forEach((on, k) => {
@@ -611,6 +633,7 @@ function icon(name: string): Pixels {
 export function paintSnesSkin(): PaintedSkin {
   const eager = new Map<string, Pixels>();
   terrainTiles(eager);
+  murkTiles(eager);
   transportTiles(eager);
   edgeTiles(eager);
   encampmentTiles(eager);

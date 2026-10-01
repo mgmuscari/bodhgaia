@@ -567,8 +567,8 @@ describe('snes washes — dithered pixel overlays instead of translucent per-til
     return n / (p.w * p.h);
   };
 
-  it('water pollution and redlined asphalt: 3 levels × 3 variants that thicken, never solid, hard pixels', () => {
-    for (const fam of ['water', 'asphalt']) {
+  it('redlined asphalt: 3 levels × 3 variants that thicken, never solid, hard pixels', () => {
+    for (const fam of ['asphalt']) {
       for (let v = 0; v < 3; v++) {
         let prev = 0;
         for (let l = 1; l <= 3; l++) {
@@ -589,7 +589,7 @@ describe('snes washes — dithered pixel overlays instead of translucent per-til
   });
 
   it('washes are clumped patches, not a checkerboard dither (a district-wide dither reads as noise)', () => {
-    for (const k of ['@wash/water/2/0', '@wash/asphalt/2/1']) {
+    for (const k of ['@wash/asphalt/3/0', '@wash/asphalt/3/1']) {
       const p = tiles.get(k)!;
       const on = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < p.w && y < p.h && p.data[(y * p.w + x) * 4 + 3] === 255;
       let lit = 0;
@@ -618,5 +618,53 @@ describe('snes washes — dithered pixel overlays instead of translucent per-til
     const at = (x: number, y: number): number[] => [...v.data.subarray((y * v.w + x) * 4, (y * v.w + x) * 4 + 3)];
     expect(at(8, 5)).not.toEqual(at(8, 7)); // a rail row differs from the asphalt beside it
     expect(tiles.has('@road/xband/h')).toBe(true);
+  });
+});
+
+describe('polluted water is a palette swap, not marks on the water (Maddy 2026-09-30: no loud ground noise)', () => {
+  const waterKeys = [...tiles.keys()].filter((k) => /^(ocean|lake|river)-\d(#\d+)?$/.test(k));
+
+  it('every water tile has 3 murk levels with exactly its pixel structure', () => {
+    expect(waterKeys.length).toBeGreaterThan(0);
+    for (const k of waterKeys) {
+      const clean = tiles.get(k)!;
+      for (let l = 1; l <= 3; l++) {
+        const m = tiles.get(`${k}~m${l}`);
+        expect(m, `${k}~m${l}`).toBeDefined();
+        // same shape: a pixel maps to one murk colour wherever that clean colour appears (a pure recolour)
+        const swap = new Map<number, number>();
+        for (let i = 0; i < clean.data.length; i += 4) {
+          const a = (clean.data[i]! << 16) | (clean.data[i + 1]! << 8) | clean.data[i + 2]!;
+          const b = (m!.data[i]! << 16) | (m!.data[i + 1]! << 8) | m!.data[i + 2]!;
+          expect(swap.get(a) ?? b, `${k}~m${l} @${i / 4}`).toBe(b);
+          swap.set(a, b);
+        }
+      }
+    }
+  });
+
+  it('murk deepens level by level and stays on the shared palette', () => {
+    const k = waterKeys[0]!;
+    const changed = (l: number): number => {
+      const c = tiles.get(k)!;
+      const m = tiles.get(`${k}~m${l}`)!;
+      let n = 0;
+      for (let i = 0; i < c.data.length; i += 4) if (c.data[i] !== m.data[i] || c.data[i + 1] !== m.data[i + 1] || c.data[i + 2] !== m.data[i + 2]) n++;
+      return n;
+    };
+    expect(changed(1)).toBeGreaterThan(0);
+    expect(changed(2)).toBeGreaterThan(changed(1));
+    expect(changed(3)).toBeGreaterThanOrEqual(changed(2));
+    for (let l = 1; l <= 3; l++) {
+      const m = tiles.get(`${k}~m${l}`)!;
+      for (let i = 0; i < m.data.length; i += 4) {
+        const rgb = [m.data[i], m.data[i + 1], m.data[i + 2]];
+        expect(SNES_PALETTE.some((c) => c[0] === rgb[0] && c[1] === rgb[1] && c[2] === rgb[2])).toBe(true);
+      }
+    }
+  });
+
+  it('the old blob overlays are gone', () => {
+    expect([...tiles.keys()].some((k) => k.startsWith('@wash/water/'))).toBe(false);
   });
 });
