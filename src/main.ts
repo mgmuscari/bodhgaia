@@ -28,7 +28,10 @@ import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { loadTileset } from './ui/tilesetLoader';
 import { loadAmbientSprites } from './ui/ambientSprites';
-import { PROCEDURAL, tilesetDef } from './ui/tileset';
+import { tilesetDef } from './ui/tileset';
+
+/** The game's one skin: the code-painted Super (16-bit) pixel art. */
+const SKIN = 'snes';
 import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
@@ -197,7 +200,7 @@ export function main(): void {
   // the atlas under the skin's render profile (applyTileset invalidates the cached base).
   const applySkin = (id: string): Promise<void> =>
     loadTileset(id).then((overrides) => renderer.applyTileset(overrides, tilesetDef(id).profile));
-  if (settings.tileset !== PROCEDURAL) void applySkin(settings.tileset);
+  void applySkin(SKIN); // the one aesthetic (Maddy 2026-09-30: retire the other graphics sets)
 
   // Two named dirty chokepoints (CRITIC-YP2). markDirty invalidates the cached
   // renderer base (map/camera/overlay changed); markPreviewDirty only requests a
@@ -514,12 +517,6 @@ export function main(): void {
     onWorldChange: (worldSettings: WorldSettings): void => {
       settings = clampSettings({ ...settings, world: { ...worldSettings } });
       saveSettings(settings); // takes effect on the next load (regenerate)
-    },
-    onTilesetChange: (tileset: string): void => {
-      settings = clampSettings({ ...settings, tileset });
-      saveSettings(settings);
-      // Hot-swap the skin live (no regen): load its PNGs, then rebuild the atlas + invalidate base.
-      void applySkin(settings.tileset);
     },
     onRendererChange: (mode): void => {
       settings = clampSettings({ ...settings, renderer: mode });
