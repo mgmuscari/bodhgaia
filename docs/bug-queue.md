@@ -44,6 +44,8 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   map (placed, then raised over hours by effort drawn as a project) to honour "projects take time" fully.
 - 🟡 **Displacement is counted, not yet enacted** — rent-driven displacement adds to the unhoused count, but
   doesn't yet empty specific homes (occupancy). Next: evict from the most rent-burdened unprotected homes.
+- ✅ **Freeway end cap draws oddly** — a wide road's stub past a junction is now an end cap: plain asphalt,
+  hazard chevrons, a striped barrier across the dead end (decoration.endCapMask).
 - 🔴 **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
   trains which we should support") — a road and a railway can't share a tile today. Needs a level-crossing
   tile both `canDrive` and `railTraversable` accept (built by dragging a road across track, or vice

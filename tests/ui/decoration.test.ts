@@ -241,3 +241,159 @@ describe('innerCornerMask treats ramp decks as road (Maddy 2026-09-30: stray ker
     expect(innerCornerMask(map, 2, 3) & 16).toBe(0);
   });
 });
+
+import { junctionBox } from '../../src/ui/decoration';
+
+// Junction boxes on WIDE roads (Maddy 2026-10-01: unusual intersections — 2-wide streets/avenues,
+// 3-wide freeways, freeways with frontage roads). A tile is in the box when traffic runs ≥ 4 tiles through
+// it both ways — longer than any band is wide — never counting a run across a limited-access barrier.
+describe('junctionBox', () => {
+  const band = (m: GameMap, kind: BuiltKind, x0: number, x1: number, y0: number, y1: number) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) m.setBuilt(x, y, kind);
+  };
+
+  it('a freeway crossing a freeway: the 3×3 overlap is the box, the lanes beyond are not', () => {
+    const m = new GameMap(24, 24);
+    band(m, BuiltKind.RoadHighway, 9, 11, 0, 23); // N–S
+    band(m, BuiltKind.RoadHighway, 0, 23, 9, 11); // E–W
+    for (let y = 9; y <= 11; y++) for (let x = 9; x <= 11; x++) expect(junctionBox(m, x, y), `(${x},${y})`).toBe(true);
+    expect(junctionBox(m, 10, 4)).toBe(false);
+    expect(junctionBox(m, 4, 10)).toBe(false);
+  });
+
+  it('a street across a 2-wide avenue: the two avenue tiles it crosses are the box', () => {
+    const m = new GameMap(24, 24);
+    band(m, BuiltKind.RoadAvenue, 10, 11, 0, 23);
+    band(m, BuiltKind.RoadStreet, 0, 23, 8, 8);
+    expect(junctionBox(m, 10, 8)).toBe(true);
+    expect(junctionBox(m, 11, 8)).toBe(true);
+    expect(junctionBox(m, 10, 4)).toBe(false); // mid-avenue
+    expect(junctionBox(m, 9, 8)).toBe(false); // the street approaching
+  });
+
+  it('an avenue ending in a T on a 2-wide street: the 2×2 meeting is the box', () => {
+    const m = new GameMap(24, 24);
+    band(m, BuiltKind.RoadStreet, 12, 13, 0, 23); // the 2-wide street, N–S
+    band(m, BuiltKind.RoadAvenue, 0, 11, 6, 7); // the avenue, E–W, ending at it
+    for (const [x, y] of [[12, 6], [13, 6], [12, 7], [13, 7]] as const) expect(junctionBox(m, x, y), `(${x},${y})`).toBe(true);
+    expect(junctionBox(m, 11, 6)).toBe(false);
+    expect(junctionBox(m, 12, 3)).toBe(false);
+  });
+
+  it('a frontage street beside a freeway is not a crossing (the barrier stops the run)', () => {
+    const m = new GameMap(24, 24);
+    band(m, BuiltKind.RoadHighway, 0, 23, 9, 11);
+    band(m, BuiltKind.RoadStreet, 0, 23, 8, 8); // frontage, north side
+    band(m, BuiltKind.RoadStreet, 0, 23, 12, 12); // frontage, south side
+    expect(junctionBox(m, 6, 8)).toBe(false);
+    expect(junctionBox(m, 6, 10)).toBe(false);
+  });
+
+  it('plain 1-wide streets: only the meeting tile', () => {
+    const m = new GameMap(24, 24);
+    band(m, BuiltKind.RoadStreet, 0, 23, 8, 8);
+    band(m, BuiltKind.RoadStreet, 10, 10, 0, 23);
+    expect(junctionBox(m, 10, 8)).toBe(true);
+    expect(junctionBox(m, 9, 8)).toBe(false);
+    expect(junctionBox(m, 10, 9)).toBe(false);
+  });
+});
+
+describe('crosswalks on wide approaches', () => {
+  it('each tile of a 2-wide avenue gets the crosswalk on its edge facing the box', () => {
+    const m = new GameMap(24, 24);
+    for (let y = 0; y < 24; y++) {
+      m.setBuilt(10, y, BuiltKind.RoadAvenue);
+      m.setBuilt(11, y, BuiltKind.RoadAvenue);
+    }
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 8, BuiltKind.RoadStreet);
+    expect(crosswalkMask(m, 10, 7) & 4).toBe(4); // north approach, south edge
+    expect(crosswalkMask(m, 11, 9) & 1).toBe(1); // south approach, north edge
+    expect(crosswalkMask(m, 10, 3)).toBe(0); // mid-block
+  });
+  it('an at-grade freeway crossing is a stroad: its freeway approaches get crosswalks too (Maddy 2026-10-01)', () => {
+    const m = stroad();
+    expect(crosswalkMask(m, 10, 7) & 4).toBe(4); // freeway lane north of the crossing, its south edge
+    expect(crosswalkMask(m, 10, 3)).toBe(0); // mid-freeway
+  });
+});
+
+
+// A 3-wide N–S freeway (x 9..11) crossed at grade by a street on a row of RAMPS (y 8) — the stroad.
+function stroad(): GameMap {
+  const m = new GameMap(24, 24);
+  for (let y = 0; y < 24; y++) for (let x = 9; x <= 11; x++) m.setBuilt(x, y, BuiltKind.RoadHighway);
+  for (let x = 0; x < 24; x++) m.setBuilt(x, 8, x >= 9 && x <= 11 ? BuiltKind.RoadRamp : BuiltKind.RoadStreet);
+  return m;
+}
+
+import { stopBarMask, signalCorners } from '../../src/ui/decoration';
+
+describe('stroad intersections (Maddy 2026-10-01: "should have stroad intersection vibes")', () => {
+  it('stop bars on the lanes entering the box — right-hand traffic: northbound on the east, southbound on the west', () => {
+    const m = stroad();
+    expect(stopBarMask(m, 11, 9)).toBe(1); // east lane, south of the box: northbound, stops at its north edge
+    expect(stopBarMask(m, 9, 7)).toBe(4); // west lane, north of the box: southbound, stops at its south edge
+    expect(stopBarMask(m, 9, 9)).toBe(0); // west lane south of the box carries traffic AWAY from it
+    expect(stopBarMask(m, 11, 7)).toBe(0);
+    expect(stopBarMask(m, 10, 9)).toBe(0); // the spine (median) carries no lane
+    expect(stopBarMask(m, 11, 3)).toBe(0); // nowhere near a box
+  });
+
+  it('a 1-wide street approach keeps its plain crosswalk (no stop bar)', () => {
+    const m = stroad();
+    expect(stopBarMask(m, 8, 8)).toBe(0);
+  });
+
+  it('signals stand on the diagonal outer corners of a multi-tile box (NW and SE), on the sidewalk corner', () => {
+    const m = stroad();
+    expect(signalCorners(m, 9, 8)).toBe(1); // west end of the crossing: the NW corner
+    expect(signalCorners(m, 11, 8)).toBe(4); // east end: the SE corner
+    expect(signalCorners(m, 10, 8)).toBe(0); // the middle of the crossing
+  });
+
+  it('a plain 1-wide 4-way gets no signals (small junctions stay clean)', () => {
+    const m = new GameMap(24, 24);
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 8, BuiltKind.RoadStreet);
+    for (let y = 0; y < 24; y++) m.setBuilt(10, y, BuiltKind.RoadStreet);
+    expect(signalCorners(m, 10, 8)).toBe(0);
+  });
+});
+
+import { endCapMask } from '../../src/ui/decoration';
+
+describe('end caps (Maddy 2026-10-01: the freeway stub at lotus (96–98, 57))', () => {
+  // the freeway (x 9..11) runs down to a last crossing on ramps at y 8, then one stub row (y 9) and nothing
+  function stub(): GameMap {
+    const m = new GameMap(24, 24);
+    for (let y = 0; y <= 9; y++) for (let x = 9; x <= 11; x++) m.setBuilt(x, y, BuiltKind.RoadHighway);
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 8, x >= 9 && x <= 11 ? BuiltKind.RoadRamp : BuiltKind.RoadStreet);
+    return m;
+  }
+
+  it('the stub row past the last junction is an end cap, its dead end facing away from the box', () => {
+    const m = stub();
+    for (const x of [9, 10, 11]) expect(endCapMask(m, x, 9), `(${x},9)`).toBe(4);
+  });
+
+  it('an end cap gets no stop bar, arrow or crosswalk', () => {
+    const m = stub();
+    for (const x of [9, 10, 11]) {
+      expect(stopBarMask(m, x, 9)).toBe(0);
+      expect(crosswalkMask(m, x, 9)).toBe(0);
+    }
+  });
+
+  it('a freeway that carries on past the junction is not capped', () => {
+    const m = stroad();
+    expect(endCapMask(m, 10, 9)).toBe(0);
+    expect(endCapMask(m, 10, 3)).toBe(0);
+  });
+
+  it('a 1-wide street running one tile past a junction keeps its dead-end paint (not capped)', () => {
+    const m = new GameMap(24, 24);
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 8, BuiltKind.RoadStreet);
+    for (let y = 0; y <= 9; y++) m.setBuilt(10, y, BuiltKind.RoadStreet);
+    expect(endCapMask(m, 10, 9)).toBe(0);
+  });
+});

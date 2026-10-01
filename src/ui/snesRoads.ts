@@ -277,6 +277,68 @@ function median(axis: 'h' | 'v'): Pixels {
 // at its tips, never reaching into the carriageway. No wires (too much clutter at 16 px).
 
 /** A pole: 'h'/'v' mid-block on the north/west curb; 'nw' tucked into a junction tile's corner. */
+/** A stop bar across the lane, just behind the crosswalk (which takes depth 0–3 from the box edge). */
+function stopBar(edge: number): Pixels {
+  const p = blank(T, T);
+  sides(edge, (set) => {
+    for (let a = 0; a < T; a++) {
+      set(a, 5, C.line);
+      set(a, 6, C.line);
+    }
+  }, p);
+  return p;
+}
+
+/** A lane arrow pointing at the box edge (straight ahead into the junction). */
+function laneArrow(edge: number): Pixels {
+  const p = blank(T, T);
+  sides(edge, (set) => {
+    const rows: Array<[number, number]> = [[8, 0], [9, 1], [10, 2]]; // the head: depth → half-width
+    for (const [d, hw] of rows) for (let a = 7 - hw; a <= 8 + hw; a++) set(a, d, C.line);
+    for (let d = 11; d <= 14; d++) for (const a of [7, 8]) set(a, d, C.line); // the shaft
+  }, p);
+  return p;
+}
+
+/** An end cap: a concrete barrier across the dead end, striped red and white, with yellow hazard chevrons on
+ *  the asphalt in front of it. `edge` is the dead-end side (N=1 E=2 S=4 W=8). */
+function endCap(edge: number): Pixels {
+  const p = blank(T, T);
+  sides(edge, (set) => {
+    for (let a = 0; a < T; a++) {
+      set(a, 0, ((a >> 1) & 1) === 0 ? C.signal : C.line); // the barrier's hazard stripes
+      set(a, 1, C.paveHi);
+      set(a, 2, C.paveLo); // its shadow on the road
+    }
+    // chevrons pointing at the barrier
+    for (let a = 1; a < T; a += 5) {
+      for (let k = 0; k < 3; k++) {
+        set(a + k, 5 + k, C.lineYellow);
+        set(a + 4 - k, 5 + k, C.lineYellow);
+      }
+    }
+  }, p);
+  return p;
+}
+
+/** A traffic signal on the corner of a stroad box: a pole on the sidewalk corner, a mast arm reaching over
+ *  the lanes, and a three-lamp head (red, amber, green). Corner bits NW=1 NE=2 SE=4 SW=8. */
+function signal(corner: number): Pixels {
+  const p = blank(T, T);
+  const flipX = corner === 2 || corner === 4;
+  const flipY = corner === 4 || corner === 8;
+  const put = (x: number, y: number, c: RGB): void => px(p, flipX ? L - x : x, flipY ? L - y : y, c);
+  put(1, 1, C.slateLo); // the pole
+  put(1, 2, C.slateLo);
+  for (let x = 2; x <= 8; x++) put(x, 1, C.slate); // the mast arm
+  for (let y = 2; y <= 5; y++) for (let x = 8; x <= 9; x++) put(x, y, C.ink); // the head
+  put(8, 2, C.signal);
+  put(8, 3, C.gold);
+  put(8, 4, C.leafHi);
+  outline(p, C.ink);
+  return p;
+}
+
 function pole(spot: 'h' | 'v' | 'nw'): Pixels {
   const p = blank(T, T);
   const put = (a: number, d: number, c: RGB): void => (spot === 'v' ? px(p, d, a, c) : px(p, a, d, c));
@@ -317,6 +379,12 @@ export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly numb
     out.set(`@road/xing/${m}`, crossing(m));
   }
   for (const m of [E, S, E | S]) out.set(`@road/flaneEdge/${m}`, freewayLaneEdge(m));
+  for (const e of [N, E, S, W]) {
+    out.set(`@road/stop/${e}`, stopBar(e));
+    out.set(`@road/arrow/${e}`, laneArrow(e));
+  }
+  for (const c of [1, 2, 4, 8]) out.set(`@road/signal/${c}`, signal(c));
+  for (const e of [N, E, S, W]) out.set(`@road/endcap/${e}`, endCap(e));
   for (const a of ['h', 'v'] as const) {
     out.set(`@road/flane/${a}`, freewayLane(a));
     out.set(`@road/turn/${a}`, turnLane(a));
