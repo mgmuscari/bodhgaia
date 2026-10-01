@@ -21,9 +21,13 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - ✅ **Intersection at (97, 37) looks bad** (Maddy 2026-09-30) — an avenue crossing a 3-wide freeway at
   grade: freeway lanes/ramp dashes were painted through the crossing and ramp decks read as block corners
   (stray kerb hooks). Fixed: `freewayCrossing` junction box + ramp-aware `innerCornerMask`.
-- 🔴 **World starts in a power collapse** (playtest 2026-09-30, seed `lotus`) — capacity 220 vs demand
-  1188 at load; within ~2 min nearly every home is unpowered and Unhoused climbs 0 → ~1600. Confirm whether
-  the opening energy crisis is intended; if so it needs to read as a challenge, not a silent collapse.
+- ✅ **World starts in a collapse** (playtest 2026-09-30, seed `lotus`) — NOT power (measured 2026-10-01:
+  capacity 1540 vs demand 1188, every consumer lit; the 220 figure predated the ×7 plant rebalance). The real
+  driver: occupancy moved on an absolute land-value bar (60) that drifted out of calibration as road decay,
+  wear and coverage joined land value — lotus lost 57% of its people in 3 min, and with it the tax base, so
+  the budget could never balance. Fixed: residents move on the gap from what they expect (settled on the
+  inherited city), taxes recalibrated on the settled state, and ways out of debt (freeway salvage, volunteer
+  works, a one-time relief grant).
 - 🟡 **Map clicks dropped when a no-button move arrives between press and release** — `src/ui/input.ts`
   safety net (`e.buttons === 0` → end drag) swallows the pointerup, so a build click places nothing (seen
   driving the game from the Chrome extension). Fix: only apply the safety net when the pointer isn't captured.
