@@ -26,8 +26,6 @@ export interface WorldSettings {
 export interface Settings {
   live: LiveCaps;
   world: WorldSettings;
-  /** Render skin; `procedural` is the permanent default (generated tilesets are an optional skin). */
-  tileset: string;
   /** Render path: `gpu` = the WebGL2 hybrid (shader jeuje's the CPU base — water/shadows/day-night/
    *  clouds); `cpu` = the Canvas2D path (the no-WebGL fallback). GPU falls back to CPU if unavailable. */
   renderer: RendererMode;
@@ -58,7 +56,6 @@ export const CAP_PRESETS: Record<PresetTier, LiveCaps> = {
 export const DEFAULT_SETTINGS: Settings = {
   live: { ...CAP_PRESETS.medium },
   world: { mapWidth: MAP_SIZES.medium, mapHeight: MAP_SIZES.medium },
-  tileset: 'procedural',
   renderer: 'gpu',
 };
 
@@ -100,7 +97,6 @@ export function clampSettings(partial?: DeepPartial<Settings>): Settings {
       mapWidth: clampInt(world.mapWidth, MAP_BOUNDS[0], MAP_BOUNDS[1], d.world.mapWidth),
       mapHeight: clampInt(world.mapHeight, MAP_BOUNDS[0], MAP_BOUNDS[1], d.world.mapHeight),
     },
-    tileset: typeof p.tileset === 'string' ? p.tileset : d.tileset,
     renderer: p.renderer === 'cpu' || p.renderer === 'gpu' ? p.renderer : d.renderer,
   };
 }

@@ -5,11 +5,9 @@ import {
   footprintCellKey,
   variantKey,
   surfaceVariantIndex,
-  terrainTileTransform,
   type FootprintPos,
 } from '../../src/ui/renderKey';
 import { BuiltKind, isTransportKind } from '../../src/engine/fabric';
-import { ROAD_STYLE_KINDS, BUILDING_STYLE_KINDS, PAINTABLE_PREFIXES } from '../../src/ui/renderer';
 
 const POSITIONS: FootprintPos[] = ['c', 'e', 'k'];
 const TIERS = [0, 1];
@@ -147,45 +145,6 @@ describe('renderKeyspace wide-body enumeration', () => {
   });
 });
 
-// Crash-on-load guard: buildAtlas iterates renderKeyspace() and paintForKey derefs
-// ROAD_STYLES[k]! / BUILDING_STYLES[kind]! and switches on the key prefix. A
-// renderKey kind/prefix the renderer has no style/case for throws at Renderer
-// construction — green under tsc/build/unit tests, dead on load. This asserts
-// every key the keyspace emits is paintable, headlessly (the renderer style
-// keysets are exported for exactly this). Non-vacuous: drop ROAD_STYLES[7] or a
-// BUILDING_STYLES[48..60] entry and the matching assertion fails.
-describe('renderKeyspace is fully covered by renderer styles', () => {
-  const keys = renderKeyspace();
-  const roadKinds = new Set(ROAD_STYLE_KINDS);
-  const buildingKinds = new Set(BUILDING_STYLE_KINDS);
-  const prefixes = new Set(PAINTABLE_PREFIXES);
-
-  it('every emitted key has a prefix paintForKey handles', () => {
-    for (const key of keys) {
-      const prefix = key.split('-')[0]!;
-      expect(prefixes.has(prefix), `no paintForKey case for prefix '${prefix}' (${key})`).toBe(true);
-    }
-  });
-
-  it('every road-{k} key has a ROAD_STYLES entry', () => {
-    const roadKeys = keys.filter((k) => k.startsWith('road-'));
-    expect(roadKeys.length).toBeGreaterThan(0); // guard is non-vacuous
-    for (const key of roadKeys) {
-      const kind = Number(key.split('-')[1]);
-      expect(roadKinds.has(kind), `ROAD_STYLES missing kind ${kind} for ${key}`).toBe(true);
-    }
-  });
-
-  it('every b-{kind} key has a BUILDING_STYLES entry', () => {
-    const buildingKeys = keys.filter((k) => k.startsWith('b-'));
-    expect(buildingKeys.length).toBeGreaterThan(0); // guard is non-vacuous
-    for (const key of buildingKeys) {
-      const kind = Number(key.split('-')[1]);
-      expect(buildingKinds.has(kind), `BUILDING_STYLES missing kind ${kind} for ${key}`).toBe(true);
-    }
-  });
-});
-
 describe('footprintCellKey (segmented multi-tile, tileset-only)', () => {
   it('encodes kind, footprint size, cell col/row, and tier', () => {
     expect(footprintCellKey(BuiltKind.Apartments, 2, 2, 0, 1, 0)).toBe('b-17-2x2-c0-r1-0');
@@ -257,68 +216,69 @@ describe('variantKey + surfaceVariantIndex (tile-map variant cycling, anti-plaid
   });
 });
 
-describe('terrainTileTransform: dihedral anti-plaid for isotropic terrain', () => {
-  it('returns a quarter-turn rot in [0,4) and a boolean flip', () => {
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) {
-        const t = terrainTileTransform(x, y);
-        expect(t.rot).toBeGreaterThanOrEqual(0);
-        expect(t.rot).toBeLessThan(4);
-        expect(Number.isInteger(t.rot)).toBe(true);
-        expect(typeof t.flip).toBe('boolean');
-      }
-    }
+import { variantCounts, pickVariantKey } from '../../src/ui/renderKey';
+
+describe('variantCounts / pickVariantKey (hash-cycled tile variants)', () => {
+  it('counts each base key plus its #n variants', () => {
+    const counts = variantCounts(['grass-0', 'grass-0#1', 'grass-0#2', 'forest-1', 'forest-1#1', 'ocean-0']);
+    expect(counts.get('grass-0')).toBe(3);
+    expect(counts.get('forest-1')).toBe(2);
+    expect(counts.has('ocean-0')).toBe(false); // no variants → not listed (plain lookup)
   });
 
-  it('is deterministic per tile', () => {
-    expect(terrainTileTransform(12, 34)).toEqual(terrainTileTransform(12, 34));
+  it('only counts a contiguous run #1..#n (a gap would pick a missing tile)', () => {
+    const counts = variantCounts(['grass-0', 'grass-0#1', 'grass-0#3']);
+    expect(counts.get('grass-0')).toBe(2);
   });
 
-  it('exercises all 8 dihedral states across a region (real variety)', () => {
+  it('pickVariantKey returns the base or one of its variants, deterministically by position', () => {
+    const counts = variantCounts(['grass-0', 'grass-0#1', 'grass-0#2', 'grass-0#3']);
     const seen = new Set<string>();
-    for (let y = 0; y < 16; y++) {
-      for (let x = 0; x < 16; x++) {
-        const t = terrainTileTransform(x, y);
-        seen.add(`${t.rot}${t.flip ? 'F' : ''}`);
-      }
-    }
-    expect(seen.size).toBe(8); // 4 rotations × 2 flips all appear
-  });
-
-  it('is direction-neutral: adjacent tiles rarely match (no banded plaid)', () => {
-    let matches = 0;
-    const N = 32;
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N - 1; x++) {
-        const a = terrainTileTransform(x, y);
-        const b = terrainTileTransform(x + 1, y);
-        if (a.rot === b.rot && a.flip === b.flip) matches++;
-      }
-    }
-    // 8 states → ~1/8 of horizontal neighbours collide by chance; assert well under uniform plaid.
-    expect(matches).toBeLessThan((N * (N - 1)) / 4);
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) seen.add(pickVariantKey('grass-0', x, y, counts));
+    expect(seen).toEqual(new Set(['grass-0', 'grass-0#1', 'grass-0#2', 'grass-0#3']));
+    expect(pickVariantKey('grass-0', 3, 5, counts)).toBe(pickVariantKey('grass-0', 3, 5, counts));
+    expect(pickVariantKey('lake-0', 3, 5, counts)).toBe('lake-0'); // no variants → base
   });
 });
 
-import { waterTileTransform } from '../../src/ui/renderKey';
+import { blobMask, BLOB_MASKS, BLOB } from '../../src/ui/renderKey';
 
-describe('waterTileTransform: stochastic baked-tile hybrid (anti-plaid)', () => {
-  it('rot in [0,1) turns; scale in [√2, 1.74] so rotation always covers the clipped tile', () => {
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) {
-        const t = waterTileTransform(x, y);
-        expect(t.rot).toBeGreaterThanOrEqual(0);
-        expect(t.rot).toBeLessThan(1);
-        expect(t.scale).toBeGreaterThanOrEqual(Math.SQRT2);
-        expect(t.scale).toBeLessThanOrEqual(1.75);
-      }
-    }
+describe('blobMask — 8-neighbour edge masks for terrain edge overlays', () => {
+  const none = { n: false, e: false, s: false, w: false, ne: false, se: false, sw: false, nw: false };
+
+  it('encodes sides as N=1 E=2 S=4 W=8', () => {
+    expect(blobMask({ ...none, n: true })).toBe(BLOB.N);
+    expect(blobMask({ ...none, n: true, e: true, s: true, w: true })).toBe(BLOB.N | BLOB.E | BLOB.S | BLOB.W);
   });
 
-  it('is deterministic and varies across tiles', () => {
-    expect(waterTileTransform(3, 4)).toEqual(waterTileTransform(3, 4));
-    const rots = new Set<number>();
-    for (let i = 0; i < 20; i++) rots.add(Math.round(waterTileTransform(i, i * 3).rot * 100));
-    expect(rots.size).toBeGreaterThan(8); // genuinely varied, not banded
+  it('keeps a corner only when both of its sides are clear (a lone diagonal contact)', () => {
+    expect(blobMask({ ...none, ne: true })).toBe(BLOB.NE);
+    expect(blobMask({ ...none, ne: true, n: true })).toBe(BLOB.N); // the N edge already covers NE
+    expect(blobMask({ ...none, sw: true, n: true })).toBe(BLOB.N | BLOB.SW);
+  });
+
+  it('there are exactly 47 normalized masks, all distinct, and every blobMask result is one of them', () => {
+    expect(BLOB_MASKS.length).toBe(47);
+    expect(new Set(BLOB_MASKS).size).toBe(47);
+    const all = new Set(BLOB_MASKS);
+    for (let raw = 0; raw < 256; raw++) {
+      const m = blobMask({
+        n: !!(raw & 1), e: !!(raw & 2), s: !!(raw & 4), w: !!(raw & 8),
+        ne: !!(raw & 16), se: !!(raw & 32), sw: !!(raw & 64), nw: !!(raw & 128),
+      });
+      expect(all.has(m), `raw ${raw} → ${m}`).toBe(true);
+    }
+  });
+});
+
+import { emissionKey, variantIndexOf } from '../../src/ui/renderKey';
+
+describe('emissionKey / variantIndexOf', () => {
+  it('keys a whole-footprint emission map by kind, size and tier under @emit/', () => {
+    expect(emissionKey(16, 2, 1, 0)).toBe('@emit/b-16-2x1-0');
+  });
+  it('reads the variant index back off a picked key (0 for the base)', () => {
+    expect(variantIndexOf('b-16-1x1-c0-r0-0')).toBe(0);
+    expect(variantIndexOf('b-16-1x1-c0-r0-0#3')).toBe(3);
   });
 });

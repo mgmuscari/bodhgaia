@@ -35,7 +35,7 @@ import type { LiveCaps } from './settings';
 export const AMBIENT_MAX_FRAME_MS = 1000;
 
 /** Fixed substep size — the simulation cadence for ambient motion. */
-const SUBSTEP_MS = 50;
+export const SUBSTEP_MS = 50;
 
 // Live agent/render perf ceilings — the "fast PC vs slow PC" knob, mutated at runtime by the settings
 // menu (main wires applyLiveCaps from the persisted store; settings.ts owns the shape/presets/clamp).
@@ -524,7 +524,13 @@ const opposite = (d: number): number => (d + 2) % 4;
 /** Lane half-width in tile units: how far a car is drawn off its tile centre, to the
  *  RIGHT of its heading, so opposing flows ride opposite sides of a road. Cosmetic —
  *  read only by the renderer's sprite draw; live-pass tuned. */
-const LANE = 0.22;
+const LANE = 0.16;
+
+/** A car's body footprint (tile units) — the bounding box parking and lanes are laid out to clear. */
+export const CAR_LENGTH = 0.44;
+export const CAR_WIDTH = 0.24;
+/** The car lane offset (exported for tests / pace maths). */
+export const LANE_OFFSET = LANE;
 
 /** The lane seam (pure, `dir`-only): a car's draw-time offset from its tile centre,
  *  perpendicular to and on the RIGHT of its heading (right-hand traffic). Screen
@@ -566,6 +572,401 @@ export function pedCurbOffset(dir: number): { dx: number; dy: number } {
   return { dx: -DIR_DY[dir]! * PED_CURB, dy: DIR_DX[dir]! * PED_CURB };
 }
 
+/**
+ * How much faster a mover's current sim leg should run so its DRAWN path keeps its pace: a leg's pose
+ * crosses one tile (moverPose), a unit line when straight but a quarter-arc of radius 0.5 ∓ lateral at
+ * a turn — only ~0.53 tiles on a right turn. With every leg taking the same sim time, a turning car
+ * visibly crawled round the corner (Maddy 2026-09-30). Returns straight/arc length (1 when straight).
+ */
+export function legPaceFactor(m: Mover, lateral: number): number {
+  const d = m.dir;
+  const pd = m.prevDir ?? d;
+  const turn = DIR_DX[pd]! * DIR_DY[d]! - DIR_DY[pd]! * DIR_DX[d]!;
+  if (turn === 0) return 1;
+  return 1 / ((Math.PI / 2) * (0.5 - turn * lateral));
+}
+
+/** The kerb offset a pedestrian's current leg is DRAWN with at the tile it crosses (for legPaceFactor). */
+function pedLegLateral(map: GameMap, p: Mover): number {
+  const x = p.tx - DIR_DX[p.dir]!;
+  const y = p.ty - DIR_DY[p.dir]!;
+  return map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!) ? PED_CURB : 0;
+}
+
+/** Substeps (50 ms each) a held vehicle waits before re-planning its route round the blockage (~2 s). */
+export const STUCK_REPATH = 40;
+/** Substeps before a held vehicle turns back the way it came and re-plans from there (~4 s). */
+export const STUCK_UTURN = 80;
+/** Substeps before a jammed agent gives up on its current stop and moves on (~6 s). */
+export const STUCK_GIVE_UP = 120;
+/** Wellbeing a household loses when one of its citizens abandons a stop to a traffic jam (small). */
+export const JAM_SKIP_PENALTY = 3;
+/** Substeps before a held vehicle squeezes through anyway — breaks circular deadlocks (~8 s). */
+export const STUCK_ESCAPE = 160;
+
+/**
+ * Gridlock relief: a path-following vehicle held at a tile centre for STUCK_REPATH substeps (and every
+ * STUCK_REPATH after) re-plans from where it stands to the same destination, with the tile it is stuck
+ * behind priced out — so it finds a way round the jam instead of waiting on it forever (Maddy
+ * 2026-09-30). Returns true iff it took a new route. Pure given (map, traffic).
+ */
+export function rerouteIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<number, number>): boolean {
+  const stuck = car.stuck ?? 0;
+  if (!car.path || stuck < STUCK_REPATH || stuck % STUCK_REPATH !== 0) return false;
+  if (car.x !== Math.round(car.x) || car.y !== Math.round(car.y)) return false; // re-plan from a tile centre only
+  const goal = car.path[car.path.length - 1]!;
+  const gx = goal % map.width;
+  const gy = (goal - gx) / map.width;
+  const avoid = new Map(traffic);
+  avoid.set(map.idx(car.tx, car.ty), 1e6); // the tile it's stuck behind
+  const path = roadPath(map, car.x, car.y, gx, gy, avoid);
+  if (!path || path.length < 2 || path.includes(map.idx(car.tx, car.ty))) return false;
+  const nx = path[1]! % map.width;
+  const ny = (path[1]! - nx) / map.width;
+  car.tx = nx;
+  car.ty = ny;
+  commitHeading(car, nx > car.x ? 1 : nx < car.x ? 3 : ny > car.y ? 2 : 0);
+  car.path = path;
+  car.leg = 2;
+  return true;
+}
+
+/**
+ * Jam rung 2: a path-following vehicle held STUCK_UTURN substeps — typically MID-LEG in a queue, where a
+ * re-plan can't start — turns back toward the tile its leg started from (when driving that edge in
+ * reverse is legal; never on a one-way lane) and re-plans from there to the same destination, with the
+ * jammed tile priced out. Returns true iff it turned.
+ */
+export function uTurnIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<number, number>): boolean {
+  if (!car.path || (car.stuck ?? 0) < STUCK_UTURN) return false;
+  const fx = car.tx - DIR_DX[car.dir]!;
+  const fy = car.ty - DIR_DY[car.dir]!;
+  if (!map.inBounds(fx, fy) || !canDrive(map, car.tx, car.ty, fx, fy)) return false; // no driving back here
+  const goal = car.path[car.path.length - 1]!;
+  const gx = goal % map.width;
+  const gy = (goal - gx) / map.width;
+  const avoid = new Map(traffic);
+  avoid.set(map.idx(car.tx, car.ty), 1e6);
+  const path = roadPath(map, fx, fy, gx, gy, avoid);
+  if (!path || path.includes(map.idx(car.tx, car.ty))) return false;
+  car.tx = fx;
+  car.ty = fy;
+  commitHeading(car, opposite(car.dir));
+  car.path = path;
+  car.leg = 1; // on reaching (fx, fy), path[1] is next
+  car.stuck = 0;
+  return true;
+}
+
+/**
+ * Put a citizen in its owned car and commit the car to a least-cost route to a free parking spot near
+ * the citizen's leg destination (`building`, else `homeDest`): the car snaps onto the route's first tile
+ * and the citizen rides ('driving'). Returns false (touching nothing) when there's no destination or
+ * no road route.
+ */
+function boardOwnedCar(state: AmbientState, p: Ped, map: GameMap, car: Car): boolean {
+  const dest = p.building ?? p.homeDest;
+  if (!dest) return false;
+  const spot = findParkingNear(state, map, dest.x, dest.y) ?? dest;
+  const path = roadPath(map, Math.round(car.x), Math.round(car.y), spot.x, spot.y, state.traffic);
+  if (!path || path.length < 2) return false;
+  // Board: snap onto the route's first tile and commit to following it (cars=committed paths).
+  const p0x = path[0]! % map.width;
+  const p0y = (path[0]! - p0x) / map.width;
+  const p1x = path[1]! % map.width;
+  const p1y = (path[1]! - p1x) / map.width;
+  car.x = p0x;
+  car.y = p0y;
+  car.tx = p1x;
+  car.ty = p1y;
+  commitHeading(car, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
+  car.path = path;
+  car.leg = 2; // path[0]=start, path[1]=the committed next tile; pathStep targets path[2] next
+  car.parked = false;
+  car.curbSlot = undefined; // it has left its stall
+  car.lotIdx = undefined;
+  car.stallIdx = undefined;
+  car.recent = undefined;
+  car.stuck = 0;
+  p.parkAt = spot;
+  p.phase = 'driving';
+  return true;
+}
+
+/** No drive possible: finish the current leg on foot (to its building, or home). */
+function walkLegInstead(p: Ped): void {
+  p.phase = p.homeDest ? 'to-home' : 'to-building';
+  p.walkTo = p.homeDest ?? p.building ?? { x: Math.round(p.x), y: Math.round(p.y) };
+  p.mode = TravelMode.Walk;
+  p.tx = Math.round(p.x);
+  p.ty = Math.round(p.y);
+  p.recent = undefined;
+}
+
+/** Park an owned car right where it stands — at a free kerb stall of its tile if there is one — so it is
+ *  never left standing in a traffic lane when its driver has to walk on. */
+function parkInPlace(state: AmbientState, map: GameMap, car: Car): void {
+  const tx = Math.round(car.x);
+  const ty = Math.round(car.y);
+  const taken = new Set(
+    state.cars.filter((o) => o !== car && o.parked && o.curbSlot !== undefined && Math.round(o.x) === tx && Math.round(o.y) === ty).map((o) => o.curbSlot!),
+  );
+  const stalls = curbStallOffsets(map, tx, ty);
+  const slot = stalls.findIndex((_, i) => !taken.has(i));
+  if (slot >= 0) {
+    const st = stalls[slot]!;
+    car.x = tx + st.dx;
+    car.y = ty + st.dy;
+    car.curbDir = st.dir;
+    car.curbSlot = slot;
+  } else {
+    car.x = tx;
+    car.y = ty;
+  }
+  car.tx = tx;
+  car.ty = ty;
+  car.parked = true;
+  car.path = undefined;
+  car.stuck = 0;
+}
+
+/** Send a citizen home: drive its owned car home to park it if it has one out, else walk. */
+function headHome(state: AmbientState, p: Ped, map: GameMap): void {
+  const hx = p.homeTile! % map.width;
+  const hy = (p.homeTile! - hx) / map.width;
+  const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
+  if (!(car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home'))) {
+    p.phase = 'to-home';
+    p.walkTo = { x: hx, y: hy };
+    p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
+    p.mode = TravelMode.Walk;
+  }
+}
+
+/**
+ * Jam rung 3: a citizen whose car has been jammed STUCK_GIVE_UP substeps abandons the stop it was driving
+ * to — the household takes a small wellbeing hit (JAM_SKIP_PENALTY) — and moves on to the next reachable
+ * stop of its round (driving its car there), or home if none remain (Maddy 2026-09-30).
+ */
+export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void {
+  if (p.homeTile !== undefined) depositHealth(state, p.homeTile, -JAM_SKIP_PENALTY);
+  const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
+  if (car) car.stuck = 0;
+  if (!(p.itinerary !== undefined && advanceItinerary(state, p, map)) && p.homeTile !== undefined) headHome(state, p, map);
+  // the driver is IN its car: don't dismount and walk back to it — re-route the car straight on; if no
+  // route exists, park it right here (never left standing in a lane) and walk the rest
+  if (car && !car.parked && p.phase === 'to-vehicle') {
+    if (!boardOwnedCar(state, p, map, car)) {
+      parkInPlace(state, map, car);
+      walkLegInstead(p);
+    }
+  }
+}
+
+/** True when no moving vehicle's centre sits within `r` of (x, y) — a departure point is free to pull
+ *  out onto (so cars leaving a lot don't all materialise on the same spot). */
+export function spaceClear(grid: Map<number, Mover[]>, mapW: number, x: number, y: number, r = 0.6): boolean {
+  for (let dj = -1; dj <= 1; dj++) {
+    for (let di = -1; di <= 1; di++) {
+      const cell = grid.get((Math.round(y) + dj) * mapW + (Math.round(x) + di));
+      if (!cell) continue;
+      for (const o of cell) if (Math.abs(o.x - x) < r && Math.abs(o.y - y) < r) return false;
+    }
+  }
+  return true;
+}
+
+/** Commit a mover to a new heading, remembering the one it turned from (for moverPose's turn arc). */
+export function commitHeading(m: Mover, nd: number): void {
+  m.prevDir = m.dir;
+  m.dir = nd;
+}
+
+/** A sprite's draw pose: world position of its centre (tile units, +0.5 already applied) + a unit
+ *  heading vector (screen y-down; the renderer turns it into a rotation). */
+export interface Pose {
+  x: number;
+  y: number;
+  hx: number;
+  hy: number;
+}
+
+/**
+ * Where to DRAW a grid-following mover, and which way it faces — smooth through turns (Maddy
+ * 2026-09-30: "i like your approach to turning center lines"). Each leg runs centre-to-centre; the pose
+ * is drawn half a tile BEHIND the sim position, so over one leg it crosses the leg's start tile from its
+ * entry edge (the side it came in on, via `prevDir`) to its exit edge (via `dir`): a straight line, or a
+ * quarter-circle round the tile corner between those edges at a 90° turn — the same geometry the SNES
+ * lane lines use. `lateral` is the right-of-heading offset (car lane, ped kerb), carried round the arc
+ * as the radius (0.5 − lateral on a right turn, 0.5 + lateral on a left), so a turning car never
+ * jumps across the road. Leg ends meet exactly, so motion is continuous. Pure, no trig (nlerp + sqrt).
+ */
+export interface LateralProfile {
+  /** Right-of-heading offset at the tile's entry edge, centre, and exit edge. */
+  entry: number;
+  mid: number;
+  exit: number;
+}
+
+export function moverPose(m: Mover, lateral: number | LateralProfile): Pose {
+  const prof = typeof lateral === 'number' ? { entry: lateral, mid: lateral, exit: lateral } : lateral;
+  const latAt = (p: number): number => (p < 0.5 ? prof.entry + (prof.mid - prof.entry) * p * 2 : prof.mid + (prof.exit - prof.mid) * (p * 2 - 1));
+  const d = m.dir;
+  const dx = DIR_DX[d]!;
+  const dy = DIR_DY[d]!;
+  const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
+  if (!onLeg) {
+    // idle / off-grid: the plain tile-centre pose
+    return { x: m.x + 0.5 - dy * prof.mid, y: m.y + 0.5 + dx * prof.mid, hx: dx, hy: dy };
+  }
+  const p = Math.min(1, Math.max(0, 1 - (Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y))));
+  const pd = m.prevDir ?? d;
+  const pdx = DIR_DX[pd]!;
+  const pdy = DIR_DY[pd]!;
+  const cx = m.tx - dx + 0.5; // centre of the tile being crossed
+  const cy = m.ty - dy + 0.5;
+  const turn = pdx * dy - pdy * dx; // +1 right (clockwise, y-down), −1 left, 0 straight / U-turn
+  const lat = latAt(p);
+  if (turn === 0 && pd === d) {
+    // straight through
+    const bx = cx + dx * (p - 0.5);
+    const by = cy + dy * (p - 0.5);
+    return { x: bx - dy * lat, y: by + dx * lat, hx: dx, hy: dy };
+  }
+  if (turn === 0) {
+    // U-turn: in along pd to the centre and back out, the heading sweeping round through its right-hand
+    // side in two nlerp halves (pd → right(pd) → d) — never a 180° flip
+    const rx = -pdy;
+    const ry = pdx;
+    const t = p < 0.5 ? p * 2 : p * 2 - 1;
+    const [ax, ay, bx2, by2] = p < 0.5 ? [pdx, pdy, rx, ry] : [rx, ry, dx, dy];
+    let hx = ax + (bx2 - ax) * t;
+    let hy = ay + (by2 - ay) * t;
+    const hl = Math.sqrt(hx * hx + hy * hy);
+    hx /= hl;
+    hy /= hl;
+    const along = p < 0.5 ? p - 0.5 : 0.5 - p; // toward the centre, then back out
+    const bx = cx + pdx * along;
+    const by = cy + pdy * along;
+    return { x: bx - hy * lat, y: by + hx * lat, hx, hy };
+  }
+  // quarter-circle round corner K between the entry edge (−pd side) and the exit edge (+d side)
+  const kx = cx - pdx * 0.5 + dx * 0.5;
+  const ky = cy - pdy * 0.5 + dy * 0.5;
+  // unit radials from K to the entry point (= −d) and to the exit point (= +pd); nlerp between them, with
+  // p re-timed (a cubic fitted to atan) so the angle sweeps at a near-constant rate — plain nlerp crawls
+  // at the start and end of the bend
+  const u = p + 0.915 * p * (1 - p) * (0.5 - p);
+  const vx0 = -dx * (1 - u) + pdx * u;
+  const vy0 = -dy * (1 - u) + pdy * u;
+  const len = Math.sqrt(vx0 * vx0 + vy0 * vy0);
+  const vx = vx0 / len;
+  const vy = vy0 / len;
+  const r = 0.5 - turn * lat; // right turn: the right-hand lane is the inside of the curve
+  // heading = the radial rotated ±90° (so it starts along pd and ends along d)
+  const hx = turn > 0 ? -vy : vy;
+  const hy = turn > 0 ? vx : -vx;
+  return { x: kx + vx * r, y: ky + vy * r, hx, hy };
+}
+
+/** Blend two poses (position lerp, heading nlerp). A jump over 1.5 tiles — a spawn, a park, a
+ *  re-route snap — is a teleport: take the newer pose rather than slide across the map. */
+function blendPose(a: Pose, b: Pose, t: number): Pose {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (dx * dx + dy * dy > 2.25) return b;
+  let hx = a.hx + (b.hx - a.hx) * t;
+  let hy = a.hy + (b.hy - a.hy) * t;
+  const l = Math.sqrt(hx * hx + hy * hy);
+  if (l < 1e-6) {
+    hx = b.hx;
+    hy = b.hy;
+  } else {
+    hx /= l;
+    hy /= l;
+  }
+  return { x: a.x + dx * t, y: a.y + dy * t, hx, hy };
+}
+
+/** The pose of a mover as it stood before the latest substep (its snapshot), or null if none. */
+function snapPose(m: Mover, lateral: number | ((mv: Mover) => LateralProfile)): Pose | null {
+  const sn = m.snap;
+  if (!sn) return null;
+  const mv = { ...m, x: sn.x, y: sn.y, dir: sn.dir, prevDir: sn.prevDir, tx: sn.tx, ty: sn.ty };
+  return moverPose(mv, typeof lateral === 'number' ? lateral : lateral(mv));
+}
+
+/**
+ * Record every mover's leg state before a substep runs, so the renderer can draw it `alpha` of the way
+ * from that state to the next (render interpolation — the 50 ms substeps otherwise show as 20 Hz hops
+ * on a 60–120 Hz display). Cosmetic state only; the world hash never sees it.
+ */
+export function snapshotMovers(state: AmbientState): void {
+  for (const list of [state.cars, state.cruisers, state.peds]) {
+    for (const m of list) {
+      const sn = (m.snap ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 });
+      sn.x = m.x;
+      sn.y = m.y;
+      sn.dir = m.dir;
+      sn.prevDir = m.prevDir;
+      sn.tx = m.tx;
+      sn.ty = m.ty;
+    }
+  }
+}
+
+/** How far (0..1) the display is between the last substep and the next — the interpolation factor. */
+export function ambientAlpha(state: AmbientState): number {
+  return Math.min(1, Math.max(0, state.accMs / SUBSTEP_MS));
+}
+
+/** A car's draw pose. Parked: on its stall/kerb spot, a kerb-parked car lying parallel to the kerb.
+ *  Moving: {@link moverPose} in its right-hand lane, interpolated `alpha` of the way from its pose
+ *  before the latest substep (1 = no interpolation). */
+export function carPose(c: Car, alpha = 1): Pose {
+  if (c.parked) {
+    // kerb-parked: parallel to the kerb; in a lot bay: east-west, the way the bays are laid out
+    const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.lotIdx !== undefined ? 1 : c.dir;
+    return { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! };
+  }
+  const now = moverPose(c, LANE);
+  const before = alpha < 1 ? snapPose(c, LANE) : null;
+  return before ? blendPose(before, now, alpha) : now;
+}
+
+/**
+ * A pedestrian's kerb offset across the tile its leg crosses: PED_CURB on a road tile, 0 on open ground,
+ * averaged at each edge with the neighbour across it — so a walker slides onto/off the kerb instead of
+ * jumping as it steps between a road and a lot.
+ */
+function pedLateral(m: Mover, onRoadAt: (x: number, y: number) => boolean): LateralProfile {
+  const lat = (x: number, y: number): number => (onRoadAt(x, y) ? PED_CURB : 0);
+  const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
+  if (!onLeg) {
+    const here = lat(Math.round(m.x), Math.round(m.y));
+    return { entry: here, mid: here, exit: here };
+  }
+  const d = m.dir;
+  const pd = m.prevDir ?? d;
+  const tx = m.tx - DIR_DX[d]!;
+  const ty = m.ty - DIR_DY[d]!;
+  const mid = lat(tx, ty);
+  return {
+    entry: (lat(tx - DIR_DX[pd]!, ty - DIR_DY[pd]!) + mid) / 2,
+    mid,
+    exit: (mid + lat(m.tx, m.ty)) / 2,
+  };
+}
+
+/** A pedestrian's draw pose: on the kerb along a road, down the middle elsewhere, easing between the
+ *  two across a tile edge — smooth through turns ({@link moverPose}; `walkTo` is only the trip's
+ *  destination, walkers still follow grid legs) and interpolated between substeps like {@link carPose}. */
+export function pedPose(p: Ped, onRoadAt: (x: number, y: number) => boolean, alpha = 1): Pose {
+  const now = moverPose(p, pedLateral(p, onRoadAt));
+  const before = alpha < 1 ? snapPose(p, (mv) => pedLateral(mv, onRoadAt)) : null;
+  return before ? blendPose(before, now, alpha) : now;
+}
+
 /** A grid-following sprite: float world position + heading + committed target tile. */
 export interface Mover {
   /** Float world position in tile units. */
@@ -573,6 +974,17 @@ export interface Mover {
   y: number;
   /** Current travel direction (0=N, 1=E, 2=S, 3=W). */
   dir: number;
+  /** The heading of the PREVIOUS leg (set by commitHeading) — cosmetic, read only by moverPose to draw
+   *  a turn as a smooth arc. Undefined ⇒ same as `dir` (no turn). */
+  prevDir?: number;
+  /** The mover's leg state as it stood BEFORE the latest substep (snapshotMovers) — cosmetic, read only
+   *  by the pose functions to interpolate between 50 ms substeps at the display's frame rate. */
+  snap?: { x: number; y: number; dir: number; prevDir?: number; tx: number; ty: number };
+  /** Consecutive substeps this vehicle has been held by the space-ahead rule. Drives gridlock relief:
+   *  a re-plan at STUCK_REPATH, a one-off pass-through at STUCK_ESCAPE. Reset whenever it moves. */
+  stuck?: number;
+  /** A stable per-vehicle ordinal for yield tie-breaks when `id` is unset (assignSerials, per substep). */
+  serial?: number;
   /** Committed target tile (integer tile coords) — the end of the current leg. */
   tx: number;
   ty: number;
@@ -746,6 +1158,8 @@ export interface AmbientState {
   trains: Train[];
   /** Leftover sub-substep time carried between stepAmbient calls. */
   accMs: number;
+  /** Next vehicle serial for yield tie-breaks (assignSerials). */
+  serialNext: number;
   /** The parking lots that STORE the moving cars: a trip-car parks in the nearest one on
    *  arrival (or at a street curb if none is free), waits for its pedestrian, then leaves.
    *  Renderer-side, set by the host via setParkingLots; never part of the world hash. */
@@ -834,6 +1248,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     birds: [],
     trains: [],
     accMs: 0,
+    serialNext: 1,
     buildingHealth: new Map(),
     wear: new Map(),
     waterPollution: new Map(),
@@ -1171,8 +1586,8 @@ export function isParkable(map: GameMap, x: number, y: number): boolean {
  *  it sits at the kerb, not stranded in the middle of a wide road/avenue lane (Maddy: "cars parking in
  *  the middle of the street"). A tile ringed by drivable road on all four sides (a lane interior) has
  *  no shoulder and is not a valid street park. */
-const KERB_PULL = 0.34; // a curb stall sits this far from the tile centre toward its kerb edge
-const STALL_ALONG = 0.18; // the two stalls on a kerb side sit this far either way ALONG the kerb
+const KERB_PULL = 0.4; // a curb stall sits this far toward its kerb edge — a car width clear of the lane (LANE)
+const STALL_ALONG = 0.25; // the two stalls on a kerb side sit this far either way ALONG it — a car length apart
 
 /**
  * The curb-parking STALLS of a road tile — up to 4 discrete kerb slots, an offset (from the tile
@@ -1370,19 +1785,29 @@ export function buildMoverGrid(movers: readonly Mover[], mapW: number): Map<numb
   return g;
 }
 
-/** True when another vehicle occupies the bounding-box space just ahead of `m` (at the RENDERED, lane-
- *  offset sprite positions), so `m` must pause rather than overlap it (Maddy: movers can't overlap;
- *  pause for space ahead → queues + longer trips, no orthogonal cross-overs). Yield rule, deadlock-free:
- *    • SAME direction → the rear yields to the car ahead (positional).
- *    • CROSS direction → yield only to the HIGHER-priority (id) vehicle, so in any conflict the top-id
- *      car never yields → it clears → the cluster drains (no 4-way gridlock).
- *  ONCOMING (opposite dir) sit in the other lane: rendered ≈ 2·LANE apart laterally > halfWidth → they
- *  fall outside the claim box and never block. `gap` ≈ a car length, `halfWidth` the lane tolerance. */
+/** A vehicle's yield priority: its id, else the serial the substep assigned it (assignSerials). */
+function priority(m: Mover): number {
+  return m.id ?? m.serial ?? 0;
+}
+
+/** Give every vehicle without one a stable serial, in sim order, from the state's counter — so yield
+ *  tie-breaks are deterministic per seed (a module-level counter leaked across runs). */
+function assignSerials(state: AmbientState, movers: readonly Mover[]): void {
+  for (const m of movers) if (m.serial === undefined) m.serial = state.serialNext++;
+}
+
+/** True when another vehicle occupies the bounding-box space just ahead of `m` (at the lane-offset
+ *  sprite positions), so `m` must pause rather than overlap it (Maddy: movers can't overlap; pause for
+ *  space ahead → queues). STRICT: anything in the claim box stops you, whatever its heading or priority
+ *  — the old "cross traffic yields only to higher ids" let a higher-id car turn straight INTO a stopped
+ *  queue and stack on it (Maddy 2026-09-30, the ramp at (115,40)). Two vehicles on the very same spot
+ *  separate: the lower-priority one waits. ONCOMING traffic (other lane) sits ≈ 2·LANE to the side,
+ *  outside `halfWidth`, so it never blocks. Deadlocks this could leave are broken by the stuck re-plan
+ *  (STUCK_REPATH) and, failing that, the one-off squeeze (STUCK_ESCAPE) in advanceMover. */
 // `gap` (centre-to-centre) must cover BOTH sprites' length (≈0.58) PLUS the max per-substep step
-// (freeway ≈0.24) so a car STOPS before its front overshoots into the car ahead (Maddy: front of a
-// sprite cannot enter any part of another sprite). `halfWidth` stays below the oncoming-lane separation
-// (2·LANE ≈ 0.44) so opposing traffic in the other lane never blocks (no head-on deadlock).
-export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover, gap = 0.85, halfWidth = 0.34): boolean {
+// (freeway ≈0.24) so a car STOPS before its front overshoots into the car ahead. `halfWidth` stays below
+// the oncoming-lane separation (2·LANE ≈ 0.32) and at least a car width (CAR_WIDTH).
+export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover, gap = 0.85, halfWidth = 0.28): boolean {
   const fdx = DIR_DX[m.dir]!;
   const fdy = DIR_DY[m.dir]!;
   const mlo = laneOffset(m.dir);
@@ -1392,9 +1817,9 @@ export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover,
   const tj = Math.round(my + fdy * gap);
   const pdx = DIR_DX[(m.dir + 1) & 3]!; // perpendicular unit (lateral)
   const pdy = DIR_DY[(m.dir + 1) & 3]!;
-  const mprio = m.id ?? 0;
-  for (let dj = -1; dj <= 1; dj++) {
-    for (let di = -1; di <= 1; di++) {
+  const mprio = priority(m);
+  for (let dj = -2; dj <= 2; dj++) {
+    for (let di = -2; di <= 2; di++) {
       const cell = grid.get((tj + dj) * mapW + (ti + di));
       if (!cell) continue;
       for (const o of cell) {
@@ -1402,11 +1827,13 @@ export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover,
         const olo = laneOffset(o.dir);
         const dx = o.x + olo.dx - mx;
         const dy = o.y + olo.dy - my;
+        if (Math.abs(dx * pdx + dy * pdy) >= halfWidth) continue; // not in my lane (oncoming / side lanes)
         const fwd = dx * fdx + dy * fdy; // distance ahead of m
-        if (fwd <= 0.02 || fwd > gap) continue; // must be ahead, within the claim box
-        if (Math.abs(dx * pdx + dy * pdy) >= halfWidth) continue; // and in-lane (oncoming fall outside)
-        if (o.dir === m.dir) return true; // same direction → rear yields to the car ahead
-        if ((o.id ?? 0) > mprio) return true; // cross direction → yield to the higher-priority vehicle
+        if (Math.abs(fwd) <= 0.02) {
+          if (priority(o) > mprio) return true; // fused on one spot → the lower priority waits
+          continue;
+        }
+        if (fwd > 0 && fwd <= gap) return true; // anything in the claim box ahead stops me
       }
     }
   }
@@ -1419,8 +1846,16 @@ function advanceMover(
   map: GameMap,
   pickNext: (x: number, y: number, fromDir: number, recent: readonly number[]) => number,
   blocked?: (m: Mover) => boolean,
+  lateral = LANE,
 ): boolean {
-  if (blocked?.(m)) return true; // space ahead occupied → pause this substep (alive, just waiting)
+  if (blocked?.(m)) {
+    // space ahead occupied → pause this substep (alive, just waiting) — unless it has waited so long
+    // that this is a true circular deadlock, which one car must break by squeezing through
+    m.stuck = (m.stuck ?? 0) + 1;
+    if (m.stuck < STUCK_ESCAPE) return true;
+  }
+  m.stuck = 0;
+  speed *= legPaceFactor(m, lateral); // a turn leg's drawn arc is shorter/longer than a tile — keep pace
   const dist = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y);
   if (dist <= speed) {
     // Arrive at the target tile centre, record it, and recommit to the next leg.
@@ -1432,7 +1867,7 @@ function advanceMover(
     const fromDir = opposite(m.dir);
     const nd = pickNext(m.tx, m.ty, fromDir, recent);
     if (nd < 0) return false; // isolated, or boxed in by its own path → despawn
-    m.dir = nd;
+    commitHeading(m, nd);
     m.tx = m.x + DIR_DX[nd]!;
     m.ty = m.y + DIR_DY[nd]!;
   } else {
@@ -2049,7 +2484,7 @@ export function routeToParking(state: AmbientState, map: GameMap, car: Car): boo
   car.y = p0y;
   car.tx = p1x;
   car.ty = p1y;
-  car.dir = p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0;
+  commitHeading(car, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
   car.path = path;
   car.leg = 2;
   car.parked = false;
@@ -2991,7 +3426,9 @@ export function nextPatrolStep(
   for (let d = 0; d < 4; d++) {
     const nx = x + DIR_DX[d]!;
     const ny = y + DIR_DY[d]!;
-    if (!map.inBounds(nx, ny) || !carPassable(map, nx, ny)) continue;
+    // the same edge-aware rule every car obeys: one-way freeway lanes, limited access, no median
+    // crossing (Maddy 2026-09-30: cruisers were cutting across opposing freeway lanes)
+    if (!canDrive(map, x, y, nx, ny)) continue;
     if (safe?.has(map.idx(nx, ny))) continue; // community refuge — cruisers won't enter it
     if (d === fromDir) {
       uTurn = d;
@@ -3207,10 +3644,9 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // Collision/following: vehicles can't overlap — a car PAUSES if a same-direction vehicle sits in the
   //    bounding-box space just ahead (Maddy: queues form, trips take longer). Grid built from the moving
   //    cars + cruisers at substep start; cruisers share it (stepCruisers below).
-  const moverGrid = buildMoverGrid(
-    [...state.cars.filter((c) => !c.parked && !c.abandoned), ...state.cruisers], // PARKED cars don't count (Maddy)
-    map.width,
-  );
+  const gridMovers = [...state.cars.filter((c) => !c.parked && !c.abandoned), ...state.cruisers]; // PARKED cars don't count (Maddy)
+  assignSerials(state, gridMovers);
+  const moverGrid = buildMoverGrid(gridMovers, map.width);
   const blocked = (mm: Mover): boolean => blockedAhead(moverGrid, map.width, mm);
 
   // 3. Move the cars. A PARKED car waits for its pedestrian (its bound ped zeroes `dwell` on
@@ -3235,6 +3671,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
     const onFreeway = map.built[map.idx(cx, cy)] === BuiltKind.RoadHighway;
     const sp = speedAt(onFreeway ? CAR_SPEED * 2 : CAR_SPEED, cx, cy, c.dir) * (c.speedMul ?? 1);
     if (c.path !== undefined) {
+      // jam ladder: re-plan round it, then turn back; a trip still jammed after that just ends
+      rerouteIfStuck(map, c, state.traffic);
+      uTurnIfStuck(map, c, state.traffic);
+      if ((c.stuck ?? 0) >= STUCK_GIVE_UP) return false;
       const alive = advanceMover(c, sp, map, (x, y) => pathStep(map, c, x, y), blocked);
       return alive ? true : tryPark(state, c, map);
     }
@@ -3282,18 +3722,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
       if (p.dwellInside! > 0) return true;
       if (p.itinerary !== undefined) {
         // A CITIZEN on a daily round: go to the next stop (each leg picks its own mode), or head home.
-        if (!advanceItinerary(state, p, map)) {
-          const hx = p.homeTile! % map.width;
-          const hy = (p.homeTile! - hx) / map.width;
-          // If it has an owned car out, drive home to retrieve + park it; otherwise walk home.
-          const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-          if (!(car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home'))) {
-            p.phase = 'to-home';
-            p.walkTo = { x: hx, y: hy };
-            p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
-            p.mode = TravelMode.Walk;
-          }
-        }
+        if (!advanceItinerary(state, p, map)) headHome(state, p, map); // round done → drive/walk home
       } else if (p.carId !== undefined) {
         // A sim/freight last-mile ped: walk back to its parked car and release it.
         const car = findCar(state, p.carId);
@@ -3332,7 +3761,15 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
       const onFreeway = map.built[map.idx(carx, cary)] === BuiltKind.RoadHighway;
       // Freeways move traffic 2×; a crowded tile slows it (the same pileup field the car filter uses).
       const sp = speedAt(onFreeway ? CAR_SPEED * 2 : CAR_SPEED, carx, cary, car.dir) * (car.speedMul ?? 1);
-      const moving = advanceMover(car, sp, map, (x, y) => pathStep(map, car, x, y));
+      // an owned car obeys the same space-ahead rule as every other vehicle (it used to drive through queues)
+      // jam ladder: re-plan round it, then turn back, then give up on this stop (small wellbeing hit)
+      rerouteIfStuck(map, car, state.traffic);
+      uTurnIfStuck(map, car, state.traffic);
+      if ((car.stuck ?? 0) >= STUCK_GIVE_UP) {
+        skipJammedStop(state, p, map);
+        return true;
+      }
+      const moving = advanceMover(car, sp, map, (x, y) => pathStep(map, car, x, y), blocked);
       layTraffic(state, map, Math.round(car.x), Math.round(car.y)); // the car IS the traffic
       layPollution(state, map, Math.round(car.x), Math.round(car.y), onFreeway); // ...and the smog
       p.x = car.x; // ride along (hidden)
@@ -3413,7 +3850,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
             p.y = p0y;
             p.tx = p1x;
             p.ty = p1y;
-            p.dir = p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0;
+            commitHeading(p, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
             p.path = route;
             p.leg = 2; // route[0]=start, route[1]=committed next; pathStep targets route[2] onward
             p.pathGoal = goalIdx;
@@ -3422,12 +3859,14 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
             p.pathGoal = undefined;
           }
         }
-        moving = p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y));
+        moving = p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y), undefined, pedLegLateral(map, p));
       } else {
         // Transit legs (streetcar/elevated) hug their OWN line via the greedy mode-cost step (walkPath
         // doesn't know a tram network; a rider must prefer its rails). Dithering is rare on open lines.
         moving = advanceMover(p, speed, map, (x, y, _fromDir, recent) =>
           nextStepToward(map, x, y, tgtx, tgty, recent, state.wear, mode, state.traffic, state.pollution),
+          undefined,
+          pedLegLateral(map, p),
         );
       }
       if (moving) return true; // still walking this leg
@@ -3459,40 +3898,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
         // destination, then drive it. (The car was parked, waiting; it never vanished.) If no road
         // route exists, finish the leg on foot.
         const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-        const dest = p.building ?? p.homeDest;
-        const spot = car && dest ? findParkingNear(state, map, dest.x, dest.y) ?? dest : undefined;
-        const path =
-          car && spot
-            ? roadPath(map, Math.round(car.x), Math.round(car.y), spot.x, spot.y, state.traffic)
-            : null;
-        if (!car || !path || path.length < 2) {
-          p.phase = p.homeDest ? 'to-home' : 'to-building';
-          p.walkTo = p.homeDest ?? p.building ?? { x: Math.round(p.x), y: Math.round(p.y) };
-          p.mode = TravelMode.Walk;
-          p.tx = Math.round(p.x);
-          p.ty = Math.round(p.y);
-          p.recent = undefined;
-          return true;
-        }
-        // Board: snap onto the route's first tile and commit to following it (cars=committed paths).
-        const p0x = path[0]! % map.width;
-        const p0y = (path[0]! - p0x) / map.width;
-        const p1x = path[1]! % map.width;
-        const p1y = (path[1]! - p1x) / map.width;
-        car.x = p0x;
-        car.y = p0y;
-        car.tx = p1x;
-        car.ty = p1y;
-        car.dir = p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0;
-        car.path = path;
-        car.leg = 2; // path[0]=start, path[1]=the committed next tile; pathStep targets path[2] next
-        car.parked = false;
-        car.curbSlot = undefined; // it has left its stall
-        car.lotIdx = undefined;
-        car.stallIdx = undefined;
-        car.recent = undefined;
-        p.parkAt = spot;
-        p.phase = 'driving';
+        // wait in the stall until the way out is clear — cars leaving a lot at once all materialised on
+        // the lot tile's centre, stacked on top of each other
+        if (car && car.parked && !spaceClear(moverGrid, map.width, Math.round(car.x), Math.round(car.y))) return true;
+        if (!car || !boardOwnedCar(state, p, map, car)) walkLegInstead(p);
         return true;
       }
       if (p.phase === 'to-building') {
@@ -4048,6 +4457,7 @@ export function stepAmbient(state: AmbientState, map: GameMap, rng: Rng, dtMs: n
   state.accMs += Math.min(dtMs, AMBIENT_MAX_FRAME_MS);
   while (state.accMs >= SUBSTEP_MS) {
     state.accMs -= SUBSTEP_MS;
+    snapshotMovers(state); // the "before" pose the renderer interpolates from
     substep(state, map, rng);
   }
 }

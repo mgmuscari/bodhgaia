@@ -1,31 +1,30 @@
-// GPU render path (Increment 1 of the hybrid shader): a WebGL2 canvas stacked UNDER the Canvas2D
-// sprite/UI canvas. It renders the MAP via the SatelliteShader (procedural pass for now; baked-tile
-// albedo is Increment 2), driven by the LIVE camera so it pans/zooms with the game. The Canvas2D
-// layer goes transparent (renderer.setGpuMode) and draws only sprites/decorations/UI on top. The CPU
-// path stays the no-WebGL fallback. Animations (water/grass/clouds/shadows) run on the GPU here, so
-// the per-frame CPU water cost (Maddy's perf hit over large seas) goes away when GPU mode is on.
+// GPU render path: a WebGL2 canvas stacked UNDER the Canvas2D sprite/UI canvas. It lights the CPU-baked
+// pixel-art base (SatelliteShader: day/night + contact shadows) and casts the emissive glow (headlights,
+// cruiser bars, lit windows), driven by the LIVE camera so it pans/zooms with the game. The Canvas2D
+// layer goes transparent (renderer.setGpuMode) and draws the agents/decorations/UI on top. The CPU path
+// stays the no-WebGL fallback.
 //
 // IO module (touches WebGL/DOM) — not on the pure-ui allowlist.
 import { GridTextureBridge } from './gridTextureBridge';
 import { SatelliteShader } from './satelliteShader';
-import { SpriteBatch, buildSpriteAtlas, FLOATS_PER_INSTANCE, GlowBatch, GLOW_FLOATS, extractLightPoints } from './spriteBatch';
-import type { LightPoint } from './spriteBatch';
+import { GlowBatch, GLOW_FLOATS, extractLightPoints } from './glowBatch';
+import type { LightPoint } from './glowBatch';
+import { BEAM_REACH, type Beam } from './headlights';
 import { DAYSPEED, dayNightBrightness } from './lighting';
-import { laneOffset, dirVector, pedCurbOffset } from './ambientContent';
-import { isRoadKind } from '../engine/fabric';
-import { TravelMode } from '../citizens/modes';
+import { carPose, ambientAlpha } from './ambientContent';
 import type { AmbientState } from './ambientContent';
-import type { AmbientSprites } from './ambientSprites';
 import type { GameMap } from '../engine/map';
 import type { Camera } from './camera';
 
-type Rect = readonly [number, number, number, number];
-/** A light-bearing building footprint (world coords) — the renderer collects these; the glow pass casts
- *  a faint window/beacon glow from each (Maddy: windows/hazard blinkies should cast glows too). */
-export type EmissiveBuilding = { x: number; y: number; w: number; h: number; kind: number };
+/** A light-bearing building footprint (world coords) with the skin's emission maps — the renderer collects
+ *  these; the glow pass casts a faint window/beacon glow from each lit pixel. */
+export type EmissiveBuilding = { x: number; y: number; w: number; h: number; kind: number; lit?: CanvasImageSource; blink?: CanvasImageSource };
+/** A cast headlight (headlights.ts) with its strength (night for cars, more for a cruiser). */
+export type HeadlightBeam = Beam & { mul: number };
 
 const SUN: readonly [number, number] = [0.65, 0.78]; // sun direction in tile space (shadows trace toward it)
-const SHADOW = 0.45;
+/** Peak building-shadow darkening (0..1) — faint, so shadows read as soft contact shade. */
+export const SHADOW_STRENGTH = 0.22;
 
 /** The live world→shader view: the visible window in world cells (matches the Canvas2D camera). */
 export function cameraToShaderView(
@@ -44,20 +43,20 @@ export class GpuRenderer {
   private canvas: HTMLCanvasElement | null = null;
   private lastBaseVersion = -1;
   private readonly bridge: GridTextureBridge;
-  // GPU sprite layer (the moving agents, lit by the SAME pass as the ground — Maddy).
-  private batch: SpriteBatch | null = null;
-  private carRects: (Rect | null)[] = [];
-  private carLightRects: (Rect | null)[] = [];
-  private pedRects: (Rect | null)[] = [];
-  private cycRects: (Rect | null)[] = [];
-  private cycLightRects: (Rect | null)[] = [];
-  private cruiserRect: Rect | null = null;
-  private cruiserLightRect: Rect | null = null;
-  private instData = new Float32Array(0);
   private glow: GlowBatch | null = null;
   private glowData = new Float32Array(0);
-  // Building emissive light POINTS (the actual lit window/beacon pixels) so glow casts from real lights.
-  private buildingPoints = new Map<string, { lights: LightPoint[]; blink: LightPoint[] }>();
+  // Light points extracted from SKIN emission maps, cached per image (the maps are shared per variant).
+  private skinPoints = new WeakMap<object, LightPoint[]>();
+
+  private pointsOf(img: CanvasImageSource | undefined): LightPoint[] {
+    if (!img) return [];
+    let pts = this.skinPoints.get(img);
+    if (!pts) {
+      pts = extractLightPoints(img, 8, 0.26, 8);
+      this.skinPoints.set(img, pts);
+    }
+    return pts;
+  }
 
   constructor(private readonly map: GameMap) {
     this.bridge = new GridTextureBridge(map.width, map.height);
@@ -78,179 +77,83 @@ export class GpuRenderer {
     this.gl = gl;
     this.shader = new SatelliteShader(gl);
     this.shader.uploadFull(this.bridge);
-    this.batch = new SpriteBatch(gl);
     this.glow = new GlowBatch(gl);
     return canvas;
   }
 
-  /** Build the GPU agent atlas from the loaded sprites (cars + their emission maps). Index-aligned with
-   *  ambient car `tint`. Called when the sprite catalog loads/changes. */
-  setAgentSprites(sprites: AmbientSprites): void {
-    if (!this.batch) return;
-    const entries: { name: string; img: CanvasImageSource }[] = [];
-    sprites.cars.forEach((img, i) => entries.push({ name: `car${i}`, img }));
-    sprites.carLights.forEach((img, i) => { if (img) entries.push({ name: `carL${i}`, img }); });
-    sprites.peds.forEach((img, i) => entries.push({ name: `ped${i}`, img }));
-    sprites.cyclists.forEach((img, i) => entries.push({ name: `cyc${i}`, img }));
-    sprites.cyclistLights.forEach((img, i) => { if (img) entries.push({ name: `cycL${i}`, img }); });
-    if (sprites.police[0]) entries.push({ name: 'cruiser', img: sprites.police[0] });
-    if (sprites.emission['police/cruiser']) entries.push({ name: 'cruiserL', img: sprites.emission['police/cruiser'] });
-    if (entries.length === 0) return;
-    const atlas = buildSpriteAtlas(entries);
-    this.batch.setAtlas(atlas.canvas);
-    this.carRects = sprites.cars.map((_, i) => atlas.rects.get(`car${i}`) ?? null);
-    this.carLightRects = sprites.cars.map((_, i) => atlas.rects.get(`carL${i}`) ?? null);
-    this.pedRects = sprites.peds.map((_, i) => atlas.rects.get(`ped${i}`) ?? null);
-    this.cycRects = sprites.cyclists.map((_, i) => atlas.rects.get(`cyc${i}`) ?? null);
-    this.cycLightRects = sprites.cyclists.map((_, i) => atlas.rects.get(`cycL${i}`) ?? null);
-    this.cruiserRect = atlas.rects.get('cruiser') ?? null;
-    this.cruiserLightRect = atlas.rects.get('cruiserL') ?? null;
-    // Extract the bright light POINTS from each BUILDING light map so glow casts from the real lit
-    // window/beacon pixels (Maddy: buildings get radial glow from the light map). Movers use geometric
-    // sprite-relative cones (their headlights are static at the front), so they need no extraction.
-    this.buildingPoints.clear();
-    for (const [key, img] of Object.entries(sprites.emission)) {
-      if (!key.startsWith('building/')) continue;
-      const isBlink = key.endsWith('/blink');
-      const stem = key.slice('building/'.length).replace(/\/blink$/, '');
-      const e = this.buildingPoints.get(stem) ?? { lights: [], blink: [] };
-      const pts = extractLightPoints(img, 8, 0.26, 8); // buildings: more windows
-      if (isBlink) e.blink = pts; else e.lights = pts;
-      this.buildingPoints.set(stem, e);
-    }
-  }
-
-  /** Draw the moving agents as instanced quads in the base canvas (AFTER render()), lit by the shared
-   *  lighting. Headlights/taillights are emission, night-gated; parked cars are off. */
-  renderAgents(ambient: AmbientState, camera: Camera, cssWidth: number, cssHeight: number, timeSec: number, buildings: readonly EmissiveBuilding[] = []): void {
+  /** Cast the agents' and buildings' light onto the ground (AFTER render()). The agents themselves are
+   *  pixel art on the Canvas2D layer above. */
+  renderAgents(
+    ambient: AmbientState,
+    camera: Camera,
+    cssWidth: number,
+    cssHeight: number,
+    timeSec: number,
+    buildings: readonly EmissiveBuilding[] = [],
+    beams: readonly HeadlightBeam[] = [],
+  ): void {
     const gl = this.gl;
-    if (!gl || !this.batch || this.carRects.length === 0) return;
+    if (!gl) return;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
-    const map = this.map;
-    const total = ambient.cars.length + ambient.peds.length + ambient.cruisers.length;
-    if (this.instData.length < total * FLOATS_PER_INSTANCE) this.instData = new Float32Array(total * FLOATS_PER_INSTANCE);
-    const data = this.instData;
-    let count = 0;
-    const push = (px: number, py: number, rot: number, sz: number, rect: Rect, er: Rect, emit: number): void => {
-      const o = count * FLOATS_PER_INSTANCE;
-      data[o] = px; data[o + 1] = py; data[o + 2] = rot; data[o + 3] = sz; data[o + 4] = sz;
-      data[o + 5] = rect[0]; data[o + 6] = rect[1]; data[o + 7] = rect[2]; data[o + 8] = rect[3];
-      data[o + 9] = er[0]; data[o + 10] = er[1]; data[o + 11] = er[2]; data[o + 12] = er[3];
-      data[o + 13] = emit;
-      count++;
-    };
-    // Cars: headlights/taillights emission, night-gated; parked = off.
-    const nCars = this.carRects.length;
-    for (const c of ambient.cars) {
-      const ci = (((c.tint ?? 0) % nCars) + nCars) % nCars;
-      const rect = this.carRects[ci];
-      if (!rect) continue;
-      const off = c.parked ? { dx: 0, dy: 0 } : laneOffset(c.dir);
-      const headingDir = c.parked && c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
-      const hv = dirVector(headingDir);
-      const lr = c.parked ? null : this.carLightRects[ci];
-      push(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy, Math.atan2(hv.dx, -hv.dy), 0.58, rect, lr ?? rect, lr ? night : 0);
-    }
-    // Pedestrians + cyclists (cyclists = bike-mode peds): a STABLE per-person sprite pick; cyclists get
-    // a small headlight (night). Skip those inside a building / riding a car.
-    const nPed = this.pedRects.length;
-    const nCyc = this.cycRects.length;
-    for (const p of ambient.peds) {
-      if (p.phase === 'inside' || p.phase === 'driving') continue;
-      const seed = ((p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0);
-      const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      let ox = 0.5;
-      let oy = 0.5;
-      if (isRoadKind(map.built[map.idx(Math.round(p.x), Math.round(p.y))]!)) {
-        const o = pedCurbOffset(p.dir); ox += o.dx; oy += o.dy;
-      }
-      const hv = dirVector(p.dir);
-      const rot = Math.atan2(hv.dx, -hv.dy);
-      if (isBike && nCyc > 0) {
-        const i = (Math.imul(seed, 2654435761) >>> 0) % nCyc;
-        const rect = this.cycRects[i];
-        if (!rect) continue;
-        const lr = this.cycLightRects[i];
-        push(p.x + ox, p.y + oy, rot, 0.46, rect, lr ?? rect, lr ? night : 0);
-      } else if (nPed > 0) {
-        const rect = this.pedRects[(Math.imul(seed, 2654435761) >>> 0) % nPed];
-        if (!rect) continue;
-        push(p.x + ox, p.y + oy, rot, 0.4, rect, rect, 0);
-      }
-    }
-    // Cruisers: a black car (rotated to heading) with an ALWAYS-on flashing red/blue bar (emergency).
-    if (this.cruiserRect) {
-      const flash = Math.floor(timeSec * 1000 / 180) % 2 === 0 ? 1 : 0.45;
-      for (const c of ambient.cruisers) {
-        const off = laneOffset(c.dir);
-        const hv = dirVector(c.dir);
-        const lr = this.cruiserLightRect;
-        push(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy, Math.atan2(hv.dx, -hv.dy), 0.55, this.cruiserRect, lr ?? this.cruiserRect, lr ? flash : 0);
-      }
-    }
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    if (count > 0) {
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      this.batch.render(data, count, origin, view, timeSec, DAYSPEED);
-    }
-    this.renderGlow(ambient, origin, view, timeSec, night, buildings);
+    this.renderGlow(ambient, origin, view, timeSec, night, buildings, beams);
     gl.disable(gl.BLEND); // leave blend OFF so the next frame's opaque base pass isn't additive
   }
 
   /** Emissive GLOW: soft additive light cast onto the surrounding tiles (Maddy: "car headlights
    *  illuminating road in front" as a forward CONE; windows/hazard blinkies cast faint glows too).
-   *  Headlights = forward cone (night); cruiser bars flash red/blue (radial); building windows a faint
+   *  Headlights = forward cones cut where they hit (headlights.ts), splashing a wall they stop at;
+   *  cruiser bars flash red/blue (radial); building windows a faint
    *  warm pool (night), power plants a faint warm glow + a blinking red beacon glow. Additive (ONE,ONE). */
-  private renderGlow(ambient: AmbientState, origin: readonly [number, number], view: readonly [number, number], timeSec: number, night: number, buildings: readonly EmissiveBuilding[]): void {
+  private renderGlow(ambient: AmbientState, origin: readonly [number, number], view: readonly [number, number], timeSec: number, night: number, buildings: readonly EmissiveBuilding[], beams: readonly HeadlightBeam[]): void {
+    const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
     const gl = this.gl;
     if (!gl || !this.glow) return;
-    const cap = ambient.cars.length + ambient.cruisers.length + buildings.length * 2;
-    if (this.glowData.length < cap * GLOW_FLOATS) this.glowData = new Float32Array(cap * GLOW_FLOATS);
-    const g = this.glowData;
+    let g = this.glowData;
     let n = 0;
-    // pos(2) fwd(2) len(1) halfwidth(1) color(3) intensity(1)
-    const cone = (x: number, y: number, fx: number, fy: number, len: number, hw: number, r: number, gr: number, b: number, inten: number): void => {
+    // pos(2) fwd(2) len(1) halfwidth(1) color(3) intensity(1) cut(1); the buffer grows to fit (a lit
+    // building adds one pool per lit window)
+    const cone = (x: number, y: number, fx: number, fy: number, len: number, hw: number, r: number, gr: number, b: number, inten: number, cut = len): void => {
       const o = n * GLOW_FLOATS;
+      if (o + GLOW_FLOATS > g.length) {
+        const bigger = new Float32Array(Math.max(64, g.length * 2) + GLOW_FLOATS);
+        bigger.set(g);
+        g = this.glowData = bigger;
+      }
       g[o] = x; g[o + 1] = y; g[o + 2] = fx; g[o + 3] = fy; g[o + 4] = len; g[o + 5] = hw;
-      g[o + 6] = r; g[o + 7] = gr; g[o + 8] = b; g[o + 9] = inten;
+      g[o + 6] = r; g[o + 7] = gr; g[o + 8] = b; g[o + 9] = inten; g[o + 10] = cut;
       n++;
     };
     const radial = (x: number, y: number, radius: number, r: number, gr: number, b: number, inten: number): void => cone(x, y, 0, 0, 0, radius, r, gr, b, inten);
-    // A MOVER's lights, SPRITE-RELATIVE: two warm CONES cast forward from the front headlights along the
-    // travel direction, + a red taillight pool at the rear. `cx,cy` is the sprite centre (lane-offset
-    // included), `fwd` the travel unit, `side` its perpendicular. `mul` scales intensity (cruiser flash).
-    const carGlow = (cx: number, cy: number, fwd: { dx: number; dy: number }, mul: number): void => {
-      const sx = -fwd.dy;
-      const sy = fwd.dx; // perpendicular (the car's lateral axis)
-      const fxC = cx + fwd.dx * 0.18;
-      const fyC = cy + fwd.dy * 0.18; // front bumper
-      cone(fxC + sx * 0.11, fyC + sy * 0.11, fwd.dx, fwd.dy, 1.7, 0.22, 1.0, 0.92, 0.74, 0.12 * mul);
-      cone(fxC - sx * 0.11, fyC - sy * 0.11, fwd.dx, fwd.dy, 1.7, 0.22, 1.0, 0.92, 0.74, 0.12 * mul);
-      radial(cx - fwd.dx * 0.24, cy - fwd.dy * 0.24, 0.4, 1.0, 0.18, 0.12, 0.16 * mul); // red taillight at the rear
-    };
+    // Headlights: each lamp's warm cone, cut where its ray stopped; a lamp that stops at a wall splashes
+    // a small pool on it. (The vehicle or person a beam stops at is lit on the sprite layer.)
+    for (const b of beams) {
+      cone(b.x, b.y, b.fx, b.fy, BEAM_REACH, 0.22, 1.0, 0.92, 0.74, 0.12 * b.mul, b.cut);
+      if (b.hit === 'wall') radial(b.x + b.fx * b.cut, b.y + b.fy * b.cut, 0.3, 1.0, 0.92, 0.74, 0.2 * b.mul);
+    }
+    // Taillights: a red pool behind every moving car and cruiser.
+    const tail = (x: number, y: number, hx: number, hy: number, mul: number): void =>
+      radial(x - hx * 0.24, y - hy * 0.24, 0.4, 1.0, 0.18, 0.12, 0.16 * mul);
     if (night > 0.02) {
       for (const c of ambient.cars) {
         if (c.parked) continue;
-        const lo = laneOffset(c.dir);
-        carGlow(c.x + 0.5 + lo.dx, c.y + 0.5 + lo.dy, dirVector(c.dir), night);
+        const pose = carPose(c, alpha);
+        tail(pose.x, pose.y, pose.hx, pose.hy, night);
       }
     }
-    // Cruisers: headlights + taillight always, PLUS a flashing red/blue roof-bar pool (emergency).
+    // Cruisers: a flashing red/blue roof-bar pool (emergency), day and night.
     const blue = Math.floor(timeSec * 1000 / 180) % 2 === 0;
     for (const c of ambient.cruisers) {
-      const lo = laneOffset(c.dir);
-      const cx = c.x + 0.5 + lo.dx;
-      const cy = c.y + 0.5 + lo.dy;
-      carGlow(cx, cy, dirVector(c.dir), Math.max(night, 0.5));
-      if (blue) radial(cx, cy, 0.75, 0.3, 0.45, 1.0, 0.5);
-      else radial(cx, cy, 0.75, 1.0, 0.25, 0.2, 0.5);
+      const pose = carPose(c, alpha);
+      tail(pose.x, pose.y, pose.hx, pose.hy, Math.max(night, 0.5));
+      if (blue) radial(pose.x, pose.y, 0.75, 0.3, 0.45, 1.0, 0.5);
+      else radial(pose.x, pose.y, 0.75, 1.0, 0.25, 0.2, 0.5);
     }
     // Buildings: RADIAL glow from the light map's actual lit pixels (windows / beacons), not the center.
     for (const bld of buildings) {
       const span = Math.max(bld.w, bld.h);
       const isPower = bld.kind >= 24 && bld.kind <= 30;
-      const pts = this.buildingPoints.get(`b-${bld.kind}-${bld.w === 1 && bld.h === 1 ? 'c' : `${bld.w}x${bld.h}`}`);
+      const pts = bld.lit || bld.blink ? { lights: this.pointsOf(bld.lit), blink: this.pointsOf(bld.blink) } : undefined;
       const at = (p: LightPoint): [number, number] => [bld.x + (0.5 + p.ox) * bld.w, bld.y + (0.5 + p.oy) * bld.h];
       if (pts && (isPower || night > 0.02)) {
         for (const p of pts.lights) {
@@ -306,7 +209,7 @@ export class GpuRenderer {
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW, origin, view, dayspeed: DAYSPEED });
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED });
   }
 
   /** Force a base re-upload on the next render (e.g. after a resize changes the base canvas size). */
@@ -317,11 +220,9 @@ export class GpuRenderer {
 
   dispose(): void {
     this.shader?.dispose();
-    this.batch?.dispose();
     this.glow?.dispose();
     this.canvas?.remove();
     this.shader = null;
-    this.batch = null;
     this.glow = null;
     this.gl = null;
     this.canvas = null;

@@ -1,48 +1,42 @@
-// Canvas2D pixel-art renderer v1. A thin DOM shell over the pure engine model:
-// it builds a programmatic tile atlas once, then blits only the visible tile
-// range with nearest-neighbour scaling for crisp pixels. All view math lives in
-// Camera and all map/fabric logic in the engine; this file holds no logic worth
-// unit-testing (manual validation), only tile painting and the draw loop.
-//
-// v1 adds the built layer on top of terrain: autotiled roads/rail (16 mask
-// variants each, connection mask from the engine) and footprint- and
-// condition-aware building tiles.
+// Canvas2D pixel-art renderer. A thin DOM shell over the pure engine model: it draws the Super skin's
+// code-painted tiles (snesTileset.ts, materialized by tilesetLoader.ts) for the visible tile range with
+// nearest-neighbour scaling, then the pixel-art agents on the same art-pixel grid. All view math lives
+// in Camera, all map/fabric logic in the engine, every decoration decision in decoration.ts; this file
+// only draws.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis } from '../engine/fabric';
+import { BuiltKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import {
   builtRenderKey,
   footprintCellKey,
-  renderKeyspace,
-  variantKey,
+  variantCounts,
+  pickVariantKey,
+  blobMask,
+  edgeKey,
+  emissionKey,
+  variantIndexOf,
   surfaceVariantIndex,
-  terrainTileTransform,
-  waterTileTransform,
   type FootprintPos,
 } from './renderKey';
-import { surfaceKey } from './tileset';
-import { tileCategory, tileTiling, exportTileName, type TileCategory } from './tilesetExport';
-import { wideRoadAt, powerPoleAt, poleWireDirs } from './decoration';
-import { parcelGlyph } from './glyphContent';
+import { iconKey } from './tileset';
+import type { SkinImages, LazyImages } from './tilesetLoader';
+import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { laneOffset, pedCurbOffset, dirVector } from './ambientContent';
+import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
+import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
+import { castHeadlights, type Body } from './headlights';
+import type { HeadlightBeam } from './gpuRenderer';
+import { CAR_LENGTH, CAR_WIDTH } from './ambientContent';
 import type { AmbientState } from './ambientContent';
-import type { AmbientSprites } from './ambientSprites';
-import { makeWaterFrames, makeGrassSheen, cloudFbm, buildWaterSloshFlipbook, WATER_SLOSH_ROTS, WATER_SLOSH_FRAMES } from './waterAnimation';
-import { dayNightBrightness, cloudShadow } from './lighting';
+import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 
 /** Precomputed CSS for the sparse-overlay scrim (see OverlaySource.dimBase). */
 const OVERLAY_DIM_CSS = `rgba(${OVERLAY_DIM[0]}, ${OVERLAY_DIM[1]}, ${OVERLAY_DIM[2]}, ${OVERLAY_DIM[3]})`;
 import { policeViolenceTint } from './policeViolenceOverlayContent';
 import { TravelMode } from '../citizens/modes';
-
-/** Citizen sprite colour by travel mode (walk/bike/streetcar/elevated-rail/drive) — so the modal
- *  shift the player engineers is visible: warm walkers, yellow cyclists, cyan tram + violet rail
- *  riders, car-red drivers. Indexed by TravelMode. */
-const MODE_COLORS: readonly string[] = ['#efe6d2', '#ffd24a', '#5ad1e0', '#b48cff', '#c44e3d'];
 
 /** A previewed tile for the hover/drag overlay: world coords + validity tint. */
 export interface PreviewTile {
@@ -63,557 +57,74 @@ export interface OverlaySource {
   dimBase?: boolean;
 }
 
-type RGB = readonly [number, number, number];
-
 // Connection-mask bits (must match engine transportMask): N=1, E=2, S=4, W=8.
 const N = 1;
 const E = 2;
 const S = 4;
 const W = 8;
 
-// Muted-but-distinct paints for parked cars, so rows of cars read against the dark
-// parking pavement. Picked deterministically per (lot, stall) — no rng.
-const CAR_COLORS = ['#a8483c', '#3f6e86', '#cfc8b4', '#5a7d4e', '#9a8466', '#46424e'] as const;
+/** Unit vector of 8-way direction `d` (0 = N, clockwise) — the inverse of snesAgents.heading8. */
+function dirVector8(d: number): [number, number] {
+  const D = Math.SQRT1_2;
+  return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
+}
 
-// How many tiles a power-line wire segment spans from a pole. Matches the pole
-// spacing in decoration.ts so each pole's wire reaches the next pole, reading as a
-// continuous line. Purely cosmetic (the placement decision is poleWireDirs').
-const POLE_WIRE_REACH = 4;
+/** Water pollution smoothed over a tile's 3×3 WATER neighbourhood, so murk shades across a bay or a pond
+ *  instead of sitting as a hard square on the one tile the runoff landed on. */
+function murkAt(map: GameMap, poll: ReadonlyMap<number, number>, x: number, y: number): number {
+  let sum = 0;
+  let n = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!map.inBounds(x + dx, y + dy)) continue;
+      const j = map.idx(x + dx, y + dy);
+      if (map.water[j] === 0) continue;
+      sum += poll.get(j) ?? 0;
+      n++;
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
 
-// Below this on-screen tile size (px) the SNES-style parcel glyphs (R1/C2/I/civic)
-// are skipped — they would be an unreadable smear when zoomed out. Above it, one
-// glyph is stamped per footprint, centered, with a dark halo for contrast.
-const GLYPH_MIN_TS = 16;
-
-// Procedural water frames: frame 0 is the static base (baked into the atlas); the set is the sloshy
-// flipbook cycled in the low-alpha overlay (the surface undulates) while it scrolls with the wind.
-const WATER_FRAMES = 16;
-const WATER_SLOSH_FPS = 5; // shear-cycle advance rate for the foam + precomputed per-tile slosh flipbook
-const WATER_LAYER_MARGIN = 96; // CSS-px margin around the memoized water layer (pans within it just re-blit)
-const ASPHALT_GROUND_COLOR = '#3a3833'; // paved-over redlined open ground
-const ASPHALT_GROUND_ALPHA = 0.72; // strength at full redline grade (faded by depaveAsphalt near greens)
+/** Wash level 1..3 (0 = none) for a 0..255 field — the dithered @wash/* overlays step, never fade. */
+function washLevel(v: number): number {
+  return v >= 170 ? 3 : v >= 90 ? 2 : v > 0 ? 1 : 0;
+}
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
 const ENCAMPMENT_WEAR = 225; // wear at/above which the heaviest-worn empty tile shows an encampment tent
 
-// Kinds that get a sparse flora-canopy accent under a tileset (the vegetated greens).
-const GREEN_FLORA_KINDS: ReadonlySet<number> = new Set([
-  BuiltKind.Parklet,
-  BuiltKind.CommunityGarden,
-  BuiltKind.Park,
-  BuiltKind.RewildedLand,
-]);
+const BANDS = 4; // elevation bands per terrain kind
 
-// Dharmapunk-warm terrain palette: [base, accent] per tile kind. The accent is
-// dithered in for subtle texture (deep/shallow water, gold-green meadows).
-const PALETTE: Record<string, readonly [RGB, RGB]> = {
-  ocean: [[26, 52, 92], [32, 64, 110]],
-  lake: [[40, 82, 120], [52, 98, 140]],
-  river: [[60, 120, 162], [82, 150, 192]],
-  bare: [[198, 178, 132], [212, 194, 152]],
-  meadow: [[150, 158, 74], [172, 180, 96]],
-  grass: [[82, 132, 62], [98, 152, 74]],
-  forest: [[34, 80, 46], [46, 98, 58]],
-};
-
-const KINDS = Object.keys(PALETTE);
-const BANDS = 4;
-
-// 4x4 Bayer matrix → ordered dither thresholds (0..15).
-const BAYER4: ReadonlyArray<ReadonlyArray<number>> = [
-  [0, 8, 2, 10],
-  [12, 4, 14, 6],
-  [3, 11, 1, 9],
-  [15, 7, 13, 5],
-];
-
-interface RoadStyle {
-  base: RGB;
-  accent: RGB;
-  line: RGB;
-  dashed: boolean;
-  double: boolean;
-}
-
-// Asphalt darkens and lane markings grow from street → avenue → highway.
-// QuietStreet(7) reads as a road (renderKey maps it to road-7-{mask}) but in a
-// calmer green-grey with chalk-soft markings — without this entry makeRoadTile(7)
-// would deref ROAD_STYLES[7]! (undefined) and throw on a placeable kind.
-const ROAD_STYLES: Record<number, RoadStyle> = {
-  [BuiltKind.RoadStreet]: { base: [92, 88, 84], accent: [104, 100, 96], line: [150, 146, 128], dashed: true, double: false },
-  [BuiltKind.RoadAvenue]: { base: [72, 68, 66], accent: [84, 80, 78], line: [196, 170, 72], dashed: false, double: false },
-  [BuiltKind.RoadHighway]: { base: [50, 48, 50], accent: [60, 58, 60], line: [206, 184, 80], dashed: false, double: true },
-  [BuiltKind.QuietStreet]: { base: [86, 96, 82], accent: [98, 108, 94], line: [156, 176, 132], dashed: true, double: false },
-  [BuiltKind.RoadRamp]: { base: [78, 74, 70], accent: [120, 112, 96], line: [210, 190, 96], dashed: true, double: false }, // an on/off ramp: a street-toned deck across the freeway
-};
-
-interface RailStyle {
-  base: RGB;
-  accent: RGB;
-  rail: RGB;
-  tie: RGB;
-}
-
-const RAIL_STYLE: RailStyle = {
-  base: [110, 102, 94],
-  accent: [124, 116, 108],
-  rail: [156, 156, 168],
-  tie: [70, 52, 40],
-};
-
-// Streetcar shares the rail tile shape on a paved base; elevated rail is a darker,
-// cooler structure. Both reuse makeRailTile via their style.
-const STREETCAR_STYLE: RailStyle = {
-  base: [78, 84, 88],
-  accent: [90, 96, 100],
-  rail: [172, 174, 182],
-  tie: [60, 58, 56],
-};
-const ELEV_STYLE: RailStyle = {
-  base: [56, 58, 72],
-  accent: [68, 70, 86],
-  rail: [150, 156, 184],
-  tie: [42, 42, 58],
-};
-
-interface PathStyle {
-  base: RGB;
-  accent: RGB;
-  line: RGB;
-}
-
-// Bike paths are protected green lanes; promenades are warm paved pedestrian ways.
-const BIKE_STYLE: PathStyle = { base: [46, 92, 70], accent: [56, 108, 82], line: [210, 224, 180] };
-const PED_STYLE: PathStyle = { base: [150, 128, 96], accent: [168, 144, 110], line: [206, 190, 150] };
-
-interface BuildingStyle {
-  base: RGB;
-  accent: RGB;
-  roof: RGB;
-}
-
-// Warm, distinguishable palette per building kind.
-const BUILDING_STYLES: Record<number, BuildingStyle> = {
-  [BuiltKind.HouseSingle]: { base: [150, 70, 55], accent: [168, 86, 68], roof: [110, 50, 40] },
-  [BuiltKind.Apartments]: { base: [132, 82, 72], accent: [150, 98, 86], roof: [96, 58, 50] },
-  [BuiltKind.Projects]: { base: [122, 122, 124], accent: [140, 140, 142], roof: [92, 92, 96] },
-  [BuiltKind.CommercialStrip]: { base: [182, 162, 120], accent: [198, 180, 140], roof: [150, 132, 96] },
-  [BuiltKind.Offices]: { base: [92, 112, 142], accent: [110, 132, 162], roof: [66, 84, 112] },
-  [BuiltKind.Industrial]: { base: [140, 92, 62], accent: [160, 110, 78], roof: [104, 66, 44] },
-  [BuiltKind.ParkingLot]: { base: [96, 93, 90], accent: [110, 107, 104], roof: [82, 80, 78] },
-  [BuiltKind.Civic]: { base: [190, 176, 142], accent: [206, 192, 158], roof: [152, 138, 108] },
-  // Police precinct — stark institutional blue-grey (the apparatus of control), set
-  // apart from the warm Civic palette so it never reads as a community amenity.
-  [BuiltKind.Precinct]: { base: [60, 70, 92], accent: [78, 90, 116], roof: [44, 52, 70] },
-  // Fire station — a civic service: warm brick-red with a bright bay, distinct from the cold precinct.
-  [BuiltKind.FireStation]: { base: [150, 60, 50], accent: [196, 84, 70], roof: [110, 44, 38] },
-  // Civic services — clinic (clinical white/teal), library (warm brick/wood), school (schoolhouse tan).
-  [BuiltKind.Clinic]: { base: [196, 210, 212], accent: [232, 242, 244], roof: [150, 176, 184] },
-  [BuiltKind.Library]: { base: [122, 92, 62], accent: [154, 118, 80], roof: [92, 68, 46] },
-  [BuiltKind.School]: { base: [182, 142, 72], accent: [214, 172, 94], roof: [140, 106, 52] },
-  // Power plants 24..30 — dirty centralized tier reads smoky/industrial (coal soot,
-  // gas steel, hydro concrete, nuclear cooling-tower grey); the renewables read
-  // bright (wind white, solar gold, fusion electric-cyan) — the clean transition is
-  // visible at a glance.
-  [BuiltKind.CoalPlant]: { base: [74, 70, 66], accent: [96, 90, 84], roof: [52, 48, 46] },
-  [BuiltKind.GasPlant]: { base: [110, 100, 96], accent: [132, 120, 114], roof: [82, 74, 70] },
-  [BuiltKind.HydroPlant]: { base: [120, 132, 140], accent: [142, 156, 164], roof: [92, 104, 112] },
-  [BuiltKind.NuclearPlant]: { base: [150, 156, 150], accent: [176, 182, 174], roof: [116, 122, 118] },
-  [BuiltKind.WindTurbine]: { base: [210, 214, 218], accent: [232, 236, 240], roof: [180, 186, 192] },
-  [BuiltKind.SolarPlant]: { base: [196, 168, 70], accent: [220, 192, 92], roof: [158, 132, 50] },
-  [BuiltKind.FusionPlant]: { base: [86, 168, 188], accent: [108, 196, 214], roof: [58, 130, 150] },
-  // Tech-tree-era 48..60 — solarpunk palette: parklet/garden greens, vertical-farm
-  // teal, water blues, solar/AI blues, warm commune purples, bazaar/commons sandstone.
-  [BuiltKind.Parklet]: { base: [88, 148, 84], accent: [104, 168, 98], roof: [64, 118, 62] },
-  // The road-diet planted median: a narrow strip of deep, even green between the carriageways.
-  [BuiltKind.PlantedMedian]: { base: [70, 130, 72], accent: [92, 158, 90], roof: [52, 104, 58] },
-  [BuiltKind.CommunityGarden]: { base: [104, 150, 72], accent: [122, 170, 86], roof: [78, 120, 54] },
-  [BuiltKind.CompostHub]: { base: [110, 84, 56], accent: [128, 100, 68], roof: [84, 62, 40] },
-  [BuiltKind.VerticalFarm]: { base: [72, 140, 96], accent: [88, 162, 114], roof: [50, 108, 72] },
-  [BuiltKind.WastewaterWorks]: { base: [70, 118, 128], accent: [86, 138, 148], roof: [50, 90, 100] },
-  [BuiltKind.EnergyNode]: { base: [74, 108, 160], accent: [92, 130, 184], roof: [52, 80, 128] },
-  [BuiltKind.AINode]: { base: [96, 104, 168], accent: [116, 124, 190], roof: [70, 76, 132] },
-  [BuiltKind.ADU]: { base: [166, 138, 98], accent: [184, 158, 116], roof: [128, 104, 72] },
-  [BuiltKind.CoopHousing]: { base: [150, 118, 150], accent: [170, 138, 170], roof: [114, 86, 116] },
-  [BuiltKind.Commune]: { base: [138, 108, 154], accent: [158, 128, 174], roof: [104, 78, 120] },
-  [BuiltKind.Bazaar]: { base: [180, 120, 90], accent: [200, 140, 108], roof: [146, 90, 64] },
-  [BuiltKind.MakerSpace]: { base: [150, 140, 110], accent: [170, 160, 128], roof: [112, 104, 80] },
-  [BuiltKind.HealingCommons]: { base: [196, 176, 150], accent: [212, 194, 168], roof: [158, 138, 116] },
-  // Rezoning greens 61..62 — depaved, soil-healing land. Park is a tended,
-  // mown-and-pathed green (bright, even); RewildedLand is a wilder, deeper scrub
-  // green — both distinct from Parklet's blue-green and CommunityGarden's olive.
-  [BuiltKind.Park]: { base: [96, 162, 92], accent: [118, 186, 110], roof: [72, 134, 70] },
-  [BuiltKind.RewildedLand]: { base: [58, 116, 64], accent: [78, 140, 80], roof: [40, 88, 48] },
-};
-
-// Coverage guards (headless-testable). The atlas iterates renderKeyspace() and
-// paintForKey derefs ROAD_STYLES[k]! / BUILDING_STYLES[kind]! — so a future
-// renderKey kind with no matching style would throw inside buildAtlas at Renderer
-// construction (a crash on load that tsc / npm run build / unit tests all miss,
-// since none execute the atlas). Exporting the painted key/kind sets lets a
-// headless test assert renderKeyspace ⊆ {paintable}, closing that gap.
-export const ROAD_STYLE_KINDS: readonly number[] = Object.keys(ROAD_STYLES).map(Number);
-export const BUILDING_STYLE_KINDS: readonly number[] = Object.keys(BUILDING_STYLES).map(Number);
-/** The key prefixes paintForKey's switch handles (anything else throws). */
-export const PAINTABLE_PREFIXES: readonly string[] = ['road', 'rail', 'streetcar', 'elev', 'bike', 'ped', 'b'];
-
-function clampByte(v: number): number {
-  return Math.min(255, Math.max(0, Math.round(v)));
-}
-
-function shade(c: RGB, delta: number): RGB {
-  return [clampByte(c[0] + delta), clampByte(c[1] + delta), clampByte(c[2] + delta)];
-}
-
-// Derelict tint: blend toward grime and darken (the < 128 condition tier).
-function weather(c: RGB): RGB {
-  const grime: RGB = [74, 78, 64];
-  const t = 0.4;
-  return [
-    clampByte(c[0] * (1 - t) + grime[0] * t - 14),
-    clampByte(c[1] * (1 - t) + grime[1] * t - 14),
-    clampByte(c[2] * (1 - t) + grime[2] * t - 14),
-  ];
-}
-
-type SetPixel = (x: number, y: number, rgb: RGB) => void;
-
-/** Paint a BASE_TILE×BASE_TILE canvas via a per-pixel callback. */
-function paintTile(paint: (set: SetPixel) => void): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = BASE_TILE;
-  c.height = BASE_TILE;
-  const ctx = c.getContext('2d')!;
-  const img = ctx.createImageData(BASE_TILE, BASE_TILE);
-  const set: SetPixel = (x, y, rgb) => {
-    if (x < 0 || x >= BASE_TILE || y < 0 || y >= BASE_TILE) return;
-    const o = (y * BASE_TILE + x) * 4;
-    img.data[o] = rgb[0];
-    img.data[o + 1] = rgb[1];
-    img.data[o + 2] = rgb[2];
-    img.data[o + 3] = 255;
-  };
-  paint(set);
-  ctx.putImageData(img, 0, 0);
-  return c;
-}
-
-// Paint over a SUPPLIED base image (a tileset surface texture, e.g. asphalt): blit it into a
-// BASE_TILE canvas, then run the per-pixel `paint` callback (lane markings) on top. The procedural
-// twin is paintTile (which starts from a dithered/empty base). imageSmoothing off keeps a normalized
-// source crisp. Used so a single tileable road texture skins all 16 autotile mask variants.
-function paintTileOver(base: AtlasImage, paint: (set: SetPixel) => void): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = BASE_TILE;
-  c.height = BASE_TILE;
-  const ctx = c.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(base, 0, 0, BASE_TILE, BASE_TILE);
-  const img = ctx.getImageData(0, 0, BASE_TILE, BASE_TILE);
-  const set: SetPixel = (x, y, rgb) => {
-    if (x < 0 || x >= BASE_TILE || y < 0 || y >= BASE_TILE) return;
-    const o = (y * BASE_TILE + x) * 4;
-    img.data[o] = rgb[0];
-    img.data[o + 1] = rgb[1];
-    img.data[o + 2] = rgb[2];
-    img.data[o + 3] = 255;
-  };
-  paint(set);
-  ctx.putImageData(img, 0, 0);
-  return c;
-}
-
-function ditherFill(set: SetPixel, base: RGB, accent: RGB): void {
-  for (let py = 0; py < BASE_TILE; py++) {
-    for (let px = 0; px < BASE_TILE; px++) {
-      const threshold = BAYER4[py % 4]![px % 4]!;
-      set(px, py, threshold < 5 ? accent : base); // ~5/16 accent coverage
-    }
-  }
-}
-
-function rectFill(set: SetPixel, x0: number, y0: number, x1: number, y1: number, rgb: RGB): void {
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) set(x, y, rgb);
-}
-
-function makeTerrainTile(base: RGB, accent: RGB): HTMLCanvasElement {
-  return paintTile((set) => ditherFill(set, base, accent));
-}
-
-// The connection-mask lane markings for a road tile, drawn OVER whatever base is already laid
-// (procedural dither or a tileset asphalt surface). Extracted so both bases share one marking pass.
-function paintRoadMarkings(set: SetPixel, kind: number, mask: number, wide: boolean): void {
-  const style = ROAD_STYLES[kind]!;
-  const cols = style.double ? [6, 9] : [7];
-  const rows = style.double ? [6, 9] : [7];
-  const mark = (s: SetPixel, x: number, y: number): void => {
-    if (style.dashed && ((x + y) & 1) !== 0) return; // dashed lane marking for streets
-    s(x, y, style.line);
-  };
-  if (wide) {
-    // Wide-body slab: a continuous asphalt mass for a 2-/3-row corridor — NO markings at all.
-    // (Previously a faint center seam was drawn toward each connected edge to hint travel
-    // direction, but on a long wide corridor every tile connects on all four sides, so the
-    // per-tile `+` tiled into a visible grid across the slab — Maddy, 2026-06-19. A clean slab
-    // is the intent anyway; per-corridor lane lines would need the corridor axis, a future pass.)
-    return;
-  }
-  // Junction (3+ connected edges): clear the intersection — draw NO centre markings through it, so a
-  // 4-way doesn't become a + cross and a street grid doesn't tile into a grid of crosses (Maddy
-  // 2026-06-19). Real lane lines stop at the box. Straight (2 opposite) and turns (2 adjacent) keep
-  // their line; dead-ends/isolated stubs keep theirs.
-  const conns = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
-  if (conns >= 3) return;
-  if (mask & N) for (let y = 0; y < 8; y++) for (const cx of cols) mark(set, cx, y);
-  if (mask & S) for (let y = 8; y < BASE_TILE; y++) for (const cx of cols) mark(set, cx, y);
-  if (mask & E) for (let x = 8; x < BASE_TILE; x++) for (const cy of rows) mark(set, x, cy);
-  if (mask & W) for (let x = 0; x < 8; x++) for (const cy of rows) mark(set, x, cy);
-  if (mask === 0) rectFill(set, 7, 7, 8, 8, style.line); // isolated stub
-}
-
-// A road tile = base + lane markings. The base is the procedural dither, OR a tileset asphalt
-// SURFACE texture (Maddy's call: "generate road textures with diffusion, paint the lines on top").
-// One tileable surface skins all 16 mask variants — markings stay procedural so autotiling + the
-// player's live road-building keep working.
-function makeRoadTile(kind: number, mask: number, wide = false, surface?: AtlasImage): HTMLCanvasElement {
-  if (surface) return paintTileOver(surface, (set) => paintRoadMarkings(set, kind, mask, wide));
-  const style = ROAD_STYLES[kind]!;
-  return paintTile((set) => {
-    ditherFill(set, style.base, style.accent);
-    paintRoadMarkings(set, kind, mask, wide);
-  });
-}
-
-function makeRailTile(mask: number, style: RailStyle = RAIL_STYLE): HTMLCanvasElement {
-  const vert = (mask & (N | S)) !== 0;
-  const horz = (mask & (E | W)) !== 0;
-  const railCols = [6, 9];
-  const railRows = [6, 9];
-  return paintTile((set) => {
-    ditherFill(set, style.base, style.accent);
-    // Ties first (under the rails), perpendicular to the travel direction.
-    if (vert) for (let y = 1; y < BASE_TILE; y += 3) for (let x = 3; x <= 12; x++) set(x, y, style.tie);
-    if (horz) for (let x = 1; x < BASE_TILE; x += 3) for (let y = 3; y <= 12; y++) set(x, y, style.tie);
-    // Twin rails toward each connected edge.
-    if (mask & N) for (let y = 0; y < 8; y++) for (const c of railCols) set(c, y, style.rail);
-    if (mask & S) for (let y = 8; y < BASE_TILE; y++) for (const c of railCols) set(c, y, style.rail);
-    if (mask & E) for (let x = 8; x < BASE_TILE; x++) for (const r of railRows) set(x, r, style.rail);
-    if (mask & W) for (let x = 0; x < 8; x++) for (const r of railRows) set(x, r, style.rail);
-    if (mask === 0) for (const c of railCols) for (let y = 6; y < 10; y++) set(c, y, style.rail);
-  });
-}
-
-// Bike paths / promenades: a soft center stripe toward each connected edge over a
-// dithered base (no ties, no double lines — these are gentle, low-speed ways).
-function makePathTile(style: PathStyle, mask: number): HTMLCanvasElement {
-  const cols = [7, 8];
-  const rows = [7, 8];
-  return paintTile((set) => {
-    ditherFill(set, style.base, style.accent);
-    if (mask & N) for (let y = 0; y < 8; y++) for (const cx of cols) set(cx, y, style.line);
-    if (mask & S) for (let y = 8; y < BASE_TILE; y++) for (const cx of cols) set(cx, y, style.line);
-    if (mask & E) for (let x = 8; x < BASE_TILE; x++) for (const cy of rows) set(x, cy, style.line);
-    if (mask & W) for (let x = 0; x < 8; x++) for (const cy of rows) set(x, cy, style.line);
-    if (mask === 0) rectFill(set, 6, 6, 9, 9, style.line);
-  });
-}
-
-function makeBuildingTile(kind: number, pos: string, tier: number): HTMLCanvasElement {
-  const style = BUILDING_STYLES[kind]!;
-  const base = tier === 1 ? weather(style.base) : style.base;
-  const accent = tier === 1 ? weather(style.accent) : style.accent;
-  const roof = tier === 1 ? weather(style.roof) : style.roof;
-  return paintTile((set) => {
-    ditherFill(set, base, accent);
-    // Darker outline gives each tile block definition at any zoom.
-    const edge = shade(base, -34);
-    for (let i = 0; i < BASE_TILE; i++) {
-      set(i, 0, edge);
-      set(i, BASE_TILE - 1, edge);
-      set(0, i, edge);
-      set(BASE_TILE - 1, i, edge);
-    }
-    // Roof inset varies by footprint position: center tiles get a full roof
-    // highlight, edge tiles a bar, corners stay the plain outer block.
-    if (pos === 'c') rectFill(set, 4, 4, 11, 11, roof);
-    else if (pos === 'e') rectFill(set, 4, 4, 11, 7, roof);
-    // Kind-specific marks.
-    if (kind === BuiltKind.ParkingLot) {
-      for (let y = 3; y < BASE_TILE - 2; y++) {
-        set(5, y, edge);
-        set(10, y, edge);
-      }
-    } else if (kind === BuiltKind.CommercialStrip) {
-      rectFill(set, 2, 2, BASE_TILE - 3, 4, shade(style.accent, 30)); // sign stripe
-    }
-  });
-}
-
-// Paint the one tile a built-layer render key names. The key grammar is owned by
-// renderKey.ts (the single source of truth iterated below); this dispatch parses
-// each key back to the right tile maker. Every key renderKeyspace() emits must be
-// handled here, or a placeable kind would render as a blank tile.
-function paintForKey(key: string, surfaces?: ReadonlyMap<string, AtlasImage>): HTMLCanvasElement {
-  const parts = key.split('-');
-  switch (parts[0]) {
-    case 'b':
-      return makeBuildingTile(Number(parts[1]), parts[2]!, Number(parts[3]));
-    case 'road': {
-      // parts[3] === 'w' is the wide-slab variant; key off the value, never the
-      // length (b-… building keys also split to length 4). A tileset road SURFACE (asphalt) is
-      // looked up per-kind then generic; absent → procedural dither base.
-      const kind = Number(parts[1]);
-      const surface = surfaces?.get(surfaceKey(`road-${kind}`)) ?? surfaces?.get(surfaceKey('road'));
-      return makeRoadTile(kind, Number(parts[2]), parts[3] === 'w', surface);
-    }
-    case 'rail':
-      return makeRailTile(Number(parts[1]));
-    case 'streetcar':
-      return makeRailTile(Number(parts[1]), STREETCAR_STYLE);
-    case 'elev':
-      return makeRailTile(Number(parts[1]), ELEV_STYLE);
-    case 'bike':
-      return makePathTile(BIKE_STYLE, Number(parts[1]));
-    case 'ped':
-      return makePathTile(PED_STYLE, Number(parts[1]));
-    default:
-      throw new Error(`unknown render key '${key}'`);
-  }
-}
-
-// The atlas is source-agnostic (ctx.drawImage takes any CanvasImageSource): procedural
-// painters return <canvas>, a tileset supplies decoded <img>. So a tileset is just an OVERRIDE
-// map layered on top of the painted base — present keys win, omitted keys keep the painter
-// (docs/art/asset-generation.md §0.5: an optional skin with per-key procedural fallback).
+// Atlas values are any drawable (the skin's materialized canvases).
 type AtlasImage = CanvasImageSource;
 
-// The procedural atlas is byte-identical for every Renderer and every tileset swap, so paint it
-// ONCE (lazily, on first construction) and cache it process-wide. The tile values are read-only
-// canvases — safe to share. This is the perf hinge for tileset swaps: applyTileset becomes a
-// shallow Map clone + O(overrides) set, NOT an O(all-keys ≈ hundreds of paintTile) repaint.
-let PROCEDURAL_ATLAS: Map<string, AtlasImage> | null = null;
+/** The atlas for a skin with an on-demand source: a miss on one of the source's keys materializes that
+ *  tile (once — the source memoizes) and keeps it. `has` answers for lazy keys without painting. */
+class LazyAtlas extends Map<string, AtlasImage> {
+  constructor(
+    entries: Iterable<readonly [string, AtlasImage]>,
+    private readonly lazy: LazyImages,
+  ) {
+    super(entries);
+  }
+  override get(key: string): AtlasImage | undefined {
+    const hit = super.get(key);
+    if (hit !== undefined || !this.lazy.keys.has(key)) return hit;
+    const img = this.lazy.get(key);
+    if (img) super.set(key, img);
+    return img;
+  }
+  override has(key: string): boolean {
+    return super.has(key) || this.lazy.keys.has(key);
+  }
+}
 
-function proceduralAtlas(): Map<string, AtlasImage> {
-  if (PROCEDURAL_ATLAS) return PROCEDURAL_ATLAS;
+/** The drawable tile atlas: the skin's eager tiles (minus its `@`-namespaced overlays/sprites, which are
+ *  never blitted as tiles), backed by its on-demand source when it has one. */
+function buildAtlas(skin: SkinImages): Map<string, AtlasImage> {
   const atlas = new Map<string, AtlasImage>();
-
-  // Terrain: kind × elevation band. (Terrain is not part of renderKeyspace — that
-  // enumerates only the built layer.)
-  for (const kind of KINDS) {
-    const [base, accent] = PALETTE[kind]!;
-    for (let band = 0; band < BANDS; band++) {
-      const delta = (band - 1) * 7; // higher band → slightly brighter
-      atlas.set(`${kind}-${band}`, makeTerrainTile(shade(base, delta), shade(accent, delta)));
-    }
-  }
-
-  // Built layer: iterate the canonical keyspace so the painted set and the
-  // requested set (builtRenderKey) have one source of truth.
-  for (const key of renderKeyspace()) atlas.set(key, paintForKey(key));
-
-  PROCEDURAL_ATLAS = atlas;
-  return atlas;
-}
-
-/**
- * The road SURFACE textures a tileset supplies, as an ordered variant list. Supports either N
- * tone-consistent VARIANTS (`@surface/road#0`, `#1`, … — cycled per-tile to break the repeated-
- * texture "plaid", Maddy 2026-06-19) or a single `@surface/road`. Empty ⇒ procedural asphalt.
- */
-function collectRoadSurfaces(overrides: ReadonlyMap<string, AtlasImage>): AtlasImage[] {
-  const out: AtlasImage[] = [];
-  for (let v = 0; ; v++) {
-    const img = overrides.get(variantKey(surfaceKey('road'), v));
-    if (!img) break;
-    out.push(img);
-  }
-  if (out.length === 0) {
-    const single = overrides.get(surfaceKey('road'));
-    if (single) out.push(single);
-  }
-  return out;
-}
-
-/**
- * How many building VARIANTS a tileset supplies, counting the base as variant 0. A tileset baking
- * `b-{kind}-c-{tier}#1`, `#2`, … (generate-variants.mjs) lets drawBase cycle them per parcel so the
- * same kind stops repeating. Returns max-index + 1, or 0 when no variant tiles exist.
- */
-function collectBuildingVariants(overrides: ReadonlyMap<string, AtlasImage>): number {
-  let max = 0;
-  for (const key of overrides.keys()) {
-    const m = /^b-\d+-[cek]-\d+#(\d+)$/.exec(key);
-    if (m) max = Math.max(max, Number(m[1]));
-  }
-  return max > 0 ? max + 1 : 0;
-}
-
-function buildAtlas(overrides?: ReadonlyMap<string, AtlasImage>): Map<string, AtlasImage> {
-  // Shallow clone of the cached procedural atlas (shares the painted tile canvases by reference).
-  const atlas = new Map(proceduralAtlas());
-  if (!overrides) return atlas;
-
-  // Road SURFACE textures (asphalt): when a tileset supplies one (or several variants), RE-PAINT
-  // the autotiled road tiles with the procedural lane markings drawn over that texture — one
-  // tileable surface skins all 16 mask variants (so autotiling + live road-building keep working).
-  // With >1 variant, each road key also gets per-variant tiles under variantKey() so drawBase can
-  // cycle them per-tile (anti-plaid). Only road keys are touched; every other key stays cached.
-  const roadSurfaces = collectRoadSurfaces(overrides);
-  if (roadSurfaces.length > 0) {
-    const roadKeys = [...atlas.keys()].filter((k) => k.startsWith('road-'));
-    for (const key of roadKeys) {
-      roadSurfaces.forEach((surf, v) => {
-        const tile = paintForKey(key, new Map([[surfaceKey('road'), surf]]));
-        atlas.set(variantKey(key, v), tile);
-        if (v === 0) atlas.set(key, tile); // base key = variant 0 (default / single-variant path)
-      });
-    }
-  }
-
-  // Full-tile overrides (terrain/buildings/segmented cells) win last; `@surface/*` entries are
-  // marking-painter INGREDIENTS, never drawable tiles, so they're skipped here.
-  for (const [key, img] of overrides) {
-    if (!key.startsWith('@')) atlas.set(key, img);
-  }
-
-  return atlas;
-}
-
-/** One exported procedural tile: its atlas key, control-PNG filename, diffusion spec, and PNG. */
-export interface ExportedTile {
-  key: string;
-  file: string;
-  category: TileCategory;
-  tiling: boolean;
-  png: string; // a `data:image/png;base64,…` URL of the native BASE_TILE×BASE_TILE tile
-}
-
-/**
- * Dump every procedural atlas tile as a native BASE_TILE PNG plus its diffusion spec —
- * the EXPORT half of the tileset generator (docs/art/satellite-tileset.md §5.6). Each
- * tiny tile is the structural ControlNet guide; the ComfyUI graph upscales it nearest-
- * exact, so exporting at native 16×16 keeps the whole keyspace a few hundred KB (one
- * browser_evaluate payload). Build-time tooling only — exposed via
- * window.bodhitropolis.exportTiles(); never on a render path, so it can allocate freely.
- */
-export function exportProceduralTiles(): ExportedTile[] {
-  const canvas = document.createElement('canvas');
-  canvas.width = BASE_TILE;
-  canvas.height = BASE_TILE;
-  const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  const out: ExportedTile[] = [];
-  for (const [key, tile] of proceduralAtlas()) {
-    ctx.clearRect(0, 0, BASE_TILE, BASE_TILE);
-    ctx.drawImage(tile, 0, 0, BASE_TILE, BASE_TILE);
-    out.push({
-      key,
-      file: exportTileName(key),
-      category: tileCategory(key),
-      tiling: tileTiling(key),
-      png: canvas.toDataURL('image/png'),
-    });
-  }
-  return out;
+  for (const [key, img] of skin) if (!key.startsWith('@')) atlas.set(key, img);
+  return skin.lazy ? new LazyAtlas(atlas, skin.lazy) : atlas;
 }
 
 function kindOf(map: GameMap, i: number): string {
@@ -660,48 +171,22 @@ function footprintPos(map: GameMap, x: number, y: number, pid: number): Footprin
 
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
-  // Rebuilt on a tileset swap (applyTileset), so not readonly. Source-agnostic values.
-  private atlas: Map<string, AtlasImage>;
-  // True when a tileset supplied at least one override → enables the segmented-footprint
-  // cell-key lookup in drawBase. False (procedural) keeps that path byte-identical + zero-cost.
-  private hasTileset = false;
-  // Count of road asphalt-surface variants (0 = procedural roads, 1 = single surface, >1 = cycle
-  // per-tile to break the repeated-texture plaid). Read in drawBase's per-tile road key pick.
-  private roadVariants = 0;
-  // building variant count (base + baked #1..#n), cycled per parcel under a tileset to break repeats.
-  private buildingVariants = 0;
-  // Ambient sprite catalog (cars/flora/smog/props), loaded async; null until set. Under a tileset,
-  // cars draw as tiny rotated car sprites ("micro machines") and smog plumes drift over polluted tiles.
-  private ambientSprites: AmbientSprites | null = null;
-  // Procedural water tiles: frame 0 is the static base (baked into the atlas); the set is the tileable
-  // texture scrolled at low alpha for the animated swirl/waves. [] = no tileset.
-  private waterFrames: CanvasImageSource[] = [];
-  // PRECOMPUTED water-slosh flipbook per water texture key (`ocean-2` → [rot][frame] canvases). Baked
-  // once on tileset load so the per-frame slosh is a plain blit per tile (not a live rotate+shear
-  // drawImage, which murdered FPS over hundreds of water tiles — Maddy). Empty when no tileset.
-  private waterSlosh = new Map<string, HTMLCanvasElement[][]>();
-  // Memoized composited water LAYER: the per-tile slosh only changes ~WATER_SLOSH_FPS×/sec, but the
-  // frame renders at 60 — so we render the water into this offscreen ONLY when the slosh frame or the
-  // camera changes, and blit it (one drawImage) the other frames. Kills the per-frame N-tile cost over
-  // large seas (Maddy: optimize water anim over large water areas).
-  private waterLayer: HTMLCanvasElement | null = null;
-  private waterLayerCtx: CanvasRenderingContext2D | null = null;
-  private waterLayerKey = '';
-  private waterLayerOrigin = { sx: 0, sy: 0 }; // camera origin when the layer was rendered (for pan-offset blits)
-  // GPU mode: the WebGL hybrid path renders the MAP underneath, so the Canvas2D base goes transparent
-  // and the CPU water/grass/cloud animations are skipped (the GPU does them). Sprites/decorations/UI
-  // still draw on top. CPU path stays the no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
+  private readonly atlas: Map<string, AtlasImage>;
+  // Per base key, how many hash-cycled variants the skin painted (`grass-1` → 4, `road-1-5` → 3). A tile
+  // picks one by position hash so a field or a street stops repeating on the tile grid.
+  private readonly tileVariants: ReadonlyMap<string, number>;
+  // Status icons (`@icon/unpowered`, `@icon/thriving`, `@icon/suffering`).
+  private readonly icons: Map<string, AtlasImage>;
+  // Terrain edge overlays (`@edge/shore/<mask>`, `@edge/canopy/<mask>`, `@edge/coast/<mask>`).
+  private readonly edges: Map<string, AtlasImage>;
+  // Unpowered parcel footprints (WORLD coords) from the last base pass — drawn per frame as a blinking
+  // icon when the skin supplies one (the base is cached, so a blink can't live there).
+  private unpoweredFootprints: { x: number; y: number; w: number }[] = [];
+  // GPU mode: the WebGL hybrid path renders the MAP underneath (day/night, building shadows), so the
+  // Canvas2D base goes transparent. Sprites/decorations/UI still draw on top. The CPU path stays the
+  // no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
   private gpuMode = false;
   private baseTexVersion = 0; // bumped each base rebuild so the GPU path knows to re-upload the base texture
-  private lightBuf: HTMLCanvasElement | null = null; // GPU mode: low-res sprite-lighting darkness buffer
-  // Cached screen-space clip masks (Path2D per kind: 'water', 'grass') so the animated overlays are
-  // O(1) draws/frame (clip + pattern fill) instead of a per-tile row-major loop (the antipattern).
-  private maskCache = new Map<string, { key: string; path: Path2D | null }>();
-  // Tileable wind-streak texture scrolled over grass/canopy for the subtle wavy-grass sheen.
-  private grassSheen: CanvasImageSource | null = null;
-  // Low-res offscreen buffer for the cloud-shadow field (evaluated in WORLD space each frame, then
-  // upscaled smooth over the viewport — non-tiling, drifts with the wind). Allocated lazily.
-  private cloudBuf: HTMLCanvasElement | null = null;
   // Cached base pass (terrain + built + overlay) on an offscreen canvas. Rebuilt
   // ONLY when invalidated (map/camera/overlay change), then blitted 1:1 onto the
   // visible canvas each frame. The hover preview and the ambient sprites live in
@@ -724,74 +209,66 @@ export class Renderer {
   // Light-bearing building footprints (WORLD coords) collected during drawBase, redrawn each frame in
   // drawSprites: an emission map (e.g. coal aviation beacons) overlaid additively over the footprint,
   // blinking + evading shading (the building twin of the cruiser's emissive bar).
-  private emissiveBuildings: { x: number; y: number; w: number; h: number; key: string; kind: number }[] = [];
+  // `lit`/`blink` are the skin's emission maps (@emit/…) for that footprint, tier and art variant.
+  private emissiveBuildings: {
+    x: number; y: number; w: number; h: number; kind: number; lit?: AtlasImage; blink?: AtlasImage;
+  }[] = [];
+  // Street-furniture overlays (@road/*: curbs, barriers, stop lines, lanes, median, poles) on the art grid.
+  private readonly roadInk: Map<string, AtlasImage>;
+  // Native pixel-art sprites (@sprite/*) and worn-ground overlays (@wear/*), drawn at exactly one art
+  // pixel per tile pixel (ts / BASE_TILE).
+  private readonly sprites: Map<string, AtlasImage>;
+  // Building emission maps (@emit/*), eager or materialized on first use from the lazy source.
+  private readonly skinEmission: Map<string, AtlasImage>;
+  private readonly lazyImages: LazyImages | null;
+  // This frame's cast headlights (headlights.ts), for the GPU glow pass, and the lit-silhouette cache:
+  // per sprite image, per 8-way light direction, the warm near-half of its pixels.
+  private beams: HeadlightBeam[] = [];
+  private murkSig = 0; // signature of the water-pollution levels the cached base was drawn with
+  private readonly litCache = new WeakMap<object, (HTMLCanvasElement | null)[]>();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    overrides?: ReadonlyMap<string, AtlasImage>,
+    skin: SkinImages,
   ) {
     this.ctx = canvas.getContext('2d')!;
     this.base = document.createElement('canvas');
     this.baseCtx = this.base.getContext('2d')!;
-    this.atlas = buildAtlas(overrides);
-    this.hasTileset = (overrides?.size ?? 0) > 0;
-    this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
-    this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
-    // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
-    // stay the baked textures (drawn per-tile rotated/scaled/cropped in drawBase for anti-plaid).
-    this.waterFrames = this.hasTileset
-      ? makeWaterFrames(this.atlas.get('ocean-0') ?? this.atlas.get('lake-0') ?? null, WATER_FRAMES, BASE_TILE)
-      : [];
-    this.grassSheen = this.hasTileset ? makeGrassSheen(BASE_TILE) : null;
-    this.buildWaterSlosh();
-  }
-
-  /** Precompute the per-texture slosh flipbooks (rotation × shear-frame) once, so the per-frame water
-   *  slosh is a cheap plain blit per tile rather than a live rotate+shear drawImage (the FPS killer). */
-  private buildWaterSlosh(): void {
-    this.waterSlosh.clear();
-    if (!this.hasTileset) return;
-    for (const key of this.atlas.keys()) {
-      if (!/^(ocean|lake|river)-\d+$/.test(key)) continue;
-      const tex = this.atlas.get(key);
-      if (tex) this.waterSlosh.set(key, buildWaterSloshFlipbook(tex, WATER_SLOSH_ROTS, WATER_SLOSH_FRAMES, BASE_TILE));
-    }
-  }
-
-  /**
-   * Swap the active tileset at runtime: rebuild the atlas with the given PNG overrides layered
-   * over the procedural painters, then invalidate the cached base so the next frame repaints.
-   * `overrides` empty/undefined ⇒ back to the pure procedural look. Lets the settings menu apply
-   * a tileset change live — no page reload, unlike a map-size change (which is a different seed).
-   */
-  applyTileset(overrides?: ReadonlyMap<string, AtlasImage>): void {
-    this.atlas = buildAtlas(overrides);
-    this.hasTileset = (overrides?.size ?? 0) > 0;
-    this.roadVariants = overrides ? collectRoadSurfaces(overrides).length : 0;
-    this.buildingVariants = overrides ? collectBuildingVariants(overrides) : 0;
-    // Sloshy water overlay frames, mutated FROM the baked water tile (hybrid). The base water tiles
-    // stay the baked textures (drawn per-tile rotated/scaled/cropped in drawBase for anti-plaid).
-    this.waterFrames = this.hasTileset
-      ? makeWaterFrames(this.atlas.get('ocean-0') ?? this.atlas.get('lake-0') ?? null, WATER_FRAMES, BASE_TILE)
-      : [];
-    this.grassSheen = this.hasTileset ? makeGrassSheen(BASE_TILE) : null;
-    this.buildWaterSlosh();
-    this.invalidateBase();
-  }
-
-  /** Publish the ambient sprite catalog (cars/flora/smog/props). Drawn per-frame in drawSprites;
-   *  no base invalidation needed (sprites aren't baked into the cached base). */
-  setAmbientSprites(sprites: AmbientSprites): void {
-    this.ambientSprites = sprites;
-    this.invalidateBase(); // flora canopies are baked into the cached base — repaint once loaded
+    const ns = (prefix: string): Map<string, AtlasImage> => new Map([...skin].filter(([k]) => k.startsWith(prefix)));
+    this.atlas = buildAtlas(skin);
+    this.tileVariants = variantCounts([...skin.keys(), ...(skin.lazy?.keys ?? [])]);
+    this.icons = ns('@icon/');
+    this.edges = ns('@edge/');
+    this.roadInk = ns('@road/');
+    this.skinEmission = ns('@emit/');
+    this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/'), ...ns('@wash/')]);
+    this.lazyImages = skin.lazy ?? null;
   }
 
   /** Toggle the GPU hybrid path: when on, the Canvas2D base goes transparent (the WebGL layer below
-   *  shows through) and the CPU water/grass/cloud animations are skipped (the GPU does them); sprites,
-   *  decorations, overlays + UI still draw on top. */
+   *  shows through); sprites, decorations, overlays + UI still draw on top. */
   setGpuMode(on: boolean): void {
     this.gpuMode = on;
     this.invalidateBase();
+  }
+
+  /** Draw a native pixel-art sprite centred on world point (wx, wy), at exactly one art pixel per tile
+   *  pixel, its top-left snapped to the same art-pixel grid the tiles are drawn on (no half-pixel smear). */
+  private drawArt(ctx: CanvasRenderingContext2D, img: AtlasImage, wx: number, wy: number, camera: Camera): void {
+    const w = (img as HTMLCanvasElement).width;
+    const h = (img as HTMLCanvasElement).height;
+    const ax = Math.round(wx * BASE_TILE - w / 2); // art-pixel coordinates of the top-left
+    const ay = Math.round(wy * BASE_TILE - h / 2);
+    const tx = Math.floor(ax / BASE_TILE);
+    const ty = Math.floor(ay / BASE_TILE);
+    const o = camera.tileOrigin(tx, ty);
+    const ps = camera.tileSize / BASE_TILE;
+    ctx.drawImage(img, o.dx + (ax - tx * BASE_TILE) * ps, o.dy + (ay - ty * BASE_TILE) * ps, w * ps, h * ps);
+  }
+
+  /** A skin light map by key — eager, or materialized on first use from the lazy source. */
+  private emissionImage(key: string): AtlasImage | undefined {
+    return this.skinEmission.get(key) ?? (this.lazyImages?.keys.has(key) ? this.lazyImages.get(key) : undefined);
   }
 
   /** The offscreen CPU base canvas (terrain + buildings + roads + all line/divider/marking rules) —
@@ -802,8 +279,47 @@ export class Renderer {
 
   /** Light-bearing building footprints collected during the last base build (world coords) — the GPU
    *  glow pass casts a faint window/beacon glow from each (Maddy: windows/blinkies cast glow too). */
-  emissiveBuildingList(): readonly { x: number; y: number; w: number; h: number; kind: number }[] {
+  emissiveBuildingList(): readonly { x: number; y: number; w: number; h: number; kind: number; lit?: AtlasImage; blink?: AtlasImage }[] {
     return this.emissiveBuildings;
+  }
+
+  /** This frame's headlight rays — cut where they hit — for the GPU glow pass. */
+  headlightBeams(): readonly HeadlightBeam[] {
+    return this.beams;
+  }
+
+  /** The warm RIM of a sprite lit by light travelling along 8-way direction `dir`: the opaque pixels within
+   *  two art pixels of its edge facing the lamp (the face the beam actually strikes), in one colour, for
+   *  an additive pass. Cached per image + dir. */
+  private litSilhouette(img: AtlasImage, dir: number): HTMLCanvasElement | null {
+    let byDir = this.litCache.get(img as object);
+    if (!byDir) {
+      byDir = new Array(8).fill(undefined);
+      this.litCache.set(img as object, byDir);
+    }
+    const hit = byDir[dir];
+    if (hit !== undefined) return hit;
+    const src = img as HTMLCanvasElement;
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    const cx = c.getContext('2d');
+    if (!cx) return (byDir[dir] = null);
+    cx.drawImage(src, 0, 0);
+    const id = cx.getImageData(0, 0, c.width, c.height);
+    const v = dirVector8(dir); // the light's travel direction; the lamp is back along it
+    const solid = (x: number, y: number): boolean =>
+      x >= 0 && y >= 0 && x < c.width && y < c.height && id.data[(y * c.width + x) * 4 + 3]! > 0;
+    const rim: boolean[] = [];
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        // lit if a step or two back toward the lamp leaves the sprite — the struck face
+        rim.push(solid(x, y) && (!solid(Math.round(x - v[0]), Math.round(y - v[1])) || !solid(Math.round(x - 2 * v[0]), Math.round(y - 2 * v[1]))));
+      }
+    }
+    rim.forEach((on, k) => id.data.set(on ? [248, 216, 88, 255] : [0, 0, 0, 0], k * 4)); // C.flower, warm
+    cx.putImageData(id, 0, 0);
+    return (byDir[dir] = c);
   }
 
   /** Increments each time the base is rebuilt — the GPU path re-uploads the base texture only when this
@@ -812,32 +328,6 @@ export class Renderer {
     return this.baseTexVersion;
   }
 
-
-  /** A cached screen-space clip path of the visible tiles matching `want`, rebuilt only when the screen
-   *  alignment (range + zoom + sub-tile offset) changes — so an animated overlay clips in O(1)
-   *  draws/frame instead of a per-tile row-major loop (the top-bar antipattern). Null = none in view. */
-  private tileMask(world: WorldState, camera: Camera, name: string, want: (map: GameMap, i: number) => boolean): Path2D | null {
-    const ts = camera.tileSize;
-    const range = camera.visibleTileRange();
-    const o = camera.worldToScreen(range.x0, range.y0);
-    const key = `${range.x0},${range.y0},${range.x1},${range.y1},${ts.toFixed(2)},${Math.floor(o.sx)},${Math.floor(o.sy)}`;
-    const cached = this.maskCache.get(name);
-    if (cached && cached.key === key) return cached.path;
-    const map = world.map;
-    const path = new Path2D();
-    let any = false;
-    for (let ty = range.y0; ty <= range.y1; ty++) {
-      for (let tx = range.x0; tx <= range.x1; tx++) {
-        if (!want(map, map.idx(tx, ty))) continue;
-        const p = camera.worldToScreen(tx, ty);
-        path.rect(Math.floor(p.sx), Math.floor(p.sy), Math.ceil(ts), Math.ceil(ts));
-        any = true;
-      }
-    }
-    const result = any ? path : null;
-    this.maskCache.set(name, { key, path: result });
-    return result;
-  }
 
   /** Set (or clear) the hover/drag preview tiles drawn as translucent tints. */
   setPreview(tiles: readonly PreviewTile[] | null): void {
@@ -898,61 +388,66 @@ export class Renderer {
 
     const ts = camera.tileSize;
     const range = camera.visibleTileRange();
-    // Per-parcel anchor marks (glyph + unpowered pip) are COLLECTED during the tile
-    // loop and drawn in a second pass below — a multi-tile footprint's later tiles
-    // would otherwise paint over a mark drawn at the anchor tile (z-order fix).
-    const marks: { dx: number; dy: number; w: number; h: number; kind: number; density: number; unpowered: boolean }[] = [];
     this.emissiveBuildings.length = 0; // re-collected this pass (refreshed on every base rebuild)
+    this.unpoweredFootprints.length = 0; // likewise
+    // A street-furniture overlay at a tile.
+    const ink = (key: string, dx: number, dy: number): void => {
+      const img = this.roadInk.get(key);
+      if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+    };
+    // Power poles (props), drawn AFTER the tile loop so no later tile paints over one.
+    const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
       for (let tx = range.x0; tx <= range.x1; tx++) {
         const i = map.idx(tx, ty);
-        const { sx, sy } = camera.worldToScreen(tx, ty);
-        const dx = Math.floor(sx);
-        const dy = Math.floor(sy);
+        const { dx, dy } = camera.tileOrigin(tx, ty); // seam-free integer origin
 
         const tkind = kindOf(map, i);
-        const terrain = this.atlas.get(`${tkind}-${bandOf(map.elevation[i]!)}`)!;
+        const terrainKey = `${tkind}-${bandOf(map.elevation[i]!)}`;
         const isWater = tkind === 'ocean' || tkind === 'lake' || tkind === 'river';
-        if (this.hasTileset && isWater) {
-          // Water HYBRID: draw the baked water texture with a per-tile RANDOM rotation + scale, clipped
-          // to the tile (stochastic tiling) so the sea never reads as plaid; the sloshy wang animates
-          // over it (drawSprites). Scale ≥ √2 so the rotated tile still covers its clipped square.
-          const wt = waterTileTransform(tx, ty);
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(dx, dy, ts, ts);
-          ctx.clip();
-          ctx.translate(dx + ts / 2, dy + ts / 2);
-          ctx.rotate(wt.rot * Math.PI * 2);
-          ctx.scale(wt.scale, wt.scale);
-          ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, -ts / 2, -ts / 2, ts, ts);
-          ctx.restore();
-        } else if (this.hasTileset) {
-          // Non-water terrain: a deterministic dihedral (90° rot + mirror) to break the repeated plaid.
-          const t = terrainTileTransform(tx, ty);
-          ctx.save();
-          ctx.translate(dx + ts / 2, dy + ts / 2);
-          if (t.rot) ctx.rotate((t.rot * Math.PI) / 2);
-          if (t.flip) ctx.scale(-1, 1);
-          ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, -ts / 2, -ts / 2, ts, ts);
-          ctx.restore();
-        } else {
-          ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
-        }
+        const picked = pickVariantKey(terrainKey, tx, ty, this.tileVariants);
+        // polluted water is the same tile palette-swapped toward murk (snesTileset murkTiles), by level
+        const murk = isWater && ambient ? washLevel(murkAt(map, ambient.waterPollution, tx, ty)) : 0;
+        const terrain =
+          (murk > 0 ? this.atlas.get(`${picked}~m${murk}`) : undefined) ?? this.atlas.get(picked) ?? this.atlas.get(terrainKey)!;
+        ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
 
         // ASPHALT GROUND: redlined OPEN ground reads as paved-over disinvestment (env-justice arc);
         // the player DE-PAVES it back to living ground by greening/rewilding nearby (depaveAsphalt
         // fades it near greens). Cached in the base (redline is static; greens invalidate on build).
-        // Drawn over open terrain only (built tiles cover their own ground). Procedural + tileset.
-        const pave = depaveAsphalt(map, tx, ty);
-        if (pave > 0) {
-          ctx.globalAlpha = (pave / 255) * ASPHALT_GROUND_ALPHA;
-          ctx.fillStyle = ASPHALT_GROUND_COLOR;
-          ctx.fillRect(dx, dy, Math.ceil(ts), Math.ceil(ts));
-          ctx.globalAlpha = 1;
-        }
+        // Drawn over open terrain only (built tiles cover their own ground).
+        // (not under forest canopy: woods read as woods, the paved-over ground is the open land around them)
+        // only heavily redlined ground shows mats at all, so most open land reads green
+        const grade = tkind === 'forest' ? 0 : depaveAsphalt(map, tx, ty);
+        const pave = grade >= 230 ? 3 : grade >= 190 ? 2 : grade >= 150 ? 1 : 0;
+        const paved = pave > 0 ? this.sprites.get(`@wash/asphalt/${pave}/${surfaceVariantIndex(tx, ty, 3)}`) : undefined;
+        if (paved) ctx.drawImage(paved, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
 
         const built = map.built[i]!;
+
+        // TERRAIN EDGES: a shoreline on water beside land, and forest canopy spilling onto open, unbuilt
+        // land — soft edges instead of square steps. Drawn over the terrain, under anything built.
+        // Out-of-map neighbours count as "same", so no edge there.
+        {
+          const nb = (dx: number, dy: number, test: (k: string) => boolean): boolean =>
+            map.inBounds(tx + dx, ty + dy) && test(kindOf(map, map.idx(tx + dx, ty + dy)));
+          const around = (test: (k: string) => boolean): number =>
+            blobMask({
+              n: nb(0, -1, test), e: nb(1, 0, test), s: nb(0, 1, test), w: nb(-1, 0, test),
+              ne: nb(1, -1, test), se: nb(1, 1, test), sw: nb(-1, 1, test), nw: nb(-1, -1, test),
+            });
+          const waterK = (k: string): boolean => k === 'ocean' || k === 'lake' || k === 'river';
+          const draw = (family: string, m: number): void => {
+            const edge = m !== 0 ? this.edges.get(edgeKey(family, m)) : undefined;
+            if (edge) ctx.drawImage(edge, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+          };
+          if (isWater) draw('shore', around((k) => !waterK(k)));
+          else {
+            if (built === 0 && tkind !== 'forest') draw('canopy', around((k) => k === 'forest'));
+            draw('coast', around(waterK)); // convex land corners cut back to water (diagonal coasts)
+          }
+        }
+
         if (built !== 0) {
           // The kind-dispatch is a single pure call (renderKey.ts); transport keys
           // on the connection mask, buildings on footprint position + condition tier.
@@ -962,8 +457,13 @@ export class Renderer {
           const clAxis = isT ? freewayCenterLaneAxis(map, tx, ty) : null;
           // A ramp uses its FREEWAY-axis marking mask (not the full 4-way connection) so its dashed
           // line runs straight through the freeway instead of crossing the surface street it links.
-          const mask =
-            built === BuiltKind.RoadRamp
+          // the class this road tile is PAINTED as (a connector at a highway bend wears highway paint)
+          const paintKind = isT ? roadPaintKind(map, tx, ty) : built;
+          // an at-grade road crossing a freeway is a junction box: clear paint, no lanes / median over it
+          const crossing = isT && freewayCrossing(map, tx, ty);
+          const mask = crossing
+            ? N | E | S | W
+            : built === BuiltKind.RoadRamp && paintKind === BuiltKind.RoadRamp
               ? rampMarkingMask(map, tx, ty)
               : clAxis !== null
                 ? clAxis === 'v'
@@ -978,174 +478,71 @@ export class Renderer {
           // wideRoadAt is predicate-guarded (false for any non-road tile), so this
           // only ever flips the slab variant on for a 2-/3-row road corridor.
           const wide = wideRoadAt(map, tx, ty);
-          // Building tiles under an active tileset try the SEGMENTED-footprint cell key first
-          // (a single W×H image sliced per cell, for seam continuity) and fall back to the
-          // procedural pos/tier key when the tileset doesn't supply that cell. The procedural
-          // path never enters this branch (hasTileset false), so it stays byte-identical.
-          let builtKey = builtRenderKey(built, mask, pos, tier, wide);
-          if (this.hasTileset && !isT && pid !== 0) {
+          // road tiles are keyed by the class they're PAINTED as (a street linking highway runs at a bend
+          // wears highway paint — decoration.roadPaintKind); everything else by its own kind. A tile picks
+          // one of its painted variants by position hash (anti-plaid).
+          let builtKey = pickVariantKey(builtRenderKey(paintKind, mask, pos, tier, wide), tx, ty, this.tileVariants);
+          if (!isT && pid !== 0) {
+            // a building is one W×H drawing sliced per cell; its variant is picked by the parcel ANCHOR so
+            // every cell of one footprint agrees
             const fp = parcels.get(pid - 1);
             const cellKey = footprintCellKey(built, fp.width, fp.height, tx - fp.x, ty - fp.y, tier);
-            if (this.atlas.has(cellKey)) {
-              builtKey = cellKey; // segmented multi-tile cell wins (seam continuity)
-            } else if (this.buildingVariants > 1) {
-              // 1×1 building VARIETY: cycle baked variants (b-…#n) by the PARCEL ANCHOR hash, so the
-              // whole footprint agrees and adjacent same-kind parcels read distinctly. Falls back to
-              // the base key when that variant slot has no baked tile (e.g. variant 0).
-              const vk = variantKey(builtKey, surfaceVariantIndex(fp.x, fp.y, this.buildingVariants));
-              if (this.atlas.has(vk)) builtKey = vk;
-            }
-          }
-          // Road asphalt-surface VARIANT pick (anti-plaid): cycle the tone-consistent variants
-          // per-tile via a direction-neutral position hash, so the surface doesn't tile into a grid.
-          if (this.roadVariants > 1 && builtKey.startsWith('road-')) {
-            builtKey = variantKey(builtKey, surfaceVariantIndex(tx, ty, this.roadVariants));
-          }
-          // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, pave a road band ACROSS
-          // the track UNDER the rails (so the rails read as running through the asphalt — drawn before
-          // the rail tile). The white stop lines go on top, after. Structural — procedural + tileset.
-          const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
-          if (xMask !== 0) {
-            ctx.fillStyle = '#3a3833'; // asphalt of the crossing roadway
-            if (xMask & (N | S)) ctx.fillRect(dx + ts * 0.28, dy, Math.ceil(ts * 0.44), Math.ceil(ts)); // road runs N–S
-            if (xMask & (E | W)) ctx.fillRect(dx, dy + ts * 0.28, Math.ceil(ts), Math.ceil(ts * 0.44)); // road runs E–W
+            if (this.atlas.has(cellKey)) builtKey = pickVariantKey(cellKey, fp.x, fp.y, this.tileVariants);
           }
           const builtTile = this.atlas.get(builtKey);
           if (builtTile) ctx.drawImage(builtTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
-          // Road-class value (Maddy): streets read lighter than avenues lighter than freeways. The
-          // asphalt is normalized to one average at load; this darkens the heavier classes on top.
-          if (this.hasTileset && builtTile) {
-            const darken = built === BuiltKind.RoadHighway ? 0.26 : built === BuiltKind.RoadAvenue ? 0.13 : 0;
-            if (darken > 0) {
-              ctx.globalAlpha = darken;
-              ctx.fillStyle = '#000';
-              ctx.fillRect(dx, dy, Math.ceil(ts), Math.ceil(ts));
-              ctx.globalAlpha = 1;
-            }
-          }
-
-          // Flora canopies: a sparse tree/shrub sprite over the green-amenity kinds (parks, gardens,
-          // rewilded land) under a tileset — Google-Maps-style canopy dots. Baked into the cached base
-          // (static, hash-gated to ~⅗ of tiles so it reads as accents, not a solid mat).
-          const flora = this.hasTileset ? this.ambientSprites?.flora : undefined;
-          if (flora && flora.length > 0 && GREEN_FLORA_KINDS.has(built) && surfaceVariantIndex(tx, ty, 5) < 3) {
-            const img = flora[surfaceVariantIndex(tx * 7, ty * 13, flora.length)]!;
-            const fs = ts * 0.82;
-            ctx.drawImage(img, dx + (ts - fs) / 2, dy + (ts - fs) / 2, fs, fs);
-          }
-
+          // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, the road's asphalt band runs
+          // ACROSS the track with the rails showing through it; the white stop lines go on top, after.
+          const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
+          if (xMask & (N | S)) ink('@road/xband/v', dx, dy); // road runs N–S
+          if (xMask & (E | W)) ink('@road/xband/h', dx, dy); // road runs E–W
           // Limited-access DIVIDER: a concrete barrier on each edge where a freeway abuts a surface
           // road (a frontage avenue) — you physically can't cross there, only at a ramp. Per-tile
           // (depends on neighbour kinds), drawn OVER the road like the power poles, not an atlas key.
-          // Structural/mechanical, so always on (procedural + any tileset).
+          // Structural/mechanical, so always on.
           if (isT) {
             // minRun 3: only barrier a SUSTAINED freeway/frontage stretch (>2 tiles). A 1-tile
             // freeway↔street contact is a crossing / onramp, not a frontage — no barrier there.
             const div = roadDividerMask(map, tx, ty, 3);
-            if (div !== 0) {
-              const bw = Math.max(2, Math.round(ts * 0.16));
-              const concrete = '#d8d2c4';
-              const ridge = '#3a3630'; // shadow line on the road-facing side, for depth
-              if (div & N) { ctx.fillStyle = concrete; ctx.fillRect(dx, dy, ts, bw); ctx.fillStyle = ridge; ctx.fillRect(dx, dy + bw - 1, ts, 1); }
-              if (div & S) { ctx.fillStyle = concrete; ctx.fillRect(dx, dy + ts - bw, ts, bw); ctx.fillStyle = ridge; ctx.fillRect(dx, dy + ts - bw, ts, 1); }
-              if (div & W) { ctx.fillStyle = concrete; ctx.fillRect(dx, dy, bw, ts); ctx.fillStyle = ridge; ctx.fillRect(dx + bw - 1, dy, 1, ts); }
-              if (div & E) { ctx.fillStyle = concrete; ctx.fillRect(dx + ts - bw, dy, bw, ts); ctx.fillStyle = ridge; ctx.fillRect(dx + ts - bw, dy, 1, ts); }
-            }
+            if (div !== 0) ink(`@road/divider/${div}`, dx, dy);
 
             // CURB / sidewalk / gutter: on each edge where a surface road meets non-road (a parcel
             // or open land), a light sidewalk strip with a dark gutter line on its road-facing side.
             // Turns the "field of asphalt" into a street with edges. Per-tile (neighbour-dependent).
             const curb = roadCurbMask(map, tx, ty);
-            if (curb !== 0) {
-              const sw = Math.max(1, Math.round(ts * 0.16));
-              const walk = '#b0aa9c'; // warm concrete sidewalk (distinct from the white barrier)
-              const gutter = '#26221c'; // the gutter channel where it meets the asphalt
-              if (curb & N) { ctx.fillStyle = walk; ctx.fillRect(dx, dy, ts, sw); ctx.fillStyle = gutter; ctx.fillRect(dx, dy + sw - 1, ts, 1); }
-              if (curb & S) { ctx.fillStyle = walk; ctx.fillRect(dx, dy + ts - sw, ts, sw); ctx.fillStyle = gutter; ctx.fillRect(dx, dy + ts - sw, ts, 1); }
-              if (curb & W) { ctx.fillStyle = walk; ctx.fillRect(dx, dy, sw, ts); ctx.fillStyle = gutter; ctx.fillRect(dx + sw - 1, dy, 1, ts); }
-              if (curb & E) { ctx.fillStyle = walk; ctx.fillRect(dx + ts - sw, dy, sw, ts); ctx.fillStyle = gutter; ctx.fillRect(dx + ts - sw, dy, 1, ts); }
-            }
+            const corners = innerCornerMask(map, tx, ty);
+            if (corners !== 0) ink(`@road/curbCorner/${corners}`, dx, dy); // block corners the curbs miss
+            const zebras = crosswalkMask(map, tx, ty);
+            if (zebras !== 0) ink(`@road/zebra/${zebras}`, dx, dy); // crossings on the approaches to a junction
+            if (curb !== 0) ink(`@road/curb/${curb}`, dx, dy);
 
             // Level-crossing PAINT: the white stop line a road has at a rail/tram crossing, on each
             // road-approach edge (the asphalt band + rails are already laid below/in the rail tile).
-            if (xMask !== 0) {
-              ctx.fillStyle = '#f2efe6';
-              const lw = Math.max(1, Math.round(ts * 0.11));
-              if (xMask & N) ctx.fillRect(dx + ts * 0.26, dy + Math.round(ts * 0.10), Math.ceil(ts * 0.48), lw);
-              if (xMask & S) ctx.fillRect(dx + ts * 0.26, dy + ts - Math.round(ts * 0.10) - lw, Math.ceil(ts * 0.48), lw);
-              if (xMask & W) ctx.fillRect(dx + Math.round(ts * 0.10), dy + ts * 0.26, lw, Math.ceil(ts * 0.48));
-              if (xMask & E) ctx.fillRect(dx + ts - Math.round(ts * 0.10) - lw, dy + ts * 0.26, lw, Math.ceil(ts * 0.48));
-            }
+            if (xMask !== 0) ink(`@road/xing/${xMask}`, dx, dy);
 
             // Freeway lane markings — ONLY on a WIDE (multi-lane) freeway (a 1-wide highway keeps its
             // own double-yellow). Two parts, neither doubled (Maddy 2026-06-19): (1) a dashed gold
             // CENTERLINE down each lane (hidden under the median on the spine, so it shows on the
             // outer lanes); (2) one line per INTER-LANE boundary, drawn ONCE per seam — the E/S side
             // only, since the neighbour's W/N edge is the same seam.
-            if (built === BuiltKind.RoadHighway && wide) {
+            if (built === BuiltKind.RoadHighway && wide && !crossing) {
               const fAxis = freewayAxis(map, tx, ty);
               if (fAxis !== null) {
-                ctx.fillStyle = '#cebe6e'; // freeway lane gold
-                const dash = Math.max(1, Math.round(ts * 0.16));
-                const lw = Math.max(1, Math.round(ts * 0.06));
-                if (fAxis === 'v') {
-                  const lx = Math.floor(dx + ts / 2 - lw / 2);
-                  for (let yy = 0; yy < ts; yy += dash * 2) ctx.fillRect(lx, dy + yy, lw, dash);
-                } else {
-                  const ly = Math.floor(dy + ts / 2 - lw / 2);
-                  for (let xx = 0; xx < ts; xx += dash * 2) ctx.fillRect(dx + xx, ly, dash, lw);
-                }
-                const bnd = freewayLaneBoundaryMask(map, tx, ty);
-                if (bnd & E) for (let yy = 0; yy < ts; yy += dash * 2) ctx.fillRect(dx + ts - lw, dy + yy, lw, dash);
-                if (bnd & S) for (let xx = 0; xx < ts; xx += dash * 2) ctx.fillRect(dx + xx, dy + ts - lw, dash, lw);
+                ink(`@road/flane/${fAxis}`, dx, dy);
+                const edges = freewayLaneBoundaryMask(map, tx, ty) & (E | S);
+                if (edges) ink(`@road/flaneEdge/${edges}`, dx, dy);
               }
             }
 
             // Freeway CENTER LANE (two-way left-turn / "suicide" lane): a surface street running
             // through the freeway middle. Draw the classic yellow solid-OUTER + dashed-INNER markings
             // on the flanking edges (the boundary with the freeway lanes). clAxis computed above.
-            if (clAxis !== null) {
-              const solid = '#e2c84e';
-              const lw = Math.max(1, Math.round(ts * 0.06));
-              const dash = Math.max(1, Math.round(ts * 0.16));
-              const gap = lw + 1;
-              if (clAxis === 'v') {
-                // solid lines at the W and E edges, dashed lines just inside them
-                ctx.fillStyle = solid;
-                ctx.fillRect(dx, dy, lw, ts);
-                ctx.fillRect(dx + ts - lw, dy, lw, ts);
-                for (let yy = 0; yy < ts; yy += dash * 2) {
-                  ctx.fillRect(dx + gap, dy + yy, lw, dash);
-                  ctx.fillRect(dx + ts - lw - gap, dy + yy, lw, dash);
-                }
-              } else {
-                ctx.fillStyle = solid;
-                ctx.fillRect(dx, dy, ts, lw);
-                ctx.fillRect(dx, dy + ts - lw, ts, lw);
-                for (let xx = 0; xx < ts; xx += dash * 2) {
-                  ctx.fillRect(dx + xx, dy + gap, dash, lw);
-                  ctx.fillRect(dx + xx, dy + ts - lw - gap, dash, lw);
-                }
-              }
-            }
+            if (clAxis !== null) ink(`@road/turn/${clAxis}`, dx, dy);
 
             // Freeway MEDIAN: a jersey barrier down the centre spine tile of the 3-wide corridor,
             // running lengthwise (separates the opposing carriageways). Per-tile; opens at ramps.
-            const medianAxis = freewayMedianAxis(map, tx, ty);
-            if (medianAxis !== null) {
-              const mb = Math.max(2, Math.round(ts * 0.2));
-              const concrete = '#d8d2c4';
-              const ridge = '#3a3630';
-              if (medianAxis === 'v') {
-                const mx = Math.floor(dx + ts / 2 - mb / 2);
-                ctx.fillStyle = concrete; ctx.fillRect(mx, dy, mb, ts);
-                ctx.fillStyle = ridge; ctx.fillRect(Math.floor(dx + ts / 2), dy, 1, ts);
-              } else {
-                const my = Math.floor(dy + ts / 2 - mb / 2);
-                ctx.fillStyle = concrete; ctx.fillRect(dx, my, ts, mb);
-                ctx.fillStyle = ridge; ctx.fillRect(dx, Math.floor(dy + ts / 2), ts, 1);
-              }
-            }
+            const medianAxis = crossing ? null : freewayMedianAxis(map, tx, ty);
+            if (medianAxis !== null) ink(`@road/median/${medianAxis}`, dx, dy);
           }
 
           // Elevated deck (overpass): drawn LIFTED above the road below with a drop shadow, so it
@@ -1155,48 +552,35 @@ export class Renderer {
           if (deck !== 0) {
             const deckTile = this.atlas.get(builtRenderKey(deck, deckMask(map, tx, ty), 'c', 0));
             if (deckTile) {
-              const lift = Math.max(1, Math.round(ts * 0.2));
-              ctx.fillStyle = 'rgba(8, 6, 14, 0.32)'; // the overpass's shadow on the road
-              ctx.fillRect(dx + Math.round(ts * 0.1), dy + Math.round(ts * 0.12), ts, ts);
-              ctx.drawImage(deckTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy - lift, ts, ts);
+              // lift and shadow offset in whole art pixels, the shadow a half-tone dither
+              const ps = ts / BASE_TILE;
+              const shade = this.sprites.get('@wash/shadow');
+              if (shade) ctx.drawImage(shade, 0, 0, BASE_TILE, BASE_TILE, dx + 2 * ps, dy + 2 * ps, ts, ts);
+              ctx.drawImage(deckTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy - 3 * ps, ts, ts);
             }
           }
 
-          // Power-line decoration: pure-visual ctx drawing (no atlas key). Every
-          // DECISION is owned by decoration.ts — powerPoleAt picks the pole tiles,
-          // poleWireDirs picks the wire offsets. The shell only draws the mast and a
-          // segment toward each returned offset; it holds no branching of its own.
-          if (powerPoleAt(map, tx, ty)) {
-            const cx = dx + ts * 0.5;
-            const cy = dy + ts * 0.5;
-            const mast = Math.max(1, ts * 0.16);
-            ctx.fillStyle = '#241f2b';
-            ctx.fillRect(cx - mast / 2, cy - mast / 2, mast, mast);
-            ctx.strokeStyle = 'rgba(26, 22, 32, 0.85)';
-            ctx.lineWidth = Math.max(1, ts * 0.05);
-            for (const [ox, oy] of poleWireDirs(map, tx, ty)) {
-              ctx.beginPath();
-              ctx.moveTo(cx, cy);
-              ctx.lineTo(cx + ox * ts * POLE_WIRE_REACH, cy + oy * ts * POLE_WIRE_REACH);
-              ctx.stroke();
-            }
-          }
+          // Curb-side power pole props (decoration.curbPoleAt owns every placement decision).
+          const pa = curbPoleAt(map, tx, ty);
+          if (pa) poles.push({ x: tx, y: ty, axis: pa });
 
-          // Collect this parcel's anchor mark (glyph + unpowered pip) for the
-          // second pass; the decisions are pure (glyphContent / isPowerConsumer).
+          // Collect this parcel's power state and lights; the decision is pure (isPowerConsumer).
           if (!isT && pid !== 0) {
             const pp = parcels.get(pid - 1);
             if (tx === pp.x && ty === pp.y) {
               const unpowered =
                 this.powered !== null && isPowerConsumer(pp.kind) && !this.powered.has(i);
-              marks.push({ dx, dy, w: pp.width, h: pp.height, kind: pp.kind, density: pp.density, unpowered });
+              if (unpowered) this.unpoweredFootprints.push({ x: tx, y: ty, w: pp.width });
               // Light-bearing building? Collect its footprint (world coords) for the per-frame emissive
-              // overlay (drawSprites). The emission stem is the build FORM (kind + footprint), matching
-              // the baked atlas: `b-<kind>-c` (1×1) or `b-<kind>-<w>x<h>`. Absent key → not collected.
-              const form = pp.width === 1 && pp.height === 1 ? 'c' : `${pp.width}x${pp.height}`;
-              const ekey = `building/b-${pp.kind}-${form}`;
-              if (this.ambientSprites?.emission[ekey]) {
-                this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, key: ekey, kind: pp.kind });
+              // overlay (drawSprites), with the skin's map for THIS footprint, tier and art variant (read
+              // off the picked key). No power, no lights — an unpowered building stays dark at night.
+              if (!unpowered) {
+                const v = variantIndexOf(builtKey);
+                const base = emissionKey(pp.kind, pp.width, pp.height, tier);
+                const sfx = v === 0 ? '' : `#${v}`;
+                const lit = this.emissionImage(base + sfx);
+                const blink = this.emissionImage(`${base}/blink${sfx}`);
+                if (lit || blink) this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, kind: pp.kind, lit, blink });
               }
             }
           }
@@ -1224,76 +608,46 @@ export class Renderer {
     // wear; discarded junk from GARBAGE_WEAR up; encampment tents from ENCAMPMENT_WEAR up — junk + tents
     // COEXIST, and a heavily-worn tile grows MULTIPLE tents (a tent houses more than one unhoused person).
     if (ambient) {
-      const tents = this.hasTileset ? this.ambientSprites?.encampments : undefined;
-      const junk = this.hasTileset ? this.ambientSprites?.junk : undefined;
+      // pixel-art encampments (tents + junk + beaten earth), at the art-pixel scale
+      const skinTents = [0, 1, 2].map((i) => this.sprites.get(`@sprite/tent/${i}`)).filter((x): x is AtlasImage => !!x);
+      const skinJunk = [0, 1, 2, 3].map((i) => this.sprites.get(`@sprite/junk/${i}`)).filter((x): x is AtlasImage => !!x);
+      const ps = ts / BASE_TILE; // one art pixel
       const mapW2 = world.map.width;
       for (const [tile, wear] of ambient.wear) {
         const wx = tile % mapW2;
         const wy = (tile - wx) / mapW2;
         const { sx, sy } = camera.worldToScreen(wx, wy);
         if (sx < -ts || sx > this.cssWidth + ts || sy < -ts || sy > this.cssHeight + ts) continue;
-        ctx.globalAlpha = 0.7 * (wear / 255); // browns the green underneath, proportional to wear
-        ctx.fillStyle = '#6e5d3f';
-        ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
-        ctx.globalAlpha = 1;
         const tileHash = Math.imul(((wx * 73856093) ^ (wy * 19349663)) >>> 0, 0x9e3779b1) >>> 0;
-        // JUNK (coexists with tents): 1–2 small pieces, scattered + jittered, more as the path deepens.
-        if (camera.zoom >= 2 && junk && junk.length > 0 && wear >= GARBAGE_WEAR) {
-          const pieces = wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1;
-          for (let pc = 0; pc < pieces; pc++) {
-            const hh = Math.imul((tileHash ^ Math.imul(pc + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 0;
-            const img = junk[(hh >>> 16) % junk.length]!;
-            const js = ts * (0.32 + ((hh & 0x7) / 7) * 0.12);
-            ctx.drawImage(img, sx + ((hh & 0xff) / 255) * (ts - js), sy + (((hh >>> 8) & 0xff) / 255) * (ts - js), js, js);
+        {
+          // beaten earth in three depths (no translucent wash over the pixel art)
+          const level = wear >= 200 ? 3 : wear >= 120 ? 2 : wear >= 50 ? 1 : 0;
+          const o = camera.tileOrigin(wx, wy);
+          const img = level > 0 ? this.sprites.get(`@wear/${level}`) : undefined;
+          if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, o.dx, o.dy, ts, ts);
+          if (camera.zoom >= 2 && skinTents.length > 0 && wear >= GARBAGE_WEAR) {
+            const nJunk = wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1;
+            const nTents = wear >= ENCAMPMENT_WEAR ? Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12)) : 0;
+            const pick = (set: AtlasImage[], k: number): AtlasImage =>
+              set[(Math.imul((tileHash ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 16) % set.length]!;
+            const items = [
+              ...Array.from({ length: nTents }, (_, k) => pick(skinTents, k)),
+              ...Array.from({ length: skinJunk.length > 0 ? nJunk : 0 }, (_, k) => pick(skinJunk, k + 7)),
+            ];
+            const sizes = items.map((img) => ({ w: (img as HTMLCanvasElement).width, h: (img as HTMLCanvasElement).height }));
+            encampmentLayout(tileHash, sizes).forEach((spot, k) => {
+              const sz = sizes[k]!;
+              ctx.drawImage(items[k]!, o.dx + spot.x * ps, o.dy + spot.y * ps, sz.w * ps, sz.h * ps);
+            });
           }
-        }
-        // TENTS: 1+ from ENCAMPMENT_WEAR, growing to several as the tile worsens (more unhoused gather).
-        if (camera.zoom >= 2 && tents && tents.length > 0 && wear >= ENCAMPMENT_WEAR) {
-          const nTents = Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12));
-          const es = ts * 0.5; // a tent, scaled down so several coexist on the tile
-          for (let tc = 0; tc < nTents; tc++) {
-            const hh = Math.imul((tileHash ^ Math.imul(tc + 7, 0x27d4eb2f)) >>> 0, 0x165667b1) >>> 0;
-            const img = tents[(hh >>> 16) % tents.length]!;
-            ctx.drawImage(img, sx + ((hh & 0xff) / 255) * (ts - es), sy + (((hh >>> 8) & 0xff) / 255) * (ts - es), es, es);
-          }
-        } else if (!this.hasTileset && wear > 120) {
-          ctx.fillStyle = '#2e2a22'; // procedural fallback: trash specks
-          const specks: ReadonlyArray<readonly [number, number]> = [[0.3, 0.35], [0.65, 0.5], [0.45, 0.72]];
-          const n = wear > 210 ? 3 : wear > 170 ? 2 : 1;
-          const sp = Math.max(1, ts * 0.12);
-          for (let k = 0; k < n; k++) ctx.fillRect(Math.floor(sx + specks[k]![0] * ts), Math.floor(sy + specks[k]![1] * ts), sp, sp);
         }
       }
     }
 
-    // Second pass: parcel anchor marks ON TOP of every tile + the overlay, so a
-    // multi-tile footprint's own tiles (and the heatmap tint) can't hide them.
-    // The unpowered pip sits in the footprint's top-right; the legibility glyph is
-    // centered over the whole footprint (skipped below GLYPH_MIN_TS).
-    for (const m of marks) {
-      if (m.unpowered) {
-        const pip = Math.max(2, ts * 0.18);
-        ctx.fillStyle = 'rgba(232, 72, 60, 0.95)';
-        ctx.fillRect(m.dx + m.w * ts - pip - 1, m.dy + 1, pip, pip);
-      }
-      if (ts >= GLYPH_MIN_TS) {
-        const glyph = parcelGlyph(m.kind as BuiltKind, m.density);
-        if (glyph) {
-          const gx = m.dx + (m.w * ts) / 2;
-          const gy = m.dy + (m.h * ts) / 2;
-          // Under a tileset the baked roofs convey type, so the legibility glyphs go small + faint
-          // to stop them from masking the satellite art; the procedural path keeps the bold label.
-          const skin = this.hasTileset;
-          ctx.font = `bold ${Math.max(skin ? 7 : 8, Math.floor(ts * (skin ? 0.34 : 0.55)))}px "Courier New", ui-monospace, monospace`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.lineWidth = Math.max(skin ? 1.5 : 2, ts * (skin ? 0.08 : 0.12));
-          ctx.strokeStyle = `rgba(12, 10, 18, ${skin ? 0.5 : 0.85})`;
-          ctx.strokeText(glyph, gx, gy);
-          ctx.fillStyle = `rgba(240, 236, 214, ${skin ? 0.62 : 0.92})`;
-          ctx.fillText(glyph, gx, gy);
-        }
-      }
+    // Power poles — after the whole tile loop.
+    for (const pl of poles) {
+      const o = camera.tileOrigin(pl.x, pl.y);
+      ink(`@road/pole/${pl.axis}`, o.dx, o.dy);
     }
 
     // Parked cars are no longer painted into the static base — they are the trip-cars that
@@ -1355,6 +709,13 @@ export class Renderer {
    * sprites on top, culled to the viewport — the O(visible sprites) draw.
    */
   renderFrame(world: WorldState, camera: Camera, ambient: AmbientState): void {
+    // murky water lives in the cached base: rebuild it when any tile crosses a pollution level
+    let sig = 0;
+    for (const [tile, poll] of ambient.waterPollution) sig ^= Math.imul(tile * 4 + washLevel(poll) + 1, 0x9e3779b1); // order-free
+    if (sig !== this.murkSig) {
+      this.murkSig = sig;
+      this.baseDirty = true;
+    }
     this.composite(world, camera, ambient); // ambient → drawBase bakes wear/junk/tents under the agents
     this.drawSprites(world, camera, ambient);
   }
@@ -1362,6 +723,8 @@ export class Renderer {
   /** Draw the ambient sprites (cars / pedestrians / bird flocks) + the live building-health
    *  glow at the DPR transform, culled to the viewport. Cosmetic shell — live-pass tuned. */
   private drawSprites(world: WorldState, camera: Camera, ambient: AmbientState): void {
+    const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
+    const onRoadAt = (x: number, y: number): boolean => world.map.inBounds(x, y) && isRoadKind(world.map.built[world.map.idx(x, y)]!);
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const ts = camera.tileSize;
@@ -1372,224 +735,61 @@ export class Renderer {
 
     const mapW = world.map.width;
 
-    // Animated water — the BASE TILES THEMSELVES slosh via a per-tile oscillating AFFINE (Maddy:
-    // "affine transforms to simulate sloshing"). The affine (static rotation for anti-plaid + an
-    // oscillating shear) is PRECOMPUTED into a [rot][frame] flipbook per water texture, so per tile
-    // this is just a PLAIN scaled BLIT of the right cell — NOT a live rotate+shear drawImage, which
-    // murdered FPS over hundreds of water tiles (Maddy: "precompute we can do to animate it better").
-    // The shear-frame advances along the prevailing wind, so the waves TRAVEL downwind. Clipped once
-    // to the cached water mask (no per-tile clip → no shoreline bleed). Low-alpha foam rides on top.
-    // Skip the per-tile slosh when fully zoomed OUT (zoom 1): at zoom 1 the WHOLE map's water tiles are
-    // on screen, so hundreds–thousands of per-tile blits/frame tank FPS — and the slosh is sub-pixel
-    // there anyway. The static (cached) base water shows instead; slosh kicks in at zoom ≥ 2 where the
-    // visible tile count is bounded (Maddy: water animation tanks perf zoomed out).
-    if (!this.gpuMode && this.hasTileset && this.waterSlosh.size > 0 && camera.zoom >= 2) {
-      const path = this.tileMask(world, camera, 'water', (m, i) => m.water[i] !== 0);
-      if (path) {
-        const o = camera.worldToScreen(0, 0);
-        const frameIdx = Math.floor((performance.now() / 1000) * WATER_SLOSH_FPS);
-        // MEMOIZE, WORLD-ANCHORED: render the water into an offscreen that's MARGIN px bigger than the
-        // viewport on every side, and remember the camera origin it was rendered at. Re-render ONLY
-        // when the slosh frame advances (~WATER_SLOSH_FPS×/sec), zoom changes, or the pan exceeds the
-        // margin — so PANNING just blits the cached layer at the pan offset (no per-frame N-tile pass,
-        // which was the jaggy bit). Over a large sea this is one drawImage on the common frame.
-        const M = WATER_LAYER_MARGIN;
-        const dx = o.sx - this.waterLayerOrigin.sx;
-        const dy = o.sy - this.waterLayerOrigin.sy;
-        const dims = `${this.canvas.width}x${this.canvas.height}`;
-        const key = `${frameIdx}|${camera.zoom}|${dims}`;
-        const panned = Math.abs(dx) > M || Math.abs(dy) > M;
-        if (key !== this.waterLayerKey || panned || !this.waterLayer) {
-          const dw = Math.round((this.cssWidth + 2 * M) * this.dpr);
-          const dh = Math.round((this.cssHeight + 2 * M) * this.dpr);
-          if (!this.waterLayer || this.waterLayer.width !== dw || this.waterLayer.height !== dh) {
-            this.waterLayer = document.createElement('canvas');
-            this.waterLayer.width = dw;
-            this.waterLayer.height = dh;
-            this.waterLayerCtx = this.waterLayer.getContext('2d');
-          }
-          const wl = this.waterLayerCtx!;
-          // offscreen (0,0) = screen (−M,−M): translate the dpr transform by +M so CSS screen coords map in
-          wl.setTransform(this.dpr, 0, 0, this.dpr, M * this.dpr, M * this.dpr);
-          wl.clearRect(-M, -M, this.cssWidth + 2 * M, this.cssHeight + 2 * M);
-          wl.imageSmoothingEnabled = false;
-          wl.save();
-          wl.clip(path);
-          const map = world.map;
-          const range = camera.visibleTileRange();
-          const margTiles = Math.ceil(M / ts) + 1; // expand the range to fill the margin
-          const wx = ambient.wind.dx;
-          const wy = ambient.wind.dy;
-          for (let ty = range.y0 - margTiles; ty <= range.y1 + margTiles; ty++) {
-            for (let tx = range.x0 - margTiles; tx <= range.x1 + margTiles; tx++) {
-              if (!map.inBounds(tx, ty)) continue;
-              const i = map.idx(tx, ty);
-              if (map.water[i] === 0) continue;
-              const fb = this.waterSlosh.get(`${kindOf(map, i)}-${bandOf(map.elevation[i]!)}`);
-              if (!fb || fb.length === 0) continue;
-              const { sx, sy } = camera.worldToScreen(tx, ty);
-              const rotB = Math.floor(waterTileTransform(tx, ty).rot * WATER_SLOSH_ROTS) % WATER_SLOSH_ROTS;
-              // phase = position projected on the wind → waves travel downwind. (Modulo, non-negative.)
-              const phase = Math.round(tx * wx + ty * wy);
-              const frame = (((frameIdx + phase) % WATER_SLOSH_FRAMES) + WATER_SLOSH_FRAMES) % WATER_SLOSH_FRAMES;
-              wl.drawImage(fb[rotB]![frame]!, Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
-            }
-          }
-          // Foam twinkle, quantized to the slosh frame so it stays inside the cache.
-          if (this.waterFrames.length > 0) {
-            const tex = this.waterFrames[frameIdx % this.waterFrames.length]!;
-            const wlen = Math.hypot(wx, wy) || 1;
-            const osc = Math.sin((frameIdx / WATER_SLOSH_FPS) * 0.8) * ts * 0.5;
-            const pat = wl.createPattern(tex, 'repeat');
-            if (pat) {
-              const m = new DOMMatrix();
-              m.translateSelf(o.sx + (wx / wlen) * osc, o.sy + (wy / wlen) * osc);
-              m.scaleSelf(ts / BASE_TILE, ts / BASE_TILE);
-              pat.setTransform(m);
-              wl.globalAlpha = 0.14;
-              wl.fillStyle = pat;
-              wl.fillRect(-M, -M, this.cssWidth + 2 * M, this.cssHeight + 2 * M);
-              wl.globalAlpha = 1;
-            }
-          }
-          wl.restore();
-          this.waterLayerKey = key;
-          this.waterLayerOrigin = { sx: o.sx, sy: o.sy };
-        }
-        // Blit the memoized layer, shifted by the pan since it was rendered (cheap on pan frames).
-        const pdx = o.sx - this.waterLayerOrigin.sx;
-        const pdy = o.sy - this.waterLayerOrigin.sy;
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(this.waterLayer!, -M + pdx, -M + pdy, this.cssWidth + 2 * M, this.cssHeight + 2 * M);
-      }
-    }
-
-    // Wavy grass / canopy: scroll the wind-streak sheen over grass/meadow/forest along the prevailing
-    // wind, clipped to the cached grass mask, at low alpha — a subtle wind ripple. Same non-row-major
-    // pattern technique as the water (O(1) draws/frame), so no top-bar.
-    if (!this.gpuMode && this.hasTileset && this.grassSheen && ts >= 6) {
-      const path = this.tileMask(
-        world,
-        camera,
-        'grass',
-        (m, i) => m.built[i] === 0 && m.water[i] === 0 && m.landCover[i]! >= LandCover.Meadow,
-      );
-      if (path) {
-        const pat = ctx.createPattern(this.grassSheen, 'repeat');
-        if (pat) {
-          const t = performance.now() / 1000;
-          const o = camera.worldToScreen(0, 0);
-          const m = new DOMMatrix();
-          m.translateSelf(o.sx + ambient.wind.dx * t * ts * 0.16, o.sy + ambient.wind.dy * t * ts * 0.16);
-          m.scaleSelf(ts / BASE_TILE, ts / BASE_TILE);
-          pat.setTransform(m);
-          ctx.save();
-          ctx.clip(path);
-          ctx.globalAlpha = 0.4; // the sheen texture is already soft (crest-only) → total is subtle
-          ctx.fillStyle = pat;
-          ctx.fillRect(0, 0, w, h);
-          ctx.restore();
-          ctx.globalAlpha = 1;
-        }
-      }
-    }
-
     // (Desire-path WEAR + its JUNK/TENTS are now baked into the cached BASE in drawBase — ground level,
     // under the moving agents — so they no longer draw over pedestrians here.)
 
-    // Water pollution: runoff murks the coastal water green-brown, deepening with accumulation.
-    for (const [tile, poll] of ambient.waterPollution) {
-      const wx = tile % mapW;
-      const wy = (tile - wx) / mapW;
-      const { sx, sy } = camera.worldToScreen(wx, wy);
-      if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
-      ctx.globalAlpha = 0.72 * (poll / 255);
-      ctx.fillStyle = '#46502f';
-      ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
+    // Building health + power, as pixel icons at the tile pixel scale: a heart / raincloud badge in the
+    // top-left of a clearly thriving / suffering home (the visible output of the citizen-transit-health
+    // loop), and the blinking lightning bolt top-right of every unpowered footprint. Live per-frame, so
+    // they live here, not in the cached base.
+    const iconScale = ts / BASE_TILE;
+    const thriving = this.icons.get(iconKey('thriving'));
+    const suffering = this.icons.get(iconKey('suffering'));
+    const bolt = this.icons.get(iconKey('unpowered'));
+    if (bolt && performance.now() % 1000 < 620) {
+      const bs = 8 * iconScale;
+      for (const f of this.unpoweredFootprints) {
+        const { dx, dy } = camera.tileOrigin(f.x + f.w, f.y);
+        if (!onScreen(dx, dy)) continue;
+        ctx.drawImage(bolt, dx - bs, dy - iconScale, bs, bs);
+      }
     }
-    ctx.globalAlpha = 1;
-
-    // Air pollution: cars smog the tiles they drive — a grey haze thickening with the live field,
-    // drawn over the ground overlays but under the sprites/pips (they read through the haze).
-    for (const [tile, poll] of ambient.pollution) {
-      const px = tile % mapW;
-      const py = (tile - px) / mapW;
-      const { sx, sy } = camera.worldToScreen(px, py);
-      if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
-      ctx.globalAlpha = 0.5 * (poll / 255);
-      ctx.fillStyle = '#5a5750';
-      ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
-    }
-    ctx.globalAlpha = 1;
-
-    // Land value: a diverging tint on each inhabited plot — warm gold where it's prized, cold slate
-    // where it's decayed (mid reads through clean). On zone tiles, so it rarely overlaps the wear
-    // (wild ground) or smog (roads) overlays. The desirability the other layers add up to.
-    for (const [tile, lv] of ambient.landValue) {
-      const lx = tile % mapW;
-      const ly = (tile - lx) / mapW;
-      const { sx, sy } = camera.worldToScreen(lx, ly);
-      if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
-      const f = (lv - 128) / 128; // -1 (decayed) .. +1 (prized)
-      ctx.globalAlpha = 0.4 * Math.min(1, Math.abs(f));
-      ctx.fillStyle = f >= 0 ? '#e8c060' : '#39404e';
-      ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
-    }
-    ctx.globalAlpha = 1;
-
-    // Building health: a bright corner PIP on each home its citizens' trips have marked —
-    // green when thriving, red when suffering, growing with magnitude. A distinct badge (not
-    // a tile tint) so it reads against any building colour. The visible output of the
-    // citizen-transit-health loop; live per-frame, so it lives here, not in the cached base.
     for (const [tile, health] of ambient.buildingHealth) {
       const hx = tile % mapW;
       const hy = (tile - hx) / mapW;
-      const { sx, sy } = camera.worldToScreen(hx + 0.5, hy + 0.5);
-      if (!onScreen(sx, sy)) continue;
-      const mag = Math.min(1, Math.abs(health) / 18);
-      const pip = ts * (0.2 + 0.18 * mag); // bigger badge = stronger health
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = health >= 0 ? '#4ee06a' : '#ff4636';
-      ctx.fillRect(Math.floor(sx - ts * 0.4), Math.floor(sy - ts * 0.4), pip, pip); // top-left corner
+      // icons flag EXCEPTIONS, not every home: a heart for a standout (health ≥ 9, ~1 in 10 on a fresh
+      // city), a raincloud a little earlier (≤ −6) since suffering is the actionable case
+      if (health >= 0 ? health < 9 : health > -6) continue;
+      const badge = health >= 0 ? thriving : suffering;
+      const { dx, dy } = camera.tileOrigin(hx, hy);
+      if (!badge || !onScreen(dx, dy)) continue;
+      ctx.drawImage(badge, dx - iconScale, dy - iconScale, 8 * iconScale, 8 * iconScale);
     }
-    ctx.globalAlpha = 1;
 
-    // Cars carry their own colour (c.tint), shown the same moving and parked. A MOVING car
-    // is drawn to the right of its heading (laneOffset) so opposing traffic rides opposite
-    // sides of a road; a PARKED car sits centred on its stall. Same trip-car, same colour.
-    const carSize = Math.max(2, ts * 0.34);
-    const parkedSize = Math.max(2, ts * 0.3);
-    // Under a tileset, cars are tiny rotated car SPRITES ("micro machines"); procedural keeps the
-    // tone-coded squares. Sprite is drawn a touch larger than the square so the little body reads.
-    // In GPU mode the moving cars are drawn by the GPU sprite batch (lit by the shared base pass), so
-    // skip the CPU car draw to avoid double-rendering (Maddy: move sprites to GPU for matched lighting).
-    const carSprites = !this.gpuMode && this.hasTileset ? this.ambientSprites?.cars : undefined;
+    // Cars carry their own colour (c.tint), the same moving and parked, in the 8-way heading frame
+    // nearest their heading. carPose: a moving car rides its lane (right of heading) smoothly round turns
+    // (moverPose); a parked one sits on its stall, a kerb-parked one parallel to the kerb.
+    // Every vehicle and person on screen is also a BODY headlights can stop at (headlights.ts); the
+    // sprite each one drew is kept so a body a beam hits can be lit.
+    const nightT = performance.now() / 1000;
+    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
+    const bodies: Body[] = [];
+    const bodyArt: { img: AtlasImage; x: number; y: number }[] = [];
+    const bodyMul: number[] = [];
+    const addBody = (x: number, y: number, hx: number, hy: number, len: number, wid: number, mul: number, img: AtlasImage | undefined): void => {
+      if (!img) return;
+      bodies.push({ x, y, hx, hy, len, wid, lights: mul > 0.02 });
+      bodyArt.push({ img, x, y });
+      bodyMul.push(mul);
+    };
     for (const c of ambient.cars) {
-      if (this.gpuMode) break; // cars rendered on GPU
-      // A PARKED car (lot bay or kerb slot) carries its exact stall position in c.x/c.y, so it draws
-      // ON the stall (+0.5) — never warped to the lane centre. A MOVING car rides its lane (laneOffset,
-      // right of heading) so opposing traffic separates. Parked cars use the smaller size.
-      const off = c.parked ? { dx: 0, dy: 0 } : laneOffset(c.dir);
-      const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
+      const pose = carPose(c, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
-      const size = c.parked ? parkedSize : carSize;
-      if (carSprites && carSprites.length > 0) {
-        const img = carSprites[(c.tint ?? 0) % carSprites.length]!;
-        // A curb-PARKED car sits PARALLEL to the curb: its long axis runs along the road, i.e.
-        // perpendicular to curbDir (N/S curb → E-W car; E/W curb → N-S car). Moving cars face travel.
-        const headingDir = c.parked && c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
-        const hv = dirVector(headingDir);
-        const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate CW to the heading
-        const ss = size * 1.7;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(img, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = CAR_COLORS[(c.tint ?? 0) % CAR_COLORS.length]!;
-        ctx.fillRect(Math.floor(sx - size / 2), Math.floor(sy - size / 2), size, size);
-      }
+      const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
+      const img = this.sprites.get(`@sprite/car/${tint}/${heading8(pose.hx, pose.hy)}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, c.parked ? 0 : night, img);
     }
     // (Smog is drawn LAST — the top layer, above cars/peds — see end of drawSprites.)
 
@@ -1610,36 +810,21 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
 
-    // Police cruisers: a black CAR (sprite, rotated to heading like the other vehicles) — its BODY is
-    // lit normally (dims at night). The flashing red/blue light bar is drawn LATER, after the lighting
-    // buffer, so the LIGHTS evade shading (a flasher glows full-bright; the car doesn't — Maddy).
-    const cruiserSize = Math.max(2, ts * 0.26);
-    const policeSprites = !this.gpuMode && this.hasTileset ? this.ambientSprites?.police : undefined;
+    // Police cruisers: a black-and-white car whose roof bar flashes red/blue (two sprite phases); the GPU
+    // glow pass casts the flashing pool onto the street around it.
+    const copPhase = Math.floor(performance.now() / 180) % 2;
     for (const c of ambient.cruisers) {
-      if (this.gpuMode) break; // cruisers rendered on GPU in gpuMode
-      const off = laneOffset(c.dir);
-      const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
+      const pose = carPose(c, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
-      if (policeSprites && policeSprites.length > 0) {
-        const hv = dirVector(c.dir);
-        const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate to heading (like cars)
-        const ss = ts * 0.55;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(policeSprites[0]!, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = '#1c2235'; // procedural fallback: dark cruiser body
-        ctx.fillRect(Math.floor(sx - cruiserSize / 2), Math.floor(sy - cruiserSize / 2), cruiserSize, cruiserSize);
-      }
+      const img = this.sprites.get(`@sprite/cop/${heading8(pose.hx, pose.hy)}/${copPhase}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
     }
 
-    // Trains: a snake of cars riding the rails (Maddy: rails need trains). Each cell is drawn as a
-    // car oriented along the LOCAL track direction (toward the next-newer cell); the head is the
-    // locomotive (interpolated for smooth motion + a bright nose). Always drawn (procedural + tileset).
-    const carLen = Math.max(3, ts * 0.82);
-    const carWid = Math.max(2, ts * 0.46);
+    // Trains: a snake of cars riding the rails (Maddy: rails need trains). Each cell is drawn in the
+    // 8-way frame of the LOCAL track direction (toward the car ahead); the head is the locomotive
+    // (interpolated for smooth motion).
     for (const tr of ambient.trains) {
       for (let c = tr.cells.length - 1; c >= 0; c--) {
         // position: the head rides its interpolated (hx,hy); the rest sit on their tile centres.
@@ -1654,7 +839,7 @@ export class Renderer {
           cy = (idx - (cx)) / mapW;
         }
         const { sx, sy } = camera.worldToScreen(cx + 0.5, cy + 0.5);
-        if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
+        if (!onScreen(sx, sy)) continue;
         // heading: toward the car AHEAD (cell c-1) so each car aligns with the track; the head uses
         // its committed dir. The car ahead of cell 1 is the head at its interpolated (hx,hy).
         let hx: number;
@@ -1670,121 +855,47 @@ export class Renderer {
           hx = ax - cx;
           hy = ay - cy;
         }
-        const angle = Math.atan2(hx, -hy); // sprite long axis faces north; rotate to the track heading
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.fillStyle = c === 0 ? '#b8392f' : '#c9ccd6'; // red locomotive, silver cars
-        ctx.fillRect(-carWid / 2, -carLen / 2, carWid, carLen);
-        ctx.fillStyle = '#2b2f3a'; // window band
-        ctx.fillRect(-carWid / 2, -carLen * 0.18, carWid, Math.max(1, carLen * 0.22));
-        ctx.restore();
+        const img = this.sprites.get(`@sprite/train/${c === 0 ? 'loco' : 'car'}/${heading8(hx, hy)}`);
+        if (img) this.drawArt(ctx, img, cx + 0.5, cy + 0.5, camera);
       }
     }
 
-    // Citizens on foot, coloured by TRAVEL MODE so the modal shift is legible: walkers are warm
-    // dots, cyclists yellow, tram riders cyan, rail riders violet. (Drivers are CARS — drawn above
-    // from ambient.cars — and their last-mile walk is a warm dot.) On a STREET a ped hugs the kerb
-    // (sidewalk); crossing open ground (a demand path) it stays centred.
-    // Under a tileset, walkers + cyclists are tiny rotated SPRITES (like the cars), rotated to heading.
-    // The sprite is FIXED per ped (a stable hash of its identity) — NOT cycled through the frames: the
-    // frames are different-coloured PEOPLE, not gait frames, so cycling them flashed "rainbow road"
-    // (Maddy). Procedural (or missing sprites) keeps the tone-coded mode dots.
-    const pedSprites = this.hasTileset ? this.ambientSprites?.peds : undefined;
-    const cyclistSprites = this.hasTileset ? this.ambientSprites?.cyclists : undefined;
-    const pedSize = Math.max(1, ts * 0.16);
+    // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a
+    // demand path) it stays centred. The person is FIXED per citizen (a stable hash of its identity —
+    // skin tone + shirt), with a two-frame walk while it moves. (Drivers are CARS, drawn above.)
     for (const p of ambient.peds) {
-      if (this.gpuMode) break; // peds/cyclists rendered on GPU in gpuMode
       if (p.phase === 'inside' || p.phase === 'driving') continue; // inside a building, or riding its car
-      let ox = 0.5;
-      let oy = 0.5;
-      if (isRoadKind(world.map.built[world.map.idx(Math.round(p.x), Math.round(p.y))]!)) {
-        const o = pedCurbOffset(p.dir);
-        ox += o.dx;
-        oy += o.dy;
-      }
-      const { sx, sy } = camera.worldToScreen(p.x + ox, p.y + oy);
+      const pose = pedPose(p, onRoadAt, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
-      const isBike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      const set = isBike ? cyclistSprites : pedSprites;
-      if (set && set.length > 0) {
-        // a STABLE per-ped pick (its household/car id) → one consistent person, never cycling
-        const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
-        const img = set[(Math.imul(seed, 2654435761) >>> 0) % set.length]!;
-        const hv = dirVector(p.dir);
-        const angle = Math.atan2(hv.dx, -hv.dy); // sprite faces north; rotate CW to heading (like cars)
-        const ss = ts * (isBike ? 0.46 : 0.4);
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(img, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = MODE_COLORS[p.mode ?? TravelMode.Walk] ?? MODE_COLORS[TravelMode.Walk]!;
-        ctx.fillRect(sx - pedSize / 2, sy - pedSize / 2, pedSize, pedSize);
-      }
+      const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
+      const moving = p.tx !== p.x || p.ty !== p.y;
+      const frame = moving ? Math.floor(performance.now() / 220 + (seed & 7)) % 2 : 0; // a two-step walk
+      const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
+      const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame));
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
+    // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).
+    const cast = castHeadlights(world.map, bodies);
+    this.beams = cast.beams.map((b) => ({ ...b, mul: bodyMul[b.source]! }));
 
-    // Bird flocks: tiny dot clusters. Centre on the tile (+0.5) for the same
-    // grid convention as cars/peds (boids spawn clustered on the tile corner).
-    ctx.fillStyle = '#2b2433';
-    const birdSize = Math.max(1, ts * 0.1);
-    for (const f of ambient.birds) {
-      for (const b of f.birds) {
+    // Bird flocks: little gulls flapping out of phase. Centre on the tile (+0.5) for the same grid
+    // convention as cars/peds (boids spawn clustered on the tile corner).
+    const flap = performance.now() / 160;
+    ambient.birds.forEach((f, fi) => {
+      f.birds.forEach((b, bi) => {
         const { sx, sy } = camera.worldToScreen(b.x + 0.5, b.y + 0.5);
-        if (!onScreen(sx, sy)) continue;
-        ctx.fillRect(sx - birdSize / 2, sy - birdSize / 2, birdSize, birdSize);
-      }
-    }
-
-    // Cloud shadows: an invisible cloud layer drifting with the wind casts soft moving shadows over the
-    // ground + ambient props (Maddy). Evaluated as NON-periodic fBm in WORLD space into a low-res buffer,
-    // then upscaled smooth over the viewport — so it never tiles/tessellates and drifts with the wind.
-    // Skipped when a DATA overlay is active so the viz reads clean.
-    if (!this.gpuMode && this.hasTileset && this.overlay === null && this.liveOverlay === null) {
-      const BW = 96;
-      const BH = 60;
-      if (!this.cloudBuf) {
-        this.cloudBuf = document.createElement('canvas');
-        this.cloudBuf.width = BW;
-        this.cloudBuf.height = BH;
-      }
-      const bctx = this.cloudBuf.getContext('2d');
-      if (bctx) {
-        const t = performance.now() / 1000;
-        const tl = camera.screenToWorld(0, 0);
-        const br = camera.screenToWorld(w, h);
-        const wspanX = br.wx - tl.wx;
-        const wspanY = br.wy - tl.wy;
-        const SCALE = 0.09; // cloud feature size in world tiles (smaller = bigger clouds)
-        const driftX = -ambient.wind.dx * t * 0.6; // clouds move WITH the wind
-        const driftY = -ambient.wind.dy * t * 0.6;
-        const id = bctx.createImageData(BW, BH);
-        for (let by = 0; by < BH; by++) {
-          for (let bx = 0; bx < BW; bx++) {
-            const wx = tl.wx + (bx / BW) * wspanX;
-            const wy = tl.wy + (by / BH) * wspanY;
-            const c = cloudFbm(wx * SCALE + driftX, wy * SCALE + driftY);
-            const i = (by * BW + bx) * 4;
-            id.data[i] = 16;
-            id.data[i + 1] = 18;
-            id.data[i + 2] = 26;
-            id.data[i + 3] = Math.min(150, c * 150); // soft shadow
-          }
-        }
-        bctx.putImageData(id, 0, 0);
-        const smooth = ctx.imageSmoothingEnabled;
-        ctx.imageSmoothingEnabled = true; // upscale the low-res field to soft cloud gradients
-        ctx.drawImage(this.cloudBuf, 0, 0, BW, BH, 0, 0, w, h);
-        ctx.imageSmoothingEnabled = smooth;
-      }
-    }
+        if (!onScreen(sx, sy)) return;
+        const img = this.sprites.get(`@sprite/bird/${Math.floor(flap + fi * 3 + bi) % 2}`);
+        if (img) this.drawArt(ctx, img, b.x + 0.5, b.y + 0.5, camera);
+      });
+    });
 
     // Smog plumes — TOP layer (above cars/peds, Maddy): translucent puffs over polluted tiles, streaming
     // downwind along the prevailing wind (loop + triangle fade so they don't pop), billowing as they go.
-    // In GPU mode the smog is a WebGL overlay above the sprites (smogOverlay), so skip the CPU plumes.
-    const smogSprites = !this.gpuMode && this.hasTileset ? this.ambientSprites?.smog : undefined;
-    if (smogSprites && smogSprites.length > 0) {
+    // Pixel puffs on the art grid. In GPU mode the smog is a WebGL overlay above the sprites (smogOverlay).
+    if (!this.gpuMode) {
       const drift = performance.now() / 1000;
       for (const [tile, amt] of ambient.pollution) {
         if (amt < 40) continue; // only real plumes, not faint road haze
@@ -1792,192 +903,91 @@ export class Renderer {
         const py = (tile - px) / mapW;
         const phase = (drift * 0.35 + (tile % 13) * 0.11) % 1; // 0..1 loop, per-tile phase offset
         const distance = phase * 3.0; // tiles carried downwind this cycle
-        const { sx, sy } = camera.worldToScreen(px + 0.5 + ambient.wind.dx * distance, py + 0.5 + ambient.wind.dy * distance);
+        const wx = px + 0.5 + ambient.wind.dx * distance;
+        const wy = py + 0.5 + ambient.wind.dy * distance;
+        const { sx, sy } = camera.worldToScreen(wx, wy);
         if (!onScreen(sx, sy)) continue;
-        const sz = ts * (1.0 + amt / 180 + phase * 0.8);
+        // billow by stepping up the pixel sizes (never scaling the art), heavier smog starts bigger
+        const size = Math.min(SMOG_SIZES - 1, Math.floor(phase * SMOG_SIZES + amt / 200));
         const env = phase < 0.5 ? phase * 2 : (1 - phase) * 2; // fade in then out (0 at both loop ends)
         ctx.globalAlpha = Math.min(0.45, (amt / 255) * 0.6) * env;
-        ctx.drawImage(smogSprites[tile % smogSprites.length]!, sx - sz / 2, sy - sz / 2, sz, sz);
+        const img = this.sprites.get(`@sprite/smog/${size}/${tile & 1}`);
+        if (img) this.drawArt(ctx, img, wx, wy, camera);
       }
       ctx.globalAlpha = 1;
     }
 
-    // GPU mode: light the sprite layer to MATCH the ground. Dim each sprite by the lighting (day/night
-    // × cloud) at ITS tile, from the SAME math the shader uses (lighting.ts) — so sprites read as lit to
-    // the exact tile level, not a flat wash (Maddy: the flat dim was distracting). A low-res darkness
-    // buffer (alpha = 1 − light) is source-atop'd over the sprite pixels; transparent gaps stay clear.
+    // GPU mode: light the sprite layer to MATCH the ground — the same day/night dim + night cool the shader
+    // applies (lighting.ts mirrors it), source-atop over the sprite pixels so transparent gaps stay clear.
+    // Uniform across the view: the ground's only spatial light is building contact shadow, which sprites
+    // standing in the street don't take.
     if (this.gpuMode) {
-      const BW = 80;
-      const BH = 50;
-      if (!this.lightBuf) {
-        this.lightBuf = document.createElement('canvas');
-        this.lightBuf.width = BW;
-        this.lightBuf.height = BH;
-      }
-      const bctx = this.lightBuf.getContext('2d');
-      if (bctx) {
-        const t = performance.now() / 1000;
-        const day = dayNightBrightness(t); // uniform across the view
-        const tl = camera.screenToWorld(0, 0);
-        const brc = camera.screenToWorld(w, h);
-        const spanX = brc.wx - tl.wx;
-        const spanY = brc.wy - tl.wy;
-        const id = bctx.createImageData(BW, BH);
-        for (let by = 0; by < BH; by++) {
-          for (let bx = 0; bx < BW; bx++) {
-            const wx = tl.wx + (bx / BW) * spanX;
-            const wy = tl.wy + (by / BH) * spanY;
-            const light = day * (1 - cloudShadow(wx, wy, t));
-            const i = (by * BW + bx) * 4;
-            id.data[i] = 6;
-            id.data[i + 1] = 9;
-            id.data[i + 2] = 22; // cool dark
-            id.data[i + 3] = Math.round((1 - light) * 255);
-          }
-        }
-        bctx.putImageData(id, 0, 0);
+      const dark = 1 - dayNightBrightness(performance.now() / 1000);
+      if (dark > 0.004) {
+        ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = 'source-atop';
-        const sm = ctx.imageSmoothingEnabled;
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(this.lightBuf, 0, 0, BW, BH, 0, 0, this.base.width, this.base.height);
-        ctx.imageSmoothingEnabled = sm;
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+        ctx.fillStyle = `rgba(6, 9, 22, ${dark.toFixed(3)})`; // cool dark
+        ctx.fillRect(0, 0, this.base.width, this.base.height);
+        ctx.restore();
       }
     }
 
-    // EMISSIVE lights — drawn AFTER the lighting buffer so they EVADE shading (a flashing light glows
-    // full-bright regardless of day/night/cloud; only the lights, not the cruiser body — Maddy). A
-    // flashing red/blue bar on each cruiser. (Casting weak light onto nearby tiles is the next step —
-    // folded into the streetlight light-pollution system.)
-    const flashRed = Math.floor(performance.now() / 180) % 2 === 0;
-    const lb = Math.max(1, ts * 0.2);
-    // The diffusion EMISSION map (red/blue bar + headlights, baked aligned to the albedo). Drawn
-    // additively so it GLOWS over the body and evades shading; the red/blue BLINK is the bar's two
-    // halves (red left / blue right of the 16px map) emphasized in alternation.
-    const cruiserLights = !this.gpuMode ? this.ambientSprites?.emission['police/cruiser'] : undefined;
-    const HALF = 8, SRCH = 16; // the light map is the 16px sprite grid
-    for (const c of ambient.cruisers) {
-      if (this.gpuMode) break; // cruiser emission rendered on GPU in gpuMode
-      const off = laneOffset(c.dir);
-      const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
-      if (!onScreen(sx, sy)) continue;
-      if (cruiserLights) {
-        const hv = dirVector(c.dir);
-        const angle = Math.atan2(hv.dx, -hv.dy); // match the body sprite's heading rotation
-        const ss = ts * 0.55;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.globalCompositeOperation = 'lighter'; // additive → emissive glow (evades shading)
-        ctx.imageSmoothingEnabled = false;
-        ctx.globalAlpha = 0.5; // baseline: both lights glow softly
-        ctx.drawImage(cruiserLights, -ss / 2, -ss / 2, ss, ss);
-        ctx.globalAlpha = 1; // blink: emphasize the active half brighter
-        if (flashRed) ctx.drawImage(cruiserLights, 0, 0, HALF, SRCH, -ss / 2, -ss / 2, ss / 2, ss);
-        else ctx.drawImage(cruiserLights, HALF, 0, HALF, SRCH, 0, -ss / 2, ss / 2, ss);
-        ctx.restore(); // restores compositeOp/alpha/smoothing
-      } else {
-        // procedural fallback: a soft glow + the bright bar (the glow sells "emissive" even in daylight)
-        ctx.globalAlpha = 0.35;
-        ctx.fillStyle = flashRed ? '#ff3b30' : '#3b6bff';
-        ctx.fillRect(Math.floor(sx - lb), Math.floor(sy - lb), Math.ceil(lb * 2), Math.ceil(lb * 2));
-        ctx.globalAlpha = 1;
-        ctx.fillRect(Math.floor(sx - lb / 2), Math.floor(sy - lb / 2), Math.ceil(lb), Math.ceil(lb * 0.7));
-      }
-    }
-
-    // Vehicle headlights/taillights + lit bus windows — STATIC emission maps over the moving sprite,
-    // NIGHT-GATED (off at midday, ramping on at dusk) and evading shading (drawn here, after the sprite
-    // lighting pass). Aligned to the sprite arrays by the SAME index the sprite draw uses.
-    const nightT = performance.now() / 1000;
-    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
-    const carLights = !this.gpuMode && this.hasTileset ? this.ambientSprites?.carLights : undefined; // GPU draws car emission in gpuMode
-    if (night > 0.02 && carLights && carLights.length > 0) {
+    // Vehicle headlights/taillights — NIGHT-GATED (off at midday, ramping on at dusk) and evading shading
+    // (drawn here, after the sprite lighting pass), on the art grid with the car body.
+    // What a headlight hits is lit on the side facing the lamp — additive, after the lighting pass so it
+    // evades the night dim, on the art grid with the sprite it lights.
+    if (cast.lit.size > 0) {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.imageSmoothingEnabled = false;
+      for (const [i, l] of cast.lit) {
+        const art = bodyArt[i]!;
+        const glow = this.litSilhouette(art.img, heading8(l.fx, l.fy));
+        if (!glow) continue;
+        ctx.globalAlpha = Math.min(0.7, 0.25 + l.light * bodyMul[l.source]! * 0.5);
+        this.drawArt(ctx, glow, art.x, art.y, camera);
+      }
+      ctx.restore();
+    }
+    if (night > 0.02) {
+      // pixel-art headlights + taillights, additive at night, on the art grid with the car body
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = night;
       for (const c of ambient.cars) {
-        if (c.parked) continue; // a parked car is OFF — no headlights/taillights (Maddy)
-        const li = carLights[(c.tint ?? 0) % carLights.length];
-        if (!li) continue;
-        const off = laneOffset(c.dir);
-        const { sx, sy } = camera.worldToScreen(c.x + 0.5 + off.dx, c.y + 0.5 + off.dy);
-        if (!onScreen(sx, sy)) continue;
-        const size = c.parked ? parkedSize : carSize;
-        const headingDir = c.parked && c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.dir;
-        const hv = dirVector(headingDir);
-        const angle = Math.atan2(hv.dx, -hv.dy);
-        const ss = size * 1.7;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(li, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
+        if (c.parked) continue; // a parked car is OFF
+        const pose = carPose(c, alpha);
+        const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
+        if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       }
       ctx.restore();
     }
-    const cyclistLights = !this.gpuMode && this.hasTileset ? this.ambientSprites?.cyclistLights : undefined; // GPU draws cyclist emission in gpuMode
-    if (night > 0.02 && cyclistLights && cyclistLights.length > 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.imageSmoothingEnabled = false;
-      ctx.globalAlpha = night;
-      for (const p of ambient.peds) {
-        if (p.phase === 'inside' || p.phase === 'driving') continue;
-        if ((p.mode ?? TravelMode.Walk) !== TravelMode.Bike) continue;
-        const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
-        const li = cyclistLights[(Math.imul(seed, 2654435761) >>> 0) % cyclistLights.length];
-        if (!li) continue;
-        let ox = 0.5;
-        let oy = 0.5;
-        if (isRoadKind(world.map.built[world.map.idx(Math.round(p.x), Math.round(p.y))]!)) {
-          const o = pedCurbOffset(p.dir);
-          ox += o.dx;
-          oy += o.dy;
-        }
-        const { sx, sy } = camera.worldToScreen(p.x + ox, p.y + oy);
-        if (!onScreen(sx, sy)) continue;
-        const hv = dirVector(p.dir);
-        const angle = Math.atan2(hv.dx, -hv.dy);
-        const ss = ts * 0.46;
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.rotate(angle);
-        ctx.drawImage(li, -ss / 2, -ss / 2, ss, ss);
-        ctx.restore();
-      }
-      ctx.restore();
-    }
-
     // Light-bearing BUILDINGS (collected in drawBase): overlay the emission map additively over the
     // whole footprint, evading shading. Two layers — the STATIC glow (furnace/windows) draws steady;
     // the BLINK layer (red aviation/hazard beacons) draws only on the on-phase, so the glow no longer
     // flickers WITH the hazard lights (Maddy: the glow should be static, only the beacons blink).
     if (this.emissiveBuildings.length > 0) {
       const now = performance.now();
-      const emission = this.ambientSprites?.emission;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.imageSmoothingEnabled = false;
       for (const b of this.emissiveBuildings) {
-        const { sx, sy } = camera.worldToScreen(b.x, b.y);
+        // on the tile grid the building itself was drawn on, so each lit window lands on its art pixel
+        const { dx: sx, dy: sy } = camera.tileOrigin(b.x, b.y);
         const w = b.w * ts;
         const h = b.h * ts;
         if (!onScreen(sx + w / 2, sy + h / 2)) continue;
         // Power plants (24–30) run 24/7 → glow always on; everything else is lit WINDOWS → night-gated.
         const isPower = b.kind >= 24 && b.kind <= 30;
         const a = isPower ? 1 : night;
-        const stat = emission?.[b.key];
+        const stat = b.lit;
         if (stat && a > 0.02) {
           ctx.globalAlpha = a;
           ctx.drawImage(stat, sx, sy, w, h);
         }
         // Hazard beacons blink on a PER-BUILDING phase + period (hashed from its anchor), so beacons
         // across the map don't pulse in unison (Maddy: global blink reads fake). Always-on (aviation).
-        const blinkImg = emission?.[`${b.key}/blink`];
+        const blinkImg = b.blink;
         if (blinkImg) {
           const hash = (((b.x * 73856093) ^ (b.y * 19349663)) >>> 0);
           const period = 420 + (hash % 6) * 90; // 420..870 ms, varies per building

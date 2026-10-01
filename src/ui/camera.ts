@@ -59,6 +59,16 @@ export class Camera {
     return { sx: (wx - this.x) * ts, sy: (wy - this.y) * ts };
   }
 
+  /**
+   * Integer screen origin of tile (tx, ty) for the tile grid. floor(worldToScreen) alone lets float
+   * error land one tile at 165.9999 → 165 and its neighbour at 166.0000001 → 166, opening a 1-px
+   * background seam between rows; a sub-pixel epsilon snaps both onto the true integer edge.
+   */
+  tileOrigin(tx: number, ty: number): { dx: number; dy: number } {
+    const ts = this.tileSize;
+    return { dx: Math.floor((tx - this.x) * ts + 1e-6), dy: Math.floor((ty - this.y) * ts + 1e-6) };
+  }
+
   screenToWorld(sx: number, sy: number): { wx: number; wy: number } {
     const ts = this.tileSize;
     return { wx: this.x + sx / ts, wy: this.y + sy / ts };

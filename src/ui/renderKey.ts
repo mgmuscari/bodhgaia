@@ -164,50 +164,6 @@ export function surfaceVariantIndex(x: number, y: number, count: number): number
   return (h >>> 0) % count;
 }
 
-/** A dihedral (square-symmetry) tile transform: `rot` quarter-turns in [0,4) plus a mirror. */
-export interface DihedralTransform {
-  rot: number;
-  flip: boolean;
-}
-
-/**
- * The dihedral transform tile (x, y) uses to break the repeated-texture "plaid" of a baked,
- * ISOTROPIC terrain tile (grass/meadow/bare/forest/water — NOT river, which is directional). A
- * direction-neutral spread hash (mirroring {@link surfaceVariantIndex}, so adjacent tiles land far
- * apart) yields all 8 states: 2 bits rotation + 1 bit mirror. Deterministic, integer ops only
- * (allowlist-safe). The renderer applies it only under an active tileset, so the procedural path
- * stays byte-identical.
- */
-export function terrainTileTransform(x: number, y: number): DihedralTransform {
-  let h = Math.imul((x | 0) ^ 0x9e3779b1, 0x85ebca6b);
-  h = Math.imul(h ^ ((y | 0) + 0x27d4eb2f), 0xc2b2ae35);
-  h ^= h >>> 13;
-  return { rot: (h >>> 0) & 3, flip: ((h >>> 3) & 1) === 1 };
-}
-
-/** A continuous per-tile texture transform: `rot` in turns [0,1), `scale` ≥ √2 so any rotation still
- *  covers the tile when clipped to its bounds. */
-export interface TileStochastic {
-  rot: number;
-  scale: number;
-}
-
-/**
- * Stochastic per-tile transform for HYBRIDIZING a baked texture with itself across cells — a random
- * rotation + scale (deterministic by tile), drawn clipped to the tile, so the same baked water tile
- * never reads twice the same way (kills the plaid). Scale stays in [√2, …] so a rotated tile always
- * covers its clipped square (no empty corners). Integer hashing only (allowlist-safe); the caller
- * turns `rot` into radians.
- */
-export function waterTileTransform(x: number, y: number): TileStochastic {
-  let h = Math.imul((x | 0) ^ 0x9e3779b1, 0x85ebca6b);
-  h = Math.imul(h ^ ((y | 0) + 0x27d4eb2f), 0xc2b2ae35);
-  h ^= h >>> 13;
-  const rot = (h >>> 0) / 4294967296; // 0..1 turns
-  const scale = 1.42 + (((h >>> 8) & 0xff) / 255) * 0.32; // 1.42..1.74 (≥ √2)
-  return { rot, scale };
-}
-
 /**
  * The exhaustive, deterministic enumeration of every key {@link builtRenderKey}
  * can return. Order is stable (road kinds × masks, then each transport prefix ×
@@ -235,4 +191,106 @@ export function renderKeyspace(): readonly string[] {
     }
   }
   return keys;
+}
+
+/**
+ * Per base key, how many interchangeable tiles a skin supplies: the base plus a contiguous run of
+ * `${base}#1..#n` variants. Keys without variants are omitted (plain lookup). A gap stops the run, so
+ * a pick can never land on a missing tile.
+ */
+export function variantCounts(keys: Iterable<string>): Map<string, number> {
+  const all = new Set(keys);
+  const counts = new Map<string, number>();
+  for (const key of all) {
+    if (key.includes('#') || !all.has(`${key}#1`)) continue;
+    let n = 1;
+    while (all.has(`${key}#${n}`)) n++;
+    counts.set(key, n);
+  }
+  return counts;
+}
+
+/**
+ * The tile to draw for `base` at (x, y): the base or one of its variants, chosen by the
+ * direction-neutral position hash (so a field of one terrain stops repeating on a 16-px grid).
+ */
+export function pickVariantKey(base: string, x: number, y: number, counts: ReadonlyMap<string, number>): string {
+  const n = counts.get(base);
+  if (n === undefined) return base;
+  const v = surfaceVariantIndex(x, y, n);
+  return v === 0 ? base : variantKey(base, v);
+}
+
+/** Blob-mask bits: sides N/E/S/W, then corners NE/SE/SW/NW. */
+export const BLOB = { N: 1, E: 2, S: 4, W: 8, NE: 16, SE: 32, SW: 64, NW: 128 } as const;
+
+/** Which of the 8 neighbours match the edge predicate (e.g. "is land" for a water cell's shore). */
+export interface Neighbours {
+  n: boolean;
+  e: boolean;
+  s: boolean;
+  w: boolean;
+  ne: boolean;
+  se: boolean;
+  sw: boolean;
+  nw: boolean;
+}
+
+/**
+ * The normalized 8-neighbour edge mask of a cell for terrain edge overlays (shorelines, canopy
+ * overhang). A corner counts only when BOTH of its sides are clear — a lone diagonal contact — because
+ * a side edge already covers its own corners. That folds the 256 raw neighbourhoods into the 47
+ * {@link BLOB_MASKS} a skin paints. Pure integer ops.
+ */
+export function blobMask(nb: Neighbours): number {
+  let m = (nb.n ? BLOB.N : 0) | (nb.e ? BLOB.E : 0) | (nb.s ? BLOB.S : 0) | (nb.w ? BLOB.W : 0);
+  if (nb.ne && !nb.n && !nb.e) m |= BLOB.NE;
+  if (nb.se && !nb.s && !nb.e) m |= BLOB.SE;
+  if (nb.sw && !nb.s && !nb.w) m |= BLOB.SW;
+  if (nb.nw && !nb.n && !nb.w) m |= BLOB.NW;
+  return m;
+}
+
+/** Every normalized blob mask (47, including 0 = no edge), ascending. */
+export const BLOB_MASKS: readonly number[] = (() => {
+  const out = new Set<number>();
+  for (let raw = 0; raw < 256; raw++) {
+    out.add(
+      blobMask({
+        n: (raw & 1) !== 0,
+        e: (raw & 2) !== 0,
+        s: (raw & 4) !== 0,
+        w: (raw & 8) !== 0,
+        ne: (raw & 16) !== 0,
+        se: (raw & 32) !== 0,
+        sw: (raw & 64) !== 0,
+        nw: (raw & 128) !== 0,
+      }),
+    );
+  }
+  return [...out].sort((a, b) => a - b);
+})();
+
+/**
+ * Reserved key namespace for terrain EDGE overlays: a transparent tile drawn over a cell's terrain,
+ * keyed by an edge `family` (`shore` — water meeting land; `canopy` — forest spilling onto open land)
+ * and the cell's normalized blob mask (renderKey.blobMask). Soft edges instead of square steps.
+ */
+export function edgeKey(family: string, mask: number): string {
+  return `@edge/${family}/${mask}`;
+}
+
+/**
+ * Key of a skin-supplied EMISSION map for a whole building footprint (kind, w×h tiles, condition tier):
+ * the lit pixels (windows, furnaces) the renderer overlays additively at night and casts glow from.
+ * `${key}/blink` is the blinking-beacon layer; `#v` suffixes follow the building's art variant.
+ */
+export function emissionKey(kind: number, width: number, height: number, condTier: number): string {
+  return `@emit/b-${kind}-${width}x${height}-${condTier}`;
+}
+
+/** The variant index a picked key carries (`…#3` → 3), or 0 for a base key. */
+export function variantIndexOf(key: string): number {
+  const i = key.lastIndexOf('#');
+  return i < 0 ? 0 : Number(key.slice(i + 1)) || 0;
 }

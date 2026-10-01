@@ -7,7 +7,12 @@ import {
   powerDemand,
   isPowerConsumer,
   plantPollution,
+  loadProfile,
+  demandAt,
+  feederOf,
+  type GridClock,
 } from '../../src/growth/power';
+import { ZoneType } from '../../src/engine/zone';
 import { GameMap } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
 
@@ -86,17 +91,17 @@ describe('computePowerGrid: conduction', () => {
 describe('computePowerGrid: brownout', () => {
   it('powers only what capacity covers when demand exceeds it', () => {
     const { map, parcels } = world();
-    // a tiny wind turbine (output 8) feeding a row of industry (demand 3 each)
+    // a small wind turbine feeding a row of dense industry that out-draws it
     placeParcel(map, parcels, { x: 2, y: 2, width: 1, height: 1, kind: BuiltKind.WindTurbine });
     const homes: number[] = [];
-    for (let x = 3; x <= 8; x++) {
-      placeParcel(map, parcels, { x, y: 2, width: 1, height: 1, kind: BuiltKind.Industrial, density: 1 });
+    for (let x = 3; x <= 12; x++) {
+      placeParcel(map, parcels, { x, y: 2, width: 1, height: 1, kind: BuiltKind.Industrial, density: 3 });
       homes.push(map.idx(x, 2));
     }
     const grid = computePowerGrid(map, parcels);
     const poweredCount = homes.filter((h) => grid.poweredAnchors.has(h)).length;
-    // capacity 8, each industry demands 3 → only 2 powered (6 ≤ 8, 9 > 8); brownout.
-    expect(poweredCount).toBe(2);
+    const each = powerDemand(BuiltKind.Industrial, 3);
+    expect(poweredCount).toBe(Math.floor(plantOutput(BuiltKind.WindTurbine) / each)); // brownout
     expect(grid.demand).toBeGreaterThan(grid.capacity);
   });
 
@@ -105,15 +110,18 @@ describe('computePowerGrid: brownout', () => {
     // A row of industry to the LEFT of the plant, so tile-index (anchor) order is the REVERSE of
     // distance: the nearest home (x=8) has the HIGHEST anchor, the farthest (x=2) the lowest.
     const homes: { x: number; idx: number }[] = [];
-    for (let x = 2; x <= 8; x++) {
-      placeParcel(map, parcels, { x, y: 2, width: 1, height: 1, kind: BuiltKind.Industrial, density: 1 });
+    for (let x = 0; x <= 12; x++) {
+      placeParcel(map, parcels, { x, y: 2, width: 1, height: 1, kind: BuiltKind.Industrial, density: 3 });
       homes.push({ x, idx: map.idx(x, 2) });
     }
-    placeParcel(map, parcels, { x: 9, y: 2, width: 1, height: 1, kind: BuiltKind.WindTurbine }); // output 8 → 2 powered
+    placeParcel(map, parcels, { x: 13, y: 2, width: 1, height: 1, kind: BuiltKind.WindTurbine });
     const grid = computePowerGrid(map, parcels);
     const powered = homes.filter((h) => grid.poweredAnchors.has(h.idx));
-    expect(powered.length).toBe(2); // capacity 8 / demand 3 each → 2
-    expect(powered.every((h) => h.x >= 7)).toBe(true); // the two NEAREST the plant (x=8,7), not x=2,3
+    const n = Math.floor(plantOutput(BuiltKind.WindTurbine) / powerDemand(BuiltKind.Industrial, 3));
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThan(homes.length); // a real brownout
+    expect(powered.length).toBe(n);
+    expect(powered.every((h) => h.x >= 13 - n)).toBe(true); // the n NEAREST the plant, not the far end
   });
 
   it('powers everything when capacity meets demand', () => {
@@ -138,5 +146,111 @@ describe('computePowerGrid: brownout', () => {
     const a = build();
     const b = build();
     expect([...a.poweredAnchors].sort()).toEqual([...b.poweredAnchors].sort());
+  });
+});
+
+
+// ── Time-varying demand + rolling blackouts (Maddy 2026-09-30) ─────────────────────────────────────
+// The city should be MOSTLY powered, with brownouts when variable demand peaks: each building's load
+// follows its zone's hour-of-day profile, phase-shifted and jittered per building, and a short grid
+// sheds whole FEEDERS (8×8 blocks) in an order that ROTATES every few in-game hours.
+
+const clock = (hour: number, slot = hour): GridClock => ({ hour, slot });
+
+describe('load profiles', () => {
+  it('homes peak in the evening and idle at night; shops peak midday', () => {
+    expect(loadProfile(ZoneType.Residential, 19)).toBeGreaterThan(loadProfile(ZoneType.Residential, 3));
+    expect(loadProfile(ZoneType.Residential, 19)).toBeGreaterThan(loadProfile(ZoneType.Residential, 12));
+    expect(loadProfile(ZoneType.Commercial, 12)).toBeGreaterThan(loadProfile(ZoneType.Commercial, 3));
+  });
+
+  it('every profile averages to ~100% over a day (the base demand is the daily mean)', () => {
+    for (const z of [ZoneType.Residential, ZoneType.Commercial, ZoneType.Industrial, ZoneType.Civic]) {
+      let sum = 0;
+      for (let h = 0; h < 24; h++) sum += loadProfile(z, h);
+      expect(sum / 24, `zone ${z}`).toBeGreaterThan(90);
+      expect(sum / 24, `zone ${z}`).toBeLessThan(110);
+    }
+  });
+});
+
+describe('demandAt — per-building, per-hour', () => {
+  it('is deterministic in (kind, density, anchor, clock)', () => {
+    expect(demandAt(BuiltKind.HouseSingle, 2, 777, clock(19))).toBe(demandAt(BuiltKind.HouseSingle, 2, 777, clock(19)));
+  });
+
+  it('differs between buildings at the same hour (random per building)', () => {
+    const vals = new Set<number>();
+    for (let a = 0; a < 40; a++) vals.add(demandAt(BuiltKind.HouseSingle, 2, a * 13, clock(19)));
+    expect(vals.size).toBeGreaterThan(10);
+  });
+
+  it('varies over time for one building, and stays within ±40% of its profiled load', () => {
+    const base = powerDemand(BuiltKind.HouseSingle, 2);
+    const seen = new Set<number>();
+    for (let slot = 0; slot < 48; slot++) {
+      const d = demandAt(BuiltKind.HouseSingle, 2, 4242, clock(slot % 24, slot));
+      seen.add(d);
+      expect(d).toBeGreaterThan(0);
+      expect(d).toBeLessThan(base * 2.5);
+    }
+    expect(seen.size).toBeGreaterThan(10);
+  });
+
+  it('is zero for non-consumers', () => {
+    expect(demandAt(BuiltKind.Park, 1, 5, clock(19))).toBe(0);
+  });
+});
+
+describe('computePowerGrid with a clock — rolling blackouts', () => {
+  // A 64×24 grid: one plant feeding a big block of homes spanning many 8×8 feeders.
+  function town(plant: BuiltKind) {
+    const map = new GameMap(64, 24);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind: plant });
+    const homes: number[] = [];
+    for (let y = 0; y < 24; y++) {
+      for (let x = 1; x < 64; x++) {
+        placeParcel(map, parcels, { x, y, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 1 });
+        homes.push(map.idx(x, y));
+      }
+    }
+    return { map, parcels, homes };
+  }
+
+  it('a grid with headroom powers everyone at the evening peak', () => {
+    const { map, parcels, homes } = town(BuiltKind.FusionPlant);
+    const g = computePowerGrid(map, parcels, clock(19));
+    expect(homes.every((h) => g.poweredAnchors.has(h))).toBe(true);
+  });
+
+  it('a short grid sheds WHOLE feeders — a block is lit or dark, never half', () => {
+    const { map, parcels, homes } = town(BuiltKind.NuclearPlant);
+    const g = computePowerGrid(map, parcels, clock(19));
+    expect(g.demand).toBeGreaterThan(g.capacity); // the evening peak out-draws the plant
+    const byFeeder = new Map<number, boolean[]>();
+    for (const h of homes) {
+      const f = feederOf(map, h);
+      byFeeder.set(f, [...(byFeeder.get(f) ?? []), g.poweredAnchors.has(h)]);
+    }
+    for (const [f, states] of byFeeder) expect(new Set(states).size, `feeder ${f}`).toBe(1);
+    expect([...byFeeder.values()].some((s) => s[0])).toBe(true); // some lit
+    expect([...byFeeder.values()].some((s) => !s[0])).toBe(true); // some dark
+  });
+
+  it('the blackout ROLLS — a different set of feeders is dark as the hours pass', () => {
+    const { map, parcels, homes } = town(BuiltKind.NuclearPlant);
+    const darkAt = (slot: number) => homes.filter((h) => !computePowerGrid(map, parcels, clock(19, slot)).poweredAnchors.has(h)).join();
+    const sets = new Set([0, 24, 48, 72, 96].map(darkAt));
+    expect(sets.size).toBeGreaterThan(1);
+  });
+
+  it('never hands out more than the plant makes', () => {
+    const { map, parcels } = town(BuiltKind.NuclearPlant);
+    const c = clock(19, 7);
+    const g = computePowerGrid(map, parcels, c);
+    let drawn = 0;
+    for (const a of g.poweredAnchors) drawn += demandAt(BuiltKind.HouseSingle, 1, a, c);
+    expect(drawn).toBeLessThanOrEqual(g.capacity + 1e-9);
   });
 });

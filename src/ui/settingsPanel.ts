@@ -15,7 +15,6 @@ import {
   type Settings,
   type WorldSettings,
 } from './settings';
-import { tilesetMetas } from './tileset';
 
 export interface SettingsPanelHandle {
   /** Show/hide; returns the new visibility (the host refreshes nothing while hidden). */
@@ -30,8 +29,6 @@ export interface SettingsPanelCallbacks {
   onLiveChange(live: LiveCaps): void;
   /** A world-setting change to persist; it takes effect on the next world load (regenerate). */
   onWorldChange(world: WorldSettings): void;
-  /** A tileset (skin) change to apply IMMEDIATELY (hot-swap, no regen) and persist. */
-  onTilesetChange(tileset: string): void;
   /** A render-path change (cpu ⇄ gpu) to apply IMMEDIATELY (mount/unmount the WebGL layer) and persist. */
   onRendererChange(renderer: RendererMode): void;
 }
@@ -79,7 +76,6 @@ export function mountSettingsPanel(
 
     panel.appendChild(performanceSection(s));
     panel.appendChild(worldSection(s));
-    panel.appendChild(tilesetSection(s));
     panel.appendChild(rendererSection(s));
   };
 
@@ -195,33 +191,6 @@ export function mountSettingsPanel(
     const note = document.createElement('div');
     note.className = 'settings-panel__note';
     note.textContent = 'A new size is a different (still seeded) world — it regenerates on apply.';
-    sec.appendChild(note);
-    return sec;
-  };
-
-  // — Tileset (skin) — applied instantly via a renderer hot-swap (no regen). A partial/empty
-  // tileset still runs: its missing keys fall back to the procedural painter (so selecting a
-  // skin whose art hasn't landed yet just shows procedural).
-  const tilesetSection = (s: Settings): HTMLElement => {
-    const metas = tilesetMetas();
-    const sec = section('Tileset — applies instantly');
-    const r = row('Skin');
-    const select = document.createElement('select');
-    for (const m of metas) {
-      const o = document.createElement('option');
-      o.value = m.id;
-      o.textContent = m.label;
-      o.selected = s.tileset === m.id;
-      select.appendChild(o);
-    }
-    select.addEventListener('change', () => cb.onTilesetChange(select.value));
-    r.appendChild(select);
-    sec.appendChild(r);
-
-    const active = metas.find((m) => m.id === s.tileset) ?? metas[0]!;
-    const note = document.createElement('div');
-    note.className = 'settings-panel__note';
-    note.textContent = active.description;
     sec.appendChild(note);
     return sec;
   };

@@ -1,9 +1,10 @@
 // Power grid: the SC1989-style conduction model. Any built tile conducts, so the
 // grid = the 4-connected components of the built layer. A component with a plant is
 // energized; its consumer parcels (R/C/I/Civic) draw power up to the component's
-// total plant capacity — beyond that the component browns out and the FARTHEST-from-
-// source consumers go dark first (power flows from the plant outward, a multi-source
-// BFS distance; ties by anchor for determinism). Pure + deterministic in (map, parcels). Engine-
+// total plant capacity. In the live game demand varies by hour and building
+// (demandAt) and a short grid sheds whole FEEDERS in a rotating order — rolling
+// blackouts. Without a clock (worldgen checks, tests) the static solve sheds the
+// FARTHEST-from-source consumers first (multi-source BFS distance; ties by anchor). Pure + deterministic in (map, parcels). Engine-
 // layer discipline (the src/growth fail-closed guard): no DOM, no transcendental
 // Math, no ui import. Recomputed live on a cadence (derived from the hashed built
 // layer), like land value — never hashed itself.
@@ -12,16 +13,21 @@ import { ParcelStore, BuiltKind } from '../engine/fabric';
 import type { GameMap } from '../engine/map';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 
-/** Generation capacity per plant kind (relative SC2000-ish scale). */
+/**
+ * Generation capacity per plant kind (relative SC2000-ish scale). Rebalanced ×7 (Maddy 2026-09-30):
+ * the legacy fleet worldgen sites (2 coal + 2 gas = 1540) carries a typical seeded city through the
+ * day; the evening residential peak is what browns it out (~85–90% lit on a mid-size seed, ~60% on
+ * the largest), so the grid reads MOSTLY powered with rolling blackouts that motivate clean power.
+ */
 export const PLANT_OUTPUT: ReadonlyMap<number, number> = new Map<number, number>([
-  [BuiltKind.CoalPlant, 60],
-  [BuiltKind.GasPlant, 50],
-  [BuiltKind.HydroPlant, 35],
-  [BuiltKind.NuclearPlant, 200],
-  [BuiltKind.WindTurbine, 8],
-  [BuiltKind.SolarPlant, 30],
-  [BuiltKind.FusionPlant, 500],
-  [BuiltKind.EnergyNode, 24], // distributed community microgrid
+  [BuiltKind.CoalPlant, 420],
+  [BuiltKind.GasPlant, 350],
+  [BuiltKind.HydroPlant, 245],
+  [BuiltKind.NuclearPlant, 1400],
+  [BuiltKind.WindTurbine, 56],
+  [BuiltKind.SolarPlant, 210],
+  [BuiltKind.FusionPlant, 3500],
+  [BuiltKind.EnergyNode, 168], // distributed community microgrid
 ]);
 
 // Power demand per unit density, by zone class. Industry is the hungriest, homes the
@@ -62,6 +68,80 @@ export function isPowerConsumer(kind: number): boolean {
   return DEMAND_PER_DENSITY.has(zoneTypeOf(kind));
 }
 
+// ── Time-varying demand ───────────────────────────────────────────────────────────────────────────
+// A building's load is its base demand (the daily MEAN) × its zone's hour-of-day profile, phase-shifted
+// ±2 h and jittered ±30% per building (redrawn each in-game hour). Pure integer hashing — no rng, no
+// transcendental Math — so it stays deterministic in (map, parcels, clock).
+
+/** The in-game time the grid is solved for: hour of day 0..23, and a monotonic hour counter. */
+export interface GridClock {
+  hour: number;
+  slot: number;
+}
+
+// Hand-shaped daily curves (relative), normalized below to a mean of exactly 100%.
+const RAW_PROFILE: ReadonlyMap<ZoneType, readonly number[]> = new Map<ZoneType, readonly number[]>([
+  // homes: quiet nights, a breakfast bump, the big evening peak (lights, cooking, screens)
+  [ZoneType.Residential, [55, 48, 45, 45, 48, 62, 85, 100, 92, 75, 68, 68, 68, 68, 70, 78, 95, 120, 140, 150, 145, 130, 105, 78]],
+  // shops + offices: the working day
+  [ZoneType.Commercial, [30, 28, 28, 28, 30, 35, 50, 75, 100, 115, 120, 120, 120, 120, 120, 120, 115, 110, 100, 85, 65, 50, 40, 35]],
+  // industry: round the clock, a shallow daytime shift peak
+  [ZoneType.Industrial, [80, 78, 78, 78, 80, 85, 95, 105, 110, 110, 110, 110, 110, 110, 110, 110, 108, 100, 95, 90, 88, 85, 82, 80]],
+  // civic: office hours
+  [ZoneType.Civic, [40, 40, 40, 40, 40, 45, 60, 90, 110, 115, 115, 115, 115, 115, 115, 110, 100, 80, 65, 55, 50, 45, 42, 40]],
+]);
+
+const PROFILE: ReadonlyMap<ZoneType, readonly number[]> = new Map(
+  [...RAW_PROFILE].map(([z, raw]) => {
+    const mean = raw.reduce((a, b) => a + b, 0) / raw.length;
+    return [z, raw.map((v) => (v * 100) / mean)] as const;
+  }),
+);
+
+/** Percent of base demand a zone draws at `hour` (0..23; wraps). Daily mean = 100. */
+export function loadProfile(zone: ZoneType, hour: number): number {
+  const curve = PROFILE.get(zone);
+  if (!curve) return 100;
+  return curve[((hour % 24) + 24) % 24]!;
+}
+
+/** Deterministic non-negative integer hash (direction-neutral, like tieHash). */
+function mix(a: number, b: number, seed: number): number {
+  let h = Math.imul((a | 0) ^ 0x9e3779b1, 0x85ebca6b);
+  h = Math.imul(h ^ ((b | 0) + 0x27d4eb2f), 0xc2b2ae35);
+  h = Math.imul(h ^ seed, 0x165667b1);
+  h ^= h >>> 15;
+  return h >>> 0;
+}
+
+/**
+ * One building's demand at `clock`: base × its zone profile (phase-shifted −2..+2 h by anchor, so the
+ * whole city doesn't peak on the same hour) × a 70..130% draw re-rolled every in-game hour.
+ */
+export function demandAt(kind: number, density: number, anchor: number, clock: GridClock): number {
+  const base = powerDemand(kind, density);
+  if (base === 0) return 0;
+  const phase = (mix(anchor, 0, 11) % 5) - 2;
+  const jitter = 70 + (mix(anchor, clock.slot, 12) % 61);
+  return (base * loadProfile(zoneTypeOf(kind), clock.hour + phase) * jitter) / 10000;
+}
+
+// ── Rolling blackouts ─────────────────────────────────────────────────────────────────────────────
+// A short grid sheds whole FEEDERS (FEEDER×FEEDER-tile blocks), never scattered single homes, and the
+// order feeders are served in is re-drawn every ROTATION_HOURS — so the dark patch moves around the
+// city instead of the same fringe always losing.
+
+export const FEEDER = 8;
+export const ROTATION_HOURS = 3;
+
+/** The feeder (distribution block) a tile belongs to. */
+export function feederOf(map: GameMap, tile: number): number {
+  const x = tile % map.width;
+  const y = (tile - x) / map.width;
+  const cols = Math.ceil(map.width / FEEDER);
+  return Math.floor(y / FEEDER) * cols + Math.floor(x / FEEDER);
+}
+
 export interface PowerGrid {
   /** Anchor tiles of consumer parcels that ARE powered this tick. */
   poweredAnchors: Set<number>;
@@ -83,7 +163,7 @@ interface ConsumerRef {
  * in a plantless component are unpowered. Returns the powered consumer anchors plus
  * global capacity/demand totals. Pure + deterministic.
  */
-export function computePowerGrid(map: GameMap, parcels: ParcelStore): PowerGrid {
+export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: GridClock): PowerGrid {
   const size = map.width * map.height;
   const built = map.built;
 
@@ -137,7 +217,7 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore): PowerGrid 
       }
       continue;
     }
-    const d = powerDemand(p.kind, p.density);
+    const d = clock ? demandAt(p.kind, p.density, anchor, clock) : powerDemand(p.kind, p.density);
     if (d > 0) {
       consumersByComp[c]!.push({ anchor, demand: d });
       demand += d;
@@ -173,9 +253,37 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore): PowerGrid 
     }
   }
 
-  // 3. Power consumers per component within its capacity, NEAREST the source first (ties by anchor for
-  //    determinism). So the grid lights up around its plants and the brownout dims the far edges.
   const poweredAnchors = new Set<number>();
+
+  // 3a. With a clock (the live game): serve whole feeders in a rotating order; a feeder that doesn't fit
+  //     the remaining budget goes dark as a block (a smaller one later in the order may still fit).
+  if (clock) {
+    const rotation = Math.floor(clock.slot / ROTATION_HOURS);
+    for (let c = 0; c < nComp; c++) {
+      let budget = capByComp[c]!;
+      if (budget <= 0) continue;
+      const feeders = new Map<number, ConsumerRef[]>();
+      for (const cons of consumersByComp[c]!) {
+        const f = feederOf(map, cons.anchor);
+        const list = feeders.get(f);
+        if (list) list.push(cons);
+        else feeders.set(f, [cons]);
+      }
+      const order = [...feeders.keys()].sort((a, b) => mix(a, rotation, 13) - mix(b, rotation, 13) || a - b);
+      for (const f of order) {
+        const members = feeders.get(f)!;
+        const load = members.reduce((sum, m) => sum + m.demand, 0);
+        if (load > budget) continue; // rolling blackout: this block sits this rotation out
+        budget -= load;
+        for (const m of members) poweredAnchors.add(m.anchor);
+      }
+    }
+    return { poweredAnchors, capacity, demand };
+  }
+
+  // 3b. Static solve (no clock — worldgen checks and tests): power consumers per component within its
+  //     capacity, NEAREST the source first (ties by anchor for determinism), so the grid lights up around
+  //     its plants and the brownout dims the far edges.
   for (let c = 0; c < nComp; c++) {
     let budget = capByComp[c]!;
     if (budget <= 0) continue; // plantless component → all dark
