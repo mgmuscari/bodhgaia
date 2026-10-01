@@ -102,42 +102,63 @@
         outline-offset: 2px;
       }
 
-      /* Tech panel: right-docked over the live map, toggled by T. Palette matches
-         the opening overlay (var(--ui-panel) panel, var(--ui-accent) meadow border). Internal
-         scroll keeps all seven branch columns reachable on short viewports. */
-      /* Tech TREE: a large centered overlay (Civ-style) over the live map, toggled
-         by T. Roots on the left, each tech right of its prereqs, connector lines
-         beneath. 2D-scrolls within the panel when the tree is bigger than the view. */
+      /* The Commons (tech tree): a panel over the map pane — branch lanes of fixed-size cards with right-angle
+         connectors on the left, the chosen practice's detail pane on the right. */
       .tech-panel {
-        border: 12px solid transparent;
-        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
-        background: none;
-        box-shadow: none;
         position: fixed;
-        inset: 4vh 3vw;
+        top: 3vh;
+        bottom: 3vh;
+        left: calc(var(--sidebar-w) + 2vw);
+        right: 2vw;
         z-index: 9;
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        font-family: var(--ui-font);
         color: var(--ui-text);
+        font-family: var(--ui-font);
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
       }
       .tech-panel[hidden] {
         display: none;
       }
       .tech-panel-header {
         flex: 0 0 auto;
-        padding: 0.85rem 1.25rem;
-        background: var(--ui-panel);
-        border-bottom: 1px solid var(--ui-panel-hi);
-        font-size: 1.05rem;
-        letter-spacing: 0.03em;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 2px 6px 8px;
+        border-bottom: 2px solid var(--ui-panel-hi);
+      }
+      .tech-panel-title {
         color: var(--ui-accent);
+        font-weight: 700;
+        font-size: 1.25rem;
+      }
+      .tech-panel-effort {
+        flex: 1 1 auto;
+        color: var(--ui-text);
+      }
+      .tech-panel-close {
+        cursor: pointer;
+        color: var(--ui-text-dark);
+        border: 6px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 6px stretch;
+        background: none;
+        font-family: var(--ui-font);
+      }
+      .tech-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        gap: 10px;
+        padding-top: 8px;
       }
       .tech-tree-wrap {
         flex: 1 1 auto;
         overflow: auto;
-        padding: 0.5rem;
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-inset) 4 fill / 8px stretch;
       }
       .tech-tree {
         position: relative;
@@ -147,51 +168,128 @@
         top: 0;
         left: 0;
         pointer-events: none;
+        z-index: 1;
       }
       .tech-edge {
+        fill: none;
         stroke: var(--ui-panel-hi);
         stroke-width: 2;
       }
       .tech-edge-active {
-        stroke: var(--ui-good);
-        stroke-width: 2.5;
+        stroke: var(--ui-accent);
       }
-      .tech-node {
+      .tech-lane {
+        position: absolute;
+        left: 0;
+        background: rgba(64, 104, 176, 0.18);
+      }
+      .tech-lane-alt {
+        background: rgba(64, 104, 176, 0.06);
+      }
+      .tech-lane-label {
+        position: absolute;
+        left: 8px;
+        top: 6px;
+        width: 108px;
+        color: var(--ui-accent);
+        font-size: 1rem;
+        line-height: 1.1;
+      }
+      .tech-card {
+        position: absolute;
+        z-index: 2;
         box-sizing: border-box;
-        padding: 0.4rem 0.55rem;
-        border: 1px solid var(--ui-panel-hi);
-        border-radius: 2px;
-        background: var(--ui-panel);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 0 2px;
+        cursor: pointer;
+        color: var(--ui-text-dark);
+        border: 6px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 6px stretch;
       }
-      .tech-node-name {
-        font-size: 1.0rem;
+      .tech-card canvas {
+        flex: 0 0 auto;
+        image-rendering: pixelated;
       }
-      .tech-node-flavor {
-        margin-top: 0.18rem;
-        font-size: 1.0rem;
-        color: var(--ui-muted);
+      .tech-card-text {
+        min-width: 0;
+        line-height: 1;
       }
-      .tech-node-missing {
-        margin-top: 0.18rem;
-        font-size: 1.0rem;
-        color: var(--ui-bad);
+      .tech-card-name {
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tech-card-cost {
+        font-size: 1rem;
+        color: var(--ui-panel);
       }
       .tech-node-locked {
-        opacity: 0.55;
+        filter: grayscale(0.7) brightness(0.8);
       }
-      .tech-node-affordable {
-        border-color: var(--ui-accent);
-        background: var(--ui-panel);
-      }
-      .tech-node-clickable {
-        cursor: pointer;
-      }
-      .tech-node-clickable:hover {
-        background: var(--ui-panel-hi);
+      .tech-node-affordable .tech-card-cost {
+        color: var(--ui-text-dark);
+        font-weight: 700;
       }
       .tech-node-unlocked {
-        border-color: var(--ui-good);
+        border-image-source: var(--ui-frame-buttonDown);
+      }
+      .tech-node-unlocked .tech-card-cost {
         color: var(--ui-good);
+      }
+      .tech-card-selected {
+        outline: 2px solid var(--ui-accent);
+        outline-offset: 1px;
+      }
+      .tech-detail {
+        flex: 0 0 260px;
+        overflow-y: auto;
+        padding: 4px 8px;
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-inset) 4 fill / 8px stretch;
+      }
+      .tech-detail-hint {
+        color: var(--ui-muted);
+      }
+      .tech-detail-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .tech-detail-head canvas {
+        image-rendering: pixelated;
+      }
+      .tech-detail-name {
+        color: var(--ui-accent);
+        font-size: 1.25rem;
+      }
+      .tech-detail-branch {
+        color: var(--ui-muted);
+      }
+      .tech-detail-flavor {
+        line-height: 1.3;
+      }
+      .tech-detail-grants {
+        color: var(--ui-good);
+      }
+      .tech-detail-needs {
+        color: var(--ui-bad);
+      }
+      .tech-detail-unlock {
+        margin-top: 8px;
+        cursor: pointer;
+        font-family: var(--ui-font);
+        font-size: 1rem;
+        color: var(--ui-text-dark);
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 8px stretch;
+        background: none;
+      }
+      .tech-detail-unlock:disabled {
+        cursor: default;
+        filter: grayscale(0.8) brightness(0.85);
       }
 
       /* Tool palette: docked down the left edge, 16-bit console city-builders style; the map pane starts right of it

@@ -360,6 +360,7 @@ export function main(): void {
   // the opening overlay is up (isOverlayActive), so it never toggles beneath it.
   const techPanel = mountTechPanel(document.body, {
     getContent: () => ({ effort: effortLine(tech), layout: techLayout(TECH_TREE, tech) }),
+    art: (key) => renderer.artImage(key),
     // Cheap per-tick header source (no branchColumns derive) for refreshHeader (Y5).
     getEffort: () => effortLine(tech),
     onUnlock: (id) => {

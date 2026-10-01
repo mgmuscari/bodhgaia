@@ -29,7 +29,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   driving the game from the Chrome extension). Fix: only apply the safety net when the pointer isn't captured.
 - 🟡 **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
   cut off the top; the dock also runs off the bottom edge.
-- 🟡 **Tech tree cards overlap** — card text spills into the next card; "Needs:" lines are cut off.
+- ✅ **Tech tree cards overlap** — rebuilt as branch lanes of fixed-size cards with a detail pane.
 - ✅ **Settings typo** — the renderer note now describes what the GPU path does.
 - 🟢 **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
 - ✅ **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — trains (8-way loco + carriages),
