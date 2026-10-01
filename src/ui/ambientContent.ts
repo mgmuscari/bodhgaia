@@ -375,6 +375,17 @@ const OCC_HEALTH_SCALE = 120; // building-health magnitude mapped before the cap
 const OCC_HEALTH_CAP = 0.15; // max ± the health term can contribute to the signal (a nudge, not a collapse)
 // A city loses people but never fully empties: occupancy floors at this fraction of its seeded baseline.
 const OCC_FLOOR = 0.4;
+// EXPECTATIONS (Maddy 2026-10-01: the inherited city emptied before you could act). Residents move on the
+// GAP between their home's conditions and what they're used to, not on an absolute bar — an absolute bar
+// drifted out of calibration every time a new nuisance (road decay, coverage…) joined land value, and the
+// opening free-fell to the floor in ~3 min. For the opening OCC_SETTLE_PASSES the live fields are only
+// materialising the inherited state (wear, road decay, smog ramp up from zero), so expectation simply IS the
+// current signal; after that it adapts at OCC_EXPECT_RATE a pass (~10 min of play). Occupancy is the stock,
+// so a gain is kept once expectations catch up. OCC_ABSOLUTE keeps a small pull from the absolute signal: a
+// terrible place still leaks, slowly.
+export const OCC_SETTLE_PASSES = 180;
+const OCC_EXPECT_RATE = 1 / 600;
+const OCC_ABSOLUTE = 0.05;
 /** Per-kind growth HEADROOM: how far above its seeded baseline a home's occupancy can climb when it
  *  thrives. A single house barely densifies; apartments / projects / co-ops / communes hold far more. */
 const OCC_HEADROOM: ReadonlyMap<number, number> = new Map([
@@ -1268,6 +1279,10 @@ export interface AmbientState {
   occupancy: Map<number, number>;
   /** Substep counter gating the occupancy re-evaluation to OCC_CADENCE. */
   occTick: number;
+  /** Per home: the occupancy signal its residents are used to (see OCC_SETTLE_PASSES). */
+  occExpect: Map<number, number>;
+  /** Occupancy passes run so far (the opening settles for OCC_SETTLE_PASSES). */
+  occPasses: number;
   /** Live ROAD DECAY (0..ROAD_DECAY_MAX), keyed by road tile: how crumbled the pavement is.
    *  Redlined roads crumble (the city won't maintain the disinvested districts); roads recover
    *  where the neighborhood is cared-for (high land value). Drags land value, never hashed. */
@@ -1312,6 +1327,8 @@ export function createAmbientState(rng?: Rng): AmbientState {
     coverage: new Set(),
     occupancy: new Map(),
     occTick: 0,
+    occExpect: new Map(),
+    occPasses: 0,
     roadDecay: new Map(),
     roadTick: 0,
   };
@@ -2947,19 +2964,26 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     return;
   }
   const next = new Map<number, number>();
+  const expect = new Map<number, number>();
+  const settling = state.occPasses < OCC_SETTLE_PASSES;
   for (const h of homes) {
     const t = map.idx(h.x, h.y);
     const cap = capacityOf(map.built[t]!, h.count);
     const floor = h.count * OCC_FLOOR; // a home never thins below this fraction of its seeded baseline
     const cur = state.occupancy.get(t) ?? h.count; // seed lazily at the census baseline
-    const signal = occupancySignal(
+    const raw = occupancySignal(
       sampleField(state.landValue, t),
       sampleField(state.pollution, t),
       state.buildingHealth.get(t) ?? 0,
     );
-    next.set(t, occupancyStep(cur, floor, cap, signal));
+    // a new home (or the opening) takes its conditions as normal
+    const was = settling ? raw : (state.occExpect.get(t) ?? raw);
+    next.set(t, occupancyStep(cur, floor, cap, raw - was + OCC_ABSOLUTE * raw));
+    expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
   }
   state.occupancy = next;
+  state.occExpect = expect;
+  state.occPasses += 1;
 }
 
 /** Top the daily-itinerary population up from the LIVE occupancy: the spawn target tracks total
