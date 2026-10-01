@@ -26,8 +26,8 @@ describe('settings defaults reproduce today’s game', () => {
     expect(MAP_SIZES.medium).toBe(128);
   });
 
-  it('default tileset is the permanent procedural look', () => {
-    expect(DEFAULT_SETTINGS.tileset).toBe('procedural');
+  it('there is no skin setting any more — the Super look is the one aesthetic (Maddy 2026-09-30)', () => {
+    expect('tileset' in DEFAULT_SETTINGS).toBe(false);
   });
 
   it('default renderer is gpu (falls back to cpu when WebGL2 is unavailable)', () => {
