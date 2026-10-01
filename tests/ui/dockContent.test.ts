@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { metaButtons } from '../../src/ui/dockContent';
 
 describe('metaButtons', () => {
-  it('has fixed labels in tech/eco/civic/redline/police/coverage/power/life order', () => {
+  it('has fixed labels in tech/eco/civic/redline/police/coverage/power/life/restore/settings/help order', () => {
     const bs = metaButtons(false, null, false);
     expect(bs.map((b) => b.id)).toEqual([
-      'tech', 'eco', 'civic', 'redline', 'police', 'coverage', 'power', 'life',
+      'tech', 'eco', 'civic', 'redline', 'police', 'coverage', 'power', 'life', 'restore', 'settings', 'help',
     ]);
     expect(bs.map((b) => b.label)).toEqual([
       'Tech (T)',
@@ -16,7 +16,14 @@ describe('metaButtons', () => {
       'Coverage (V)',
       'Power (U)',
       'Life (L)',
+      'Restoration (G)',
+      'Settings (,)',
+      'Help (?)',
     ]);
+  });
+
+  it('every button carries a pixel icon (Maddy 2026-09-30: icons instead of text)', () => {
+    for (const b of metaButtons(false, null, false)) expect(b.art, b.id).toBe(`@ui/${b.id}`);
   });
 
   it('marks Redline active iff the redline overlay is up (others not)', () => {
@@ -65,9 +72,9 @@ describe('metaButtons', () => {
     expect(bs.find((b) => b.id === 'eco')!.active).toBe(false);
   });
 
-  it('appends Life last and marks it active iff ambient is on', () => {
+  it('puts Life last among the map toggles (the panel buttons follow) and marks it active iff ambient is on', () => {
     const on = metaButtons(false, null, true);
-    expect(on[on.length - 1]!.id).toBe('life'); // always last
+    expect(on.findIndex((b) => b.id === 'life')).toBe(on.findIndex((b) => b.id === 'restore') - 1);
     expect(on.find((b) => b.id === 'life')!.active).toBe(true);
     const off = metaButtons(false, null, false);
     expect(off.find((b) => b.id === 'life')!.active).toBe(false);

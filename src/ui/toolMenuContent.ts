@@ -9,6 +9,7 @@
 
 import type { ToolDef, ToolId } from '../tools/tools';
 import { BuiltKind, isTransportKind } from '../engine/fabric';
+import { builtRenderKey, footprintCellKey } from './renderKey';
 
 /** The tool categories, in fixed dock layout order. */
 export type ToolCategory =
@@ -35,8 +36,8 @@ export interface MenuToolRow {
   id: ToolId;
   /** Display label — `Name · cost` for buildables, bare name for the free-ish modes. */
   label: string;
-  /** Pictorial icon (emoji glyph; one swap point for a future art pass). */
-  icon: string;
+  /** Art key (a game tile or `@ui/` icon) the shell draws as the button face. */
+  art: string;
   selected: boolean;
   affordable: boolean;
 }
@@ -45,7 +46,8 @@ export interface MenuToolRow {
 export interface CategoryTile {
   id: ToolCategory;
   label: string;
-  icon: string;
+  /** Art key the shell draws as the tile face. */
+  art: string;
   /** How many tools the category holds (a count badge). */
   count: number;
   /** Whether this category's flyout is open. */
@@ -72,14 +74,15 @@ const CATEGORY_LABEL: Record<ToolCategory, string> = {
   energy: 'Energy',
 };
 
-const CATEGORY_ICON: Record<ToolCategory, string> = {
-  transit: '🚊',
-  residential: '🏠',
-  commercial: '🏬',
-  industrial: '🏭',
-  civic: '🏛️',
-  green: '🌳',
-  energy: '⚡',
+/** Category art: a representative building's own tile, or a UI icon (transit). */
+const CATEGORY_ART: Record<ToolCategory, string> = {
+  transit: '@ui/transit',
+  residential: footprintCellKey(BuiltKind.HouseSingle, 1, 1, 0, 0, 0),
+  commercial: footprintCellKey(BuiltKind.CommercialStrip, 1, 1, 0, 0, 0),
+  industrial: footprintCellKey(BuiltKind.Industrial, 1, 1, 0, 0, 0),
+  civic: footprintCellKey(BuiltKind.Civic, 1, 1, 0, 0, 0),
+  green: footprintCellKey(BuiltKind.Park, 1, 1, 0, 0, 0),
+  energy: footprintCellKey(BuiltKind.WindTurbine, 1, 1, 0, 0, 0),
 };
 
 // Per-kind category. Anything not listed is uncategorized (won't appear as a build
@@ -120,52 +123,6 @@ const CATEGORY_OF_BUILDING: ReadonlyMap<number, ToolCategory> = new Map<number, 
   [BuiltKind.FusionPlant, 'energy'],
 ]);
 
-// Per-kind pictorial icon. Falls back to the category icon when a kind has none.
-const ICON_OF_KIND: ReadonlyMap<number, string> = new Map<number, string>([
-  [BuiltKind.RoadStreet, '🛣️'],
-  [BuiltKind.RoadAvenue, '🛣️'],
-  [BuiltKind.RoadHighway, '🛣️'],
-  [BuiltKind.Rail, '🚆'],
-  [BuiltKind.BikePath, '🚲'],
-  [BuiltKind.Streetcar, '🚋'],
-  [BuiltKind.QuietStreet, '🚸'],
-  [BuiltKind.PlantedMedian, '🌳'],
-  [BuiltKind.ElevatedRail, '🚝'],
-  [BuiltKind.Promenade, '🚶'],
-  [BuiltKind.HouseSingle, '🏠'],
-  [BuiltKind.Apartments, '🏢'],
-  [BuiltKind.Projects, '🏚️'],
-  [BuiltKind.ADU, '🏡'],
-  [BuiltKind.CoopHousing, '🏘️'],
-  [BuiltKind.Commune, '🏘️'],
-  [BuiltKind.CommercialStrip, '🏬'],
-  [BuiltKind.Offices, '🏢'],
-  [BuiltKind.Bazaar, '🪧'],
-  [BuiltKind.MakerSpace, '🔧'],
-  [BuiltKind.Industrial, '🏭'],
-  [BuiltKind.Civic, '🏛️'],
-  [BuiltKind.FireStation, '🚒'],
-  [BuiltKind.Clinic, '🏥'],
-  [BuiltKind.Library, '📚'],
-  [BuiltKind.School, '🏫'],
-  [BuiltKind.HealingCommons, '🩹'],
-  [BuiltKind.Park, '🌳'],
-  [BuiltKind.RewildedLand, '🌿'],
-  [BuiltKind.Parklet, '🌱'],
-  [BuiltKind.CommunityGarden, '🥬'],
-  [BuiltKind.CompostHub, '♻️'],
-  [BuiltKind.VerticalFarm, '🌾'],
-  [BuiltKind.WastewaterWorks, '💧'],
-  [BuiltKind.EnergyNode, '⚡'],
-  [BuiltKind.AINode, '🤖'],
-  [BuiltKind.CoalPlant, '🔥'],
-  [BuiltKind.GasPlant, '🛢️'],
-  [BuiltKind.HydroPlant, '🌊'],
-  [BuiltKind.NuclearPlant, '☢️'],
-  [BuiltKind.WindTurbine, '🌬️'],
-  [BuiltKind.SolarPlant, '🔆'],
-  [BuiltKind.FusionPlant, '⚛️'],
-]);
 
 /** The category a tool belongs to, or null for the top-level modes (inspect/bulldoze). */
 export function categoryOf(def: ToolDef): ToolCategory | null {
@@ -174,17 +131,14 @@ export function categoryOf(def: ToolDef): ToolCategory | null {
   return CATEGORY_OF_BUILDING.get(def.kind) ?? null;
 }
 
-/** The pictorial icon for a tool. Modes get their own glyph; builds/converts use the kind icon. */
-export function toolIcon(def: ToolDef): string {
-  if (def.id === 'inspect') return '🔍';
-  if (def.id === 'bulldoze') return '🧨';
-  if (def.kind !== undefined) {
-    const icon = ICON_OF_KIND.get(def.kind);
-    if (icon) return icon;
-    const cat = categoryOf(def);
-    if (cat) return CATEGORY_ICON[cat];
-  }
-  return '▫️';
+/** A tool's art key: the UI icon for the modes, else the tile it builds — a transport kind as an east-west
+ *  run (connection mask E|W), a building as its own 1×1 drawing. */
+export function toolArt(def: ToolDef): string {
+  if (def.id === 'inspect') return '@ui/inspect';
+  if (def.id === 'bulldoze') return '@ui/bulldoze';
+  if (def.kind === undefined) return '@ui/help';
+  if (isTransportKind(def.kind)) return builtRenderKey(def.kind, 10, 'c', 0);
+  return footprintCellKey(def.kind, 1, 1, 0, 0, 0);
 }
 
 /**
@@ -208,7 +162,7 @@ export function buildToolMenu(
     const row: MenuToolRow = {
       id: t.id,
       label: cat === null ? t.name : `${t.name} · ${t.cost}`,
-      icon: toolIcon(t),
+      art: toolArt(t),
       selected: t.id === selectedId,
       affordable: effort >= t.cost,
     };
@@ -228,7 +182,7 @@ export function buildToolMenu(
     categories.push({
       id: cat,
       label: CATEGORY_LABEL[cat],
-      icon: CATEGORY_ICON[cat],
+      art: CATEGORY_ART[cat],
       count: rows.length,
       active: open === cat,
       hasSelected: rows.some((r) => r.selected),

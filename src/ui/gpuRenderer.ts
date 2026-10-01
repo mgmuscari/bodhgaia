@@ -69,7 +69,7 @@ export class GpuRenderer {
     const canvas = document.createElement('canvas');
     canvas.id = 'gpu-base';
     canvas.style.cssText =
-      'position:fixed;inset:0;width:100%;height:100%;display:block;pointer-events:none;z-index:0;';
+      'position:fixed;top:0;left:var(--sidebar-w);width:calc(100% - var(--sidebar-w));height:100%;display:block;pointer-events:none;z-index:0;'; // the map pane, right of the tool palette — a canvas needs an explicit CSS size, or it displays at its (DPR-scaled) buffer size
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error('WebGL2 unavailable');
     document.body.prepend(canvas);

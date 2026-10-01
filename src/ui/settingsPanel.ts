@@ -106,7 +106,7 @@ export function mountSettingsPanel(
     const note = document.createElement('div');
     note.className = 'settings-panel__note';
     note.textContent = has
-      ? 'GPU jeujés the baked tiles with water, shadows, day/night + clouds. CPU is the fallback.'
+      ? 'GPU lights the pixel art: day/night, soft building shadows and headlight glow. CPU is the fallback.'
       : 'WebGL2 unavailable in this browser — using the CPU renderer.';
     sec.appendChild(note);
     return sec;

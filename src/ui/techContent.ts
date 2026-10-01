@@ -5,6 +5,9 @@
 // the overlay-suppression gate be unit-tested rather than left to manual QA.
 
 import { Branch, type TechNode } from '../tech/tree';
+import { BuiltKind, isTransportKind } from '../engine/fabric';
+import { builtKindName } from '../engine/builtNames';
+import { builtRenderKey, footprintCellKey } from './renderKey';
 import type { TechState } from '../tech/state';
 
 export type NodeStatus = 'locked' | 'affordable' | 'unlocked';
@@ -17,6 +20,11 @@ export interface NodeView {
   cost: number;
   status: NodeStatus;
   missing: string[];
+  /** The card's picture: the tile of the first building it grants, else its branch's icon. */
+  art: string;
+  /** What unlocking it grants, in words (building names, then capabilities). */
+  grants: string[];
+  branchTitle: string;
 }
 
 /** One branch column: a philosophy and its nodes in display order. */
@@ -47,6 +55,30 @@ const BRANCH_TITLES: Record<Branch, string> = {
   [Branch.AnarchoCommunism]: 'Anarcho-Communism',
 };
 
+/** Each branch's icon for cards that grant a capability rather than a building. */
+const BRANCH_ART: Record<Branch, string> = {
+  [Branch.NewUrbanism]: '@ui/life',
+  [Branch.GreenDevelopment]: '@ui/eco',
+  [Branch.RestorativeJustice]: '@ui/civic',
+  [Branch.IntentionalCommunities]: footprintCellKey(BuiltKind.CoopHousing, 1, 1, 0, 0, 0),
+  [Branch.GiftEconomy]: '@ui/restore',
+  [Branch.Solarpunk]: '@ui/power',
+  [Branch.AnarchoCommunism]: '@ui/tech',
+};
+
+/** A granted kind's picture: a transport kind as an east-west run of its own tile, a building as its 1×1 drawing. */
+const kindArt = (k: BuiltKind): string => (isTransportKind(k) ? builtRenderKey(k, 10, 'c', 0) : footprintCellKey(k, 1, 1, 0, 0, 0));
+
+/** `road-diets` → `Road diets`. */
+const capabilityLabel = (c: string): string => {
+  const words = c.replace(/-/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+export function branchTitle(b: Branch): string {
+  return BRANCH_TITLES[b];
+}
+
 function statusOf(node: TechNode, state: TechState): NodeStatus {
   if (state.unlocked.has(node.id)) return 'unlocked';
   if (state.canUnlock(node.id).ok) return 'affordable';
@@ -70,6 +102,9 @@ export function nodeViewOf(
     cost: n.cost,
     status: statusOf(n, state),
     missing: n.prereqs.filter((p) => !state.unlocked.has(p)).map((p) => byId.get(p)?.name ?? p),
+    art: n.grants.kinds?.length ? kindArt(n.grants.kinds[0]!) : BRANCH_ART[n.branch],
+    grants: [...(n.grants.kinds ?? []).map((k) => builtKindName(k)), ...(n.grants.capabilities ?? []).map(capabilityLabel)],
+    branchTitle: BRANCH_TITLES[n.branch],
   };
 }
 
