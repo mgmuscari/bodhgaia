@@ -9,7 +9,7 @@
 // @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame}.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
-import { blank, px, type Pixels, type RGB } from './pixelArt';
+import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
 
 /** Car body colourways (hi, mid, lo). A car's `tint` picks one, modulo the count. */
@@ -94,6 +94,39 @@ export function heading8(hx: number, hy: number): number {
   return hx > 0 ? (hy < 0 ? 1 : 3) : hy < 0 ? 7 : 5;
 }
 
+/** Smog billow sizes (art px across): a plume grows as it drifts downwind, so the renderer steps up
+ *  through these rather than scaling one sprite (scaling breaks the art-pixel grid). */
+const SMOG_PX = [6, 10, 14] as const;
+export const SMOG_SIZES = SMOG_PX.length;
+
+/** One smog puff: three overlapping lobes, shaded dark-below / light-above, the rim frayed by a hash so
+ *  it reads as vapour, not a disc. Drawn translucent by the renderer. */
+function smogPuff(size: number, variant: number): Pixels {
+  const p = blank(size, size);
+  const r = size / 4;
+  const lobes = [
+    [size * 0.32, size * 0.58, r * 1.15],
+    [size * 0.68, size * 0.6, r * 1.05],
+    [size * 0.5, size * 0.38, r * 1.25],
+  ] as const;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let best = 2; // normalized distance to the nearest lobe centre (<1 = inside)
+      for (const [cx, cy, lr] of lobes) {
+        const dx = x + 0.5 - cx;
+        const dy = y + 0.5 - cy;
+        best = Math.min(best, (dx * dx + dy * dy) / (lr * lr));
+      }
+      if (best >= 1) continue;
+      const h = hash2(x, y, size * 7 + variant) & 255;
+      if (best > 0.55 && h < (best - 0.55) * 560) continue; // fray the rim
+      const t = y / size; // light from above
+      px(p, x, y, t < 0.4 ? C.slateHi : t < 0.7 ? C.slate : C.slateLo);
+    }
+  }
+  return p;
+}
+
 /** Paint every SNES agent sprite into `out`. */
 export function paintSnesAgents(out: Map<string, Pixels>): void {
   BODIES.forEach(([hi, mid, lo], t) => {
@@ -114,6 +147,9 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
     };
     eightWays(glyph(COP_E, cols), glyph(COP_NE, cols)).forEach((f, d) => out.set(`@sprite/cop/${d}/${phase}`, f));
   }
+  SMOG_PX.forEach((size, i) => {
+    for (const v of [0, 1]) out.set(`@sprite/smog/${i}/${v}`, smogPuff(size, v));
+  });
   SKIN_TONES.forEach((h, tone) => {
     SHIRTS.forEach((s, shirt) => {
       PED_FRAMES.forEach((rows, f) => out.set(`@sprite/ped/${tone}/${shirt}/${f}`, glyph(rows, { h, s, l: C.slateLo })));

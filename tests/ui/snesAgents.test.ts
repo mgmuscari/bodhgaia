@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { paintSnesAgents, heading8, AGENT_TINTS } from '../../src/ui/snesAgents';
+import { paintSnesAgents, heading8, AGENT_TINTS, SMOG_SIZES } from '../../src/ui/snesAgents';
 import { SNES_PALETTE } from '../../src/ui/snesPalette';
 import { CAR_LENGTH, CAR_WIDTH } from '../../src/ui/ambientContent';
 import type { Pixels } from '../../src/ui/pixelArt';
@@ -67,5 +67,28 @@ describe('heading8 — the sprite frame for a continuous heading', () => {
     expect(heading8(-1, 0)).toBe(6);
     expect(heading8(0.7071, -0.7071)).toBe(1);
     expect(heading8(0.92, -0.38)).toBe(2); // 22° off east still reads east
+  });
+});
+
+describe('snes smog — pixel puffs replace the diffusion plume sprites', () => {
+  it('3 billow sizes × 2 variants, growing, all on the shared palette, ragged (not a solid disc)', () => {
+    expect(SMOG_SIZES).toBe(3);
+    let prev = 0;
+    for (let s = 0; s < SMOG_SIZES; s++) {
+      for (let v = 0; v < 2; v++) {
+        const p = tiles.get(`@sprite/smog/${s}/${v}`);
+        expect(p, `smog ${s}/${v}`).toBeDefined();
+        expect(p!.w).toBeGreaterThan(prev);
+        const area = p!.w * p!.h;
+        expect(opaque(p!)).toBeGreaterThan(area * 0.25);
+        expect(opaque(p!)).toBeLessThan(area * 0.8);
+        for (let i = 0; i < p!.data.length; i += 4) {
+          if (p!.data[i + 3] === 0) continue;
+          const rgb = [p!.data[i], p!.data[i + 1], p!.data[i + 2]];
+          expect(SNES_PALETTE.some((c) => c[0] === rgb[0] && c[1] === rgb[1] && c[2] === rgb[2])).toBe(true);
+        }
+      }
+      prev = tiles.get(`@sprite/smog/${s}/0`)!.w;
+    }
   });
 });

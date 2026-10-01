@@ -35,7 +35,7 @@ import { wideRoadAt, powerPoleAt, poleWireDirs, curbPoleAt, innerCornerMask, roa
 import { parcelGlyph } from './glyphContent';
 import { isPowerConsumer } from '../growth/power';
 import { dirVector, carPose, pedPose, ambientAlpha } from './ambientContent';
-import { AGENT_TINTS, heading8, personKey } from './snesAgents';
+import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import type { AmbientState } from './ambientContent';
 import type { AmbientSprites } from './ambientSprites';
 import { makeWaterFrames, makeGrassSheen, cloudFbm, buildWaterSloshFlipbook, WATER_SLOSH_ROTS, WATER_SLOSH_FRAMES } from './waterAnimation';
@@ -2035,9 +2035,8 @@ export class Renderer {
 
     // Smog plumes — TOP layer (above cars/peds, Maddy): translucent puffs over polluted tiles, streaming
     // downwind along the prevailing wind (loop + triangle fade so they don't pop), billowing as they go.
-    // In GPU mode the smog is a WebGL overlay above the sprites (smogOverlay), so skip the CPU plumes.
-    const smogSprites = !this.gpuMode && this.profile.agentSprites ? this.ambientSprites?.smog : undefined;
-    if (smogSprites && smogSprites.length > 0) {
+    // Pixel puffs on the art grid. In GPU mode the smog is a WebGL overlay above the sprites (smogOverlay).
+    if (!this.gpuMode && this.sprites.has('@sprite/smog/0/0')) {
       const drift = performance.now() / 1000;
       for (const [tile, amt] of ambient.pollution) {
         if (amt < 40) continue; // only real plumes, not faint road haze
@@ -2045,12 +2044,16 @@ export class Renderer {
         const py = (tile - px) / mapW;
         const phase = (drift * 0.35 + (tile % 13) * 0.11) % 1; // 0..1 loop, per-tile phase offset
         const distance = phase * 3.0; // tiles carried downwind this cycle
-        const { sx, sy } = camera.worldToScreen(px + 0.5 + ambient.wind.dx * distance, py + 0.5 + ambient.wind.dy * distance);
+        const wx = px + 0.5 + ambient.wind.dx * distance;
+        const wy = py + 0.5 + ambient.wind.dy * distance;
+        const { sx, sy } = camera.worldToScreen(wx, wy);
         if (!onScreen(sx, sy)) continue;
-        const sz = ts * (1.0 + amt / 180 + phase * 0.8);
+        // billow by stepping up the pixel sizes (never scaling the art), heavier smog starts bigger
+        const size = Math.min(SMOG_SIZES - 1, Math.floor(phase * SMOG_SIZES + amt / 200));
         const env = phase < 0.5 ? phase * 2 : (1 - phase) * 2; // fade in then out (0 at both loop ends)
         ctx.globalAlpha = Math.min(0.45, (amt / 255) * 0.6) * env;
-        ctx.drawImage(smogSprites[tile % smogSprites.length]!, sx - sz / 2, sy - sz / 2, sz, sz);
+        const img = this.sprites.get(`@sprite/smog/${size}/${tile & 1}`);
+        if (img) this.drawArt(ctx, img, wx, wy, camera);
       }
       ctx.globalAlpha = 1;
     }
