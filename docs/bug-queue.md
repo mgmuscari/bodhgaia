@@ -39,6 +39,10 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   across bays and ponds, but a 1-tile-wide creek can still show a 2-tile murk rectangle. Consider letting
   murk fade across a tile (shore-style edge overlay keyed on neighbour level) rather than per-tile only.
 - ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
+- 🔴 **Trains: smooth turns + whole-consist motion** (Maddy 2026-09-30) — "rail passenger cars don't animate
+  correctly, and we should have natural turns for rails that trains go around like other sprite movers."
+  Make the consist one path-follower (cars at fixed arc-length spacing behind the loco along the rail
+  polyline) using the moverPose quarter-arc turns, so every car interpolates and banks through bends.
 - 🔴 **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
   smoothly but the white consist cars "tick along locked to the tiles behind it" (snap per-tile, no lerp).
   The loco is interpolated; give the trailing cars the same smooth interpolation along the track.
