@@ -128,3 +128,15 @@ describe('buildToolMenu', () => {
     expect(cats).toContain('energy'); // Coal/Gas/Hydro/Nuclear are classic
   });
 });
+
+describe('buildToolMenu with the economy (funds for the fabric, effort for the commons)', () => {
+  it('labels and affords each tool in its own currency', () => {
+    const tools = availableTools(freshTech(0));
+    const view = buildToolMenu(tools, null, 0, 'residential', 1_000_000);
+    const house = view.rows.find((r) => r.id === 'build-16')!;
+    expect(house.label).toMatch(/\$\d/);
+    expect(house.affordable).toBe(true); // paid in funds, though effort is 0
+    const broke = buildToolMenu(tools, null, 1_000_000, 'residential', 0);
+    expect(broke.rows.find((r) => r.id === 'build-16')!.affordable).toBe(false);
+  });
+});

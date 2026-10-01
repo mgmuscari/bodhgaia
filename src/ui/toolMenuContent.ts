@@ -7,7 +7,7 @@
 // Keeping the categorization + icon mapping here, not in the shell, lets it be
 // unit-tested rather than left to manual QA.
 
-import type { ToolDef, ToolId } from '../tools/tools';
+import { toolPrice, type ToolDef, type ToolId } from '../tools/tools';
 import { BuiltKind, isTransportKind } from '../engine/fabric';
 import { builtRenderKey, footprintCellKey } from './renderKey';
 
@@ -141,6 +141,20 @@ export function toolArt(def: ToolDef): string {
   return footprintCellKey(def.kind, 1, 1, 0, 0, 0);
 }
 
+/** A tool's price as shown: `$160` from the treasury, `8 effort` from the commons (or the bare cost
+ *  without an economy). */
+function priceLabel(t: ToolDef, funds: number | undefined): string {
+  if (funds === undefined) return `${t.cost}`;
+  const p = toolPrice(t);
+  return p.funds > 0 ? `$${p.funds.toLocaleString('en-US')}` : `${p.effort} effort`;
+}
+
+function affordable(t: ToolDef, effort: number, funds: number | undefined): boolean {
+  if (funds === undefined) return effort >= t.cost;
+  const p = toolPrice(t);
+  return effort >= p.effort && funds >= p.funds;
+}
+
 /**
  * Assemble the dock view from the available tools, current selection, effort, and
  * which category is open. Modes (inspect/bulldoze) come first; the remaining tools
@@ -153,6 +167,8 @@ export function buildToolMenu(
   selectedId: ToolId | null,
   effort: number,
   open: ToolCategory | null,
+  /** The treasury, when the economy is running: the fabric is then priced in funds, the commons in effort. */
+  funds?: number,
 ): ToolMenuView {
   const modes: MenuToolRow[] = [];
   const byCat = new Map<ToolCategory, MenuToolRow[]>();
@@ -161,10 +177,10 @@ export function buildToolMenu(
     const cat = categoryOf(t);
     const row: MenuToolRow = {
       id: t.id,
-      label: cat === null ? t.name : `${t.name} · ${t.cost}`,
+      label: cat === null ? t.name : `${t.name} · ${priceLabel(t, funds)}`,
       art: toolArt(t),
       selected: t.id === selectedId,
-      affordable: effort >= t.cost,
+      affordable: affordable(t, effort, funds),
     };
     if (cat === null) {
       modes.push(row);

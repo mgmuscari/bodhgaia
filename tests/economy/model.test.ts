@@ -117,3 +117,15 @@ describe('funds: taxes in, upkeep and police out', () => {
     expect(heavy.goodwill).toBeLessThan(none.goodwill);
   });
 });
+
+describe('goodwill shock — the part the city applies to civic trust (one trust stock, not two)', () => {
+  it('a taking is a negative shock; a quiet hour is none', () => {
+    const s = createEconomy();
+    expect(stepEconomy(s, city({ harms: { blackouts: 0, policeViolence: 0, takings: 1 } }), lev()).shock).toBeLessThan(0);
+    expect(stepEconomy(s, city(), lev()).shock).toBe(0);
+  });
+  it('excludes the drift toward neutral (civic trust has its own dynamics)', () => {
+    const high = { ...createEconomy(), goodwill: 90 };
+    expect(stepEconomy(high, city(), lev()).shock).toBe(0);
+  });
+});
