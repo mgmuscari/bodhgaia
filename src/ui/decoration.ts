@@ -172,8 +172,10 @@ export function roadPaintKind(map: GameMap, x: number, y: number): number {
 export function crosswalkMask(map: GameMap, x: number, y: number): number {
   if (!map.inBounds(x, y)) return 0;
   const k = map.getBuilt(x, y);
-  // people cross streets and avenues (of any width) — never a freeway or its ramps
-  if (k !== BuiltKind.RoadStreet && k !== BuiltKind.RoadAvenue && k !== BuiltKind.QuietStreet) return 0;
+  // people cross streets and avenues (of any width), and a freeway where it meets the street grid at grade
+  // (a stroad) — never mid-freeway, never on its ramps
+  const freeway = k === BuiltKind.RoadHighway;
+  if (k !== BuiltKind.RoadStreet && k !== BuiltKind.RoadAvenue && k !== BuiltKind.QuietStreet && !freeway) return 0;
   if (junctionBox(map, x, y)) return 0;
   const legacyJunction = (jx: number, jy: number): boolean => lineRoadAt(map, jx, jy) && roadNeighbours(map, jx, jy).length >= 3;
   const oneWide = !wideRoadAt(map, x, y) && roadNeighbours(map, x, y).length <= 2;
@@ -184,7 +186,8 @@ export function crosswalkMask(map: GameMap, x: number, y: number): number {
     // an approach: the road runs toward the box (narrow across, so this is a lane meeting it, not a band
     // alongside it)
     const approaching = runAcross(map, x, y, dx !== 0) < JUNCTION_RUN;
-    if (approaching && (junctionBox(map, nx, ny) || (oneWide && legacyJunction(nx, ny)))) m |= bit;
+    const box = freeway ? stroadBox(map, nx, ny) : junctionBox(map, nx, ny) || (oneWide && legacyJunction(nx, ny));
+    if (approaching && box) m |= bit;
   }
   return m;
 }
@@ -228,6 +231,69 @@ const runAcross = (map: GameMap, x: number, y: number, approachHorizontal: boole
 export function junctionBox(map: GameMap, x: number, y: number): boolean {
   if (!roadish(map, x, y)) return false;
   return run(map, x, y, true) >= JUNCTION_RUN && run(map, x, y, false) >= JUNCTION_RUN;
+}
+
+/** A STROAD box: a junction box more than one tile across — where a wide road, a freeway or an avenue is
+ *  involved — rather than the single tile where two 1-wide streets meet. */
+export function stroadBox(map: GameMap, x: number, y: number): boolean {
+  if (!junctionBox(map, x, y)) return false;
+  return junctionBox(map, x, y - 1) || junctionBox(map, x + 1, y) || junctionBox(map, x, y + 1) || junctionBox(map, x - 1, y);
+}
+
+/** How many passable road tiles lie on each side of (x, y) across its band (west/east, or north/south). */
+function bandSides(map: GameMap, x: number, y: number, horizontal: boolean): { before: number; after: number } {
+  const [dx, dy] = horizontal ? [1, 0] : [0, 1];
+  const count = (s: number): number => {
+    let n = 0;
+    let px = x;
+    let py = y;
+    while (n < JUNCTION_RUN - 1 && passable(map, px, py, px + s * dx, py + s * dy)) {
+      px += s * dx;
+      py += s * dy;
+      n++;
+    }
+    return n;
+  };
+  return { before: count(-1), after: count(1) };
+}
+
+/**
+ * Stop bars, on the lanes ENTERING a stroad box (Maddy 2026-10-01: stroad intersection vibes). Only wide
+ * approaches (a band ≥ 2 tiles: freeways, avenues, 2-wide streets — a 1-wide street keeps its plain
+ * crosswalk), and only the half of the band whose traffic heads into the box under right-hand driving:
+ * northbound runs on the east, southbound on the west, eastbound on the south, westbound on the north. A
+ * band's centre tile (a freeway spine, the median) carries no lane. Bits N=1 E=2 S=4 W=8: the edge the bar
+ * sits at (the box side). Lane arrows go on the same lanes.
+ */
+export function stopBarMask(map: GameMap, x: number, y: number): number {
+  if (!roadish(map, x, y) || map.getBuilt(x, y) === BuiltKind.RoadRamp || junctionBox(map, x, y)) return 0;
+  let m = 0;
+  for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]] as const) {
+    if (!stroadBox(map, x + dx, y + dy)) continue;
+    const across = bandSides(map, x, y, dx === 0); // a N/S approach's band runs west–east, and vice versa
+    if (across.before + across.after + 1 < 2) continue; // a 1-wide approach
+    // entering lanes: N → the east half (more road to the west), S → the west half, E → the south half,
+    // W → the north half
+    const entering =
+      bit === 1 ? across.before > across.after : bit === 4 ? across.before < across.after : bit === 2 ? across.before > across.after : across.before < across.after;
+    if (entering) m |= bit;
+  }
+  return m;
+}
+
+/**
+ * Traffic signals at the outer corners of a stroad box, on the sidewalk corner — the diagonal pair, NW=1 and
+ * SE=4 — for each such corner whose two edges face out of the box and whose diagonal is off the road.
+ */
+export function signalCorners(map: GameMap, x: number, y: number): number {
+  if (!stroadBox(map, x, y)) return 0;
+  const box = (px: number, py: number): boolean => junctionBox(map, px, py);
+  let m = 0;
+  // the diagonal pair (NW, SE): a signal on every corner read as clutter at this scale
+  for (const [cx, cy, bit] of [[-1, -1, 1], [1, 1, 4]] as const) {
+    if (!box(x, y + cy) && !box(x + cx, y) && !roadish(map, x + cx, y + cy)) m |= bit;
+  }
+  return m;
 }
 
 /**
