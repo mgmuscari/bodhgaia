@@ -448,3 +448,13 @@ describe('architecture guard: src/economy scanned fail-closed', () => {
     });
   }
 });
+
+// src/save/snapshot.ts is the pure half of save/load: the format, capture, parse and restore. It must stay
+// headless (testable without a browser); the browser store (IndexedDB, gzip, files) lives beside it.
+describe('architecture guard: the save format is headless', () => {
+  it('src/save/snapshot.ts touches no DOM global and no banned Math', () => {
+    const code = stripComments(fs.readFileSync(path.join(root, 'src/save/snapshot.ts'), 'utf8'));
+    expect(FORBIDDEN_DOM.test(code)).toBe(false);
+    expect(FORBIDDEN_MATH.test(code)).toBe(false);
+  });
+});
