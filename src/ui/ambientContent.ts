@@ -407,10 +407,15 @@ const ROAD_WALK_PENALTY = 0.04;
  *  desire paths over time. PED_GROUND_MIN floors the beaten cost just ABOVE a promenade (0.3) and a
  *  quiet street (0.5), so a promenade the player lays still wins the route and lures peds off the
  *  wild. Flora term adds with lushness; wear term subtracts with beaten-ness (both 0..1). */
-const PED_GROUND_BASE = 0.9; // a bare empty tile (no flora, no wear)
+// People keep to the sidewalk unless the street network fails them (Maddy 2026-10-02: walkers were cutting
+// through every lot): even a fully beaten path costs more than a jammed local street, so desire paths form
+// where no street connects, not because a street is busy.
+const PED_GROUND_BASE = 2.0; // a bare empty tile (no flora, no wear)
 const PED_LUSH = 0.8; // added to ground cost at full floraVitality
 const PED_BEATEN = 0.7; // subtracted from ground cost at full wear
-const PED_GROUND_MIN = 0.4; // floor: a fully-beaten path, still dearer than a promenade
+const PED_GROUND_MIN = 1.6; // floor: a fully-beaten path, still dearer than a jammed local street (1.55)
+/** Crossing a parking lot on foot: no sidewalk, cars backing out. */
+const PED_LOT = 1.5;
 
 /** A worn desire path is convenient underfoot but DEGRADED (brown, littered): a citizen walking it
  *  brings home less wellbeing. A wearable tile counts as wellbeing-degrading once its wear reaches
@@ -2046,14 +2051,17 @@ export function pedCost(
   if (k === BuiltKind.Promenade) base = 0.3;
   else if (k === BuiltKind.QuietStreet || k === BuiltKind.BikePath) base = 0.5;
   else if (k === BuiltKind.RoadStreet || k === BuiltKind.RoadAvenue) {
-    const trafficLoad = ((traffic?.get(i) ?? 0) / TRAFFIC_MAX) * 2; // LIVE agent traffic: busier → costlier on foot
-    base = (k === BuiltKind.RoadStreet ? 0.55 : 2.0) + trafficLoad; // a local street vs a stroad
+    // LIVE agent traffic makes a street worse on foot — but a local street has a sidewalk (+1 at most);
+    // a stroad's traffic weighs double
+    const load = (traffic?.get(i) ?? 0) / TRAFFIC_MAX;
+    base = k === BuiltKind.RoadStreet ? 0.55 + load : 2.0 + load * 2;
   } else if (k === BuiltKind.None) {
     // wild ground: lush growth (high flora) is hard going; a beaten path (high wear) is easy.
     const flora = map.floraVitality[i]! / 255;
     const worn = (wear?.get(i) ?? 0) / WEAR_MAX;
     base = Math.max(PED_GROUND_MIN, PED_GROUND_BASE + flora * PED_LUSH - worn * PED_BEATEN);
-  } else base = 0.9; // parking / transit / built greens
+  } else if (k === BuiltKind.ParkingLot) base = PED_LOT;
+  else base = 0.9; // transit / built greens (a walk through the park is the point)
   return base + smog;
 }
 
