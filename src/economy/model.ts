@@ -134,11 +134,13 @@ export const ECON = {
   /** Displacement per household per tick for each unit rent exceeds what wellbeing-backed income bears. */
   displaceRate: 0.002,
   /** Loans: repaid over this many days; the city may owe up to this many days of revenue; the daily rate
-   *  runs from loanRateBest (full approval) up by loanRateSpread as approval falls to nothing. */
-  loanDays: 5,
+   *  runs from loanRateBest (full approval) up by loanRateSpread as approval falls to nothing. A 20-day term
+   *  (was 5 — Maddy 2026-10-01: repayments outran her whole surplus): a full credit line costs ≤ ~⅙ of
+   *  revenue an hour, 4–20% interest over the term. */
+  loanDays: 20,
   creditDays: 3,
-  loanRateBest: 0.01,
-  loanRateSpread: 0.04,
+  loanRateBest: 0.002,
+  loanRateSpread: 0.008,
 } as const;
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);

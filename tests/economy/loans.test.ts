@@ -78,3 +78,15 @@ describe('relief grant', () => {
     expect(stepEconomy(createEconomy(5000), broke, lev).reliefTaken).toBe(false);
   });
 });
+
+// Maddy 2026-10-01: two loans' repayments (−$198/h) outran her whole surplus (+$75/h) — borrowing dug the
+// hole deeper. A loan must be something a city can carry while it recovers.
+describe('loans a recovering city can carry', () => {
+  it('borrowing the whole credit limit costs at most a fifth of hourly revenue, even at zero approval', () => {
+    const s = { ...createEconomy(0), approval: 0 };
+    const offer = loanOffer(s, city, lev);
+    const next = takeLoan(s, offer, offer.limit)!;
+    const revenue = city.base.r * lev.tax.r + city.base.c * lev.tax.c + city.base.i * lev.tax.i;
+    expect(next.loans[0]!.payment).toBeLessThanOrEqual(revenue / 5);
+  });
+});
