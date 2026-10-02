@@ -40,6 +40,7 @@ import {
   congestionCount,
   buildMoverGrid,
   blockedAhead,
+  boxBlocked,
   walkPath,
   stopReachable,
   usesCommittedPath,
@@ -3618,5 +3619,45 @@ describe('Walkable Streets does something (Maddy 2026-10-01: "will walkable stre
 
   it('the ambient state carries the capability (the host sets it from the tech tree)', () => {
     expect(createAmbientState().walkable).toBe(false);
+  });
+});
+
+// Don't block the box (Maddy 2026-10-01: gridlock). A car enters a junction only when its exit is clear —
+// a car stopped IN the junction blocks every crossing direction, and the queues it causes block the next one.
+describe('keep the box clear', () => {
+  const plus = () => {
+    const map = new GameMap(24, 24);
+    for (let i = 0; i < 24; i++) {
+      map.built[map.idx(i, 10)] = BuiltKind.RoadStreet;
+      map.built[map.idx(10, i)] = BuiltKind.RoadStreet;
+    }
+    return map;
+  };
+  // eastbound at (9,10), committed into the junction (10,10); its next leg exits to (11,10)
+  const approaching = (map: GameMap) => ({ x: 9.2, y: 10, dir: 1, tx: 10, ty: 10, path: [map.idx(10, 10), map.idx(11, 10), map.idx(12, 10)], leg: 1 });
+
+  it('waits outside the junction while its exit is occupied', () => {
+    const map = plus();
+    const me = approaching(map);
+    const queued = { x: 11, y: 10, dir: 1, tx: 11, ty: 10 }; // stopped on the exit tile, same lane
+    expect(boxBlocked(buildMoverGrid([me, queued], map.width), map, me)).toBe(true);
+  });
+
+  it('enters when the exit is clear (oncoming traffic on the exit tile is in the other lane)', () => {
+    const map = plus();
+    const me = approaching(map);
+    expect(boxBlocked(buildMoverGrid([me], map.width), map, me)).toBe(false);
+    const oncoming = { x: 11, y: 10, dir: 3, tx: 11, ty: 10 };
+    expect(boxBlocked(buildMoverGrid([me, oncoming], map.width), map, me)).toBe(false);
+  });
+
+  it('a car already in the junction always clears it; mid-block the rule does not apply', () => {
+    const map = plus();
+    const inside = { x: 10, y: 10, dir: 1, tx: 11, ty: 10, path: [map.idx(11, 10), map.idx(12, 10)], leg: 1 };
+    const queued = { x: 12, y: 10, dir: 1, tx: 12, ty: 10 };
+    expect(boxBlocked(buildMoverGrid([inside, queued], map.width), map, inside)).toBe(false);
+    const midblock = { x: 4.2, y: 10, dir: 1, tx: 5, ty: 10, path: [map.idx(5, 10), map.idx(6, 10)], leg: 1 };
+    const ahead2 = { x: 6, y: 10, dir: 1, tx: 6, ty: 10 };
+    expect(boxBlocked(buildMoverGrid([midblock, ahead2], map.width), map, midblock)).toBe(false);
   });
 });

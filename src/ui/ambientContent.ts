@@ -1910,6 +1910,32 @@ export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover,
   return false;
 }
 
+/** A junction: a drivable tile with 3+ drivable neighbours. */
+function isJunctionTile(map: GameMap, x: number, y: number): boolean {
+  if (!carPassable(map, x, y)) return false;
+  let n = 0;
+  for (let d = 0; d < 4; d++) if (carPassable(map, x + DIR_DX[d]!, y + DIR_DY[d]!)) n++;
+  return n >= 3;
+}
+
+/** DON'T BLOCK THE BOX (Maddy 2026-10-01: gridlock). A car heading INTO a junction waits outside it until
+ *  its exit — the tile after the junction on its path — has room in its lane: a car stopped inside a
+ *  junction blocks every crossing direction, and the queues that makes block the next junction. Checked by
+ *  standing a virtual car in the junction facing the exit and asking blockedAhead. A car already inside
+ *  always clears it; mid-block, or without a committed path, the rule doesn't apply. */
+export function boxBlocked(grid: Map<number, Mover[]>, map: GameMap, m: Mover): boolean {
+  if (!m.path || m.leg === undefined) return false;
+  const cx = Math.round(m.x);
+  const cy = Math.round(m.y);
+  if ((cx === m.tx && cy === m.ty) || isJunctionTile(map, cx, cy) || !isJunctionTile(map, m.tx, m.ty)) return false;
+  const exit = m.path[m.leg];
+  if (exit === undefined) return false;
+  const ex = exit % map.width;
+  const ey = (exit - ex) / map.width;
+  const dir = ex > m.tx ? 1 : ex < m.tx ? 3 : ey > m.ty ? 2 : 0;
+  return blockedAhead(grid, map.width, { x: m.tx, y: m.ty, dir, tx: m.tx, ty: m.ty }, 1.0);
+}
+
 function advanceMover(
   m: Mover,
   speed: number,
@@ -3764,7 +3790,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   const gridMovers = [...state.cars.filter((c) => !c.parked && !c.abandoned), ...state.cruisers]; // PARKED cars don't count (Maddy)
   assignSerials(state, gridMovers);
   const moverGrid = buildMoverGrid(gridMovers, map.width);
-  const blocked = (mm: Mover): boolean => blockedAhead(moverGrid, map.width, mm);
+  const blocked = (mm: Mover): boolean => blockedAhead(moverGrid, map.width, mm) || boxBlocked(moverGrid, map, mm);
 
   // 3. Move the cars. A PARKED car waits for its pedestrian (its bound ped zeroes `dwell` on
   //    return; the countdown is just a safety release). A moving trip-car follows its path
