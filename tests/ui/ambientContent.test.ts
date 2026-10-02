@@ -3661,3 +3661,31 @@ describe('keep the box clear', () => {
     expect(boxBlocked(buildMoverGrid([midblock, ahead2], map.width), map, midblock)).toBe(false);
   });
 });
+
+// Maddy 2026-10-02: "path costs for demand pathing through non-road tiles should be higher". People keep to
+// the sidewalk unless the street network fails them — a desire path forms where no street connects, not
+// because the street is busy.
+describe('walkers keep to the sidewalk', () => {
+  const tiles = () => {
+    const map = new GameMap(8, 8);
+    map.built[map.idx(1, 1)] = BuiltKind.RoadStreet;
+    map.built[map.idx(2, 1)] = BuiltKind.ParkingLot;
+    map.built[map.idx(3, 1)] = BuiltKind.Park;
+    return map; // (4, 4) is bare ground
+  };
+  const jam = (map: GameMap) => new Map([[map.idx(1, 1), 255]]);
+
+  it('a jammed local street is still cheaper than bare ground, or even a beaten desire path', () => {
+    const map = tiles();
+    const street = pedCost(map, 1, 1, undefined, jam(map));
+    expect(pedCost(map, 4, 4)).toBeGreaterThan(street);
+    const beaten = new Map([[map.idx(4, 4), 255]]);
+    expect(pedCost(map, 4, 4, beaten)).toBeGreaterThan(street);
+  });
+
+  it('a parking lot is a worse walk than a street; a park is a good one', () => {
+    const map = tiles();
+    expect(pedCost(map, 2, 1)).toBeGreaterThan(pedCost(map, 1, 1));
+    expect(pedCost(map, 3, 1)).toBeLessThan(pedCost(map, 2, 1));
+  });
+});
