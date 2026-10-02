@@ -14,6 +14,8 @@ export interface FixedTickLoopOptions {
    * longer than the time they consume. Defaults to 1000ms.
    */
   maxFrameMs?: number;
+  /** The first tick number (a loaded game resumes its clock; default 0). */
+  startTick?: number;
 }
 
 export class FixedTickLoop {
@@ -34,9 +36,10 @@ export class FixedTickLoop {
     this.tickMs = tickMs;
     this.onTick = onTick;
     this.maxFrameMs = opts.maxFrameMs ?? 1000;
+    this._tickCount = Math.max(0, Math.floor(opts.startTick ?? 0));
   }
 
-  /** Number of ticks fired since construction. */
+  /** The current tick number (ticks fired since construction, plus startTick). */
   get tickCount(): number {
     return this._tickCount;
   }
