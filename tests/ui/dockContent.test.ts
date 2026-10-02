@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { metaButtons } from '../../src/ui/dockContent';
 
 describe('metaButtons', () => {
-  it('has fixed labels in budget/tech/eco/civic/redline/police/coverage/power/life/restore/settings/help order', () => {
+  it('has fixed labels in budget/tech/eco/civic/redline/police/coverage/power/life/restore/saves/settings/help order', () => {
     const bs = metaButtons(false, null, false);
     expect(bs.map((b) => b.id)).toEqual([
-      'budget', 'tech', 'eco', 'civic', 'redline', 'police', 'coverage', 'power', 'life', 'restore', 'settings', 'help',
+      'budget', 'tech', 'eco', 'civic', 'redline', 'police', 'coverage', 'power', 'life', 'restore', 'saves', 'settings', 'help',
     ]);
     expect(bs.map((b) => b.label)).toEqual([
       'Budget (B)',
@@ -18,6 +18,7 @@ describe('metaButtons', () => {
       'Power (U)',
       'Life (L)',
       'Restoration (G)',
+      'Saves (S)',
       'Settings (,)',
       'Help (?)',
     ]);
