@@ -23,6 +23,8 @@ import {
   setHouseholds,
   setPlantEmitters,
   chooseMode,
+  tripEvaporates,
+  jamNear,
   roadPath,
   curbParkOffset,
   isWearable,
@@ -3569,5 +3571,52 @@ describe('jam escalation: U-turn, then skip the stop (Maddy 2026-09-30: deadlock
     if (p.phase === 'driving') expect(car.path).toBeDefined();
     else expect(car.parked).toBe(true);
     expect(p.phase).not.toBe('to-vehicle'); // no dismount-and-walk-back-to-the-car shuffle
+  });
+});
+
+// Traffic evaporation (Maddy 2026-10-01: freeway removed → streets gridlocked, people left). When roads come
+// out, congestion shifts trips to foot and bike and a share simply stop happening — the balancing loop a
+// car-only mode choice lacked.
+describe('traffic evaporation: a jammed road pushes trips off it', () => {
+  const road = () => {
+    const map = new GameMap(80, 10);
+    for (let x = 0; x < 80; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet;
+    return map;
+  };
+
+  it('in a full jam people bike a leg they would have driven; a long one still drives', () => {
+    expect(chooseMode(road(), 3, 5, 28, 5, 0)).toBe(TravelMode.Drive); // d=25, clear roads
+    expect(chooseMode(road(), 3, 5, 28, 5, 1)).toBe(TravelMode.Bike); // same leg, gridlock
+    expect(chooseMode(road(), 3, 5, 70, 5, 1)).toBe(TravelMode.Drive); // d=67: too far to cycle
+  });
+
+  it('a share of driving trips through a full jam never happen — none on clear roads', () => {
+    let gone = 0;
+    for (let h = 0; h < 1000; h++) if (tripEvaporates(1, h)) gone++;
+    expect(gone).toBeGreaterThan(150);
+    expect(gone).toBeLessThan(350);
+    for (let h = 0; h < 1000; h++) expect(tripEvaporates(0, h)).toBe(false);
+  });
+
+  it('jam reads the worst congestion near a point (0..1)', () => {
+    const traffic = new Map<number, number>();
+    const map = road();
+    expect(jamNear(map, traffic, 10, 5)).toBe(0);
+    traffic.set(map.idx(11, 5), 255);
+    expect(jamNear(map, traffic, 10, 5)).toBeCloseTo(1, 6);
+    expect(jamNear(map, traffic, 40, 5)).toBe(0);
+  });
+});
+
+describe('Walkable Streets does something (Maddy 2026-10-01: "will walkable streets help?" — it was a no-op)', () => {
+  it('on walkable streets people walk farther: a leg past plain walking range is walked, not driven or biked', () => {
+    const map = new GameMap(40, 10);
+    for (let x = 0; x < 40; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet;
+    expect(chooseMode(map, 3, 5, 17, 5, 0, false)).toBe(TravelMode.Bike); // d=14
+    expect(chooseMode(map, 3, 5, 17, 5, 0, true)).toBe(TravelMode.Walk);
+  });
+
+  it('the ambient state carries the capability (the host sets it from the tech tree)', () => {
+    expect(createAmbientState().walkable).toBe(false);
   });
 });

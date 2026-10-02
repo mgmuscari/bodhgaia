@@ -1279,6 +1279,8 @@ export interface AmbientState {
   occupancy: Map<number, number>;
   /** Substep counter gating the occupancy re-evaluation to OCC_CADENCE. */
   occTick: number;
+  /** The city has Walkable Streets (set by the host from the tech tree): people walk farther. */
+  walkable: boolean;
   /** Per home: the occupancy signal its residents are used to (see OCC_SETTLE_PASSES). */
   occExpect: Map<number, number>;
   /** Occupancy passes run so far (the opening settles for OCC_SETTLE_PASSES). */
@@ -1327,6 +1329,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     coverage: new Set(),
     occupancy: new Map(),
     occTick: 0,
+    walkable: false,
     occExpect: new Map(),
     occPasses: 0,
     roadDecay: new Map(),
@@ -2355,11 +2358,15 @@ function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boolean {
   for (let step = (p.itinStep ?? 0) + 1; step < itin.length; step++) {
     const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue);
     if (plot && stopReachable(state, map, cx, cy, plot)) {
+      const jam = p.carId !== undefined ? 0 : Math.max(jamNear(map, state.traffic, cx, cy), jamNear(map, state.traffic, plot.x, plot.y));
+      const chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, state.walkable);
+      // a drive into gridlock may simply not happen — the errand is forgone or folded into another
+      if (chosen === TravelMode.Drive && tripEvaporates(jam, Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0))) continue;
       p.itinStep = step;
       // If the citizen took its CAR out (carId set), it RETURNS TO THE CAR and drives to the next stop
       // — it doesn't abandon the car and walk off (Maddy: "if they've driven to a location, they should
       // go back to their car"). Mode is only chosen freely from HOME (no car out yet → walk option).
-      const mode = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y);
+      const mode = chosen;
       // DRIVE: walk to the owned car, drive it to a parking spot, then walk to the plot. If no car
       // can be had (land-locked), fall through and walk the leg.
       if (mode === TravelMode.Drive && setDriveLeg(state, p, map, plot, 'to-building')) return true;
@@ -2393,20 +2400,55 @@ function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode): bool
  *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
  *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
  *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number): TravelMode {
+export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkable = false): TravelMode {
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
-  if (d <= WALK_RANGE) return TravelMode.Walk;
+  // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
+  const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
+  // Walkable Streets (crossings, shade, slower cars): people walk half as far again
+  if (d <= WALK_RANGE * stretch * (walkable ? WALKABLE_STRETCH : 1)) return TravelMode.Walk;
   for (const mode of MODE_CHOICE_ORDER) {
     if (mode === TravelMode.Bike) {
       // A medium leg cycles (you can bike a street); bike-friendly infra just makes it faster/nicer
       // via the routing cost. So cyclists appear from the start and grow as the player calms streets.
-      if (d <= BIKE_RANGE) return TravelMode.Bike;
+      if (d <= BIKE_RANGE * stretch) return TravelMode.Bike;
       continue;
     }
     // rail / streetcar / drive: available when their network serves BOTH ends of the leg.
     if (infraNear(map, ox, oy, mode) && infraNear(map, dx, dy, mode)) return mode;
   }
   return TravelMode.Walk;
+}
+
+// ── Traffic evaporation (Maddy 2026-10-01: a freeway came out, the streets gridlocked, people left). When
+// road capacity falls, trips don't all pile onto what's left: some shift to foot and bike (chooseMode's
+// stretch) and a share simply stop happening — combined, moved, forgone (Cairns et al.: ~¼ of the traffic
+// "evaporates" after road-space reductions). The balancing loop a car-only mode choice lacked.
+
+/** How much farther people walk once the city has Walkable Streets (the `walkability` capability). */
+const WALKABLE_STRETCH = 1.5;
+/** How far (Manhattan) a trip end reads congestion. */
+const JAM_RADIUS = 2;
+/** The share of driving trips that evaporate in a full jam. */
+const EVAPORATION = 0.25;
+
+/** The worst congestion within JAM_RADIUS of (x, y), 0..1. */
+export function jamNear(map: GameMap, traffic: ReadonlyMap<number, number>, x: number, y: number): number {
+  let worst = 0;
+  for (let dy = -JAM_RADIUS; dy <= JAM_RADIUS; dy++) {
+    for (let dx = -JAM_RADIUS; dx <= JAM_RADIUS; dx++) {
+      if (Math.abs(dx) + Math.abs(dy) > JAM_RADIUS || !map.inBounds(x + dx, y + dy)) continue;
+      const v = traffic.get(map.idx(x + dx, y + dy)) ?? 0;
+      if (v > worst) worst = v;
+    }
+  }
+  return worst / TRAFFIC_MAX;
+}
+
+/** Does this driving trip evaporate? A deterministic share (EVAPORATION × jam) of trips, picked by hash. */
+export function tripEvaporates(jam: number, hash: number): boolean {
+  if (jam <= 0) return false;
+  const u = (Math.imul((hash ^ 0x2545f491) >>> 0, 0x9e3779b1) >>> 0) % 1000;
+  return u < jam * EVAPORATION * 1000;
 }
 
 /** A citizen's OWNED vehicle: the persistent parked Car it walks to and drives. Returns the existing
