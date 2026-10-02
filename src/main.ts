@@ -1163,6 +1163,7 @@ export function main(): void {
       // Continuous ambient path: step the ambient sim on its OWN clock (its Task-1
       // clamp owns catch-up), then composite + sprites. The base rebuilds inside
       // renderFrame iff invalidated, so this stays cheap.
+      ambientState.walkable = tech.hasCapability('walkability'); // Walkable Streets: people walk farther
       stepAmbient(ambientState, world.map, ambientRng, now - lastAmbient);
       lastAmbient = now;
       renderer.renderFrame(world, camera, ambientState);
