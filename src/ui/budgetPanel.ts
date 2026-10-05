@@ -5,6 +5,7 @@
 // callbacks.
 
 import type { BudgetView } from './budgetContent';
+import { money, perHour } from './moneyFormat';
 
 export interface BudgetPanelDeps {
   getView(): BudgetView;
@@ -24,10 +25,6 @@ export interface BudgetPanelHandle {
   refresh(): void;
 }
 
-const MINUS = '−';
-const money = (v: number): string => `${v < 0 ? MINUS : ''}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
-const perHour = (v: number): string =>
-  Math.round(v) === 0 ? '$0/h' : `${v < 0 ? MINUS : '+'}$${Math.abs(Math.round(v)).toLocaleString('en-US')}/h`;
 
 export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps): BudgetPanelHandle {
   const panel = document.createElement('div');
