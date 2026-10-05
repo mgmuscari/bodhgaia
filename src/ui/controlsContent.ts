@@ -1,7 +1,7 @@
 // Controls reference (PURE — the canonical keybinding + pointer list and its formatter). The single
 // source of truth the on-screen help panel and the persistent hint both read, so the game's controls
 // are DISCOVERABLE instead of secret. No DOM / no transcendental Math → on the pure-ui allowlist.
-// Keep this in sync with the keydown handlers in main.ts and techPanel.ts (the keys are bound there).
+// The keys are bound in keyMap.ts (the one key table; its test checks every key listed here is bound).
 
 export interface KeyBinding {
   /** The display key (single char / symbol). Letter keys are bound case-insensitively. */
@@ -9,7 +9,7 @@ export interface KeyBinding {
   label: string;
 }
 
-/** Toggle keys, in the order they read in the help panel. Mirrors main.ts / techPanel.ts bindings. */
+/** Toggle keys, in the order they read in the help panel. Mirrors keyMap.ts. */
 export const CONTROLS: KeyBinding[] = [
   { key: ',', label: 'Settings menu' },
   { key: 'T', label: 'Tech tree' },

@@ -33,8 +33,6 @@ export interface TechPanelDeps {
   getEffort?(): string;
   /** Attempt to unlock a node; returns true if it succeeded (state changed). */
   onUnlock(id: string): boolean;
-  /** Whether the opening overlay is currently up (suppresses the `T` toggle). */
-  isOverlayActive(): boolean;
   /** Fired for every toggle so the host keeps the palette's Tech button in sync. Optional. */
   onToggle?(open: boolean): void;
   /** The image for an art key (a game tile or `@ui/` icon). */
@@ -258,11 +256,8 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
   }
 
   function onKey(event: KeyboardEvent): void {
-    const k = event.key;
-    if ((k === 't' || k === 'T') && !deps.isOverlayActive()) {
-      event.preventDefault();
-      setOpen(!open);
-    } else if (k === 'Escape' && open) {
+    // T is bound in the one key table (keyMap.ts → main.ts calls toggle()); the panel keeps only Escape.
+    if (event.key === 'Escape' && open) {
       event.preventDefault();
       setOpen(false);
     }
