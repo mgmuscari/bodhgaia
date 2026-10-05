@@ -37,10 +37,15 @@ export function mountHelpPanel(container: HTMLElement): HelpPanelHandle {
   title.textContent = 'Controls';
   panel.appendChild(title);
 
+  // Only the content scrolls: the ✕ and the title stay pinned above it (a scrolled-away ✕ was a trap).
+  const scroll = document.createElement('div');
+  scroll.className = 'help-panel__scroll';
+  panel.appendChild(scroll);
+
   const body = document.createElement('div');
   body.className = 'help-panel__body';
   body.textContent = controlsLines().join('\n');
-  panel.appendChild(body);
+  scroll.appendChild(body);
 
   const credits = document.createElement('div');
   credits.className = 'help-panel__credits';
@@ -67,14 +72,14 @@ export function mountHelpPanel(container: HTMLElement): HelpPanelHandle {
       credits.appendChild(a);
     }
   }
-  panel.appendChild(credits);
+  scroll.appendChild(credits);
 
   container.appendChild(panel);
 
   let shown = false;
   const setShown = (v: boolean): void => {
     shown = v;
-    panel.style.display = v ? 'block' : 'none';
+    panel.style.display = v ? 'flex' : 'none'; // a column: pinned header over the scrolling content
     hint.style.display = v ? 'none' : 'block'; // the hint and the panel never show together
   };
   hint.addEventListener('click', () => setShown(true));
