@@ -5,6 +5,7 @@
 // this file). The renderer reads ambient.coverage; this module owns the colours + legend + view.
 
 import type { OverlayLegend } from './overlayLegend';
+import { OVERLAY_ALPHA } from './overlayTint';
 
 /** The single coverage view. */
 export type CoverageOverlayView = 'coverage';
@@ -12,7 +13,7 @@ export const COVERAGE_VIEWS: readonly CoverageOverlayView[] = ['coverage'];
 
 /** Strong translucency: coverage tints only developed plots, so served/under-served pop OVER the
  *  dimmed (scrimmed) base rather than washing into terrain (see OverlaySource.dimBase / OVERLAY_DIM). */
-export const COVERAGE_OVERLAY_ALPHA = 0.92;
+export const COVERAGE_OVERLAY_ALPHA = OVERLAY_ALPHA;
 
 type RGBA = [number, number, number, number];
 

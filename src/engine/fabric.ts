@@ -107,8 +107,6 @@ export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
 /** Roads (street/avenue/highway). Rail is transport but not a road. */
 export const isRoadKind = (k: number): boolean => k >= 1 && k <= 3;
-/** A planted median (the road-diet green strip, 11): a transport-slot tile that carries NO traffic. */
-export const isPlantedMedian = (k: number): boolean => k === BuiltKind.PlantedMedian;
 
 /** The commons: works neighbours raise and tend with communal effort rather than the treasury (gardens,
  *  parklets, parks, wild land, the shared halls and workshops). The economy reads their tending; the tools

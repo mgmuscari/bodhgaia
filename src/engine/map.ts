@@ -62,8 +62,9 @@ export class GameMap {
   readonly floraVitality: Uint8Array;
   /** Fauna presence per cell, 0..255 (ecology layer; see src/ecology). */
   readonly faunaPresence: Uint8Array;
-  /** Traffic density per cell, 0..255 (traffic layer; see src/traffic). Laid by
-   *  origin→destination trips, decays each traffic cycle. */
+  /** Traffic density per cell, 0..255. Legacy layer: the 1989-style origin→destination
+   *  generator that laid it is retired (traffic is agent-driven in the live layer now), so
+   *  nothing writes it and it stays 0 — kept for the world hash and the save format. */
   readonly traffic: Uint8Array;
   /**
    * Redline grade per cell, 0..255 (0 = greenlined/best .. 255 = redlined/worst).

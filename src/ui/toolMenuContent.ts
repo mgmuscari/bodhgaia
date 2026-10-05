@@ -10,6 +10,7 @@
 import { toolPrice, type ToolDef, type ToolId } from '../tools/tools';
 import { BuiltKind, isTransportKind } from '../engine/fabric';
 import { builtRenderKey, footprintCellKey } from './renderKey';
+import { money } from './moneyFormat';
 
 /** The tool categories, in fixed dock layout order. */
 export type ToolCategory =
@@ -146,7 +147,7 @@ export function toolArt(def: ToolDef): string {
 function priceLabel(t: ToolDef, funds: number | undefined): string {
   if (funds === undefined) return `${t.cost}`;
   const p = toolPrice(t);
-  return p.funds > 0 ? `$${p.funds.toLocaleString('en-US')}` : `${p.effort} effort`;
+  return p.funds > 0 ? money(p.funds) : `${p.effort} effort`;
 }
 
 function affordable(t: ToolDef, effort: number, funds: number | undefined): boolean {
