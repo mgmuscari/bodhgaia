@@ -39,7 +39,7 @@ export function buildFragmentSource(): string {
 precision highp float;
 ${glslDefines()}
 
-uniform sampler2D u_data; // packed world: R=type G=height/band/class B=adjacency A=sim
+uniform sampler2D u_data; // packed world: R=type G=height/band/class B=adjacency A=free (always 0)
 uniform sampler2D u_base; // the CPU-rendered base (terrain+buildings+roads+all markings) — the albedo
 uniform vec2 u_grid;      // data-texture size in cells (for sampling normalization)
 uniform vec2 u_origin;    // top-left visible world cell (camera pan)

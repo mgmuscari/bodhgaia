@@ -17,9 +17,10 @@ import type { EconomyRun } from '../economy/run';
 import type { AmbientState } from '../ui/ambientContent';
 
 export const SAVE_FORMAT = 'bodhitropolis-save';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
-/** The map layers a save carries, by GameMap field name (all of them: they are the world). */
+/** The map layers a save carries, by GameMap field name (all of them: they are the world). v1 also carried
+ *  'traffic' — an always-zero legacy layer, retired in v2 (MIGRATIONS[1] drops it). */
 const LAYERS = [
   'elevation',
   'water',
@@ -31,7 +32,6 @@ const LAYERS = [
   'soilHealth',
   'floraVitality',
   'faunaPresence',
-  'traffic',
   'redline',
 ] as const;
 type LayerName = (typeof LAYERS)[number];
@@ -144,7 +144,16 @@ export function captureGame(p: GameParts): SaveV1 {
 // ── parse (validate + migrate) ───────────────────────────────────────────────────────────────────────────
 
 /** One lift per version: MIGRATIONS[v] turns a version-v save into version v+1. */
-const MIGRATIONS: Record<number, (s: Record<string, unknown>) => Record<string, unknown>> = {};
+const MIGRATIONS: Record<number, (s: Record<string, unknown>) => Record<string, unknown>> = {
+  // v1 → v2: GameMap's `traffic` layer is retired (nothing wrote it since the O-D generator went; it was
+  // always zero — traffic is agent-driven in the live layer). Drop it; every other layer is unchanged.
+  1: (s) => {
+    const world = s.world as { layers?: Record<string, string> } | undefined;
+    if (!world?.layers) return s;
+    const { traffic: _dropped, ...layers } = world.layers;
+    return { ...s, world: { ...world, layers } };
+  },
+};
 
 export function parseSave(text: string): SaveV1 {
   let raw: unknown;
