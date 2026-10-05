@@ -8,10 +8,7 @@ import { runPipeline } from './worldgen/pipeline';
 import { terrainStage } from './worldgen/terrain';
 import { mosesCenturyStage } from './worldgen/moses';
 import { ecoSeedStage } from './worldgen/ecoseed';
-import { parseChronicle } from './worldgen/chronicle';
-import { buildReport } from './worldgen/report';
 import { gradeLetter } from './worldgen/redline';
-import { ecologyReport } from './ecology/report';
 import { biodiversityField } from './ecology/biodiversity';
 import { Water } from './engine/map';
 import { isRoadKind, BuiltKind } from './engine/fabric';
@@ -36,7 +33,6 @@ import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings'
 import { residentialCensus } from './citizens/census';
 import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
-import { statLines, eraHeadline, challengeText, ecologyStatLine } from './ui/openingContent';
 import { overlayTint, legendLine, ecoLegend, type OverlayView } from './ui/ecoOverlayContent';
 import {
   civicOverlayTint,
@@ -58,7 +54,6 @@ import { sampleRestoration, restorationLines, type RestorationSample } from './u
 import { mountRestorationPanel } from './ui/restorationPanel';
 import { sampleUnhoused, unhousedSuffix } from './ui/unhousedContent';
 import { isRepairTool } from './ui/repairTools';
-import { mountOpening, type OpeningContent } from './ui/opening';
 import { TECH_TREE } from './tech/tree';
 import { createTechState } from './tech/state';
 import { wellbeing } from './tech/effort';
@@ -90,6 +85,7 @@ import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type
 import { CURRENT, writeSlot, readSlot, deleteSlot, listSlots, loadSlot, newCity, exportFile, importFile } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
 import { setPixelFavicon, installDevHandle } from './app/devHandle';
+import { mountOpeningFor } from './app/opening';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -327,19 +323,7 @@ export function main(save: SaveV1 | null = null): void {
   // overlay captures pointer events until the player dismisses it (Begin /
   // Enter / Escape), after which the map is interactive.
   if (params.get('nointro') !== '1' && !save) {
-    const name = cityName(createRng(seed).fork('city-name'));
-    const chronicle = parseChronicle(world.log);
-    const report = buildReport(world);
-    // The eco-seed wound's DISPLAY half: surface it as a real opening stat line,
-    // omitted (null) on the degenerate all-water / no-highway path.
-    const ecoLine = ecologyStatLine(ecologyReport(world));
-    const content: OpeningContent = {
-      name,
-      eras: chronicle.entries.map(eraHeadline),
-      stats: ecoLine !== null ? [...statLines(report), ecoLine] : statLines(report),
-      challenge: challengeText(name, report, chronicle),
-    };
-    mountOpening(document.body, content, () => {
+    mountOpeningFor(world, seed, () => {
       overlayActive = false;
       markDirty();
     });
