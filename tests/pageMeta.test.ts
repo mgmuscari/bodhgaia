@@ -44,3 +44,20 @@ describe('page metadata (index.html)', () => {
     expect(existsSync(`public/${href!.replace(/^\.\//, '')}`)).toBe(true);
   });
 });
+
+describe('desktop-only note (index.html)', () => {
+  const body = html.slice(html.indexOf('<body'));
+
+  it('carries a static "best on a desktop browser" note, dismissible without script', () => {
+    expect(body).toMatch(/class="desktop-note"[^>]*>[\s\S]*Bodhitropolis is best on a desktop browser/);
+    // pure-CSS dismiss: a checkbox toggled by a label, the note hidden once it is checked
+    expect(body).toMatch(/<input[^>]*id="desktop-note-dismiss"/);
+    expect(body).toMatch(/<label[^>]*for="desktop-note-dismiss"/);
+    expect(head).toMatch(/#desktop-note-dismiss:checked\s*\+\s*\.desktop-note\s*\{[^}]*display:\s*none/);
+  });
+
+  it('shows only on narrow screens', () => {
+    expect(head).toMatch(/\.desktop-note\s*\{[^}]*display:\s*none/);
+    expect(head).toMatch(/@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.desktop-note\s*\{[^}]*display:\s*block/);
+  });
+});
