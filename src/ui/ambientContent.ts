@@ -558,12 +558,6 @@ export function laneOffset(dir: number): { dx: number; dy: number } {
   return { dx: -DIR_DY[dir]! * LANE, dy: DIR_DX[dir]! * LANE };
 }
 
-/** The integer heading unit vector for a direction index (0=N,1=E,2=S,3=W) — lets the renderer
- *  rotate a car sprite to its travel heading (the atan2 lives renderer-side; this stays allowlist-safe). */
-export function dirVector(dir: number): { dx: number; dy: number } {
-  return { dx: DIR_DX[dir] ?? 0, dy: DIR_DY[dir] ?? 0 };
-}
-
 /** How far a street-parked car is drawn toward its curb (the adjacent non-road tile). Larger
  *  than LANE so the car clears the lane centre and hugs the kerb instead of sitting in the
  *  middle of the road — but < 0.5 so it stays within its own tile. */
@@ -581,12 +575,6 @@ export function curbParkOffset(curbDir: number): { dx: number; dy: number } {
  *  Opposite-direction walkers ride opposite kerbs (right-hand), so both sides of the street
  *  are used. Through-the-middle is reserved for demand-path cut-throughs across open ground. */
 const PED_CURB = 0.38;
-
-/** A pedestrian's draw-time kerb offset (perpendicular-right of its heading), for when it is
- *  walking along a road. Cosmetic — read only by the renderer's sprite draw. */
-export function pedCurbOffset(dir: number): { dx: number; dy: number } {
-  return { dx: -DIR_DY[dir]! * PED_CURB, dy: DIR_DX[dir]! * PED_CURB };
-}
 
 /**
  * How much faster a mover's current sim leg should run so its DRAWN path keeps its pace: a leg's pose

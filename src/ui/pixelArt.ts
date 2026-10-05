@@ -37,12 +37,6 @@ export function isOpaque(p: Pixels, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < p.w && y < p.h && p.data[(y * p.w + x) * 4 + 3]! > 0;
 }
 
-/** Clear one pixel back to transparent. */
-export function clearPx(p: Pixels, x: number, y: number): void {
-  if (x < 0 || y < 0 || x >= p.w || y >= p.h) return;
-  p.data.fill(0, (y * p.w + x) * 4, (y * p.w + x) * 4 + 4);
-}
-
 export function rect(p: Pixels, x: number, y: number, w: number, h: number, c: RGB): void {
   for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) px(p, xx, yy, c);
 }
