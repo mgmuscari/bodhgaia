@@ -8,13 +8,9 @@ import { runPipeline } from './worldgen/pipeline';
 import { terrainStage } from './worldgen/terrain';
 import { mosesCenturyStage } from './worldgen/moses';
 import { ecoSeedStage } from './worldgen/ecoseed';
-import { parseChronicle } from './worldgen/chronicle';
-import { buildReport } from './worldgen/report';
-import { gradeLetter } from './worldgen/redline';
-import { ecologyReport } from './ecology/report';
 import { biodiversityField } from './ecology/biodiversity';
 import { Water } from './engine/map';
-import { isRoadKind, BuiltKind } from './engine/fabric';
+import { BuiltKind } from './engine/fabric';
 import { createRng } from './engine/rng';
 import { cityName } from './engine/names';
 import { FixedTickLoop } from './engine/loop';
@@ -24,33 +20,18 @@ import { SIDEBAR_W } from './ui/toolbar';
 import { installUiTheme } from './ui/uiTheme';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
-import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, liveInspectLine, applyLiveCaps } from './ui/ambientContent';
+import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, applyLiveCaps } from './ui/ambientContent';
 import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { materializeSkin } from './ui/tilesetLoader';
 import { paintSnesSkin } from './ui/snesTileset';
 import { footprintCellKey } from './ui/renderKey';
 
-/** The tab icon is one of the game's own painted tiles (a house), scaled up nearest-neighbour. */
-function setPixelFavicon(tile: CanvasImageSource | undefined): void {
-  if (!tile) return;
-  const c = document.createElement('canvas');
-  c.width = 32;
-  c.height = 32;
-  const ctx = c.getContext('2d');
-  if (!ctx) return;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(tile, 0, 0, 32, 32);
-  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(document.createElement('link'));
-  link.rel = 'icon';
-  link.href = c.toDataURL('image/png');
-}
 import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
 import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
-import { statLines, eraHeadline, challengeText, ecologyStatLine } from './ui/openingContent';
 import { overlayTint, legendLine, ecoLegend, type OverlayView } from './ui/ecoOverlayContent';
 import {
   civicOverlayTint,
@@ -72,7 +53,6 @@ import { sampleRestoration, restorationLines, type RestorationSample } from './u
 import { mountRestorationPanel } from './ui/restorationPanel';
 import { sampleUnhoused, unhousedSuffix } from './ui/unhousedContent';
 import { isRepairTool } from './ui/repairTools';
-import { mountOpening, type OpeningContent } from './ui/opening';
 import { TECH_TREE } from './tech/tree';
 import { createTechState } from './tech/state';
 import { wellbeing } from './tech/effort';
@@ -97,12 +77,15 @@ import { computeNeighborhoods } from './civic/neighborhoods';
 import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
-import { computePowerGrid, plantOutput, isPowerConsumer, plantPollution } from './growth/power';
+import { computePowerGrid, isPowerConsumer, plantPollution } from './growth/power';
 import { gameClock } from './ui/lighting';
 import { TRUST_FLOOR } from './civic/dynamics';
 import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
 import { CURRENT, writeSlot, readSlot, deleteSlot, listSlots, loadSlot, newCity, exportFile, importFile } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
+import { setPixelFavicon, installDevHandle } from './app/devHandle';
+import { mountOpeningFor } from './app/opening';
+import { inspectReadout } from './ui/inspectContent';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -321,36 +304,18 @@ export function main(save: SaveV1 | null = null): void {
   seedDecay(ambientState, world.map);
   if (save) restoreLive(ambientState, save.live); // the saved stocks over the seeded decay
 
-  // Dev / live-pass affordance: a small global to drive the camera and inspect live
-  // state from outside the input layer (e.g. screenshot tooling that needs to focus a
-  // location). `zoomTo` mirrors the input path — move the camera, then markDirty so
-  // the cached base rebuilds at the new view. `camera`/`world`/`ambient` are exposed
-  // read handles (the running app's actual objects) so a live pass need not rebuild
-  // the world in-page. DEV BUILDS ONLY: Vite folds `import.meta.env.DEV` to false in a
-  // production build, so the hook (and its handles on live state) is stripped from the shipped bundle.
+  // Dev / live-pass hook (`window.bodhitropolis`) — DEV BUILDS ONLY (folded away in production). It reads the
+  // reassigned power grid / GPU renderer through getters, never snapshots.
   if (import.meta.env.DEV) {
-    (window as unknown as Record<string, unknown>).bodhitropolis = {
-      zoomTo: (wx: number, wy: number, zoom?: number): void => {
-        camera.centerOn(wx, wy, zoom);
-        markDirty();
-      },
-      toggleGpu: (): boolean => {
-        if (gpuRenderer) {
-          unmountGpu();
-          markDirty();
-          return false;
-        }
-        const ok = mountGpu();
-        markDirty();
-        return ok;
-      },
-      gpuOn: (): boolean => gpuRenderer !== null,
+    installDevHandle({
       camera,
       world,
       ambient: ambientState,
       tech,
       power: () => powerGrid,
-    };
+      markDirty,
+      gpu: { isOn: () => gpuRenderer !== null, mount: mountGpu, unmount: unmountGpu },
+    });
   }
 
   // Opening challenge overlay. Computed from the same world, mounted over the
@@ -358,19 +323,7 @@ export function main(save: SaveV1 | null = null): void {
   // overlay captures pointer events until the player dismisses it (Begin /
   // Enter / Escape), after which the map is interactive.
   if (params.get('nointro') !== '1' && !save) {
-    const name = cityName(createRng(seed).fork('city-name'));
-    const chronicle = parseChronicle(world.log);
-    const report = buildReport(world);
-    // The eco-seed wound's DISPLAY half: surface it as a real opening stat line,
-    // omitted (null) on the degenerate all-water / no-highway path.
-    const ecoLine = ecologyStatLine(ecologyReport(world));
-    const content: OpeningContent = {
-      name,
-      eras: chronicle.entries.map(eraHeadline),
-      stats: ecoLine !== null ? [...statLines(report), ecoLine] : statLines(report),
-      challenge: challengeText(name, report, chronicle),
-    };
-    mountOpening(document.body, content, () => {
+    mountOpeningFor(world, seed, () => {
       overlayActive = false;
       markDirty();
     });
@@ -974,9 +927,10 @@ export function main(save: SaveV1 | null = null): void {
 
   // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
   // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
-  // the opening overlay. Each action calls the same closure its dock button does. preventDefault only on a match.
+  // the opening overlay, nor while typing in a text field (resolveKey reads `event.target`). Each action calls
+  // the same closure its dock button does. preventDefault only on a match.
   window.addEventListener('keydown', (event) => {
-    const action = resolveKey(event, overlayActive);
+    const action = resolveKey(event, overlayActive); // `event` carries its target → editable fields are skipped
     if (action === null) return;
     event.preventDefault();
     const overlay = overlayKindOf(action);
@@ -1032,44 +986,9 @@ export function main(save: SaveV1 | null = null): void {
     // Inspect is free + non-mutating: surface its readout to the dock status line
     // (PRD: a minimal console-free line in the dock) without the mutate-path churn.
     if (def.id === 'inspect') {
-      // The pure readout NAMES the seeded tile; append the LIVE samples the ambient
-      // layer carries. Population/health/land-value are keyed by the parcel ANCHOR
-      // (resolve through the parcel store); traffic/smog by the clicked tile itself.
-      let line = r.info ?? '';
-      const i = world.map.idx(tx, ty);
-      const pid = world.map.parcel[i];
-      let anchor = i;
-      if (pid) {
-        const p = world.parcels.get(pid - 1);
-        anchor = world.map.idx(p.x, p.y);
-      }
-      const live = liveInspectLine({
-        occupancy: ambientState.occupancy.get(anchor),
-        landValue: ambientState.landValue.get(anchor),
-        health: ambientState.buildingHealth.get(anchor),
-        traffic: ambientState.traffic.get(i),
-        pollution: ambientState.pollution.get(i),
-        // On a water tile, surface its contamination (the poisoned creek made legible).
-        water: world.map.water[i] !== Water.None ? ambientState.waterPollution.get(i) : undefined,
-        // On a road tile, surface its disrepair (redlined roads crumble).
-        road: isRoadKind(world.map.built[i]!) ? ambientState.roadDecay.get(i) : undefined,
-        // Where the police have done violence (arrests) — surfaced on any tile that carries it.
-        violence: ambientState.policeViolence.get(i),
-        // Fire/health service: is this inhabited plot within reach of a station?
-        served: pid ? ambientState.coverage.has(anchor) : undefined,
-      });
-      if (live) line += ` · ${live}`;
-      // Power status: a plant shows its output; a consumer shows powered/unpowered.
-      const builtHere = world.map.built[i];
-      const out = builtHere ? plantOutput(builtHere) : 0;
-      if (out > 0) line += ` · output ${out}`;
-      else if (pid && isPowerConsumer(world.parcels.kindAt(pid - 1))) {
-        line += powerGrid.poweredAnchors.has(anchor) ? ' · powered' : ' · UNPOWERED';
-      }
-      // The HOLC redline grade of this ground — the apparatus's classification that
-      // sited the burdens here. Land only (water carries a grade but it reads wrong).
-      if (world.map.water[i] === Water.None) line += ` · redline ${gradeLetter(world.map.redline[i]!)}`;
-      toolbar.setStatus(line);
+      // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
+      // carries, the power status and the redline grade (src/ui/inspectContent.ts).
+      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, powerGrid.poweredAnchors));
       return;
     }
     if (r.ok) {
