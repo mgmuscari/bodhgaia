@@ -11,6 +11,7 @@
 // To pan with a line tool held, deselect (Escape) or hold the middle button.
 
 import { Camera } from './camera';
+import { isEditableTarget } from './keyMap';
 import { classifyPointer, lineTiles } from '../tools/inputGeometry';
 
 const ARROW_PAN_PX = 48;
@@ -174,6 +175,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
 
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return; // don't shadow browser/OS shortcuts
+    if (isEditableTarget(e.target)) return; // typing in a field isn't panning or picking a tool
     switch (e.key) {
       case 'ArrowLeft':
         camera.pan(ARROW_PAN_PX, 0);
