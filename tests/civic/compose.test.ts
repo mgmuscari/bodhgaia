@@ -115,7 +115,7 @@ describe('simTick: TechState integration guard (delta accounting)', () => {
   });
 });
 
-describe('simTick: traffic fires at the cadence (rng enters the sim)', () => {
+describe('simTick: no deterministic traffic field (traffic is agent-driven)', () => {
   function connectedCity(): SimDeps {
     const map = new GameMap(20, 8);
     const parcels = new ParcelStore();

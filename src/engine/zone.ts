@@ -1,7 +1,7 @@
 // Zone taxonomy: the pure mapping from a built tile kind to its RCI zone class.
 // Engine-level (a fact about BuiltKind, peer to `isRoadKind`/`transportCategory`) so
-// BOTH the traffic O-D pathfinder (which destination a trip seeks) and the growth/demand
-// layer (which valve a parcel answers to) can import it without a cross-layer cycle.
+// the growth/demand layer (which valve a parcel answers to), the citizens' census and
+// itineraries, and the live layer can all import it without a cross-layer cycle.
 // Total over every BuiltKind via a ReadonlyMap + None fallback. Headless + deterministic.
 
 import { BuiltKind } from './fabric';

@@ -4,6 +4,7 @@
 // file). The renderer/main shell reads the live power grid; this module owns the colours + legend.
 
 import type { OverlayLegend } from './overlayLegend';
+import { OVERLAY_ALPHA } from './overlayTint';
 
 /** The single power view. */
 export type PowerOverlayView = 'power';
@@ -11,7 +12,7 @@ export const POWER_VIEWS: readonly PowerOverlayView[] = ['power'];
 
 /** Strong translucency: power tints only sparse consumer plots, so they pop OVER the dimmed
  *  (scrimmed) base rather than washing into the terrain (see OverlaySource.dimBase / OVERLAY_DIM). */
-export const POWER_OVERLAY_ALPHA = 0.92;
+export const POWER_OVERLAY_ALPHA = OVERLAY_ALPHA;
 
 type RGBA = [number, number, number, number];
 

@@ -13,13 +13,14 @@ import { POLICE_VIEWS } from './policeViolenceOverlayContent';
 import { COVERAGE_VIEWS } from './coverageOverlayContent';
 import { POWER_VIEWS } from './powerOverlayContent';
 import type { OverlayLegend } from './overlayLegend';
+import { OVERLAY_ALPHA, lerpU8 } from './overlayTint';
 
 /** The three civic heatmap views, in cycle order. */
 export type CivicOverlayView = 'belonging' | 'voice' | 'trust';
 export const CIVIC_VIEWS: readonly CivicOverlayView[] = ['belonging', 'voice', 'trust'];
 
 /** Fixed translucency for every civic overlay tint (matches the ecology overlay). */
-export const CIVIC_OVERLAY_ALPHA = 0.92;
+export const CIVIC_OVERLAY_ALPHA = OVERLAY_ALPHA;
 
 type RGB = readonly [number, number, number];
 
@@ -32,11 +33,6 @@ const RAMPS: Record<CivicOverlayView, { lo: RGB; hi: RGB }> = {
   trust: { lo: [78, 92, 112], hi: [226, 190, 78] }, // slate (wary) → gold (trusting)
 };
 
-/** Integer lerp from a to b over the Uint8 domain (floor — value 0→a, 255→b). */
-function lerp(a: number, b: number, value: number): number {
-  return a + Math.floor(((b - a) * value) / 255);
-}
-
 /**
  * The translucent RGBA tint for `view` at a Uint8 `value` (0..255). Endpoints are
  * exact (0 → lo, 255 → hi); alpha is fixed. Integer-only, deterministic.
@@ -47,7 +43,7 @@ export function civicOverlayTint(
 ): [number, number, number, number] {
   const v = value < 0 ? 0 : value > 255 ? 255 : value;
   const { lo, hi } = RAMPS[view];
-  return [lerp(lo[0], hi[0], v), lerp(lo[1], hi[1], v), lerp(lo[2], hi[2], v), CIVIC_OVERLAY_ALPHA];
+  return [lerpU8(lo[0], hi[0], v), lerpU8(lo[1], hi[1], v), lerpU8(lo[2], hi[2], v), CIVIC_OVERLAY_ALPHA];
 }
 
 const LEGENDS: Record<CivicOverlayView, string> = {

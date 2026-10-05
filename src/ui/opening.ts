@@ -3,7 +3,10 @@
 // (manual validation), and deliberately NO game/worldgen imports: content
 // arrives as plain strings (OpeningContent), keeping the dependency direction
 // clean and the module safe to import headless (it only touches the DOM inside
-// mountOpening, which main() calls only when `document` exists).
+// mountOpening, which main() calls only when `document` exists). The licence credit line is fixed text from the
+// pure creditsContent.ts (not OpeningContent), so it is always present however main assembles the rest.
+
+import { openingCreditLine } from './creditsContent';
 
 /** Plain-data content for the overlay (assembled in main.ts from pure modules). */
 export interface OpeningContent {
@@ -56,6 +59,11 @@ export function mountOpening(
   button.className = 'opening-begin';
   button.textContent = 'Begin';
   panel.appendChild(button);
+
+  const credit = document.createElement('p');
+  credit.className = 'opening-credit';
+  credit.textContent = openingCreditLine();
+  panel.appendChild(credit);
 
   overlay.appendChild(panel);
   container.appendChild(overlay);

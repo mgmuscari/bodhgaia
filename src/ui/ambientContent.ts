@@ -558,12 +558,6 @@ export function laneOffset(dir: number): { dx: number; dy: number } {
   return { dx: -DIR_DY[dir]! * LANE, dy: DIR_DX[dir]! * LANE };
 }
 
-/** The integer heading unit vector for a direction index (0=N,1=E,2=S,3=W) — lets the renderer
- *  rotate a car sprite to its travel heading (the atan2 lives renderer-side; this stays allowlist-safe). */
-export function dirVector(dir: number): { dx: number; dy: number } {
-  return { dx: DIR_DX[dir] ?? 0, dy: DIR_DY[dir] ?? 0 };
-}
-
 /** How far a street-parked car is drawn toward its curb (the adjacent non-road tile). Larger
  *  than LANE so the car clears the lane centre and hugs the kerb instead of sitting in the
  *  middle of the road — but < 0.5 so it stays within its own tile. */
@@ -581,12 +575,6 @@ export function curbParkOffset(curbDir: number): { dx: number; dy: number } {
  *  Opposite-direction walkers ride opposite kerbs (right-hand), so both sides of the street
  *  are used. Through-the-middle is reserved for demand-path cut-throughs across open ground. */
 const PED_CURB = 0.38;
-
-/** A pedestrian's draw-time kerb offset (perpendicular-right of its heading), for when it is
- *  walking along a road. Cosmetic — read only by the renderer's sprite draw. */
-export function pedCurbOffset(dir: number): { dx: number; dy: number } {
-  return { dx: -DIR_DY[dir]! * PED_CURB, dy: DIR_DX[dir]! * PED_CURB };
-}
 
 /**
  * How much faster a mover's current sim leg should run so its DRAWN path keeps its pace: a leg's pose
@@ -1055,9 +1043,9 @@ export interface Mover {
    *  prefers a neighbour NOT in this list; if boxed in (all options recent) it
    *  despawns instead of circling. Lazily created on first recommit. */
   recent?: number[];
-  /** Committed trip path (tile indices, origin→destination) — set for cars that ARE the
-   *  sim's planned O-D trips. A car with a `path` follows it leg by leg (see pathStep)
-   *  and despawns on arrival, instead of wandering. */
+  /** Committed route (tile indices, origin→destination) — set when a citizen's car commits to
+   *  a least-cost route (e.g. to parking near its leg destination). A car with a `path` follows
+   *  it leg by leg (see pathStep) instead of wandering. */
   path?: readonly number[];
   /** Cursor into `path`: the index of the NEXT tile to commit to. */
   leg?: number;
@@ -2861,11 +2849,11 @@ function sampleTile(map: GameMap, rng: Rng): { x: number; y: number } {
 }
 
 /**
- * Spawn trip-cars from the sim's published origin→destination trips: cars ARE trips. Each
- * car follows its committed `path` leg by leg and despawns on arrival. Called once per
- * traffic cadence with that cadence's found trips; capped at liveCaps.carCap. Renderer-side and
- * deterministic — the paths come from the (deterministic) sim; the animation draws no rng.
- * `trips` is structural ({ path }) so this module stays decoupled from the traffic layer.
+ * Spawn trip-cars (or short-trip walkers) from given origin→destination paths: cars ARE trips.
+ * Each car follows its committed `path` leg by leg and parks on arrival; capped at
+ * liveCaps.carCap. NOT driven by the sim any more (the O-D generator is retired; citizens'
+ * own cars carry traffic) — retained as the test seam that spawns path-following cars for the
+ * parking / kerb / tint / health-deposit tests. Deterministic; the animation draws no rng.
  */
 export function ingestTrips(
   state: AmbientState,
@@ -3764,7 +3752,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // 2. Spawn the daily-itinerary CITIZENS (the foot population — from the residential census; each
   //    runs a home→work→shop→lifestyle→leisure round, so green/leisure tiles draw real trips). There
   //    is no ambient-wanderer pool (Maddy 2026-06-20: everyone paths to a destination). Cars are NOT
-  //    spawned here — they are the sim's O-D trips, ingested via ingestTrips on the traffic cadence
+  //    spawned here — they are the citizens' own cars, boarded when a leg is too long to walk
   //    (cars=trips). Last-mile walkers spawn on a car PARKING (see tryPark → spawnParkPed), not here.
   spawnCitizens(state, map, rng);
   spawnFlocks(state, map, rng);
