@@ -64,3 +64,13 @@ describe('FixedTickLoop', () => {
     expect(() => new FixedTickLoop(-5, () => {})).toThrow();
   });
 });
+
+describe('FixedTickLoop resumes a saved game', () => {
+  it('starts counting from startTick', () => {
+    const seen: number[] = [];
+    const loop = new FixedTickLoop(10, (t) => seen.push(t), { startTick: 500 });
+    loop.advance(30);
+    expect(seen).toEqual([500, 501, 502]);
+    expect(loop.tickCount).toBe(503);
+  });
+});

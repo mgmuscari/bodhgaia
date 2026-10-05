@@ -53,6 +53,15 @@ describe('readCity', () => {
     expect(before.base.i).toBeGreaterThan(0);
   });
 
+  it('industry is assessed on its jobs, not land value — it poisons its own land (Maddy 2026-10-01: new industry paid nothing)', () => {
+    const c = city();
+    c.lv.set(c.map.idx(4, 1), 0); // the works' own smoke has zeroed its land value
+    const r = read(c);
+    expect(r.base.i).toBeGreaterThan(0);
+    c.lv.set(c.map.idx(4, 1), 255);
+    expect(read(c).base.i).toBeCloseTo(r.base.i, 9);
+  });
+
   it('upkeep counts the fabric: a highway tile costs more than a street tile', () => {
     expect(UPKEEP.get(BuiltKind.RoadHighway)!).toBeGreaterThan(UPKEEP.get(BuiltKind.RoadStreet)!);
     const c = city();

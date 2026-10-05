@@ -375,6 +375,17 @@ const OCC_HEALTH_SCALE = 120; // building-health magnitude mapped before the cap
 const OCC_HEALTH_CAP = 0.15; // max ± the health term can contribute to the signal (a nudge, not a collapse)
 // A city loses people but never fully empties: occupancy floors at this fraction of its seeded baseline.
 const OCC_FLOOR = 0.4;
+// EXPECTATIONS (Maddy 2026-10-01: the inherited city emptied before you could act). Residents move on the
+// GAP between their home's conditions and what they're used to, not on an absolute bar — an absolute bar
+// drifted out of calibration every time a new nuisance (road decay, coverage…) joined land value, and the
+// opening free-fell to the floor in ~3 min. For the opening OCC_SETTLE_PASSES the live fields are only
+// materialising the inherited state (wear, road decay, smog ramp up from zero), so expectation simply IS the
+// current signal; after that it adapts at OCC_EXPECT_RATE a pass (~10 min of play). Occupancy is the stock,
+// so a gain is kept once expectations catch up. OCC_ABSOLUTE keeps a small pull from the absolute signal: a
+// terrible place still leaks, slowly.
+export const OCC_SETTLE_PASSES = 180;
+const OCC_EXPECT_RATE = 1 / 600;
+const OCC_ABSOLUTE = 0.05;
 /** Per-kind growth HEADROOM: how far above its seeded baseline a home's occupancy can climb when it
  *  thrives. A single house barely densifies; apartments / projects / co-ops / communes hold far more. */
 const OCC_HEADROOM: ReadonlyMap<number, number> = new Map([
@@ -396,10 +407,15 @@ const ROAD_WALK_PENALTY = 0.04;
  *  desire paths over time. PED_GROUND_MIN floors the beaten cost just ABOVE a promenade (0.3) and a
  *  quiet street (0.5), so a promenade the player lays still wins the route and lures peds off the
  *  wild. Flora term adds with lushness; wear term subtracts with beaten-ness (both 0..1). */
-const PED_GROUND_BASE = 0.9; // a bare empty tile (no flora, no wear)
+// People keep to the sidewalk unless the street network fails them (Maddy 2026-10-02: walkers were cutting
+// through every lot): even a fully beaten path costs more than a jammed local street, so desire paths form
+// where no street connects, not because a street is busy.
+const PED_GROUND_BASE = 2.0; // a bare empty tile (no flora, no wear)
 const PED_LUSH = 0.8; // added to ground cost at full floraVitality
 const PED_BEATEN = 0.7; // subtracted from ground cost at full wear
-const PED_GROUND_MIN = 0.4; // floor: a fully-beaten path, still dearer than a promenade
+const PED_GROUND_MIN = 1.6; // floor: a fully-beaten path, still dearer than a jammed local street (1.55)
+/** Crossing a parking lot on foot: no sidewalk, cars backing out. */
+const PED_LOT = 1.5;
 
 /** A worn desire path is convenient underfoot but DEGRADED (brown, littered): a citizen walking it
  *  brings home less wellbeing. A wearable tile counts as wellbeing-degrading once its wear reaches
@@ -1268,6 +1284,12 @@ export interface AmbientState {
   occupancy: Map<number, number>;
   /** Substep counter gating the occupancy re-evaluation to OCC_CADENCE. */
   occTick: number;
+  /** The city has Walkable Streets (set by the host from the tech tree): people walk farther. */
+  walkable: boolean;
+  /** Per home: the occupancy signal its residents are used to (see OCC_SETTLE_PASSES). */
+  occExpect: Map<number, number>;
+  /** Occupancy passes run so far (the opening settles for OCC_SETTLE_PASSES). */
+  occPasses: number;
   /** Live ROAD DECAY (0..ROAD_DECAY_MAX), keyed by road tile: how crumbled the pavement is.
    *  Redlined roads crumble (the city won't maintain the disinvested districts); roads recover
    *  where the neighborhood is cared-for (high land value). Drags land value, never hashed. */
@@ -1312,6 +1334,9 @@ export function createAmbientState(rng?: Rng): AmbientState {
     coverage: new Set(),
     occupancy: new Map(),
     occTick: 0,
+    walkable: false,
+    occExpect: new Map(),
+    occPasses: 0,
     roadDecay: new Map(),
     roadTick: 0,
   };
@@ -1890,6 +1915,32 @@ export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover,
   return false;
 }
 
+/** A junction: a drivable tile with 3+ drivable neighbours. */
+function isJunctionTile(map: GameMap, x: number, y: number): boolean {
+  if (!carPassable(map, x, y)) return false;
+  let n = 0;
+  for (let d = 0; d < 4; d++) if (carPassable(map, x + DIR_DX[d]!, y + DIR_DY[d]!)) n++;
+  return n >= 3;
+}
+
+/** DON'T BLOCK THE BOX (Maddy 2026-10-01: gridlock). A car heading INTO a junction waits outside it until
+ *  its exit — the tile after the junction on its path — has room in its lane: a car stopped inside a
+ *  junction blocks every crossing direction, and the queues that makes block the next junction. Checked by
+ *  standing a virtual car in the junction facing the exit and asking blockedAhead. A car already inside
+ *  always clears it; mid-block, or without a committed path, the rule doesn't apply. */
+export function boxBlocked(grid: Map<number, Mover[]>, map: GameMap, m: Mover): boolean {
+  if (!m.path || m.leg === undefined) return false;
+  const cx = Math.round(m.x);
+  const cy = Math.round(m.y);
+  if ((cx === m.tx && cy === m.ty) || isJunctionTile(map, cx, cy) || !isJunctionTile(map, m.tx, m.ty)) return false;
+  const exit = m.path[m.leg];
+  if (exit === undefined) return false;
+  const ex = exit % map.width;
+  const ey = (exit - ex) / map.width;
+  const dir = ex > m.tx ? 1 : ex < m.tx ? 3 : ey > m.ty ? 2 : 0;
+  return blockedAhead(grid, map.width, { x: m.tx, y: m.ty, dir, tx: m.tx, ty: m.ty }, 1.0);
+}
+
 function advanceMover(
   m: Mover,
   speed: number,
@@ -2000,14 +2051,17 @@ export function pedCost(
   if (k === BuiltKind.Promenade) base = 0.3;
   else if (k === BuiltKind.QuietStreet || k === BuiltKind.BikePath) base = 0.5;
   else if (k === BuiltKind.RoadStreet || k === BuiltKind.RoadAvenue) {
-    const trafficLoad = ((traffic?.get(i) ?? 0) / TRAFFIC_MAX) * 2; // LIVE agent traffic: busier → costlier on foot
-    base = (k === BuiltKind.RoadStreet ? 0.55 : 2.0) + trafficLoad; // a local street vs a stroad
+    // LIVE agent traffic makes a street worse on foot — but a local street has a sidewalk (+1 at most);
+    // a stroad's traffic weighs double
+    const load = (traffic?.get(i) ?? 0) / TRAFFIC_MAX;
+    base = k === BuiltKind.RoadStreet ? 0.55 + load : 2.0 + load * 2;
   } else if (k === BuiltKind.None) {
     // wild ground: lush growth (high flora) is hard going; a beaten path (high wear) is easy.
     const flora = map.floraVitality[i]! / 255;
     const worn = (wear?.get(i) ?? 0) / WEAR_MAX;
     base = Math.max(PED_GROUND_MIN, PED_GROUND_BASE + flora * PED_LUSH - worn * PED_BEATEN);
-  } else base = 0.9; // parking / transit / built greens
+  } else if (k === BuiltKind.ParkingLot) base = PED_LOT;
+  else base = 0.9; // transit / built greens (a walk through the park is the point)
   return base + smog;
 }
 
@@ -2338,11 +2392,15 @@ function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boolean {
   for (let step = (p.itinStep ?? 0) + 1; step < itin.length; step++) {
     const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue);
     if (plot && stopReachable(state, map, cx, cy, plot)) {
+      const jam = p.carId !== undefined ? 0 : Math.max(jamNear(map, state.traffic, cx, cy), jamNear(map, state.traffic, plot.x, plot.y));
+      const chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, state.walkable);
+      // a drive into gridlock may simply not happen — the errand is forgone or folded into another
+      if (chosen === TravelMode.Drive && tripEvaporates(jam, Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0))) continue;
       p.itinStep = step;
       // If the citizen took its CAR out (carId set), it RETURNS TO THE CAR and drives to the next stop
       // — it doesn't abandon the car and walk off (Maddy: "if they've driven to a location, they should
       // go back to their car"). Mode is only chosen freely from HOME (no car out yet → walk option).
-      const mode = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y);
+      const mode = chosen;
       // DRIVE: walk to the owned car, drive it to a parking spot, then walk to the plot. If no car
       // can be had (land-locked), fall through and walk the leg.
       if (mode === TravelMode.Drive && setDriveLeg(state, p, map, plot, 'to-building')) return true;
@@ -2376,20 +2434,55 @@ function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode): bool
  *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
  *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
  *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number): TravelMode {
+export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkable = false): TravelMode {
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
-  if (d <= WALK_RANGE) return TravelMode.Walk;
+  // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
+  const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
+  // Walkable Streets (crossings, shade, slower cars): people walk half as far again
+  if (d <= WALK_RANGE * stretch * (walkable ? WALKABLE_STRETCH : 1)) return TravelMode.Walk;
   for (const mode of MODE_CHOICE_ORDER) {
     if (mode === TravelMode.Bike) {
       // A medium leg cycles (you can bike a street); bike-friendly infra just makes it faster/nicer
       // via the routing cost. So cyclists appear from the start and grow as the player calms streets.
-      if (d <= BIKE_RANGE) return TravelMode.Bike;
+      if (d <= BIKE_RANGE * stretch) return TravelMode.Bike;
       continue;
     }
     // rail / streetcar / drive: available when their network serves BOTH ends of the leg.
     if (infraNear(map, ox, oy, mode) && infraNear(map, dx, dy, mode)) return mode;
   }
   return TravelMode.Walk;
+}
+
+// ── Traffic evaporation (Maddy 2026-10-01: a freeway came out, the streets gridlocked, people left). When
+// road capacity falls, trips don't all pile onto what's left: some shift to foot and bike (chooseMode's
+// stretch) and a share simply stop happening — combined, moved, forgone (Cairns et al.: ~¼ of the traffic
+// "evaporates" after road-space reductions). The balancing loop a car-only mode choice lacked.
+
+/** How much farther people walk once the city has Walkable Streets (the `walkability` capability). */
+const WALKABLE_STRETCH = 1.5;
+/** How far (Manhattan) a trip end reads congestion. */
+const JAM_RADIUS = 2;
+/** The share of driving trips that evaporate in a full jam. */
+const EVAPORATION = 0.25;
+
+/** The worst congestion within JAM_RADIUS of (x, y), 0..1. */
+export function jamNear(map: GameMap, traffic: ReadonlyMap<number, number>, x: number, y: number): number {
+  let worst = 0;
+  for (let dy = -JAM_RADIUS; dy <= JAM_RADIUS; dy++) {
+    for (let dx = -JAM_RADIUS; dx <= JAM_RADIUS; dx++) {
+      if (Math.abs(dx) + Math.abs(dy) > JAM_RADIUS || !map.inBounds(x + dx, y + dy)) continue;
+      const v = traffic.get(map.idx(x + dx, y + dy)) ?? 0;
+      if (v > worst) worst = v;
+    }
+  }
+  return worst / TRAFFIC_MAX;
+}
+
+/** Does this driving trip evaporate? A deterministic share (EVAPORATION × jam) of trips, picked by hash. */
+export function tripEvaporates(jam: number, hash: number): boolean {
+  if (jam <= 0) return false;
+  const u = (Math.imul((hash ^ 0x2545f491) >>> 0, 0x9e3779b1) >>> 0) % 1000;
+  return u < jam * EVAPORATION * 1000;
 }
 
 /** A citizen's OWNED vehicle: the persistent parked Car it walks to and drives. Returns the existing
@@ -2947,19 +3040,26 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     return;
   }
   const next = new Map<number, number>();
+  const expect = new Map<number, number>();
+  const settling = state.occPasses < OCC_SETTLE_PASSES;
   for (const h of homes) {
     const t = map.idx(h.x, h.y);
     const cap = capacityOf(map.built[t]!, h.count);
     const floor = h.count * OCC_FLOOR; // a home never thins below this fraction of its seeded baseline
     const cur = state.occupancy.get(t) ?? h.count; // seed lazily at the census baseline
-    const signal = occupancySignal(
+    const raw = occupancySignal(
       sampleField(state.landValue, t),
       sampleField(state.pollution, t),
       state.buildingHealth.get(t) ?? 0,
     );
-    next.set(t, occupancyStep(cur, floor, cap, signal));
+    // a new home (or the opening) takes its conditions as normal
+    const was = settling ? raw : (state.occExpect.get(t) ?? raw);
+    next.set(t, occupancyStep(cur, floor, cap, raw - was + OCC_ABSOLUTE * raw));
+    expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
   }
   state.occupancy = next;
+  state.occExpect = expect;
+  state.occPasses += 1;
 }
 
 /** Top the daily-itinerary population up from the LIVE occupancy: the spawn target tracks total
@@ -3698,7 +3798,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   const gridMovers = [...state.cars.filter((c) => !c.parked && !c.abandoned), ...state.cruisers]; // PARKED cars don't count (Maddy)
   assignSerials(state, gridMovers);
   const moverGrid = buildMoverGrid(gridMovers, map.width);
-  const blocked = (mm: Mover): boolean => blockedAhead(moverGrid, map.width, mm);
+  const blocked = (mm: Mover): boolean => blockedAhead(moverGrid, map.width, mm) || boxBlocked(moverGrid, map, mm);
 
   // 3. Move the cars. A PARKED car waits for its pedestrian (its bound ped zeroes `dwell` on
   //    return; the countdown is just a safety release). A moving trip-car follows its path

@@ -397,3 +397,33 @@ describe('end caps (Maddy 2026-10-01: the freeway stub at lotus (96–98, 57))',
     expect(endCapMask(m, 10, 9)).toBe(0);
   });
 });
+
+describe('a 2-row avenue across a freeway (Maddy 2026-10-01: stop bars at lotus (98, 37) messed up)', () => {
+  // worldgen lays the crossing's first row as ramps; the second row stays freeway — still part of the crossing
+  const crossing = (): GameMap => {
+    const m = new GameMap(24, 24);
+    for (let y = 0; y < 24; y++) for (let x = 9; x <= 11; x++) m.setBuilt(x, y, BuiltKind.RoadHighway);
+    for (let x = 0; x < 24; x++) for (const y of [8, 9]) if (x < 9 || x > 11) m.setBuilt(x, y, BuiltKind.RoadAvenue);
+    for (let x = 9; x <= 11; x++) m.setBuilt(x, 8, BuiltKind.RoadRamp);
+    return m;
+  };
+
+  it('both avenue rows are the box — the freeway row beside the ramps too', () => {
+    const m = crossing();
+    for (const y of [8, 9]) for (let x = 9; x <= 11; x++) expect(junctionBox(m, x, y), `(${x},${y})`).toBe(true);
+  });
+
+  it('no stop bar inside the crossing; the northbound bar sits south of the second row', () => {
+    const m = crossing();
+    expect(stopBarMask(m, 11, 9)).toBe(0);
+    expect(stopBarMask(m, 11, 10)).toBe(1);
+  });
+
+  it('a freeway between frontage roads (no ramps) is still not a crossing', () => {
+    const m = new GameMap(24, 24);
+    for (let x = 0; x < 24; x++) for (let y = 9; y <= 11; y++) m.setBuilt(x, y, BuiltKind.RoadHighway);
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 8, BuiltKind.RoadStreet);
+    for (let x = 0; x < 24; x++) m.setBuilt(x, 12, BuiltKind.RoadStreet);
+    expect(junctionBox(m, 6, 10)).toBe(false);
+  });
+});
