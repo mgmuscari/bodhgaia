@@ -98,6 +98,12 @@
         letter-spacing: 0.08em;
         cursor: pointer;
       }
+      .opening-credit {
+        margin: 1.25rem 0 0;
+        font-size: 0.8rem;
+        line-height: 1.3;
+        color: var(--ui-muted);
+      }
       .opening-begin:hover,
       .opening-begin:focus {
         background: var(--ui-accent);
@@ -605,6 +611,33 @@
       .help-panel__body {
         white-space: pre;
         line-height: 1.6;
+      }
+      /* Credits under the controls: licence notice + GPL §7 terms (required on every conveyance). The panel
+         scrolls once they make it taller than the viewport. */
+      .help-panel {
+        max-height: 88vh;
+        overflow-y: auto;
+        max-width: min(40rem, 92vw);
+        box-sizing: border-box;
+      }
+      .help-panel__credits {
+        margin-top: 1rem;
+        padding-top: 0.6rem;
+        border-top: 1px solid var(--ui-panel-hi);
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+      .help-panel__credits-heading {
+        color: var(--ui-accent);
+        margin-top: 0.6rem;
+      }
+      .help-panel__credits p {
+        margin: 0.25rem 0;
+      }
+      .help-panel__credits a {
+        display: block;
+        color: var(--ui-text);
+        margin: 0.15rem 0;
       }
       /* Budget window: docked against the sidebar, over the map's left edge */
       .budget-panel {

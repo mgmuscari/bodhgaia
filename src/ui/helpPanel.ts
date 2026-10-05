@@ -1,9 +1,11 @@
 // Help / controls panel: an always-visible "⌨ Controls" hint (bottom-left) that opens a centered
 // reference listing every keybinding + mouse interaction — so the game's controls are DISCOVERABLE
 // instead of secret (Maddy: "UI needs visible instructions"). DOM shell only; the content + formatting
-// live in the pure controlsContent.ts. Toggled by the hint click, the ✕, or the '?'/'h' key.
+// live in the pure controlsContent.ts. Toggled by the hint click, the ✕, or the '?'/'h' key. Below the controls,
+// the Credits (licence notice + GPL §7 terms, from the pure creditsContent.ts) — required on every conveyance.
 
 import { controlsLines } from './controlsContent';
+import { creditsBlocks } from './creditsContent';
 
 export interface HelpPanelHandle {
   /** Show/hide the reference; returns the new visibility. */
@@ -39,6 +41,33 @@ export function mountHelpPanel(container: HTMLElement): HelpPanelHandle {
   body.className = 'help-panel__body';
   body.textContent = controlsLines().join('\n');
   panel.appendChild(body);
+
+  const credits = document.createElement('div');
+  credits.className = 'help-panel__credits';
+  const creditsTitle = document.createElement('div');
+  creditsTitle.className = 'help-panel__title';
+  creditsTitle.textContent = 'Credits';
+  credits.appendChild(creditsTitle);
+  for (const block of creditsBlocks()) {
+    const heading = document.createElement('div');
+    heading.className = 'help-panel__credits-heading';
+    heading.textContent = block.heading;
+    credits.appendChild(heading);
+    for (const text of block.paragraphs) {
+      const p = document.createElement('p');
+      p.textContent = text;
+      credits.appendChild(p);
+    }
+    for (const link of block.links ?? []) {
+      const a = document.createElement('a');
+      a.href = link.href;
+      a.textContent = link.label;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      credits.appendChild(a);
+    }
+  }
+  panel.appendChild(credits);
 
   container.appendChild(panel);
 
