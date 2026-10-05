@@ -974,9 +974,10 @@ export function main(save: SaveV1 | null = null): void {
 
   // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
   // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
-  // the opening overlay. Each action calls the same closure its dock button does. preventDefault only on a match.
+  // the opening overlay, nor while typing in a text field (resolveKey reads `event.target`). Each action calls
+  // the same closure its dock button does. preventDefault only on a match.
   window.addEventListener('keydown', (event) => {
-    const action = resolveKey(event, overlayActive);
+    const action = resolveKey(event, overlayActive); // `event` carries its target → editable fields are skipped
     if (action === null) return;
     event.preventDefault();
     const overlay = overlayKindOf(action);
