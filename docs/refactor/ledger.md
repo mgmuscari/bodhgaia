@@ -53,8 +53,8 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | M12 | main split | sim tick + frame loop → `app/loop.ts`; `main()` ≈ 100 lines of wiring | todo | — |
 | S1 | release | `vite base: './'` — assets load under a subpath of the site (BLOCKER) | todo | — |
 | S2 | release | credits: GPL-3.0+, Micropolis © 1989–2007 EA notice + §7 additional terms, source link; ship COPYING (BLOCKER) | todo | — |
-| S3 | release | dev hooks (`window.bodhitropolis`) in prod — decision pending | todo | — |
-| S4 | release | phones/touch: support or say "desktop only" — decision pending | todo | — |
+| S3 | release | dev hooks (`window.bodhitropolis`) — DECIDED: dev builds only (`import.meta.env.DEV`) | todo | — |
+| S4 | release | phones — DECIDED: a gentle "best on a desktop browser" note on small screens; touch later | todo | — |
 | S5 | release | feature-check IndexedDB/CompressionStream; disable Saves with a note | todo | — |
 | S6 | release | page metadata: description, Open Graph, theme-color, static favicon + preview image | todo | — |
 | D1 | dead code | fix stale O-D traffic comments (main.ts, ambientContent, map.ts) | todo | — |
@@ -62,7 +62,7 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | D3 | dead code | drop `?shader` param (GPU is the default) | todo | — |
 | D4 | dead code | delete the retired O-D traffic module (`src/traffic/generate`, `density`, most of `trip`) + its tests | todo | — |
 | D5 | dead code | remove compose's traffic plumbing (`TRAFFIC_CADENCE`, `trips`, `trafficTicked`) + `ingestTrips` | todo | — |
-| D6 | dead code | retire the always-zero `map.traffic` layer — SAVE v2 + migration; decision pending | todo | — |
+| D6 | dead code | retire the always-zero `map.traffic` layer — DECIDED: yes, SAVE v2 + v1→v2 migration | todo | — |
 | D7 | dead code | remove the test-only `effortAccrual: 'tick'` branch (rewrite those tests deliberately) | todo | — |
 | C1 | consistency | one money formatter | todo | — |
 | C2 | consistency | one clamp family (keep floor / no-floor variants; hash-sensitive) | todo | — |
@@ -87,3 +87,11 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
   notice and those terms; no "SimCity" trademark (the bundle has none). The repo is public (github.com/mgmuscari/bodhitropolis).
 - Main-side hazard: closures over reassigned `let`s (econ, autosave, overlayActive) — extract as factories with getters.
 - Live-side hazard: the live layer is not hashed; add the golden determinism test (Lg) before the field/agent moves.
+
+## Batch plan
+
+- **Batch 1** (proposed 2026-10-05, ON HOLD at Maddy's request — start only when she says go):
+  1. release: S1, S2, S6 (+ S3 dev-hook guard if it doesn't touch main.ts beyond one line — else batch 2)
+  2. keys: C6 (one keyboard table + Cmd regression test), D3, D1's main.ts comment
+  3. dead code: D1 (non-main files), D2, D4, D5, C1, C4
+  No file overlap between the three; each in its own worktree; one commit per unit.
