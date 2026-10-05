@@ -5,13 +5,10 @@
 // `deps` for rendering — the cadence logic and the eco/civic caches live here,
 // not in the shell, so the composite is headless-testable (N-tick double-run).
 //
-// Headless + transcendental-Math-free (the architecture guard scans src/civic). The
-// traffic/growth layers are the FIRST sim layers needing randomness, so this orchestrator
-// uses the SEEDED rng (createRng/fork — integer sfc32, allowed by the guard), forked
-// per-tick-stamped so each tick's stream is independent of every other and of draw count.
-// Sanctioned dependency direction: civic → engine, ecology, tech, traffic (the composite
-// wires them; traffic never imports back). NO worldgen edge — `world` is typed
-// STRUCTURALLY as {map, parcels}.
+// Headless + transcendental-Math-free (the architecture guard scans src/civic). The step
+// draws no randomness today (traffic is agent-driven in the live layer, not simulated here).
+// Sanctioned dependency direction: civic → engine, ecology, tech (the composite wires them;
+// none imports back). NO worldgen edge — `world` is typed STRUCTURALLY as {map, parcels}.
 
 import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
@@ -20,14 +17,11 @@ import type { TechState } from '../tech/state';
 import { ECO_CADENCE } from '../ecology/influence';
 import { ecologyTick } from '../ecology/tick';
 import { ecologyReport } from '../ecology/report';
-import type { Trip } from '../traffic/trip';
 import { computeNeighborhoods, type NeighborhoodMap } from './neighborhoods';
 import type { CivicState } from './state';
 import { civicTick, type CivicCaps } from './dynamics';
 import { civicReport } from './report';
 
-/** Traffic (decay + origin→destination generation) runs every TRAFFIC_CADENCE ticks. */
-export const TRAFFIC_CADENCE = 10;
 /** Civic dynamics run once every CIVIC_CADENCE sim ticks (the slowest cadence). */
 export const CIVIC_CADENCE = 50;
 
@@ -49,21 +43,17 @@ export interface SimDeps {
   tech: TechState;
   civic: CivicState;
   partition: NeighborhoodMap;
-  /** World seed — the root for the per-tick traffic/growth rng forks (determinism). */
+  /** World seed — the root for any per-tick rng fork a sim layer needs (none draws one today). */
   seed: string;
   ecoMeans?: { soil: number; flora: number; fauna: number };
   civicMeans?: { belonging: number; voice: number; trust: number };
   /** 'tick' (default): effort accrues every sim tick, the original endless counter. 'economy': the
    *  stock-and-flow economy (src/economy) owns effort, so the tick accrues nothing. */
   effortAccrual?: 'tick' | 'economy';
-  /** This cadence's found O-D trips — published for the renderer (cars ARE trips).
-   *  Renderer-facing output, not part of the world hash (the laid `map.traffic` is). */
-  trips?: Trip[];
 }
 
 /** What fired this tick — for the shell's dirty-marking. */
 export interface SimTickResult {
-  trafficTicked: boolean;
   ecoTicked: boolean;
   civicTicked: boolean;
   /** Effort accrued this tick (always ≥ 1). */
@@ -92,12 +82,11 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
       ? 0
       : accrue(deps.tech, { parcels: deps.world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }, 1);
 
-  // 2. Traffic is AGENT-DRIVEN now (the 1989 aggregate field is retired): the live travelers
+  // 2. Traffic is AGENT-DRIVEN (the 1989 aggregate O-D field is retired): the live travelers
   //    (citizen cars in the ambient layer) lay a live traffic density as they actually drive, route
-  //    AROUND it, and pedestrians shun it. The deterministic O-D generator no longer runs — the
-  //    seeded WORLD stays reproducible (it no longer depends on traffic) while the dynamic traffic
-  //    layer emerges from the agents. See docs/decisions/live-agent-layer.md.
-  const trafficTicked = false;
+  //    AROUND it, and pedestrians shun it. Nothing here touches traffic — the seeded WORLD stays
+  //    reproducible while the dynamic traffic layer emerges from the agents.
+  //    See docs/decisions/live-agent-layer.md.
 
   // 3. Ecology cadence → tick + recompute means.
   let ecoTicked = false;
@@ -129,5 +118,5 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
     civicTicked = true;
   }
 
-  return { trafficTicked, ecoTicked, civicTicked, effortGained };
+  return { ecoTicked, civicTicked, effortGained };
 }

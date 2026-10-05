@@ -2849,11 +2849,11 @@ function sampleTile(map: GameMap, rng: Rng): { x: number; y: number } {
 }
 
 /**
- * Spawn trip-cars from the sim's published origin→destination trips: cars ARE trips. Each
- * car follows its committed `path` leg by leg and despawns on arrival. Called once per
- * traffic cadence with that cadence's found trips; capped at liveCaps.carCap. Renderer-side and
- * deterministic — the paths come from the (deterministic) sim; the animation draws no rng.
- * `trips` is structural ({ path }) so this module stays decoupled from the traffic layer.
+ * Spawn trip-cars (or short-trip walkers) from given origin→destination paths: cars ARE trips.
+ * Each car follows its committed `path` leg by leg and parks on arrival; capped at
+ * liveCaps.carCap. NOT driven by the sim any more (the O-D generator is retired; citizens'
+ * own cars carry traffic) — retained as the test seam that spawns path-following cars for the
+ * parking / kerb / tint / health-deposit tests. Deterministic; the animation draws no rng.
  */
 export function ingestTrips(
   state: AmbientState,
