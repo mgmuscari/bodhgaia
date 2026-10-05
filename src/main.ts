@@ -31,20 +31,6 @@ import { materializeSkin } from './ui/tilesetLoader';
 import { paintSnesSkin } from './ui/snesTileset';
 import { footprintCellKey } from './ui/renderKey';
 
-/** The tab icon is one of the game's own painted tiles (a house), scaled up nearest-neighbour. */
-function setPixelFavicon(tile: CanvasImageSource | undefined): void {
-  if (!tile) return;
-  const c = document.createElement('canvas');
-  c.width = 32;
-  c.height = 32;
-  const ctx = c.getContext('2d');
-  if (!ctx) return;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(tile, 0, 0, 32, 32);
-  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]') ?? document.head.appendChild(document.createElement('link'));
-  link.rel = 'icon';
-  link.href = c.toDataURL('image/png');
-}
 import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
@@ -103,6 +89,7 @@ import { TRUST_FLOOR } from './civic/dynamics';
 import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
 import { CURRENT, writeSlot, readSlot, deleteSlot, listSlots, loadSlot, newCity, exportFile, importFile } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
+import { setPixelFavicon, installDevHandle } from './app/devHandle';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -321,36 +308,18 @@ export function main(save: SaveV1 | null = null): void {
   seedDecay(ambientState, world.map);
   if (save) restoreLive(ambientState, save.live); // the saved stocks over the seeded decay
 
-  // Dev / live-pass affordance: a small global to drive the camera and inspect live
-  // state from outside the input layer (e.g. screenshot tooling that needs to focus a
-  // location). `zoomTo` mirrors the input path — move the camera, then markDirty so
-  // the cached base rebuilds at the new view. `camera`/`world`/`ambient` are exposed
-  // read handles (the running app's actual objects) so a live pass need not rebuild
-  // the world in-page. DEV BUILDS ONLY: Vite folds `import.meta.env.DEV` to false in a
-  // production build, so the hook (and its handles on live state) is stripped from the shipped bundle.
+  // Dev / live-pass hook (`window.bodhitropolis`) — DEV BUILDS ONLY (folded away in production). It reads the
+  // reassigned power grid / GPU renderer through getters, never snapshots.
   if (import.meta.env.DEV) {
-    (window as unknown as Record<string, unknown>).bodhitropolis = {
-      zoomTo: (wx: number, wy: number, zoom?: number): void => {
-        camera.centerOn(wx, wy, zoom);
-        markDirty();
-      },
-      toggleGpu: (): boolean => {
-        if (gpuRenderer) {
-          unmountGpu();
-          markDirty();
-          return false;
-        }
-        const ok = mountGpu();
-        markDirty();
-        return ok;
-      },
-      gpuOn: (): boolean => gpuRenderer !== null,
+    installDevHandle({
       camera,
       world,
       ambient: ambientState,
       tech,
       power: () => powerGrid,
-    };
+      markDirty,
+      gpu: { isOn: () => gpuRenderer !== null, mount: mountGpu, unmount: unmountGpu },
+    });
   }
 
   // Opening challenge overlay. Computed from the same world, mounted over the
