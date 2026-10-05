@@ -10,6 +10,7 @@
 // value→colour ramp + legend + the single view, unit-tested rather than left to manual QA.
 
 import type { OverlayLegend } from './overlayLegend';
+import { lerpU8 } from './overlayTint';
 
 /** The single police-violence view. */
 export type PoliceOverlayView = 'violence';
@@ -25,8 +26,6 @@ type RGBA = [number, number, number, number];
 const LO: readonly [number, number, number] = [96, 8, 16];
 const HI: readonly [number, number, number] = [255, 40, 40];
 
-const lerp = (a: number, b: number, t: number): number => a + Math.floor(((b - a) * t) / 255);
-
 /**
  * The translucent RGBA stain for a 0..255 police-violence `value`. Clamped + deterministic; alpha
  * is fixed. The renderer skips tiles with value 0 (the field is sparse), so this only colours where
@@ -34,7 +33,7 @@ const lerp = (a: number, b: number, t: number): number => a + Math.floor(((b - a
  */
 export function policeViolenceTint(value: number): RGBA {
   const v = value < 0 ? 0 : value > 255 ? 255 : value;
-  return [lerp(LO[0], HI[0], v), lerp(LO[1], HI[1], v), lerp(LO[2], HI[2], v), POLICE_OVERLAY_ALPHA];
+  return [lerpU8(LO[0], HI[0], v), lerpU8(LO[1], HI[1], v), lerpU8(LO[2], HI[2], v), POLICE_OVERLAY_ALPHA];
 }
 
 /** The dock legend line for the police-violence overlay. */

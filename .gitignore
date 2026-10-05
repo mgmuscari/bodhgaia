@@ -44,3 +44,6 @@ yarn-error.log*
 *.worktree
 
 .playwright-mcp/
+
+# refactor pass: pause sentinel (never committed)
+.refactor-pause

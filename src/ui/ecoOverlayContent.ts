@@ -5,6 +5,7 @@
 // lets the cycle/gate/ramps be unit-tested rather than left to manual QA.
 
 import type { OverlayLegend } from './overlayLegend';
+import { OVERLAY_ALPHA, lerpU8 } from './overlayTint';
 
 /** The ecology heatmap views, in cycle order: the living-land layers, then the three POLLUTION
  *  layers (air smog, ground contamination, water runoff) the player drives down by healing. */
@@ -30,7 +31,7 @@ export const OVERLAY_VIEWS: readonly OverlayView[] = [
 export type OverlayState = OverlayView | null;
 
 /** Fixed translucency for every overlay tint (the tint sits under the preview). */
-export const OVERLAY_ALPHA = 0.92;
+export { OVERLAY_ALPHA };
 
 /**
  * Cycle the overlay: off → soil → flora → fauna → biodiversity → off. Pure; the
@@ -66,11 +67,6 @@ const RAMPS: Record<OverlayView, { lo: RGB; hi: RGB }> = {
   waterPollution: { lo: [60, 130, 185], hi: [120, 120, 52] }, // clear blue → dingy creek
 };
 
-/** Integer lerp from a to b over the Uint8 domain (floor — value 0→a, 255→b). */
-function lerp(a: number, b: number, value: number): number {
-  return a + Math.floor(((b - a) * value) / 255);
-}
-
 /**
  * The translucent RGBA tint for `view` at a Uint8 `value` (0..255). Endpoints are
  * exact (0 → lo, 255 → hi); alpha is fixed. Integer-only, deterministic.
@@ -78,7 +74,7 @@ function lerp(a: number, b: number, value: number): number {
 export function overlayTint(view: OverlayView, value: number): [number, number, number, number] {
   const v = value < 0 ? 0 : value > 255 ? 255 : value;
   const { lo, hi } = RAMPS[view];
-  return [lerp(lo[0], hi[0], v), lerp(lo[1], hi[1], v), lerp(lo[2], hi[2], v), OVERLAY_ALPHA];
+  return [lerpU8(lo[0], hi[0], v), lerpU8(lo[1], hi[1], v), lerpU8(lo[2], hi[2], v), OVERLAY_ALPHA];
 }
 
 const LEGENDS: Record<OverlayView, string> = {
