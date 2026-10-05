@@ -20,15 +20,15 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | # | Area | Unit | Status | Branch / commit |
 |---|------|------|--------|-----------------|
 | 0 | survey | Map the giant files, dead code, consistency, perf and release readiness → rank units | done | e0133b22 |
-| L0 | live split | `src/live/` as a fail-closed scanned dir; move `LiveCaps` type to `live/caps.ts` | todo | — |
-| L1 | live split | tuning constants → `live/tuning.ts` | todo | — |
-| L2 | live split | geometry (DIR tables, lane/curb offsets) → `live/geometry.ts` | todo | — |
-| L3 | live split | types + `createAmbientState` + setters → `live/types.ts` | todo | — |
+| L0 | live split | `src/live/` as a fail-closed scanned dir; move `LiveCaps` type to `live/caps.ts` | in-progress | refactor/b2-live |
+| L1 | live split | tuning constants → `live/tuning.ts` | in-progress | refactor/b2-live |
+| L2 | live split | geometry (DIR tables, lane/curb offsets) → `live/geometry.ts` | in-progress | refactor/b2-live |
+| L3 | live split | types + `createAmbientState` + setters → `live/types.ts` | in-progress | refactor/b2-live |
 | L4 | live split | poses → `live/poses.ts` | todo | — |
 | L5 | live split | network predicates → `live/network.ts` | todo | — |
 | L6 | live split | motion & collision → `live/motion.ts` | todo | — |
 | L7 | live split | pathing & mode choice → `live/pathing.ts` | todo | — |
-| Lg | live split | GOLDEN determinism test (N substeps → digest of agents + field maps) — before L8 | todo | — |
+| Lg | live split | GOLDEN determinism test (N substeps → digest of agents + field maps) — before L8 | in-progress | refactor/b2-live |
 | L8a | live split | fields: pollution/wind/rain/water/ground + seedDecay → `live/fields/pollution.ts` | todo | — |
 | L8b | live split | fields: coverage, land value, road decay → `live/fields/landValue.ts` | todo | — |
 | L8c | live split | fields: occupancy → `live/fields/occupancy.ts` | todo | — |
@@ -39,9 +39,9 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | L13 | live split | migrate importers, delete the barrel, drop it from the allowlist | todo | — |
 | L14 | live split | (optional) split agents → parking / citizens | todo | — |
 | L15 | live split | (rewrite) lift the inline ped state machine into `stepPed`/`stepCar` | todo | — |
-| M1 | main split | favicon + dev handle → `app/devHandle.ts` | todo | — |
-| M2 | main split | opening mount → `app/opening.ts` | todo | — |
-| M3 | main split | pure `inspectReadout` out of `applyAt` (+ unit test) | todo | — |
+| M1 | main split | favicon + dev handle → `app/devHandle.ts` | in-progress | refactor/b2-main |
+| M2 | main split | opening mount → `app/opening.ts` | in-progress | refactor/b2-main |
+| M3 | main split | pure `inspectReadout` out of `applyAt` (+ unit test) | in-progress | refactor/b2-main |
 | M4 | main split | power controller → `app/power.ts` | todo | — |
 | M5 | main split | live-layer setup → `app/live.ts` | todo | — |
 | M6 | main split | overlay controller → `app/overlays.ts` | todo | — |
@@ -62,7 +62,7 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | D3 | dead code | drop `?shader` param (GPU is the default) | done | a68548bb |
 | D4 | dead code | delete the retired O-D traffic module (`src/traffic/generate`, `density`, most of `trip`) + its tests | done | 7002ee94 |
 | D5 | dead code | remove compose's traffic plumbing (`TRAFFIC_CADENCE`, `trips`, `trafficTicked`) + `ingestTrips` | done | 59eeb502 (ingestTrips kept → D8) |
-| D6 | dead code | retire the always-zero `map.traffic` layer — DECIDED: yes, SAVE v2 + v1→v2 migration | todo | — |
+| D6 | dead code | retire the always-zero `map.traffic` layer — DECIDED: yes, SAVE v2 + v1→v2 migration | in-progress | refactor/b2-save |
 | D7 | dead code | remove the test-only `effortAccrual: 'tick'` branch (rewrite those tests deliberately) | todo | — |
 | C1 | consistency | one money formatter | done | c4418c14 |
 | C2 | consistency | one clamp family (keep floor / no-floor variants; hash-sensitive) | todo | — |
@@ -77,13 +77,15 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | P3 | perf | reachability: reuse the found path; component labels for O(1) "can't reach" | todo | — |
 | P4 | perf | A*: binary heap + typed arrays (same tie order) | todo | — |
 | P5 | perf | warm headlight silhouettes; dirty-tile base refresh instead of the 2 s full redraw | todo | — |
-| C9 | consistency + BUG | keys fire while typing in an input (Settings number box): skip editable targets | todo | — |
-| C10 | consistency | Help's controls list is missing B (Budget) and S (Saves) | todo | — |
+| C9 | consistency + BUG | keys fire while typing in an input (Settings number box): skip editable targets | in-progress | refactor/b2-main |
+| C10 | consistency | Help's controls list is missing B (Budget) and S (Saves) | in-progress | refactor/b2-main |
 | D8 | dead code | replace the `ingestTrips` fixture behind ~23 live-layer tests, then delete it | todo | — |
 | D9 | dead code | `SimDeps.seed` unread by simTick; `shouldTogglePanel` test-only | todo | — |
 | S7 | release | `og:image` + `og:url` once the site URL is known | todo | — |
-| S8 | release | ship `COPYING.txt` too (extensionless files may download, not display) | todo | — |
-| S9 | release | Help's ✕ scrolls away with the credits — pin the panel header | todo | — |
+| S8 | release | ship `COPYING.txt` too (extensionless files may download, not display) | in-progress | refactor/b2-save |
+| S9 | release | Help's ✕ scrolls away with the credits — pin the panel header | in-progress | refactor/b2-save |
+
+- **Batch 2** (started 2026-10-05): live split part 1 (Lg, L0–L3) · main.ts part 1 (C9, C10, M1–M3) · save v2 + help polish (D6, S8, S9).
 
 ## Survey notes (2026-10-05)
 
