@@ -129,11 +129,6 @@ export function main(save: SaveV1 | null = null): void {
     [terrainStage(), mosesCenturyStage(), ecoSeedStage()],
   );
 
-  // ?shader boots the FULL game with the GPU hybrid path on (the WebGL map under the live Canvas2D
-  // sprites/UI, driven by the real camera) — so it zooms/pans and shows agents, unlike the bare
-  // ?shaderdemo mount. Safe to open in a scratch tab. (Will become a settings toggle.)
-  const gpuParam = params.has('shader');
-
   // Tech-tree state: communal effort accrues into it each sim tick (see below).
   // Save/load: the world is regenerated from the seed, then the saved layers and parcels overwrite it — before
   // anything below derives from it (the partition, the census, the power grid…).
@@ -184,9 +179,9 @@ export function main(save: SaveV1 | null = null): void {
   canvas.style.top = '0';
   canvas.style.zIndex = '1';
 
-  // GPU hybrid path (Increment 1): a WebGL2 canvas under the Canvas2D sprite/UI layer, driven by the
-  // live camera. mountGpu falls back to CPU (returns false) if WebGL2 is unavailable. The CPU path
-  // stays the default + fallback. Toggled via ?shader now (settings toggle next).
+  // GPU hybrid path: a WebGL2 canvas under the Canvas2D sprite/UI layer, driven by the live camera.
+  // settings.renderer picks it (default 'gpu'); mountGpu falls back to the CPU path (returns false)
+  // if WebGL2 is unavailable.
   let gpuRenderer: GpuRenderer | null = null;
   let smogOverlay: SmogOverlay | null = null;
   const mountGpu = (): boolean => {
@@ -216,7 +211,7 @@ export function main(save: SaveV1 | null = null): void {
     smogOverlay = null;
     renderer.setGpuMode(false);
   };
-  if (gpuParam || settings.renderer === 'gpu') mountGpu();
+  if (settings.renderer === 'gpu') mountGpu();
 
   // Two named dirty chokepoints (CRITIC-YP2). markDirty invalidates the cached
   // renderer base (map/camera/overlay changed); markPreviewDirty only requests a
