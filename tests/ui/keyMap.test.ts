@@ -73,6 +73,13 @@ describe('resolveKey: the one keyboard table', () => {
     for (const c of CONTROLS) expect(resolveKey(press(c.key), false)).not.toBeNull();
   });
 
+  it('documents every bound action in the help panel (B Budget, S Saves, …)', () => {
+    const documented = new Set(CONTROLS.map((c) => c.key.toLowerCase()));
+    for (const b of KEY_BINDINGS) {
+      expect(b.keys.some((k) => documented.has(k.toLowerCase())), `${b.action} (${b.keys.join('/')})`).toBe(true);
+    }
+  });
+
   it('maps overlay actions to their overlay kind, others to null', () => {
     expect(overlayKindOf('overlay:redline')).toBe('redline');
     expect(overlayKindOf('overlay:power')).toBe('power');

@@ -1,7 +1,8 @@
 // Controls reference (PURE — the canonical keybinding + pointer list and its formatter). The single
 // source of truth the on-screen help panel and the persistent hint both read, so the game's controls
 // are DISCOVERABLE instead of secret. No DOM / no transcendental Math → on the pure-ui allowlist.
-// The keys are bound in keyMap.ts (the one key table; its test checks every key listed here is bound).
+// The keys are bound in keyMap.ts (the one key table; its test checks both directions: every key listed here
+// is bound, and every bound action is listed here).
 
 export interface KeyBinding {
   /** The display key (single char / symbol). Letter keys are bound case-insensitively. */
@@ -12,6 +13,8 @@ export interface KeyBinding {
 /** Toggle keys, in the order they read in the help panel. Mirrors keyMap.ts. */
 export const CONTROLS: KeyBinding[] = [
   { key: ',', label: 'Settings menu' },
+  { key: 'B', label: 'Budget' },
+  { key: 'S', label: 'Saves' },
   { key: 'T', label: 'Tech tree' },
   { key: 'L', label: 'Ambient life on/off' },
   { key: 'G', label: 'Restoration readout' },
