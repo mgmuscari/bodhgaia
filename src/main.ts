@@ -1149,11 +1149,10 @@ export function main(save: SaveV1 | null = null): void {
     currentTick = tick;
     const r = simTick(deps, tick);
     simChanged = true; // effort accrued / grants may have moved → re-sync next frame
-    // NOTE: the sim's abstract O-D trips (deps.trips) still lay the deterministic traffic-density
-    // field that feeds growth/pollution/ped-routing, but they are NO LONGER visualised as ambient
-    // cars. The visible traffic is the CITIZENS (owned cars + walkers/cyclists/transit riders), which
-    // are persistent — they park and are walked to, never popping out of existence at a destination.
-    // (ingestTrips is retained + tested for the trip→ambient path, just not driven from the sim here.)
+    // NOTE: the sim no longer runs abstract O-D trips (compose.ts: trafficTicked is always false). The
+    // agent layer IS the traffic: the CITIZENS (owned cars + walkers/cyclists/transit riders) lay the
+    // live traffic density as they actually drive, and are persistent — they park and are walked to,
+    // never popping out of existence at a destination.
     if (r.ecoTicked && activeOverlay?.kind === 'eco') {
       // biodiversity is derived → recompute + re-push; soil/flora/fauna read the
       // live layers and need no recompute.
