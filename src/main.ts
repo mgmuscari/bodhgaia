@@ -8,10 +8,9 @@ import { runPipeline } from './worldgen/pipeline';
 import { terrainStage } from './worldgen/terrain';
 import { mosesCenturyStage } from './worldgen/moses';
 import { ecoSeedStage } from './worldgen/ecoseed';
-import { gradeLetter } from './worldgen/redline';
 import { biodiversityField } from './ecology/biodiversity';
 import { Water } from './engine/map';
-import { isRoadKind, BuiltKind } from './engine/fabric';
+import { BuiltKind } from './engine/fabric';
 import { createRng } from './engine/rng';
 import { cityName } from './engine/names';
 import { FixedTickLoop } from './engine/loop';
@@ -21,7 +20,7 @@ import { SIDEBAR_W } from './ui/toolbar';
 import { installUiTheme } from './ui/uiTheme';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
-import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, liveInspectLine, applyLiveCaps } from './ui/ambientContent';
+import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, applyLiveCaps } from './ui/ambientContent';
 import { loadSettings, saveSettings } from './ui/settingsStore';
 import { mountSettingsPanel } from './ui/settingsPanel';
 import { materializeSkin } from './ui/tilesetLoader';
@@ -78,7 +77,7 @@ import { computeNeighborhoods } from './civic/neighborhoods';
 import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
-import { computePowerGrid, plantOutput, isPowerConsumer, plantPollution } from './growth/power';
+import { computePowerGrid, isPowerConsumer, plantPollution } from './growth/power';
 import { gameClock } from './ui/lighting';
 import { TRUST_FLOOR } from './civic/dynamics';
 import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
@@ -86,6 +85,7 @@ import { CURRENT, writeSlot, readSlot, deleteSlot, listSlots, loadSlot, newCity,
 import { mountSavesPanel } from './ui/savesPanel';
 import { setPixelFavicon, installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
+import { inspectReadout } from './ui/inspectContent';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -986,44 +986,9 @@ export function main(save: SaveV1 | null = null): void {
     // Inspect is free + non-mutating: surface its readout to the dock status line
     // (PRD: a minimal console-free line in the dock) without the mutate-path churn.
     if (def.id === 'inspect') {
-      // The pure readout NAMES the seeded tile; append the LIVE samples the ambient
-      // layer carries. Population/health/land-value are keyed by the parcel ANCHOR
-      // (resolve through the parcel store); traffic/smog by the clicked tile itself.
-      let line = r.info ?? '';
-      const i = world.map.idx(tx, ty);
-      const pid = world.map.parcel[i];
-      let anchor = i;
-      if (pid) {
-        const p = world.parcels.get(pid - 1);
-        anchor = world.map.idx(p.x, p.y);
-      }
-      const live = liveInspectLine({
-        occupancy: ambientState.occupancy.get(anchor),
-        landValue: ambientState.landValue.get(anchor),
-        health: ambientState.buildingHealth.get(anchor),
-        traffic: ambientState.traffic.get(i),
-        pollution: ambientState.pollution.get(i),
-        // On a water tile, surface its contamination (the poisoned creek made legible).
-        water: world.map.water[i] !== Water.None ? ambientState.waterPollution.get(i) : undefined,
-        // On a road tile, surface its disrepair (redlined roads crumble).
-        road: isRoadKind(world.map.built[i]!) ? ambientState.roadDecay.get(i) : undefined,
-        // Where the police have done violence (arrests) — surfaced on any tile that carries it.
-        violence: ambientState.policeViolence.get(i),
-        // Fire/health service: is this inhabited plot within reach of a station?
-        served: pid ? ambientState.coverage.has(anchor) : undefined,
-      });
-      if (live) line += ` · ${live}`;
-      // Power status: a plant shows its output; a consumer shows powered/unpowered.
-      const builtHere = world.map.built[i];
-      const out = builtHere ? plantOutput(builtHere) : 0;
-      if (out > 0) line += ` · output ${out}`;
-      else if (pid && isPowerConsumer(world.parcels.kindAt(pid - 1))) {
-        line += powerGrid.poweredAnchors.has(anchor) ? ' · powered' : ' · UNPOWERED';
-      }
-      // The HOLC redline grade of this ground — the apparatus's classification that
-      // sited the burdens here. Land only (water carries a grade but it reads wrong).
-      if (world.map.water[i] === Water.None) line += ` · redline ${gradeLetter(world.map.redline[i]!)}`;
-      toolbar.setStatus(line);
+      // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
+      // carries, the power status and the redline grade (src/ui/inspectContent.ts).
+      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, powerGrid.poweredAnchors));
       return;
     }
     if (r.ok) {
