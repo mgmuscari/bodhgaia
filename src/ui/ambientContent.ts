@@ -27,7 +27,9 @@ import { TravelMode, modeSpec, modeRidesNetwork, modeSpeedMult, MODE_CHOICE_ORDE
 import type { Household } from '../citizens/census';
 import { layField, decayField, sampleField } from '../citizens/field';
 import type { Rng } from '../engine/rng';
-import type { LiveCaps } from './settings';
+import { liveCaps } from '../live/caps';
+
+export * from '../live/caps';
 
 /** Maximum elapsed time honoured in a single stepAmbient call, mirroring
  *  FixedTickLoop.maxFrameMs (loop.ts): a GC pause / debugger break / OS sleep /
@@ -37,22 +39,6 @@ export const AMBIENT_MAX_FRAME_MS = 1000;
 /** Fixed substep size — the simulation cadence for ambient motion. */
 export const SUBSTEP_MS = 50;
 
-// Live agent/render perf ceilings — the "fast PC vs slow PC" knob, mutated at runtime by the settings
-// menu (main wires applyLiveCaps from the persisted store; settings.ts owns the shape/presets/clamp).
-// Defaults ARE today's shipped magnitudes (== settings' `medium` preset). pedCap is the only HARD
-// ceiling (perf safety); the operative citizen target is occupancy/citizenOutDivisor (spawnTargetFor).
-export const liveCaps: LiveCaps = {
-  carCap: 200,
-  pedCap: 1200,
-  flockCap: 32,
-  citizenOutDivisor: 3,
-  spawnPerSubstep: 4,
-};
-
-/** Apply a (partial) set of live caps — the single runtime mutation seam the settings menu drives. */
-export function applyLiveCaps(caps: Partial<LiveCaps>): void {
-  Object.assign(liveCaps, caps);
-}
 // Police cruisers patrol the redlined districts from their precincts (the visible
 // face of the over-policing the civic layer models). One per precinct, capped.
 const CRUISER_CAP = 8;
