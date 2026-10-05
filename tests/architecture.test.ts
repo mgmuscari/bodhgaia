@@ -138,6 +138,8 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/uiIcons.ts',
   'src/ui/economyContent.ts',
   'src/ui/moneyFormat.ts',
+  'src/ui/creditsContent.ts',
+  'src/ui/keyMap.ts',
   'src/ui/budgetContent.ts',
   'src/ui/satelliteFormat.ts',
   'src/ui/gridTextureBridge.ts',
