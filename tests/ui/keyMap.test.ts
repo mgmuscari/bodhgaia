@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { KEY_BINDINGS, resolveKey, overlayKindOf, type KeyAction } from '../../src/ui/keyMap';
+import { KEY_BINDINGS, resolveKey, overlayKindOf, isEditableTarget, type KeyAction } from '../../src/ui/keyMap';
 import { compositeKeyFor } from '../../src/ui/civicOverlayContent';
 import { CONTROLS } from '../../src/ui/controlsContent';
 
@@ -83,5 +83,50 @@ describe('resolveKey: the one keyboard table', () => {
   it('takes a custom table', () => {
     expect(resolveKey(press('q'), false, [{ keys: ['q'], action: 'help' }])).toBe('help');
     expect(resolveKey(press('l'), false, [{ keys: ['q'], action: 'help' }])).toBeNull();
+  });
+
+  it('resolves nothing while the user is typing in an editable target (the Settings number-box bug)', () => {
+    const targets = [
+      { tagName: 'INPUT', type: 'number' },
+      { tagName: 'INPUT', type: 'text' },
+      { tagName: 'INPUT' }, // no type → text
+      { tagName: 'TEXTAREA' },
+      { tagName: 'SELECT' },
+      { tagName: 'DIV', isContentEditable: true },
+    ];
+    for (const target of targets) {
+      for (const [key] of EXPECTED) expect(resolveKey({ ...press(key), target }, false)).toBeNull();
+    }
+  });
+
+  it('still resolves on non-text targets (body, canvas, a focused slider/checkbox/button)', () => {
+    const targets = [
+      null,
+      undefined,
+      { tagName: 'BODY' },
+      { tagName: 'CANVAS' },
+      { tagName: 'BUTTON' },
+      { tagName: 'INPUT', type: 'range' },
+      { tagName: 'INPUT', type: 'checkbox' },
+      { tagName: 'INPUT', type: 'file' },
+      { tagName: 'DIV', isContentEditable: false },
+    ];
+    for (const target of targets) expect(resolveKey({ ...press('b'), target }, false)).toBe('budget');
+  });
+});
+
+describe('isEditableTarget', () => {
+  it('is true for text-entry controls and contenteditable, false otherwise', () => {
+    expect(isEditableTarget({ tagName: 'INPUT', type: 'number' })).toBe(true);
+    expect(isEditableTarget({ tagName: 'input', type: 'search' })).toBe(true);
+    expect(isEditableTarget({ tagName: 'TEXTAREA' })).toBe(true);
+    expect(isEditableTarget({ tagName: 'SELECT' })).toBe(true);
+    expect(isEditableTarget({ tagName: 'SPAN', isContentEditable: true })).toBe(true);
+    expect(isEditableTarget({ tagName: 'INPUT', type: 'range' })).toBe(false);
+    expect(isEditableTarget({ tagName: 'INPUT', type: 'radio' })).toBe(false);
+    expect(isEditableTarget({ tagName: 'CANVAS' })).toBe(false);
+    expect(isEditableTarget(null)).toBe(false);
+    expect(isEditableTarget(undefined)).toBe(false);
+    expect(isEditableTarget('INPUT')).toBe(false);
   });
 });
