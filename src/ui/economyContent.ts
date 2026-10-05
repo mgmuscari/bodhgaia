@@ -1,6 +1,8 @@
 // The economy's top-bar readout (PURE — pure-ui allowlist): funds and their hourly trend, communal effort
 // against the city's capacity to hold it, approval and trust — and burnout, only when people are tired.
 
+import { MINUS, money } from './moneyFormat';
+
 export interface EconomyReadout {
   funds: number;
   fundsPerHour: number;
@@ -10,9 +12,6 @@ export interface EconomyReadout {
   goodwill: number;
   burnout: number;
 }
-
-const MINUS = '−';
-const money = (v: number): string => `${v < 0 ? MINUS : ''}$${Math.abs(Math.round(v)).toLocaleString('en-US')}`;
 
 export function economyLine(r: EconomyReadout): string {
   const trend = Math.round(r.fundsPerHour);

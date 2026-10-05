@@ -140,3 +140,14 @@ describe('buildToolMenu with the economy (funds for the fabric, effort for the c
     expect(broke.rows.find((r) => r.id === 'build-16')!.affordable).toBe(false);
   });
 });
+
+describe('buildToolMenu: price labels', () => {
+  it('prices the fabric in whole dollars with thousands separators, the commons in effort', () => {
+    const tools = availableTools(freshTech(1_000_000));
+    const view = buildToolMenu(tools, null, 0, null, 1_000_000);
+    const rows = view.categories.flatMap((c) => buildToolMenu(tools, null, 0, c.id, 1_000_000).rows);
+    const prices = rows.map((r) => r.label.split(' · ')[1]!);
+    for (const p of prices) expect(p).toMatch(/^(\$\d{1,3}(,\d{3})*|\d+ effort)$/);
+    expect(prices.some((p) => /^\$\d{1,3},\d{3}$/.test(p))).toBe(true); // a ≥ $1,000 price shows its comma
+  });
+});
