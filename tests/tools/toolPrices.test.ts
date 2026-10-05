@@ -48,3 +48,58 @@ describe('tool prices', () => {
     expect(previewTool(world(), tech, toolDef('build-1')!, 3, 3).reason).toBe('effort');
   });
 });
+
+// Ways out of a deficit (Maddy 2026-10-01: "once you run out of funds there's no way to start restoration")
+import { VOLUNTEER_DOLLARS_PER_EFFORT, FREEWAY_SALVAGE } from '../../src/tools/tools';
+
+describe('volunteer labour stands in for funds on community works', () => {
+  it('a broke city can still raise a clinic with effort: funds first, the shortfall in effort', () => {
+    const w = world();
+    const tech = createTechState(TECH_TREE);
+    tech.effort = 1000;
+    const clinic = toolDef('build-33')!;
+    const full = clinic.cost * FUNDS_PER_COST;
+    const wallet: Wallet = { funds: 100 };
+    expect(previewTool(w, tech, clinic, 3, 3, wallet).valid).toBe(true);
+    expect(applyTool(w, tech, clinic, 3, 3, wallet).ok).toBe(true);
+    expect(wallet.funds).toBe(0);
+    expect(tech.effort).toBe(1000 - Math.ceil((full - 100) / VOLUNTEER_DOLLARS_PER_EFFORT));
+  });
+
+  it('in debt, it is all effort — and too little effort still refuses', () => {
+    const tech = createTechState(TECH_TREE);
+    tech.effort = 1;
+    const wind = toolDef('build-28')!;
+    expect(previewTool(world(), tech, wind, 3, 3, { funds: -5000 }).reason).toBe('effort');
+  });
+
+  it('the profit-making fabric gets no volunteers: industry still needs funds', () => {
+    const tech = createTechState(TECH_TREE);
+    tech.effort = 10_000;
+    expect(previewTool(world(), tech, toolDef('build-21')!, 3, 3, { funds: 0 }).reason).toBe('funds');
+  });
+});
+
+describe('freeway removal pays (salvage, and the upkeep stops)', () => {
+  it('bulldozing a freeway tile credits salvage, even when broke; the salvage is under the build price', () => {
+    const w = world();
+    for (let y = 0; y < 16; y++) w.map.setBuilt(5, y, BuiltKind.RoadHighway);
+    const tech = createTechState(TECH_TREE);
+    tech.effort = 0;
+    const wallet: Wallet = { funds: -2000 };
+    expect(applyTool(w, tech, toolDef('bulldoze')!, 5, 5, wallet).ok).toBe(true);
+    expect(w.map.getBuilt(5, 5)).toBe(BuiltKind.None);
+    expect(wallet.funds).toBe(-2000 + FREEWAY_SALVAGE);
+    expect(FREEWAY_SALVAGE).toBeLessThan(toolDef('build-3')!.cost * FUNDS_PER_COST);
+  });
+
+  it('demolishing anything else when broke is volunteer work', () => {
+    const w = world();
+    w.map.setBuilt(5, 5, BuiltKind.RoadStreet);
+    const tech = createTechState(TECH_TREE);
+    tech.effort = 50;
+    const wallet: Wallet = { funds: 0 };
+    expect(applyTool(w, tech, toolDef('bulldoze')!, 5, 5, wallet).ok).toBe(true);
+    expect(tech.effort).toBeLessThan(50);
+  });
+});

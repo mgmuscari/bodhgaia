@@ -176,6 +176,18 @@ export interface Parcel {
 
 const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : Math.floor(v));
 
+/** A ParcelStore as plain columns (see exportColumns). */
+export interface ParcelColumns {
+  x: number[];
+  y: number[];
+  w: number[];
+  h: number[];
+  kind: number[];
+  density: number[];
+  condition: number[];
+  alive: number[];
+}
+
 export class ParcelStore {
   private readonly anchorX: number[] = [];
   private readonly anchorY: number[] = [];
@@ -206,6 +218,41 @@ export class ParcelStore {
 
   count(): number {
     return this.anchorX.length;
+  }
+
+  /** Every parcel slot, column by column, tombstones included (indices are baked into the map's `parcel`
+   *  layer, so a save must keep them) — the save format's view of the store. */
+  exportColumns(): ParcelColumns {
+    return {
+      x: [...this.anchorX],
+      y: [...this.anchorY],
+      w: [...this.w],
+      h: [...this.h],
+      kind: [...this.kind],
+      density: [...this.density],
+      condition: [...this.condition],
+      alive: [...this.alive],
+    };
+  }
+
+  /** Replace the whole store with saved columns (a loaded game). */
+  importColumns(c: ParcelColumns): void {
+    const n = c.x.length;
+    for (const col of [c.y, c.w, c.h, c.kind, c.density, c.condition, c.alive]) {
+      if (col.length !== n) throw new RangeError('ParcelStore.importColumns: ragged columns');
+    }
+    const put = (dst: number[], src: readonly number[]) => {
+      dst.length = 0;
+      dst.push(...src);
+    };
+    put(this.anchorX, c.x);
+    put(this.anchorY, c.y);
+    put(this.w, c.w);
+    put(this.h, c.h);
+    put(this.kind, c.kind);
+    put(this.density, c.density);
+    put(this.condition, c.condition);
+    put(this.alive, c.alive);
   }
 
   /** True iff parcel `i` exists and has not been demolished. */

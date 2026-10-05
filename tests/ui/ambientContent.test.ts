@@ -23,6 +23,8 @@ import {
   setHouseholds,
   setPlantEmitters,
   chooseMode,
+  tripEvaporates,
+  jamNear,
   roadPath,
   curbParkOffset,
   isWearable,
@@ -38,6 +40,7 @@ import {
   congestionCount,
   buildMoverGrid,
   blockedAhead,
+  boxBlocked,
   walkPath,
   stopReachable,
   usesCommittedPath,
@@ -54,6 +57,7 @@ import {
   spawnTargetFor,
   FUEL_TANK,
   stepOccupancy,
+  OCC_SETTLE_PASSES,
   liveInspectLine,
   accumulateWaterRunoff,
   accumulateGroundPollution,
@@ -1800,6 +1804,62 @@ describe('population: occupancy evolves with conditions (agent-emergent)', () =>
   });
 });
 
+describe('population: residents move on the gap from what they expect (Maddy 2026-10-01: the inherited city emptied before you could act)', () => {
+  const home = () => {
+    const map = new GameMap(8, 8);
+    map.built[map.idx(3, 3)] = BuiltKind.HouseSingle;
+    const t = map.idx(3, 3);
+    const state = createAmbientState();
+    setHouseholds(state, [{ x: 3, y: 3, count: 9 }]);
+    return { map, t, state };
+  };
+  // the live fields materialise the inherited decay over the opening minutes: land value slides 59 → 25
+  const settle = (h: ReturnType<typeof home>) => {
+    for (let i = 0; i < OCC_SETTLE_PASSES; i++) {
+      h.state.landValue.set(h.t, i < 40 ? 59 - (34 * i) / 40 : 25);
+      stepOccupancy(h.state, h.map);
+    }
+  };
+
+  it('the inherited city is the residents’ normal: it holds through the opening and only leaks slowly after', () => {
+    const h = home();
+    settle(h);
+    expect(h.state.occupancy.get(h.t)!).toBeGreaterThan(9 * 0.95);
+    for (let i = 0; i < 300; i++) stepOccupancy(h.state, h.map);
+    expect(h.state.occupancy.get(h.t)!).toBeGreaterThan(9 * 0.9);
+  });
+
+  it('a repair after the opening draws people in; a new harm drives them out', () => {
+    const up = home();
+    settle(up);
+    up.state.landValue.set(up.t, 105); // a park, a clinic in reach
+    for (let i = 0; i < 60; i++) stepOccupancy(up.state, up.map);
+    expect(up.state.occupancy.get(up.t)!).toBeGreaterThan(9 + 2);
+    const down = home();
+    settle(down);
+    down.state.pollution.set(down.t, 255); // a new smokestack upwind
+    for (let i = 0; i < 60; i++) stepOccupancy(down.state, down.map);
+    expect(down.state.occupancy.get(down.t)!).toBeLessThan(9 - 2);
+  });
+
+  it('expectations catch up: a change pulls hard at first, then the drift dies away (gains are kept)', () => {
+    const h = home();
+    settle(h);
+    h.state.landValue.set(h.t, 105);
+    const at = (n: number) => {
+      for (let i = 0; i < n; i++) stepOccupancy(h.state, h.map);
+      return h.state.occupancy.get(h.t)!;
+    };
+    const a0 = h.state.occupancy.get(h.t)!;
+    const early = at(30) - a0;
+    at(3000);
+    const b0 = h.state.occupancy.get(h.t)!;
+    const late = at(30) - b0;
+    expect(late).toBeLessThan(early / 4);
+    expect(b0).toBeGreaterThan(9 + 2);
+  });
+});
+
 describe('ambient is read-only over the world (AC#7 pin a)', () => {
   it('leaves hashWorld byte-identical after many steps', () => {
     const map = new GameMap(24, 24);
@@ -3512,5 +3572,120 @@ describe('jam escalation: U-turn, then skip the stop (Maddy 2026-09-30: deadlock
     if (p.phase === 'driving') expect(car.path).toBeDefined();
     else expect(car.parked).toBe(true);
     expect(p.phase).not.toBe('to-vehicle'); // no dismount-and-walk-back-to-the-car shuffle
+  });
+});
+
+// Traffic evaporation (Maddy 2026-10-01: freeway removed → streets gridlocked, people left). When roads come
+// out, congestion shifts trips to foot and bike and a share simply stop happening — the balancing loop a
+// car-only mode choice lacked.
+describe('traffic evaporation: a jammed road pushes trips off it', () => {
+  const road = () => {
+    const map = new GameMap(80, 10);
+    for (let x = 0; x < 80; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet;
+    return map;
+  };
+
+  it('in a full jam people bike a leg they would have driven; a long one still drives', () => {
+    expect(chooseMode(road(), 3, 5, 28, 5, 0)).toBe(TravelMode.Drive); // d=25, clear roads
+    expect(chooseMode(road(), 3, 5, 28, 5, 1)).toBe(TravelMode.Bike); // same leg, gridlock
+    expect(chooseMode(road(), 3, 5, 70, 5, 1)).toBe(TravelMode.Drive); // d=67: too far to cycle
+  });
+
+  it('a share of driving trips through a full jam never happen — none on clear roads', () => {
+    let gone = 0;
+    for (let h = 0; h < 1000; h++) if (tripEvaporates(1, h)) gone++;
+    expect(gone).toBeGreaterThan(150);
+    expect(gone).toBeLessThan(350);
+    for (let h = 0; h < 1000; h++) expect(tripEvaporates(0, h)).toBe(false);
+  });
+
+  it('jam reads the worst congestion near a point (0..1)', () => {
+    const traffic = new Map<number, number>();
+    const map = road();
+    expect(jamNear(map, traffic, 10, 5)).toBe(0);
+    traffic.set(map.idx(11, 5), 255);
+    expect(jamNear(map, traffic, 10, 5)).toBeCloseTo(1, 6);
+    expect(jamNear(map, traffic, 40, 5)).toBe(0);
+  });
+});
+
+describe('Walkable Streets does something (Maddy 2026-10-01: "will walkable streets help?" — it was a no-op)', () => {
+  it('on walkable streets people walk farther: a leg past plain walking range is walked, not driven or biked', () => {
+    const map = new GameMap(40, 10);
+    for (let x = 0; x < 40; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet;
+    expect(chooseMode(map, 3, 5, 17, 5, 0, false)).toBe(TravelMode.Bike); // d=14
+    expect(chooseMode(map, 3, 5, 17, 5, 0, true)).toBe(TravelMode.Walk);
+  });
+
+  it('the ambient state carries the capability (the host sets it from the tech tree)', () => {
+    expect(createAmbientState().walkable).toBe(false);
+  });
+});
+
+// Don't block the box (Maddy 2026-10-01: gridlock). A car enters a junction only when its exit is clear —
+// a car stopped IN the junction blocks every crossing direction, and the queues it causes block the next one.
+describe('keep the box clear', () => {
+  const plus = () => {
+    const map = new GameMap(24, 24);
+    for (let i = 0; i < 24; i++) {
+      map.built[map.idx(i, 10)] = BuiltKind.RoadStreet;
+      map.built[map.idx(10, i)] = BuiltKind.RoadStreet;
+    }
+    return map;
+  };
+  // eastbound at (9,10), committed into the junction (10,10); its next leg exits to (11,10)
+  const approaching = (map: GameMap) => ({ x: 9.2, y: 10, dir: 1, tx: 10, ty: 10, path: [map.idx(10, 10), map.idx(11, 10), map.idx(12, 10)], leg: 1 });
+
+  it('waits outside the junction while its exit is occupied', () => {
+    const map = plus();
+    const me = approaching(map);
+    const queued = { x: 11, y: 10, dir: 1, tx: 11, ty: 10 }; // stopped on the exit tile, same lane
+    expect(boxBlocked(buildMoverGrid([me, queued], map.width), map, me)).toBe(true);
+  });
+
+  it('enters when the exit is clear (oncoming traffic on the exit tile is in the other lane)', () => {
+    const map = plus();
+    const me = approaching(map);
+    expect(boxBlocked(buildMoverGrid([me], map.width), map, me)).toBe(false);
+    const oncoming = { x: 11, y: 10, dir: 3, tx: 11, ty: 10 };
+    expect(boxBlocked(buildMoverGrid([me, oncoming], map.width), map, me)).toBe(false);
+  });
+
+  it('a car already in the junction always clears it; mid-block the rule does not apply', () => {
+    const map = plus();
+    const inside = { x: 10, y: 10, dir: 1, tx: 11, ty: 10, path: [map.idx(11, 10), map.idx(12, 10)], leg: 1 };
+    const queued = { x: 12, y: 10, dir: 1, tx: 12, ty: 10 };
+    expect(boxBlocked(buildMoverGrid([inside, queued], map.width), map, inside)).toBe(false);
+    const midblock = { x: 4.2, y: 10, dir: 1, tx: 5, ty: 10, path: [map.idx(5, 10), map.idx(6, 10)], leg: 1 };
+    const ahead2 = { x: 6, y: 10, dir: 1, tx: 6, ty: 10 };
+    expect(boxBlocked(buildMoverGrid([midblock, ahead2], map.width), map, midblock)).toBe(false);
+  });
+});
+
+// Maddy 2026-10-02: "path costs for demand pathing through non-road tiles should be higher". People keep to
+// the sidewalk unless the street network fails them — a desire path forms where no street connects, not
+// because the street is busy.
+describe('walkers keep to the sidewalk', () => {
+  const tiles = () => {
+    const map = new GameMap(8, 8);
+    map.built[map.idx(1, 1)] = BuiltKind.RoadStreet;
+    map.built[map.idx(2, 1)] = BuiltKind.ParkingLot;
+    map.built[map.idx(3, 1)] = BuiltKind.Park;
+    return map; // (4, 4) is bare ground
+  };
+  const jam = (map: GameMap) => new Map([[map.idx(1, 1), 255]]);
+
+  it('a jammed local street is still cheaper than bare ground, or even a beaten desire path', () => {
+    const map = tiles();
+    const street = pedCost(map, 1, 1, undefined, jam(map));
+    expect(pedCost(map, 4, 4)).toBeGreaterThan(street);
+    const beaten = new Map([[map.idx(4, 4), 255]]);
+    expect(pedCost(map, 4, 4, beaten)).toBeGreaterThan(street);
+  });
+
+  it('a parking lot is a worse walk than a street; a park is a good one', () => {
+    const map = tiles();
+    expect(pedCost(map, 2, 1)).toBeGreaterThan(pedCost(map, 1, 1));
+    expect(pedCost(map, 3, 1)).toBeLessThan(pedCost(map, 2, 1));
   });
 });

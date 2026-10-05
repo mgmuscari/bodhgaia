@@ -50,6 +50,21 @@ export class CivicState {
     this.cells = Array.from({ length: neighborhoodCount }, seedCell);
   }
 
+  /** Every neighborhood's values and ring, by index (id − 1) — the save format's view. */
+  exportCells(): Array<{ belonging: number; voice: number; trust: number; ring: number[] }> {
+    return this.cells.map((c) => ({ belonging: c.belonging, voice: c.voice, trust: c.trust, ring: [...c.ring] }));
+  }
+
+  /** Restore saved cells onto the current partition: overlapping ids take the saved values; any extra
+   *  neighborhoods keep their seed (the partition is recomputed from the restored map, so the counts agree
+   *  unless the partition rules changed between versions). */
+  importCells(cells: ReadonlyArray<{ belonging: number; voice: number; trust: number; ring: readonly number[] }>): void {
+    for (let i = 0; i < this.cells.length && i < cells.length; i++) {
+      const c = cells[i]!;
+      this.cells[i] = { belonging: c.belonging, voice: c.voice, trust: c.trust, ring: [...c.ring].slice(0, RING_SIZE) };
+    }
+  }
+
   /** Number of neighborhoods currently tracked. */
   count(): number {
     return this.cells.length;

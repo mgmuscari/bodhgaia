@@ -69,6 +69,59 @@ export function toolPrice(tool: ToolDef): { effort: number; funds: number } {
   return { effort: 0, funds: tool.cost * FUNDS_PER_COST };
 }
 
+// ── Ways out of a deficit (Maddy 2026-10-01: "once you run out of funds there's no way to start restoration
+// projects"). A broke city still has its people. ──────────────────────────────────────────────────────────
+
+/** Community works neighbours can raise themselves when the treasury can't: community energy, care (the
+ *  free-clinic tradition), co-op homes, road diets, clean water — never the profit-making fabric. */
+const VOLUNTEER_KINDS: ReadonlySet<number> = new Set([
+  BuiltKind.WindTurbine,
+  BuiltKind.SolarPlant,
+  BuiltKind.EnergyNode,
+  BuiltKind.Clinic,
+  BuiltKind.FireStation,
+  BuiltKind.Library,
+  BuiltKind.School,
+  BuiltKind.WastewaterWorks,
+  BuiltKind.CoopHousing,
+  BuiltKind.ADU,
+  BuiltKind.Commune,
+  BuiltKind.QuietStreet,
+  BuiltKind.BikePath,
+  BuiltKind.Promenade,
+  BuiltKind.PlantedMedian,
+]);
+/** Dollars of work one unit of effort stands in for (volunteer labour is dearer than tending a garden). */
+export const VOLUNTEER_DOLLARS_PER_EFFORT = 20;
+/** Funds credited per freeway tile torn out — well under the $200 a tile costs to build, so there's no
+ *  build-and-salvage loop; the lasting win is the upkeep that stops. */
+export const FREEWAY_SALVAGE = 60;
+
+/** The kind a bulldoze at (x, y) would remove (an overpass deck first, then a parcel, then the tile). */
+function bulldozeTarget(world: ToolWorld, x: number, y: number): number {
+  const { map, parcels } = world;
+  const deck = overpassAt(map, x, y);
+  if (deck !== 0) return deck;
+  const pid = map.parcel[map.idx(x, y)]!;
+  return pid !== 0 ? parcels.get(pid - 1).kind : map.getBuilt(x, y);
+}
+
+/** What this use of the tool costs here and now, given the treasury: the sticker price, except freeway
+ *  removal pays salvage, and volunteer works take funds first and the shortfall in effort. Funds may come
+ *  back negative (a credit). */
+export function chargeFor(world: ToolWorld, tool: ToolDef, x: number, y: number, wallet: Wallet): { effort: number; funds: number } {
+  const sticker = toolPrice(tool);
+  let volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
+  if (tool.id === 'bulldoze') {
+    const target = bulldozeTarget(world, x, y);
+    if (target === BuiltKind.RoadHighway || target === BuiltKind.RoadRamp) return { effort: 0, funds: -FREEWAY_SALVAGE };
+    volunteer = true; // demolition is work a neighbourhood can do
+  }
+  if (!volunteer || sticker.funds <= wallet.funds) return sticker;
+  const paid = Math.max(0, wallet.funds);
+  return { effort: sticker.effort + Math.ceil((sticker.funds - paid) / VOLUNTEER_DOLLARS_PER_EFFORT), funds: paid };
+}
+
 export interface ToolWorld {
   map: GameMap;
   parcels: ParcelStore;
@@ -337,9 +390,9 @@ export function previewTool(
     if (tool.cost > tech.effort) return { valid: false, reason: 'effort' };
     return { valid: true };
   }
-  const price = toolPrice(tool);
+  const price = chargeFor(world, tool, x, y, wallet);
   if (price.effort > tech.effort) return { valid: false, reason: 'effort' };
-  if (price.funds > wallet.funds) return { valid: false, reason: 'funds' };
+  if (price.funds > 0 && price.funds > wallet.funds) return { valid: false, reason: 'funds' };
   return { valid: true };
 }
 
@@ -399,7 +452,7 @@ export function applyTool(
   // Pay first — effort through the guarded single-writer, funds from the wallet. previewTool already
   // proved the geometry valid and the purse sufficient, so the fabric writer below cannot fail after it.
   if (wallet) {
-    const price = toolPrice(tool);
+    const price = chargeFor(world, tool, x, y, wallet);
     if (!tech.spend(price.effort)) return { ok: false, reason: 'effort' };
     wallet.funds -= price.funds;
   } else if (!tech.spend(tool.cost)) return { ok: false, reason: 'effort' };

@@ -85,6 +85,14 @@ export class TechState {
     return true;
   }
 
+  /** Restore a saved state: exactly these unlocked ids (unknown ids — a node since removed — are dropped)
+   *  and this effort. */
+  restore(ids: readonly string[], effort: number): void {
+    this.unlockedSet.clear();
+    for (const id of ids) if (this.byId.has(id)) this.unlockedSet.add(id);
+    this.effort = Math.max(0, Math.floor(effort));
+  }
+
   /** Union of build kinds granted by every unlocked node. */
   grantedKinds(): ReadonlySet<BuiltKind> {
     const out = new Set<BuiltKind>();

@@ -61,8 +61,28 @@ export interface Levers {
   spendFunds: number;
 }
 
+/** A loan: repaid hourly over its term — the principal plus flat interest, in equal payments. */
+export interface Loan {
+  principal: number;
+  ratePerDay: number;
+  /** Money out each hour until it's repaid. */
+  payment: number;
+  hoursLeft: number;
+  /** Principal still owed (falls evenly with the payments) — what counts against the credit limit. */
+  principalLeft: number;
+}
+
+/** What the city can borrow right now, and on what terms. */
+export interface LoanOffer {
+  limit: number;
+  ratePerDay: number;
+  hours: number;
+}
+
 export interface EconomyState {
   funds: number;
+  /** Loans being repaid. */
+  loans: Loan[];
   effort: number;
   burnout: number;
   goodwill: number;
@@ -73,11 +93,17 @@ export interface EconomyState {
   /** This hour's goodwill SHOCK — repairs, harms, displacement, police — without the drift toward neutral.
    *  The running city applies it to civic trust, which owns goodwill's slower dynamics. */
   shock: number;
+  /** The one-time relief grant has been drawn (see ECON.reliefDays). */
+  reliefTaken: boolean;
   tick: number;
 }
 
 /** Rates and shapes — tuning data. */
 export const ECON = {
+  /** Relief grant (Maddy 2026-10-01): the first hour the treasury goes under, this many days of upkeep
+   *  arrive once from outside — under a receivership whose oversight costs this much approval. */
+  reliefDays: 3,
+  reliefApproval: 8,
   /** Effort regenerated per household per tick at full wellbeing, trust and rest. */
   regenPerHousehold: 0.02,
   /** Effort capacity: a base per household, multiplied up by social infrastructure. */
@@ -107,12 +133,20 @@ export const ECON = {
   taxPassThrough: 0.8,
   /** Displacement per household per tick for each unit rent exceeds what wellbeing-backed income bears. */
   displaceRate: 0.002,
+  /** Loans: repaid over this many days; the city may owe up to this many days of revenue; the daily rate
+   *  runs from loanRateBest (full approval) up by loanRateSpread as approval falls to nothing. A 20-day term
+   *  (was 5 — Maddy 2026-10-01: repayments outran her whole surplus): a full credit line costs ≤ ~⅙ of
+   *  revenue an hour, 4–20% interest over the term. */
+  loanDays: 20,
+  creditDays: 3,
+  loanRateBest: 0.002,
+  loanRateSpread: 0.008,
 } as const;
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
 export function createEconomy(funds = 2000): EconomyState {
-  return { funds, effort: 0, burnout: 0, goodwill: ECON.goodwillNeutral, approval: 50, rent: 0.3, displaced: 0, shock: 0, tick: 0 };
+  return { funds, loans: [], effort: 0, burnout: 0, goodwill: ECON.goodwillNeutral, approval: 50, rent: 0.3, displaced: 0, shock: 0, reliefTaken: false, tick: 0 };
 }
 
 /** Effort capacity: how much organised time the city can hold at once. */
@@ -131,10 +165,35 @@ export function taxRevenue(city: CityReading, lev: Levers): number {
   return city.base.r * lev.tax.r + city.base.c * lev.tax.c + city.base.i * lev.tax.i;
 }
 
+/** What the city may borrow now: a credit limit of a few days' revenue less what it still owes, at a rate
+ *  that rises as approval falls — a city's credit tracks its standing. */
+export function loanOffer(s: EconomyState, city: CityReading, lev: Levers): LoanOffer {
+  const owed = s.loans.reduce((sum, l) => sum + l.principalLeft, 0);
+  const limit = Math.max(0, taxRevenue(city, lev) * 24 * ECON.creditDays - owed);
+  const ratePerDay = ECON.loanRateBest + ECON.loanRateSpread * (1 - clamp(s.approval, 0, 100) / 100);
+  return { limit, ratePerDay, hours: ECON.loanDays * 24 };
+}
+
+/** Borrow `amount` on `offer`'s terms: the treasury gets it now; null if it's over the limit or not positive. */
+export function takeLoan(s: EconomyState, offer: LoanOffer, amount: number): EconomyState | null {
+  if (!(amount > 0) || amount > offer.limit + 1e-9) return null;
+  const total = amount * (1 + offer.ratePerDay * (offer.hours / 24));
+  const loan: Loan = { principal: amount, ratePerDay: offer.ratePerDay, payment: total / offer.hours, hoursLeft: offer.hours, principalLeft: amount };
+  return { ...s, funds: s.funds + amount, loans: [...s.loans, loan] };
+}
+
 /** One economy tick. Pure: returns the next state, never mutates `s`. */
 export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): EconomyState {
   // ── Funds: taxes in; upkeep, police and projects out (it can go negative: debt, with consequences elsewhere)
-  const funds = s.funds + taxRevenue(city, lev) - city.upkeep - lev.police - Math.min(lev.spendFunds, Math.max(0, s.funds));
+  // loan payments come due every hour, whether or not the treasury is in the red
+  const repayments = s.loans.reduce((sum, l) => sum + l.payment, 0);
+  const loans = s.loans
+    .map((l) => ({ ...l, hoursLeft: l.hoursLeft - 1, principalLeft: Math.max(0, l.principalLeft - l.principal / (ECON.loanDays * 24)) }))
+    .filter((l) => l.hoursLeft > 0);
+  let funds =
+    s.funds + taxRevenue(city, lev) - city.upkeep - lev.police - repayments - Math.min(lev.spendFunds, Math.max(0, s.funds));
+  const relief = funds < 0 && !s.reliefTaken;
+  if (relief) funds += ECON.reliefDays * 24 * city.upkeep;
 
   // ── Effort: regenerate, pay the commons' tending first, then projects; capped (perishable)
   const regen = effortRegen(city, s);
@@ -173,7 +232,19 @@ export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): Ec
     0,
     100,
   );
-  const approval = s.approval + (actual - s.approval) * ECON.approvalLag;
+  const approval = s.approval + (actual - s.approval) * ECON.approvalLag - (relief ? ECON.reliefApproval : 0);
 
-  return { funds, effort, burnout, goodwill, approval, rent, displaced: s.displaced + displacedNow, shock, tick: s.tick + 1 };
+  return {
+    funds,
+    loans,
+    effort,
+    burnout,
+    goodwill,
+    approval,
+    rent,
+    displaced: s.displaced + displacedNow,
+    shock,
+    reliefTaken: s.reliefTaken || relief,
+    tick: s.tick + 1,
+  };
 }

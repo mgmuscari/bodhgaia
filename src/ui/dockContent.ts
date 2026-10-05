@@ -7,7 +7,7 @@
 
 /** One dock meta button: which control it is, its label, and whether it's active. */
 export interface MetaButton {
-  id: 'tech' | 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' | 'life' | 'restore' | 'settings' | 'help';
+  id: 'budget' | 'tech' | 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' | 'life' | 'restore' | 'saves' | 'settings' | 'help';
   label: string;
   /** The pixel icon drawn as the button face (uiIcons.ts); the label becomes its tooltip. */
   art: string;
@@ -16,6 +16,7 @@ export interface MetaButton {
 
 /** Fixed labels — the bracketed key echoes the hotkey the button mirrors. */
 const META_LABELS: Record<MetaButton['id'], string> = {
+  budget: 'Budget (B)',
   tech: 'Tech (T)',
   eco: 'Eco (E)',
   civic: 'Civic (C)',
@@ -25,6 +26,7 @@ const META_LABELS: Record<MetaButton['id'], string> = {
   power: 'Power (U)',
   life: 'Life (L)',
   restore: 'Restoration (G)',
+  saves: 'Saves (S)',
   settings: 'Settings (,)',
   help: 'Help (?)',
 };
@@ -41,10 +43,11 @@ export function metaButtons(
   panelOpen: boolean,
   activeOverlay: { kind: 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' } | null,
   ambientOn: boolean,
-  open: { restore?: boolean; settings?: boolean; help?: boolean } = {},
+  open: { restore?: boolean; settings?: boolean; help?: boolean; budget?: boolean; saves?: boolean } = {},
 ): MetaButton[] {
   const b = (id: MetaButton['id'], active: boolean): MetaButton => ({ id, label: META_LABELS[id], art: `@ui/${id}`, active });
   return [
+    b('budget', open.budget ?? false),
     b('tech', panelOpen),
     b('eco', activeOverlay?.kind === 'eco'),
     b('civic', activeOverlay?.kind === 'civic'),
@@ -54,6 +57,7 @@ export function metaButtons(
     b('power', activeOverlay?.kind === 'power'),
     b('life', ambientOn),
     b('restore', open.restore ?? false),
+    b('saves', open.saves ?? false),
     b('settings', open.settings ?? false),
     b('help', open.help ?? false),
   ];

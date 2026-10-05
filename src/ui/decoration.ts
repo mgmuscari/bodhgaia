@@ -5,7 +5,7 @@
 // fixtures. On the architecture pure-ui allowlist (tests/architecture.test.ts).
 
 import type { GameMap } from '../engine/map';
-import { isRoadKind, BuiltKind, isLimitedAccessBoundary } from '../engine/fabric';
+import { isRoadKind, BuiltKind, isLimitedAccessBoundary, freewayCrossing } from '../engine/fabric';
 
 /** Power poles fall every Nth tile along a street/avenue run. */
 export const POLE_SPACING = 4;
@@ -196,10 +196,14 @@ export function crosswalkMask(map: GameMap, x: number, y: number): number {
  *  any band is wide (freeways are 3), so a wide road's own width never reads as a crossing. */
 const JUNCTION_RUN = 4;
 
-/** Can traffic pass between these two adjacent road tiles? Not across a limited-access barrier. */
+/** Can traffic pass between these two adjacent road tiles? Not across a limited-access barrier — except where
+ *  the freeway tile belongs to a ramped at-grade crossing (a 2-row avenue's second row over a freeway stays
+ *  freeway beside the ramp row, and is still the crossing: lotus (98, 37)). */
 function passable(map: GameMap, ax: number, ay: number, bx: number, by: number): boolean {
   if (!roadish(map, bx, by)) return false;
-  return !isLimitedAccessBoundary(map.getBuilt(ax, ay), map.getBuilt(bx, by));
+  if (!isLimitedAccessBoundary(map.getBuilt(ax, ay), map.getBuilt(bx, by))) return true;
+  const [fx, fy] = map.getBuilt(ax, ay) === BuiltKind.RoadHighway ? [ax, ay] : [bx, by];
+  return freewayCrossing(map, fx, fy);
 }
 
 /** Contiguous passable road through (x, y) along one axis, counting at most JUNCTION_RUN − 1 each way. */

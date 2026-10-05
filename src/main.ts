@@ -81,11 +81,13 @@ import { branchColumns, effortLine, panelSignature } from './ui/techContent';
 import { techLayout } from './ui/techLayout';
 import { mountTechPanel } from './ui/techPanel';
 import { availableTools, previewTool, applyTool, toolDef, type ToolId, type Wallet } from './tools/tools';
-import { createEconomy, effortCapacity, type CityReading } from './economy/model';
+import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading } from './economy/model';
 import { readCity } from './economy/readings';
 import { economyHour, practiceProject, DEFAULT_LEVERS, type EconomyRun } from './economy/run';
 import { projectProgress } from './economy/projects';
 import { economyLine } from './ui/economyContent';
+import { budgetView } from './ui/budgetContent';
+import { mountBudgetPanel } from './ui/budgetPanel';
 import { isLineTool } from './ui/lineTools';
 import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
 import { buildToolMenu, type ToolCategory } from './ui/toolMenuContent';
@@ -98,18 +100,24 @@ import { stepRevival } from './growth/revival';
 import { computePowerGrid, plantOutput, isPowerConsumer, plantPollution } from './growth/power';
 import { gameClock } from './ui/lighting';
 import { TRUST_FLOOR } from './civic/dynamics';
+import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
+import { CURRENT, writeSlot, readSlot, deleteSlot, listSlots, loadSlot, newCity, exportFile, importFile } from './save/store';
+import { mountSavesPanel } from './ui/savesPanel';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
+/** Autosave every this many in-game hours (and whenever the tab is hidden or closed). */
+const AUTOSAVE_HOURS = 6;
 
-export function main(): void {
+export function main(save: SaveV1 | null = null): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing #game canvas');
   installUiTheme(); // the pixel UI kit: palette variables, 9-slice frames, pixel font
 
   const params = new URLSearchParams(window.location.search);
 
-  const seed = params.get('seed') ?? DEFAULT_SEED;
+  // a resumed game (save/store.ts: the CURRENT slot) brings its own seed and size
+  const seed = save?.seed ?? params.get('seed') ?? DEFAULT_SEED;
 
   // Settings: live caps apply NOW (perf ceilings the agent layer reads); the world size feeds
   // worldgen at creation (a different size is a different seeded world — apply-on-restart). Persisted
@@ -117,7 +125,7 @@ export function main(): void {
   let settings = loadSettings();
   applyLiveCaps(settings.live);
   const world = runPipeline(
-    { seed, width: settings.world.mapWidth, height: settings.world.mapHeight },
+    { seed, width: save?.width ?? settings.world.mapWidth, height: save?.height ?? settings.world.mapHeight },
     [terrainStage(), mosesCenturyStage(), ecoSeedStage()],
   );
 
@@ -127,13 +135,18 @@ export function main(): void {
   const gpuParam = params.has('shader');
 
   // Tech-tree state: communal effort accrues into it each sim tick (see below).
+  // Save/load: the world is regenerated from the seed, then the saved layers and parcels overwrite it — before
+  // anything below derives from it (the partition, the census, the power grid…).
+  if (save) restoreWorld(world, save.world);
   const tech = createTechState(TECH_TREE);
+  if (save) restoreTech(tech, save.tech);
 
   // Civic state: the neighborhood partition + per-neighborhood belonging/voice/
   // trust. simTick refreshes the partition and remaps the state on the civic
   // cadence; this shell reads `deps.partition` to resolve a repair's tile.
   const partition = computeNeighborhoods(world.map);
   const civic = createCivicState(partition);
+  if (save) restoreCivic(civic, save.civic);
   // effortAccrual 'economy': communal effort is the economy's perishable stock (src/economy), not a counter
   const deps: SimDeps = { world, tech, civic, partition, seed, effortAccrual: 'economy' };
 
@@ -144,7 +157,7 @@ export function main(): void {
   // The opening overlay owns its own keydown and exposes no active-state; the
   // single composition root tracks whether it is up so the tech panel can
   // suppress its `T` toggle underneath it (init: up unless `?nointro=1`).
-  let overlayActive = params.get('nointro') !== '1';
+  let overlayActive = params.get('nointro') !== '1' && !save; // a resumed city skips the opening
 
   // the map pane sits right of the docked tool palette, never under it
   document.documentElement.style.setProperty('--sidebar-w', `${SIDEBAR_W}px`);
@@ -155,7 +168,9 @@ export function main(): void {
     mapHeight: world.map.height,
     viewportWidth: cssWidth,
     viewportHeight: cssHeight,
-    zoom: 2,
+    zoom: save?.camera.zoom ?? 2,
+    x: save?.camera.x,
+    y: save?.camera.y,
   });
 
   // The one aesthetic (Maddy 2026-09-30): the code-painted Super (16-bit) skin, materialized before the
@@ -309,6 +324,7 @@ export function main(): void {
   // The city starts DECAYED: a century of car-culture has already trampled the urban ground
   // into desire paths and polluted the shorelines, before the player arrives to heal it.
   seedDecay(ambientState, world.map);
+  if (save) restoreLive(ambientState, save.live); // the saved stocks over the seeded decay
 
   // Dev / live-pass affordance: a small global to drive the camera and inspect live
   // state from outside the input layer (e.g. screenshot tooling that needs to focus a
@@ -343,7 +359,7 @@ export function main(): void {
   // live map unless `?nointro=1`. The map input stays attached beneath; the
   // overlay captures pointer events until the player dismisses it (Begin /
   // Enter / Escape), after which the map is interactive.
-  if (params.get('nointro') !== '1') {
+  if (params.get('nointro') !== '1' && !save) {
     const name = cityName(createRng(seed).fork('city-name'));
     const chronicle = parseChronicle(world.log);
     const report = buildReport(world);
@@ -379,10 +395,34 @@ export function main(): void {
       harms,
       repairs: 0, // civic trust already earns repairs itself
     });
-  let econ: EconomyRun = { state: createEconomy(20_000), projects: [], levers: DEFAULT_LEVERS };
+  let econ: EconomyRun = save?.econ ?? { state: createEconomy(20_000), projects: [], levers: DEFAULT_LEVERS };
   let econCapacity = 0;
-  let econPrimed = false; // the opening reserve is set on the first hour with live occupancy to read
+  let econPrimed = save !== null;
+  // autosave is filled in once the Saves wiring is mounted (below); the economy hour calls it
+  let autosave = (): void => {}; // the opening reserve is set on the first hour with live occupancy to read
   let econFundsPerHour = 0;
+  let lastCity: CityReading | null = null; // the last hour's reading (the Budget window projects from it)
+  const cityForBudget = (): CityReading => lastCity ?? readNow({ blackouts: 0, policeViolence: 0, takings: 0 });
+  const leversNow = () => ({ ...econ.levers, spendEffort: 0, spendFunds: 0 });
+  // The Budget window: tax sliders, the police line, the hourly ledger, and loans (Maddy 2026-10-01: "we need
+  // taxes and loans, once you go negative you can't dig back out")
+  const budgetPanel = mountBudgetPanel(document.body, {
+    getView: () => budgetView(econ.state, cityForBudget(), leversNow()),
+    onTax: (cls, rate) => {
+      econ = { ...econ, levers: { ...econ.levers, tax: { ...econ.levers.tax, [cls]: rate } } };
+    },
+    onPolice: (perHour) => {
+      econ = { ...econ, levers: { ...econ.levers, police: perHour } };
+    },
+    onBorrow: (amount) => {
+      const next = takeLoan(econ.state, loanOffer(econ.state, cityForBudget(), leversNow()), amount);
+      if (!next) return;
+      econ = { ...econ, state: next };
+      toolbar.refresh(); // the fabric may be affordable again
+      pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
+    },
+    onToggle: () => toolbar.refreshMeta(),
+  });
   let econSlot = gameClock(performance.now() / 1000).slot;
   const violenceTotal = (): number => {
     let sum = 0;
@@ -418,6 +458,7 @@ export function main(): void {
     const harms = { blackouts: consumers > 0 ? (dark / consumers) * 2 : 0, policeViolence: Math.max(0, violence - prevViolence) / 50, takings: 0 };
     prevViolence = violence;
     const city = readNow(harms);
+    lastCity = city;
     econCapacity = effortCapacity(city);
     if (!econPrimed && econCapacity > 0) {
       econPrimed = true;
@@ -427,9 +468,12 @@ export function main(): void {
     const trust = deps.civicMeans ? (deps.civicMeans.trust / 255) * 100 : econ.state.goodwill;
     econ = { ...econ, state: { ...econ.state, goodwill: trust, effort: tech.effort } };
     const before = econ.state.funds;
+    const hadRelief = econ.state.reliefTaken;
     const r = economyHour(econ, city);
     econ = r.run;
-    econFundsPerHour = econ.state.funds - before;
+    const reliefNow = econ.state.reliefTaken && !hadRelief;
+    // the grant is a one-off, not the hour's flow
+    econFundsPerHour = econ.state.funds - before - (reliefNow ? ECON.reliefDays * 24 * city.upkeep : 0);
     tech.effort = Math.floor(econ.state.effort);
     // the hour's goodwill shock lands on every neighbourhood's trust
     if (econ.state.shock !== 0) {
@@ -450,6 +494,9 @@ export function main(): void {
     }
     toolbar.refresh();
     techPanel.refresh(); // projects advanced (no-op while the panel is closed)
+    budgetPanel.refresh();
+    if (reliefNow) budgetPanel.open(); // the grant and its strings, shown as they arrive
+    if (econ.state.tick % AUTOSAVE_HOURS === 0) autosave();
     pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
   };
 
@@ -514,7 +561,9 @@ export function main(): void {
   // the SAME closures the keys use (techPanel.toggle / cycleOverlay).
   // Panels the palette opens; mounted further down, so the palette reaches them through this holder
   // (reading their consts before they're declared would throw).
-  const panels: { restore?: { toggle(): boolean; visible(): boolean }; settings?: { toggle(): boolean; visible(): boolean }; help?: { toggle(): boolean; visible(): boolean } } = {};
+  type PanelHandle = { toggle(): boolean; visible(): boolean };
+  const panels: { restore?: PanelHandle; settings?: PanelHandle; help?: PanelHandle; saves?: PanelHandle } = {};
+
   const toolbar = mountToolbar(document.body, {
     getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, econ.state.funds),
     onSelect: (id) => {
@@ -534,6 +583,8 @@ export function main(): void {
         restore: panels.restore?.visible() ?? false,
         settings: panels.settings?.visible() ?? false,
         help: panels.help?.visible() ?? false,
+        budget: budgetPanel.visible(),
+        saves: panels.saves?.visible() ?? false,
       }),
     onMeta: (id) => {
       if (id === 'tech') techPanel.toggle();
@@ -541,6 +592,8 @@ export function main(): void {
       else if (id === 'restore') panels.restore?.toggle();
       else if (id === 'settings') panels.settings?.toggle();
       else if (id === 'help') panels.help?.toggle();
+      else if (id === 'budget') budgetPanel.toggle();
+      else if (id === 'saves') panels.saves?.toggle();
       else cycleOverlay(id); // a map overlay — the SAME closure its letter key calls
       toolbar.refreshMeta();
     },
@@ -876,6 +929,78 @@ export function main(): void {
     cycleOverlay(kind);
   });
 
+  // B toggles the Budget window; a click on the top bar (funds and the rest) opens it too
+  window.addEventListener('keydown', (event) => {
+    if (overlayActive || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key !== 'b' && event.key !== 'B') return;
+    event.preventDefault();
+    budgetPanel.toggle();
+  });
+  document.querySelector('.pulse-dock')?.addEventListener('click', () => budgetPanel.toggle());
+
+  // ── Save/load (src/save): the city autosaves into the CURRENT slot and a reload resumes it. The Saves
+  // window (S, or the palette's disk) saves into new slots, loads, exports and imports `.bodhi` files.
+  const cityTitle = save?.name ?? cityName(createRng(seed).fork('city-name'));
+  const captureNow = (): SaveV1 =>
+    captureGame({
+      seed,
+      name: cityTitle,
+      savedAt: Date.now(),
+      world,
+      tech,
+      civic,
+      econ,
+      live: ambientState,
+      tick: currentTick,
+      camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
+    });
+  let saving = false;
+  autosave = (): void => {
+    if (saving) return; // one write at a time
+    saving = true;
+    writeSlot(CURRENT, captureNow())
+      .catch((e: unknown) => console.warn('[save] autosave failed:', e))
+      .finally(() => {
+        saving = false;
+      });
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) autosave(); // leaving the tab (or closing it) keeps the city
+  });
+  window.addEventListener('pagehide', () => autosave());
+  const savesPanel = mountSavesPanel(document.body, {
+    list: listSlots,
+    saveNew: async () => {
+      const snap = captureNow();
+      await writeSlot(`slot-${snap.savedAt}`, snap);
+    },
+    load: async (id) => {
+      autosave = () => {}; // don't let a last autosave overwrite the slot being loaded
+      await loadSlot(id);
+    },
+    remove: deleteSlot,
+    exportSave: async (id) => {
+      const snap = id ? await readSlot(id) : captureNow();
+      if (snap) await exportFile(snap);
+    },
+    importFile: async (file) => {
+      const snap = await importFile(file);
+      await writeSlot(`slot-${Date.now()}`, { ...snap, savedAt: snap.savedAt || Date.now() });
+    },
+    newCity: async () => {
+      autosave = () => {};
+      await newCity();
+    },
+    onToggle: () => toolbar.refreshMeta(),
+  });
+  panels.saves = savesPanel;
+  window.addEventListener('keydown', (event) => {
+    if (overlayActive || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key !== 's' && event.key !== 'S') return;
+    event.preventDefault();
+    savesPanel.toggle();
+  });
+
   // L toggles ambient life, gated like E/C (suppressed while the opening overlay is
   // up so it never fires beneath it).
   window.addEventListener('keydown', (event) => {
@@ -1095,7 +1220,7 @@ export function main(): void {
       refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
       if (revived > 0 || powerChanged) markDirty(); // stock/grid changed → rebuild base
     }
-  });
+  }, { startTick: save?.tick ?? 0 }); // a resumed game keeps its clock (repair rings are stamped in ticks)
   let last = performance.now();
   let lastBaseRefresh = 0;
   const frame = (now: number): void => {
@@ -1122,6 +1247,7 @@ export function main(): void {
       // Continuous ambient path: step the ambient sim on its OWN clock (its Task-1
       // clamp owns catch-up), then composite + sprites. The base rebuilds inside
       // renderFrame iff invalidated, so this stays cheap.
+      ambientState.walkable = tech.hasCapability('walkability'); // Walkable Streets: people walk farther
       stepAmbient(ambientState, world.map, ambientRng, now - lastAmbient);
       lastAmbient = now;
       renderer.renderFrame(world, camera, ambientState);
@@ -1150,6 +1276,14 @@ export function main(): void {
   window.requestAnimationFrame(frame);
 }
 
+// Boot: resume the game in progress (the CURRENT slot, kept by autosave) unless `?new` asks for a fresh city;
+// an unreadable save is set aside with a warning rather than blocking the game.
 if (typeof document !== 'undefined') {
-  main();
+  const fresh = new URLSearchParams(window.location.search).has('new');
+  (fresh ? Promise.resolve(null) : readSlot(CURRENT))
+    .catch((e: unknown) => {
+      console.warn('[save] could not resume the city in progress:', e);
+      return null;
+    })
+    .then((save) => main(save));
 }
