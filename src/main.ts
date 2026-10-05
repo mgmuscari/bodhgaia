@@ -326,29 +326,32 @@ export function main(save: SaveV1 | null = null): void {
   // location). `zoomTo` mirrors the input path — move the camera, then markDirty so
   // the cached base rebuilds at the new view. `camera`/`world`/`ambient` are exposed
   // read handles (the running app's actual objects) so a live pass need not rebuild
-  // the world in-page.
-  (window as unknown as Record<string, unknown>).bodhitropolis = {
-    zoomTo: (wx: number, wy: number, zoom?: number): void => {
-      camera.centerOn(wx, wy, zoom);
-      markDirty();
-    },
-    toggleGpu: (): boolean => {
-      if (gpuRenderer) {
-        unmountGpu();
+  // the world in-page. DEV BUILDS ONLY: Vite folds `import.meta.env.DEV` to false in a
+  // production build, so the hook (and its handles on live state) is stripped from the shipped bundle.
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>).bodhitropolis = {
+      zoomTo: (wx: number, wy: number, zoom?: number): void => {
+        camera.centerOn(wx, wy, zoom);
         markDirty();
-        return false;
-      }
-      const ok = mountGpu();
-      markDirty();
-      return ok;
-    },
-    gpuOn: (): boolean => gpuRenderer !== null,
-    camera,
-    world,
-    ambient: ambientState,
-    tech,
-    power: () => powerGrid,
-  };
+      },
+      toggleGpu: (): boolean => {
+        if (gpuRenderer) {
+          unmountGpu();
+          markDirty();
+          return false;
+        }
+        const ok = mountGpu();
+        markDirty();
+        return ok;
+      },
+      gpuOn: (): boolean => gpuRenderer !== null,
+      camera,
+      world,
+      ambient: ambientState,
+      tech,
+      power: () => powerGrid,
+    };
+  }
 
   // Opening challenge overlay. Computed from the same world, mounted over the
   // live map unless `?nointro=1`. The map input stays attached beneath; the
