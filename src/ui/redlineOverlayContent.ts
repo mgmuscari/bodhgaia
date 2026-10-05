@@ -15,13 +15,14 @@
 // worldgen's gradeBucket — a deliberate, tiny duplication that keeps layering clean.
 
 import type { OverlayLegend } from './overlayLegend';
+import { OVERLAY_ALPHA } from './overlayTint';
 
 /** The single redline heatmap view (the grade). */
 export type RedlineOverlayView = 'grade';
 export const REDLINE_VIEWS: readonly RedlineOverlayView[] = ['grade'];
 
 /** Fixed translucency for the redline overlay (matches eco/civic). */
-export const REDLINE_OVERLAY_ALPHA = 0.92;
+export const REDLINE_OVERLAY_ALPHA = OVERLAY_ALPHA;
 
 type RGBA = [number, number, number, number];
 
