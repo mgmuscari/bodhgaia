@@ -41,7 +41,14 @@ describe('credits content', () => {
     const hrefs = creditsBlocks().flatMap((b) => (b.links ?? []).map((l) => l.href));
     expect(hrefs).toContain(SOURCE_URL);
     expect(hrefs).toContain(COPYING_HREF);
-    expect(COPYING_HREF).toBe('COPYING'); // relative: ships next to the page (public/COPYING)
+    // relative (subpath hosting), and .txt so browsers DISPLAY it (an extensionless file may download)
+    expect(COPYING_HREF).toBe('COPYING.txt');
+  });
+
+  it('ships the licence text it links, byte-identical to the repo COPYING', () => {
+    const copying = readFileSync('COPYING', 'utf8');
+    expect(readFileSync(`public/${COPYING_HREF}`, 'utf8')).toBe(copying);
+    expect(readFileSync('public/COPYING', 'utf8')).toBe(copying); // the conventional name ships too
   });
 
   it('says what it is derived from, and that it is a modified version', () => {

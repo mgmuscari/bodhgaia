@@ -119,16 +119,15 @@ describe('satelliteFormat: packCell', () => {
     expect(out[2]! & 0x2).toBe(0x2); // East connection set
   });
 
-  it('writes building height into G and traffic into A', () => {
+  it('writes building height into G and leaves A (the free channel) at 0', () => {
     const m = new GameMap(8, 8);
     m.setBuilt(5, 5, BuiltKind.Offices);
-    m.traffic[m.idx(5, 5)] = 200;
-    const out = new Uint8Array(DATA_CHANNELS);
+    const out = new Uint8Array(DATA_CHANNELS).fill(0xff); // stale bytes: packCell must write every channel
     packCell(m, 5, 5, out, 0);
     expect(out[0]).toBe(SatType.Commercial);
     expect(out[1]).toBe(buildingHeight(BuiltKind.Offices));
     expect(out[2]).toBe(0); // no transport adjacency under a building
-    expect(out[3]).toBe(200); // live sim scalar
+    expect(out[3]).toBe(0); // A is free: the retired map.traffic layer was always 0, nothing reads it
   });
 
   it('writes at the given byte offset, leaving the rest untouched', () => {

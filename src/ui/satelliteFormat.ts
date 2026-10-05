@@ -5,7 +5,8 @@
 //   R  tile type   SatType enum the shader switches on (procedural synthesis + atlas index)
 //   G  height/band density (building floors) · road class · water class · terrain band+elevation
 //   B  adjacency   8-bit transport connection mask (N=1 E=2 S=4 W=8) — exactly transportMask
-//   A  sim         live scalar (traffic density today; pollution/wellbeing later)
+//   A  (free)      always 0 — once the legacy map.traffic layer (retired; always zero). The shader
+//                  does not read it; claim it for a live scalar (pollution/wellbeing) when one lands.
 //
 // Pure and DOM-free: gridTextureBridge (the CPU writer) and satelliteShader (the
 // GLSL reader) both import these so the packing is single-source. The shader's
@@ -161,5 +162,5 @@ export function packCell(map: GameMap, x: number, y: number, out: Uint8Array, of
   }
   out[off + 1] = g & 0xff;
   out[off + 2] = transportMask(map, x, y) & 0xff; // 0 for non-transport cells
-  out[off + 3] = map.traffic[map.idx(x, y)] ?? 0;
+  out[off + 3] = 0; // A is free (see header)
 }
