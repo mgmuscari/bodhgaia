@@ -1055,9 +1055,9 @@ export interface Mover {
    *  prefers a neighbour NOT in this list; if boxed in (all options recent) it
    *  despawns instead of circling. Lazily created on first recommit. */
   recent?: number[];
-  /** Committed trip path (tile indices, origin→destination) — set for cars that ARE the
-   *  sim's planned O-D trips. A car with a `path` follows it leg by leg (see pathStep)
-   *  and despawns on arrival, instead of wandering. */
+  /** Committed route (tile indices, origin→destination) — set when a citizen's car commits to
+   *  a least-cost route (e.g. to parking near its leg destination). A car with a `path` follows
+   *  it leg by leg (see pathStep) instead of wandering. */
   path?: readonly number[];
   /** Cursor into `path`: the index of the NEXT tile to commit to. */
   leg?: number;
@@ -3764,7 +3764,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // 2. Spawn the daily-itinerary CITIZENS (the foot population — from the residential census; each
   //    runs a home→work→shop→lifestyle→leisure round, so green/leisure tiles draw real trips). There
   //    is no ambient-wanderer pool (Maddy 2026-06-20: everyone paths to a destination). Cars are NOT
-  //    spawned here — they are the sim's O-D trips, ingested via ingestTrips on the traffic cadence
+  //    spawned here — they are the citizens' own cars, boarded when a leg is too long to walk
   //    (cars=trips). Last-mile walkers spawn on a car PARKING (see tryPark → spawnParkPed), not here.
   spawnCitizens(state, map, rng);
   spawnFlocks(state, map, rng);
