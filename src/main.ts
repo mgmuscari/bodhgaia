@@ -57,7 +57,6 @@ import {
   civicLegendLine,
   civicLegend,
   cycleComposite,
-  compositeKeyFor,
   type CompositeState,
   type CivicOverlayView,
   type OverlayKind,
@@ -80,6 +79,7 @@ import { wellbeing } from './tech/effort';
 import { branchColumns, effortLine, panelSignature } from './ui/techContent';
 import { techLayout } from './ui/techLayout';
 import { mountTechPanel } from './ui/techPanel';
+import { resolveKey, overlayKindOf } from './ui/keyMap';
 import { availableTools, previewTool, applyTool, toolDef, type ToolId, type Wallet } from './tools/tools';
 import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading } from './economy/model';
 import { readCity } from './economy/readings';
@@ -129,11 +129,6 @@ export function main(save: SaveV1 | null = null): void {
     [terrainStage(), mosesCenturyStage(), ecoSeedStage()],
   );
 
-  // ?shader boots the FULL game with the GPU hybrid path on (the WebGL map under the live Canvas2D
-  // sprites/UI, driven by the real camera) — so it zooms/pans and shows agents, unlike the bare
-  // ?shaderdemo mount. Safe to open in a scratch tab. (Will become a settings toggle.)
-  const gpuParam = params.has('shader');
-
   // Tech-tree state: communal effort accrues into it each sim tick (see below).
   // Save/load: the world is regenerated from the seed, then the saved layers and parcels overwrite it — before
   // anything below derives from it (the partition, the census, the power grid…).
@@ -155,8 +150,8 @@ export function main(save: SaveV1 | null = null): void {
   let currentTick = 0;
 
   // The opening overlay owns its own keydown and exposes no active-state; the
-  // single composition root tracks whether it is up so the tech panel can
-  // suppress its `T` toggle underneath it (init: up unless `?nointro=1`).
+  // single composition root tracks whether it is up so the key table suppresses
+  // every game key underneath it (init: up unless `?nointro=1`).
   let overlayActive = params.get('nointro') !== '1' && !save; // a resumed city skips the opening
 
   // the map pane sits right of the docked tool palette, never under it
@@ -184,9 +179,9 @@ export function main(save: SaveV1 | null = null): void {
   canvas.style.top = '0';
   canvas.style.zIndex = '1';
 
-  // GPU hybrid path (Increment 1): a WebGL2 canvas under the Canvas2D sprite/UI layer, driven by the
-  // live camera. mountGpu falls back to CPU (returns false) if WebGL2 is unavailable. The CPU path
-  // stays the default + fallback. Toggled via ?shader now (settings toggle next).
+  // GPU hybrid path: a WebGL2 canvas under the Canvas2D sprite/UI layer, driven by the live camera.
+  // settings.renderer picks it (default 'gpu'); mountGpu falls back to the CPU path (returns false)
+  // if WebGL2 is unavailable.
   let gpuRenderer: GpuRenderer | null = null;
   let smogOverlay: SmogOverlay | null = null;
   const mountGpu = (): boolean => {
@@ -216,7 +211,7 @@ export function main(save: SaveV1 | null = null): void {
     smogOverlay = null;
     renderer.setGpuMode(false);
   };
-  if (gpuParam || settings.renderer === 'gpu') mountGpu();
+  if (settings.renderer === 'gpu') mountGpu();
 
   // Two named dirty chokepoints (CRITIC-YP2). markDirty invalidates the cached
   // renderer base (map/camera/overlay changed); markPreviewDirty only requests a
@@ -331,29 +326,32 @@ export function main(save: SaveV1 | null = null): void {
   // location). `zoomTo` mirrors the input path — move the camera, then markDirty so
   // the cached base rebuilds at the new view. `camera`/`world`/`ambient` are exposed
   // read handles (the running app's actual objects) so a live pass need not rebuild
-  // the world in-page.
-  (window as unknown as Record<string, unknown>).bodhitropolis = {
-    zoomTo: (wx: number, wy: number, zoom?: number): void => {
-      camera.centerOn(wx, wy, zoom);
-      markDirty();
-    },
-    toggleGpu: (): boolean => {
-      if (gpuRenderer) {
-        unmountGpu();
+  // the world in-page. DEV BUILDS ONLY: Vite folds `import.meta.env.DEV` to false in a
+  // production build, so the hook (and its handles on live state) is stripped from the shipped bundle.
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>).bodhitropolis = {
+      zoomTo: (wx: number, wy: number, zoom?: number): void => {
+        camera.centerOn(wx, wy, zoom);
         markDirty();
-        return false;
-      }
-      const ok = mountGpu();
-      markDirty();
-      return ok;
-    },
-    gpuOn: (): boolean => gpuRenderer !== null,
-    camera,
-    world,
-    ambient: ambientState,
-    tech,
-    power: () => powerGrid,
-  };
+      },
+      toggleGpu: (): boolean => {
+        if (gpuRenderer) {
+          unmountGpu();
+          markDirty();
+          return false;
+        }
+        const ok = mountGpu();
+        markDirty();
+        return ok;
+      },
+      gpuOn: (): boolean => gpuRenderer !== null,
+      camera,
+      world,
+      ambient: ambientState,
+      tech,
+      power: () => powerGrid,
+    };
+  }
 
   // Opening challenge overlay. Computed from the same world, mounted over the
   // live map unless `?nointro=1`. The map input stays attached beneath; the
@@ -500,9 +498,8 @@ export function main(save: SaveV1 | null = null): void {
     pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
   };
 
-  // Tech panel: right-docked, toggled by `T`. Zero game imports — it receives its
-  // content and the unlock action through deps. The `T` gate is suppressed while
-  // the opening overlay is up (isOverlayActive), so it never toggles beneath it.
+  // Tech panel: right-docked, toggled by `T` (via the one key table below). Zero game imports — it
+  // receives its content and the unlock action through deps.
   const techPanel = mountTechPanel(document.body, {
     getContent: () => ({ effort: effortLine(tech), layout: techLayout(TECH_TREE, tech) }),
     art: (key) => renderer.artImage(key),
@@ -535,7 +532,6 @@ export function main(save: SaveV1 | null = null): void {
       }
       return ok;
     },
-    isOverlayActive: () => overlayActive,
     // Y3: fired for the T key, the dock [Tech] button, AND any dismiss — keeps the
     // dock's [Tech] active-state in sync from ONE callback, off the rAF frame.
     onToggle: () => toolbar.refreshMeta(),
@@ -916,26 +912,7 @@ export function main(save: SaveV1 | null = null): void {
     toolbar.refreshMeta();
   };
 
-  // E and C self-bind through the shared compositeKeyFor gate (suppressed while the
-  // opening overlay is up); both delegate to cycleOverlay — the same body the dock
-  // buttons call.
-  window.addEventListener('keydown', (event) => {
-    // Let browser/OS shortcuts through — overlay hotkeys (e.g. 'r' for redline) must NOT hijack
-    // Cmd/Ctrl+R (reload), Cmd+S, etc. (Maddy playtest).
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const kind = compositeKeyFor(event.key, overlayActive);
-    if (kind === null) return;
-    event.preventDefault();
-    cycleOverlay(kind);
-  });
-
-  // B toggles the Budget window; a click on the top bar (funds and the rest) opens it too
-  window.addEventListener('keydown', (event) => {
-    if (overlayActive || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key !== 'b' && event.key !== 'B') return;
-    event.preventDefault();
-    budgetPanel.toggle();
-  });
+  // a click on the top bar (funds and the rest) opens the Budget window (B, via the key table below)
   document.querySelector('.pulse-dock')?.addEventListener('click', () => budgetPanel.toggle());
 
   // ── Save/load (src/save): the city autosaves into the CURRENT slot and a reload resumes it. The Saves
@@ -994,49 +971,48 @@ export function main(save: SaveV1 | null = null): void {
     onToggle: () => toolbar.refreshMeta(),
   });
   panels.saves = savesPanel;
-  window.addEventListener('keydown', (event) => {
-    if (overlayActive || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key !== 's' && event.key !== 'S') return;
-    event.preventDefault();
-    savesPanel.toggle();
-  });
 
-  // L toggles ambient life, gated like E/C (suppressed while the opening overlay is
-  // up so it never fires beneath it).
+  // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
+  // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
+  // the opening overlay. Each action calls the same closure its dock button does. preventDefault only on a match.
   window.addEventListener('keydown', (event) => {
-    if (overlayActive) return;
-    if (event.key !== 'l' && event.key !== 'L') return;
+    const action = resolveKey(event, overlayActive);
+    if (action === null) return;
     event.preventDefault();
-    setAmbient(!ambientOn);
-  });
-
-  // G toggles the restoration readout panel (gated like L). On open, show a fresh sample at once
-  // (flat — no spurious arrows from a stale prior); the civic cadence then trends it.
-  window.addEventListener('keydown', (event) => {
-    if (overlayActive) return;
-    if (event.key !== 'g' && event.key !== 'G') return;
-    event.preventDefault();
-    if (restorationPanel.toggle()) {
-      const sample = sampleRestoration(ambientState, world.map);
-      restorationPanel.set(restorationLines(sample, null));
-      prevRestoration = sample;
+    const overlay = overlayKindOf(action);
+    if (overlay !== null) {
+      cycleOverlay(overlay); // the same body the dock's overlay buttons call
+      return;
     }
-  });
-
-  // ',' toggles the settings menu (gated like L/G so it never fires under the opening overlay).
-  window.addEventListener('keydown', (event) => {
-    if (overlayActive) return;
-    if (event.key !== ',') return;
-    event.preventDefault();
-    settingsPanel.toggle();
-  });
-
-  // '?' / 'h' toggles the controls reference (same opening-overlay gate).
-  window.addEventListener('keydown', (event) => {
-    if (overlayActive) return;
-    if (event.key !== '?' && event.key !== 'h' && event.key !== 'H') return;
-    event.preventDefault();
-    helpPanel.toggle();
+    switch (action) {
+      case 'budget':
+        budgetPanel.toggle();
+        break;
+      case 'saves':
+        savesPanel.toggle();
+        break;
+      case 'life':
+        setAmbient(!ambientOn);
+        break;
+      case 'restoration':
+        // on open, show a fresh sample at once (flat — no spurious arrows from a stale prior); the civic
+        // cadence then trends it
+        if (restorationPanel.toggle()) {
+          const sample = sampleRestoration(ambientState, world.map);
+          restorationPanel.set(restorationLines(sample, null));
+          prevRestoration = sample;
+        }
+        break;
+      case 'settings':
+        settingsPanel.toggle();
+        break;
+      case 'help':
+        helpPanel.toggle();
+        break;
+      case 'tech':
+        techPanel.toggle();
+        break;
+    }
   });
 
   const previewAt = (tx: number, ty: number): void => {
@@ -1173,11 +1149,10 @@ export function main(save: SaveV1 | null = null): void {
     currentTick = tick;
     const r = simTick(deps, tick);
     simChanged = true; // effort accrued / grants may have moved → re-sync next frame
-    // NOTE: the sim's abstract O-D trips (deps.trips) still lay the deterministic traffic-density
-    // field that feeds growth/pollution/ped-routing, but they are NO LONGER visualised as ambient
-    // cars. The visible traffic is the CITIZENS (owned cars + walkers/cyclists/transit riders), which
-    // are persistent — they park and are walked to, never popping out of existence at a destination.
-    // (ingestTrips is retained + tested for the trip→ambient path, just not driven from the sim here.)
+    // NOTE: the sim no longer runs abstract O-D trips (compose.ts: trafficTicked is always false). The
+    // agent layer IS the traffic: the CITIZENS (owned cars + walkers/cyclists/transit riders) lay the
+    // live traffic density as they actually drive, and are persistent — they park and are walked to,
+    // never popping out of existence at a destination.
     if (r.ecoTicked && activeOverlay?.kind === 'eco') {
       // biodiversity is derived → recompute + re-push; soil/flora/fauna read the
       // live layers and need no recompute.
