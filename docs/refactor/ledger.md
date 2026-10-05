@@ -51,25 +51,25 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | M10 | main split | one keyboard map → `app/keys.ts` | todo | — |
 | M11 | main split | tool controller → `app/tools.ts` | todo | — |
 | M12 | main split | sim tick + frame loop → `app/loop.ts`; `main()` ≈ 100 lines of wiring | todo | — |
-| S1 | release | `vite base: './'` — assets load under a subpath of the site (BLOCKER) | in-progress | refactor/b1-release |
-| S2 | release | credits: GPL-3.0+, the old simulator © 1989–2007 EA notice + §7 additional terms, source link; ship COPYING (BLOCKER) | in-progress | refactor/b1-release |
-| S3 | release | dev hooks (`window.bodhitropolis`) — DECIDED: dev builds only (`import.meta.env.DEV`) | in-progress | refactor/b1-keys |
-| S4 | release | phones — DECIDED: a gentle "best on a desktop browser" note on small screens; touch later | in-progress | refactor/b1-release |
+| S1 | release | `vite base: './'` — assets load under a subpath of the site (BLOCKER) | done | 204f8c5c |
+| S2 | release | credits: GPL-3.0+, the old simulator © 1989–2007 EA notice + §7 additional terms, source link; ship COPYING (BLOCKER) | done | 979e2bb0 |
+| S3 | release | dev hooks (`window.bodhitropolis`) — DECIDED: dev builds only (`import.meta.env.DEV`) | done | bea50446 |
+| S4 | release | phones — DECIDED: a gentle "best on a desktop browser" note on small screens; touch later | done | 1bc3908e |
 | S5 | release | feature-check IndexedDB/CompressionStream; disable Saves with a note | todo | — |
-| S6 | release | page metadata: description, Open Graph, theme-color, static favicon + preview image | in-progress | refactor/b1-release |
-| D1 | dead code | fix stale O-D traffic comments (main.ts, ambientContent, map.ts) | in-progress | refactor/b1-deadcode + b1-keys |
-| D2 | dead code | delete uncalled fns (`isPlantedMedian`, `dirVector`, `pedCurbOffset`, `clearPx`) | in-progress | refactor/b1-deadcode |
-| D3 | dead code | drop `?shader` param (GPU is the default) | in-progress | refactor/b1-keys |
-| D4 | dead code | delete the retired O-D traffic module (`src/traffic/generate`, `density`, most of `trip`) + its tests | in-progress | refactor/b1-deadcode |
-| D5 | dead code | remove compose's traffic plumbing (`TRAFFIC_CADENCE`, `trips`, `trafficTicked`) + `ingestTrips` | in-progress | refactor/b1-deadcode |
+| S6 | release | page metadata: description, Open Graph, theme-color, static favicon + preview image | done | ac219a9a |
+| D1 | dead code | fix stale O-D traffic comments (main.ts, ambientContent, map.ts) | done | a8c37222 + 394f5ae9 |
+| D2 | dead code | delete uncalled fns (`isPlantedMedian`, `dirVector`, `pedCurbOffset`, `clearPx`) | done | 9a5eed4a |
+| D3 | dead code | drop `?shader` param (GPU is the default) | done | a68548bb |
+| D4 | dead code | delete the retired O-D traffic module (`src/traffic/generate`, `density`, most of `trip`) + its tests | done | 7002ee94 |
+| D5 | dead code | remove compose's traffic plumbing (`TRAFFIC_CADENCE`, `trips`, `trafficTicked`) + `ingestTrips` | done | 59eeb502 (ingestTrips kept → D8) |
 | D6 | dead code | retire the always-zero `map.traffic` layer — DECIDED: yes, SAVE v2 + v1→v2 migration | todo | — |
 | D7 | dead code | remove the test-only `effortAccrual: 'tick'` branch (rewrite those tests deliberately) | todo | — |
-| C1 | consistency | one money formatter | in-progress | refactor/b1-deadcode |
+| C1 | consistency | one money formatter | done | c4418c14 |
 | C2 | consistency | one clamp family (keep floor / no-floor variants; hash-sensitive) | todo | — |
 | C3 | consistency | one 4-neighbour direction table (iteration order preserved) | todo | — |
-| C4 | consistency | overlay constants + `lerp` shared | in-progress | refactor/b1-deadcode |
+| C4 | consistency | overlay constants + `lerp` shared | done | 6e667a62 |
 | C5 | consistency | overlay registry: one dispatch instead of main's if-chains/ternaries | todo | — |
-| C6 | consistency + BUG | one keyboard table; fixes Cmd+L / Cmd+G / Cmd+, being swallowed | in-progress | refactor/b1-keys |
+| C6 | consistency + BUG | one keyboard table; fixes Cmd+L / Cmd+G / Cmd+, being swallowed | done | 77a0b240 |
 | C7 | consistency | one panel handle shape (`toggle`/`isOpen`/`refresh`, one visibility mechanism) | todo | — |
 | C8 | consistency | settle `reconcile.ts` (wire it in or delete it) | todo | — |
 | P1 | perf | cull before posing; one pose array per frame for both renderers | todo | — |
@@ -77,6 +77,13 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | P3 | perf | reachability: reuse the found path; component labels for O(1) "can't reach" | todo | — |
 | P4 | perf | A*: binary heap + typed arrays (same tie order) | todo | — |
 | P5 | perf | warm headlight silhouettes; dirty-tile base refresh instead of the 2 s full redraw | todo | — |
+| C9 | consistency + BUG | keys fire while typing in an input (Settings number box): skip editable targets | todo | — |
+| C10 | consistency | Help's controls list is missing B (Budget) and S (Saves) | todo | — |
+| D8 | dead code | replace the `ingestTrips` fixture behind ~23 live-layer tests, then delete it | todo | — |
+| D9 | dead code | `SimDeps.seed` unread by simTick; `shouldTogglePanel` test-only | todo | — |
+| S7 | release | `og:image` + `og:url` once the site URL is known | todo | — |
+| S8 | release | ship `COPYING.txt` too (extensionless files may download, not display) | todo | — |
+| S9 | release | Help's ✕ scrolls away with the credits — pin the panel header | todo | — |
 
 ## Survey notes (2026-10-05)
 
@@ -90,7 +97,7 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 
 ## Batch plan
 
-- **Batch 1** (started 2026-10-05):
+- **Batch 1** (started 2026-10-05; DONE — integrated on `refactor/batch-1`, 1,767 tests, verified served from a subpath):
   1. release: S1, S2, S6 (+ S3 dev-hook guard if it doesn't touch main.ts beyond one line — else batch 2)
   2. keys: C6 (one keyboard table + Cmd regression test), D3, D1's main.ts comment
   3. dead code: D1 (non-main files), D2, D4, D5, C1, C4
