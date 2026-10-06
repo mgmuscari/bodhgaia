@@ -1,23 +1,23 @@
-// Restoration readout panel: the thin, toggleable DOM shell that shows the "is my renewal helping?"
-// readout. A renderer-style shell mirroring mountPulseDock — NO logic worth unit-testing (the lines
-// are derived by the pure restorationContent and tested there); it just owns a panel element, a
-// title, and visibility. It touches the DOM only inside mountRestorationPanel, which main() calls
-// only when `document` exists. Hidden by default; the host toggles it with the G key.
+// Restoration readout panel: the thin, toggleable DOM shell that shows the "is my repair helping?"
+// readout. No logic beyond the shared handle (the lines are derived by the pure restorationContent and
+// tested there); it owns a panel element, a title, and visibility. It touches the DOM only inside
+// mountRestorationPanel, which main() calls only when `document` exists. Hidden by default; the G key and
+// the dock's button open it the same way: a FRESH reading at once (flat — no stale trend arrows), then the
+// civic cadence's refresh trends each reading against the previous one.
 
-export interface RestorationPanelHandle {
-  /** Replace the readout lines (one `Label: value ↗` per metric). */
-  set(lines: string[]): void;
-  /** Show/hide the panel; returns the new visibility. */
-  toggle(): boolean;
-  /** Whether the panel is currently shown (the host refreshes it only while visible). */
-  visible(): boolean;
+import { panelVisibility, type PanelHandle } from './panelHandle';
+
+export interface RestorationPanelDeps {
+  /** The readout lines: `fresh` on open (no prior), else trended against the previous reading. */
+  read(fresh: boolean): string[];
+  /** Fired on every open/close, so the dock's button can follow. */
+  onToggle?(open: boolean): void;
 }
 
 /** Build and mount the (hidden) restoration readout panel into `container`. */
-export function mountRestorationPanel(container: HTMLElement): RestorationPanelHandle {
+export function mountRestorationPanel(container: HTMLElement, deps: RestorationPanelDeps): PanelHandle {
   const panel = document.createElement('div');
   panel.className = 'restoration-panel';
-  panel.style.display = 'none';
 
   const title = document.createElement('div');
   title.className = 'restoration-panel__title';
@@ -30,18 +30,8 @@ export function mountRestorationPanel(container: HTMLElement): RestorationPanelH
 
   container.appendChild(panel);
 
-  let shown = false;
-  return {
-    set(lines: string[]): void {
-      body.textContent = lines.join('\n');
-    },
-    toggle(): boolean {
-      shown = !shown;
-      panel.style.display = shown ? 'block' : 'none';
-      return shown;
-    },
-    visible(): boolean {
-      return shown;
-    },
+  const show = (fresh: boolean): void => {
+    body.textContent = deps.read(fresh).join('\n');
   };
+  return panelVisibility(panel, { render: () => show(true), refresh: () => show(false), onToggle: deps.onToggle });
 }

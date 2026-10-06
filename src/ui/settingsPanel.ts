@@ -15,12 +15,7 @@ import {
   type Settings,
   type WorldSettings,
 } from './settings';
-
-export interface SettingsPanelHandle {
-  /** Show/hide; returns the new visibility (the host refreshes nothing while hidden). */
-  toggle(): boolean;
-  visible(): boolean;
-}
+import { panelVisibility, type PanelHandle } from './panelHandle';
 
 export interface SettingsPanelCallbacks {
   /** The current (already-clamped) settings, read fresh each time the panel opens. */
@@ -31,6 +26,8 @@ export interface SettingsPanelCallbacks {
   onWorldChange(world: WorldSettings): void;
   /** A render-path change (cpu ⇄ gpu) to apply IMMEDIATELY (mount/unmount the WebGL layer) and persist. */
   onRendererChange(renderer: RendererMode): void;
+  /** Fired on every open/close, so the dock's button can follow. */
+  onToggle?(open: boolean): void;
 }
 
 const PRESET_TIERS: PresetTier[] = ['low', 'medium', 'high'];
@@ -52,10 +49,9 @@ function mapKeyFor(width: number): MapSizeKey | null {
 export function mountSettingsPanel(
   container: HTMLElement,
   cb: SettingsPanelCallbacks,
-): SettingsPanelHandle {
+): PanelHandle {
   const panel = document.createElement('div');
   panel.className = 'settings-panel';
-  panel.style.display = 'none';
 
   // Rebuilt from the current settings each open, so the controls always reflect live state.
   const render = (): void => {
@@ -66,7 +62,7 @@ export function mountSettingsPanel(
     close.className = 'settings-panel__close';
     close.textContent = '✕';
     close.title = 'Close (,)';
-    close.addEventListener('click', () => hide());
+    close.addEventListener('click', () => handle.close());
     panel.appendChild(close);
 
     const title = document.createElement('div');
@@ -215,20 +211,7 @@ export function mountSettingsPanel(
 
   container.appendChild(panel);
 
-  let shown = false;
-  const hide = (): void => {
-    shown = false;
-    panel.style.display = 'none';
-  };
-  return {
-    toggle(): boolean {
-      shown = !shown;
-      if (shown) render(); // rebuild from current settings on open
-      panel.style.display = shown ? 'block' : 'none';
-      return shown;
-    },
-    visible(): boolean {
-      return shown;
-    },
-  };
+  // Rebuilt from the current settings on each open (and on refresh while open).
+  const handle = panelVisibility(panel, { render, onToggle: cb.onToggle });
+  return handle;
 }

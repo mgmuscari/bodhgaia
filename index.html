@@ -133,8 +133,10 @@
         border: 12px solid transparent;
         border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
       }
-      .tech-panel[hidden] {
-        display: none;
+      /* The one visibility mechanism for every panel and popup: the `hidden` attribute (ui/panelHandle.ts) —
+         it must win over any panel's own display (flex, grid, …). */
+      [hidden] {
+        display: none !important;
       }
       .tech-panel-header {
         flex: 0 0 auto;
@@ -623,6 +625,7 @@
         max-height: 88vh;
         max-width: min(40rem, 92vw);
         box-sizing: border-box;
+        display: flex; /* a column: the pinned header over the scrolling content */
         flex-direction: column;
       }
       .help-panel__scroll {
@@ -665,7 +668,6 @@
         font-size: 1.0rem;
         color: var(--ui-text);
       }
-      .budget-panel[hidden] { display: none; }
       .budget-head { display: flex; justify-content: space-between; align-items: center; }
       .budget-title {
         font-weight: bold; color: var(--ui-accent); text-transform: uppercase; letter-spacing: 0.08em;
