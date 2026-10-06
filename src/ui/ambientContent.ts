@@ -143,7 +143,6 @@ export {
   sendOwnedCarHome,
   abandonOwnedCar,
   degradeAbandonedCar,
-  ingestTrips,
 } from '../live/agents';
 
 export { stepAmbient } from '../live/step';
