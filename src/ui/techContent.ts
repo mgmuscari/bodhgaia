@@ -162,13 +162,3 @@ export function techNodeClass(node: NodeView): string {
   if (node.status === 'affordable') cls += ' tech-node-clickable';
   return cls;
 }
-
-/**
- * Pure input gate for the panel's `T` toggle. True iff `key` is `t`/`T` AND no
- * overlay is active — so the opening overlay (which owns its own keydown) is
- * never toggled underneath. Lives here, not in the DOM shell, so the
- * overlay-suppression rule is unit-tested rather than left to manual QA.
- */
-export function shouldTogglePanel(key: string, overlayActive: boolean): boolean {
-  return (key === 't' || key === 'T') && !overlayActive;
-}

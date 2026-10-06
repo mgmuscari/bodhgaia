@@ -28,7 +28,6 @@ function makeDeps(): SimDeps {
     tech: createTechState(TECH_TREE),
     civic: createCivicState(partition),
     partition,
-    seed: 'compose-test',
   };
 }
 
@@ -128,7 +127,6 @@ describe('simTick: no deterministic traffic field (traffic is agent-driven)', ()
       tech: createTechState(TECH_TREE),
       civic: createCivicState(partition),
       partition,
-      seed: 'traffic-fire',
     };
   }
 
