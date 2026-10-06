@@ -43,8 +43,9 @@ export interface SimDeps {
   tech: TechState;
   civic: CivicState;
   partition: NeighborhoodMap;
-  /** World seed — the root for any per-tick rng fork a sim layer needs (none draws one today). */
-  seed: string;
+  /** @deprecated Unread — simTick draws no randomness. Accepted (and ignored) only so existing
+   *  callers that still pass it keep compiling; drop it at the call site. */
+  seed?: string;
   ecoMeans?: { soil: number; flora: number; fauna: number };
   civicMeans?: { belonging: number; voice: number; trust: number };
   /** 'tick' (default): effort accrues every sim tick, the original endless counter. 'economy': the
