@@ -3,6 +3,7 @@
 // reload. A thin DOM shell — storage comes in through deps (save/store.ts), the save itself from the host.
 
 import type { SlotInfo } from '../save/store';
+import { saveSupport, unavailableLine, type SaveSupport } from '../save/support';
 import { panelVisibility, type PanelHandle } from './panelHandle';
 
 export interface SavesPanelDeps {
@@ -16,6 +17,9 @@ export interface SavesPanelDeps {
   importFile(file: File): Promise<void>;
   newCity(): Promise<void>;
   onToggle?(open: boolean): void;
+  /** Can this browser save? Default: the real feature check (save/support.ts). When it can't, the window
+   *  says so in one line and disables Save / Import / Export. */
+  support?: SaveSupport;
 }
 
 const when = (ms: number): string =>
@@ -26,12 +30,15 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): P
   panel.className = 'budget-panel saves-panel'; // the Budget window's frame and type
   container.appendChild(panel);
   let status = '';
+  const support = deps.support ?? saveSupport();
+  const cantSave = unavailableLine(support); // '' when saving works
 
   const button = (label: string, run: () => Promise<void>, cls = 'budget-borrow'): HTMLButtonElement => {
     const b = document.createElement('button');
     b.className = cls;
     b.textContent = label;
     b.addEventListener('click', () => {
+      if (b.disabled) return;
       run()
         .then(() => render())
         .catch((e: unknown) => {
@@ -39,6 +46,12 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): P
           void render();
         });
     });
+    return b;
+  };
+  /** A button that needs storage (or compression): disabled when this browser can't save. */
+  const storageButton = (label: string, run: () => Promise<void>): HTMLButtonElement => {
+    const b = button(label, run);
+    if (cantSave) b.disabled = true;
     return b;
   };
   const div = (cls: string, text = ''): HTMLDivElement => {
@@ -77,12 +90,12 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): P
         });
     });
     actions.append(
-      button('Save', async () => {
+      storageButton('Save', async () => {
         await deps.saveNew();
         status = 'Saved';
       }),
-      button('Export', () => deps.exportSave()),
-      button('Import…', async () => file.click()),
+      storageButton('Export', () => deps.exportSave()),
+      storageButton('Import…', async () => file.click()),
       button('New city', () => deps.newCity()),
       file,
     );
@@ -95,13 +108,14 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): P
     } catch (e) {
       status = e instanceof Error ? e.message : String(e);
     }
-    if (infos.length === 0) slots.append(div('budget-note', 'None yet — the city in progress autosaves.'));
+    if (cantSave) slots.append(div('budget-note', cantSave));
+    else if (infos.length === 0) slots.append(div('budget-note', 'None yet — the city in progress autosaves.'));
     for (const s of infos) {
       const row = div('saves-row');
       row.append(
         div('budget-line', `${s.name} · ${when(s.savedAt)} · ${Math.max(1, Math.round(s.bytes / 1024))} KB`),
         button('Load', () => deps.load(s.id)),
-        button('Export', () => deps.exportSave(s.id)),
+        storageButton('Export', () => deps.exportSave(s.id)),
         button('Delete', () => deps.remove(s.id)),
       );
       slots.append(row);

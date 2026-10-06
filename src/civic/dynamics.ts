@@ -19,6 +19,8 @@ import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import { influenceOf } from '../ecology/influence';
 import type { NeighborhoodMap } from './neighborhoods';
 import type { CivicState } from './state';
+import { clampByte } from '../engine/clamp';
+import { DIRS4_NESW } from '../engine/dirs';
 
 /** The participatory capabilities civic dynamics consumes (resolved tech-side). */
 export interface CivicCaps {
@@ -58,15 +60,6 @@ const GATHERING_KINDS = new Set<number>([
   BuiltKind.Civic,
   BuiltKind.Park,
 ]);
-
-const DIRS: ReadonlyArray<readonly [number, number]> = [
-  [0, -1],
-  [1, 0],
-  [0, 1],
-  [-1, 0],
-];
-
-const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
 
 /** Integer belonging-band multiplier: a community speaks louder when held. */
 function voiceBand(belonging: number): number {
@@ -130,7 +123,7 @@ export function civicTick(
     const y = (i - x) / width;
     // De-dup the ≤4 neighbour neighborhood ids so this barrier counts once each.
     const ids: number[] = [];
-    for (const [dx, dy] of DIRS) {
+    for (const [dx, dy] of DIRS4_NESW) {
       const nx = x + dx;
       const ny = y + dy;
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;

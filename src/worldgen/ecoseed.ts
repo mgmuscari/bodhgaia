@@ -22,6 +22,7 @@ import { GameMap, Water, LandCover } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { distanceField } from './fields';
 import type { WorldgenStage, WorldState } from './pipeline';
+import { floorClampByte } from '../engine/clamp';
 
 /** The durable era5 RECORD line (NOT shown in the opening — see module header). */
 export const ECO_SEED_WOUND =
@@ -53,8 +54,6 @@ const FAUNA_PERIPHERY_RATE = 3; // fauna += min(highwayDist, CAP) * this
 const FAUNA_PERIPHERY_CAP = 40; // distance past which the periphery bonus plateaus
 const FAUNA_UNREACHABLE = 120; // periphery bonus for tiles no highway can reach
 
-const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : Math.floor(v));
-
 /**
  * Seed the three ecology layers from the existing map state. Water tiles get soil
  * capped low and flora/fauna 0 (open water is not habitat in v1). Land tiles draw
@@ -85,11 +84,11 @@ export function seedEcology(map: GameMap): void {
       if (hd >= 0) soil -= Math.floor(CORRIDOR_WOUND / (1 + hd));
       const id = industryDist[i]!;
       if (id >= 0) soil -= Math.floor(INDUSTRY_WOUND / (1 + id));
-      soil = clampByte(soil);
+      soil = floorClampByte(soil);
       map.soilHealth[i] = soil;
 
       // --- Flora: a vegetation floor (so vegetated land is always > 0) + soil.
-      const flora = clampByte((FLORA_VEG_BASE[lc] ?? 0) + (soil >> FLORA_SOIL_SHIFT));
+      const flora = floorClampByte((FLORA_VEG_BASE[lc] ?? 0) + (soil >> FLORA_SOIL_SHIFT));
       map.floraVitality[i] = flora;
 
       // --- Fauna: flora + riparian bonus + periphery weight (far from highways).
@@ -102,7 +101,7 @@ export function seedEcology(map: GameMap): void {
         hd < 0
           ? FAUNA_UNREACHABLE
           : (hd > FAUNA_PERIPHERY_CAP ? FAUNA_PERIPHERY_CAP : hd) * FAUNA_PERIPHERY_RATE;
-      const fauna = clampByte(
+      const fauna = floorClampByte(
         (flora >> FAUNA_FLORA_SHIFT) + FAUNA_WATER_BONUS * waterAdj + periphery,
       );
       map.faunaPresence[i] = fauna;
