@@ -9,15 +9,9 @@
 //   - landRun       — the longest contiguous non-water run along a row or column
 
 import { GameMap, Water } from '../engine/map';
+import { DIRS4_EWSN } from '../engine/dirs';
 
 // 4-neighbour offsets, fixed order for deterministic BFS expansion.
-const DIRS4: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-
 /**
  * Multi-source 4-connected BFS distance from every source tile, returning an
  * Int32Array (-1 = unreachable). `isSource(i)` seeds distance 0; expansion
@@ -53,9 +47,9 @@ export function distanceField(
     const x = i % width;
     const y = (i - x) / width;
     const nd = dist[i]! + 1;
-    for (let k = 0; k < DIRS4.length; k++) {
-      const nx = x + DIRS4[k]![0];
-      const ny = y + DIRS4[k]![1];
+    for (let k = 0; k < DIRS4_EWSN.length; k++) {
+      const nx = x + DIRS4_EWSN[k]![0];
+      const ny = y + DIRS4_EWSN[k]![1];
       if (!map.inBounds(nx, ny)) continue;
       const ni = map.idx(nx, ny);
       if (dist[ni] !== -1) continue;
