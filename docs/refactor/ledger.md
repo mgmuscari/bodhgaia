@@ -3,6 +3,13 @@
 The broad cleanup pass (started 2026-10-05). Goal: a codebase ready to publish as a static "artifact" on
 Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaffolding in the shipped build.
 
+## Status — CLOSED 2026-10-05 (Maddy: "stop the pass here")
+
+Six batches, 77 units done, merged via PRs #133–#138. The live layer (once one 4,600-line file) is ~20 modules
+under `src/live/`; `main()` is 186 lines of wiring over tested controllers in `src/app/`; the page is ready to
+publish from a subpath with its GPL credits. The remaining `todo` rows are optional (deeper perf, the ped
+state-machine rewrite) or wait on outside facts (the site URL for og:url/og:image). Pick them up as ordinary work.
+
 ## Protocol (how this pass stays pausable)
 
 - **This file is the source of truth.** Every unit of work is a row below: `todo` → `in-progress` → `done`
@@ -110,10 +117,10 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | N7 | notes | L13 importer list: 9 src + 14 tests (+ tests/app/live.test.ts), inline `import('…ambientContent').Car/Ped` types in ambientContent.test.ts; allowlist line + 2 comments | done | 5290d463 |
 
 - **Batch 6** (started 2026-10-05, the finishing batch; DONE — integrated on `refactor/batch-6`, 1,972 tests, golden + hash unchanged, verified from a subpath at 60 fps): retire the barrel (N2, L13, D8) · finish main.ts (M10–M12, P5b) · consistency + storage check (S5, C2, C3, C8, D7, D9).
-| D11 | dead code | ~5 tests in tests/live/live.test.ts now exercise only the trip FIXTURE's own spawn logic (walk/drive, freeway, tint) — retire? (Maddy's call) | todo | — |
+| D11 | dead code | ~5 tests in tests/live/live.test.ts now exercise only the trip FIXTURE's own spawn logic (walk/drive, freeway, tint) — retire? (Maddy's call) | done | 488e892a (5 retired, Maddy's call) |
 | P10 | perf | power-hour / civic-tick `markDirty` triggers full base rebuilds though power never changes base pixels — a collect-only refresh | todo | — |
 | N8 | notes | S5's no-storage guard lives in the store (CURRENT is a silent sink) — could move into app/saves.ts `autosave()` via `saveSupport()` | todo | — |
-| N9 | notes | CLAUDE.md's 2026-06-19 gotcha still says `import('/src/ui/ambientContent.ts')` for live checks — now `src/live/*` (Maddy's file) | todo | — |
+| N9 | notes | CLAUDE.md's 2026-06-19 gotcha still says `import('/src/ui/ambientContent.ts')` for live checks — now `src/live/*` (Maddy's file) | done | 488e892a |
 
 ## Survey notes (2026-10-05)
 
