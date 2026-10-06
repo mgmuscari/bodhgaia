@@ -6,15 +6,15 @@
 
 import { controlsLines } from './controlsContent';
 import { creditsBlocks } from './creditsContent';
+import { panelVisibility, type PanelHandle } from './panelHandle';
 
-export interface HelpPanelHandle {
-  /** Show/hide the reference; returns the new visibility. */
-  toggle(): boolean;
-  visible(): boolean;
+export interface HelpPanelDeps {
+  /** Fired on every open/close, so the dock's button can follow. */
+  onToggle?(open: boolean): void;
 }
 
 /** Mount the persistent hint + the (hidden) controls panel into `container`. */
-export function mountHelpPanel(container: HTMLElement): HelpPanelHandle {
+export function mountHelpPanel(container: HTMLElement, deps: HelpPanelDeps = {}): PanelHandle {
   // The discoverable entry point — always on screen until the panel is open.
   const hint = document.createElement('button');
   hint.className = 'controls-hint';
@@ -24,7 +24,6 @@ export function mountHelpPanel(container: HTMLElement): HelpPanelHandle {
 
   const panel = document.createElement('div');
   panel.className = 'help-panel';
-  panel.style.display = 'none';
 
   const close = document.createElement('div');
   close.className = 'help-panel__close';
@@ -76,22 +75,13 @@ export function mountHelpPanel(container: HTMLElement): HelpPanelHandle {
 
   container.appendChild(panel);
 
-  let shown = false;
-  const setShown = (v: boolean): void => {
-    shown = v;
-    panel.style.display = v ? 'flex' : 'none'; // a column: pinned header over the scrolling content
-    hint.style.display = v ? 'none' : 'block'; // the hint and the panel never show together
-  };
-  hint.addEventListener('click', () => setShown(true));
-  close.addEventListener('click', () => setShown(false));
-
-  return {
-    toggle(): boolean {
-      setShown(!shown);
-      return shown;
+  const handle = panelVisibility(panel, {
+    onToggle: (open) => {
+      hint.hidden = open; // the hint and the panel never show together
+      deps.onToggle?.(open);
     },
-    visible(): boolean {
-      return shown;
-    },
-  };
+  });
+  hint.addEventListener('click', () => handle.open());
+  close.addEventListener('click', () => handle.close());
+  return handle;
 }

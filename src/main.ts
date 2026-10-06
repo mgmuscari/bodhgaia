@@ -32,7 +32,7 @@ import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
 import { pulseLine } from './ui/pulseContent';
 import { mountPulseDock } from './ui/pulseDock';
-import { sampleRestoration, restorationLines, type RestorationSample } from './ui/restorationContent';
+import { sampleRestoration, restorationLines } from './ui/restorationContent';
 import { mountRestorationPanel } from './ui/restorationPanel';
 import { sampleUnhoused, unhousedSuffix } from './ui/unhousedContent';
 import { isRepairTool } from './ui/repairTools';
@@ -66,6 +66,7 @@ import { createPowerController } from './app/power';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
 import { createEconomyController } from './app/economy';
 import { createSaves } from './app/saves';
+import { createPanelRegistry, isPanelId, trendReader } from './app/panels';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -400,14 +401,14 @@ export function main(save: SaveV1 | null = null): void {
     refreshMeta: () => toolbar.refreshMeta(),
   });
 
+  // The panel registry (src/app/panels.ts): ONE {id → handle} table the key dispatch, the dock's onMeta and
+  // the dock's active flags all read. The handles attach once every panel is mounted (below); until then the
+  // registry reports them all closed — the dock reads its flags at its own mount.
+  const panels = createPanelRegistry();
+
   // Bottom tool dock: always on, derived from tech grants + selection + effort. The
-  // meta row ([Tech][Eco][Civic]) mirrors the T/E/C keys: getMetaButtons derives
-  // the active flags from the live panel/overlay state; onMeta routes a click to
-  // the SAME closures the keys use (techPanel.toggle / overlays.cycle).
-  // Panels the palette opens; mounted further down, so the palette reaches them through this holder
-  // (reading their consts before they're declared would throw).
-  type PanelHandle = { toggle(): boolean; visible(): boolean };
-  const panels: { restore?: PanelHandle; settings?: PanelHandle; help?: PanelHandle; saves?: PanelHandle } = {};
+  // meta row mirrors the keys: getMetaButtons derives the active flags from the live
+  // panel/overlay state; onMeta routes a click to the SAME closures the keys use.
 
   const toolbar = mountToolbar(document.body, {
     getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, economy.run().state.funds),
@@ -423,22 +424,10 @@ export function main(save: SaveV1 | null = null): void {
       openCategory = openCategory === id ? null : id;
       toolbar.refresh();
     },
-    getMetaButtons: () =>
-      metaButtons(techPanel.isOpen(), overlays.active(), ambientOn, {
-        restore: panels.restore?.visible() ?? false,
-        settings: panels.settings?.visible() ?? false,
-        help: panels.help?.visible() ?? false,
-        budget: budgetPanel.visible(),
-        saves: panels.saves?.visible() ?? false,
-      }),
+    getMetaButtons: () => metaButtons(panels.isOpen('tech'), overlays.active(), ambientOn, panels.openFlags()),
     onMeta: (id) => {
-      if (id === 'tech') techPanel.toggle();
-      else if (id === 'life') setAmbient(!ambientOn); // same toggle the L key calls
-      else if (id === 'restore') panels.restore?.toggle();
-      else if (id === 'settings') panels.settings?.toggle();
-      else if (id === 'help') panels.help?.toggle();
-      else if (id === 'budget') budgetPanel.toggle();
-      else if (id === 'saves') panels.saves?.toggle();
+      if (id === 'life') setAmbient(!ambientOn); // same toggle the L key calls
+      else if (isPanelId(id)) panels.toggle(id); // the same registry call its key makes
       else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
       toolbar.refreshMeta();
     },
@@ -510,12 +499,14 @@ export function main(save: SaveV1 | null = null): void {
     wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans });
   pulseDock.set(pulseText(wellbeingNow())); // initial: flat, no prior cadence
 
-  // Restoration readout panel (G): "is my renewal helping?" — surveys the live metrics (land value,
+  // Restoration readout panel (G): "is my repair helping?" — surveys the live metrics (land value,
   // population, building health, ecology, air/ground/water pollution) with improvement-oriented trend
-  // arrows. Hidden by default; sampled on the civic cadence vs the previous sample only while shown.
-  const restorationPanel = mountRestorationPanel(document.body);
-  panels.restore = restorationPanel;
-  let prevRestoration: RestorationSample | null = null;
+  // arrows. Hidden by default; opening (key or dock) shows a fresh sample at once (flat — no stale arrows),
+  // then the civic cadence's refresh trends it against the previous sample (no work while closed).
+  const restorationPanel = mountRestorationPanel(document.body, {
+    read: trendReader(() => sampleRestoration(ambientState, world.map), restorationLines),
+    onToggle: () => toolbar.refreshMeta(),
+  });
 
   // Settings panel (',' key): live caps apply instantly via applyLiveCaps; world size persists for the
   // next load. Every change re-persists the whole settings blob so a reload restores it.
@@ -541,14 +532,12 @@ export function main(save: SaveV1 | null = null): void {
       }
       markDirty();
     },
+    onToggle: () => toolbar.refreshMeta(),
   });
 
   // Always-visible controls hint (bottom-left) → opens a full keybinding reference. Makes every key
   // (Settings included) discoverable; toggled by the hint, the ✕, or '?'/'h'.
-  const helpPanel = mountHelpPanel(document.body);
-  panels.help = helpPanel;
-  panels.settings = settingsPanel;
-  toolbar.refreshMeta();
+  const helpPanel = mountHelpPanel(document.body, { onToggle: () => toolbar.refreshMeta() });
 
   // The overlay colour key (top-left over the map), shown/hidden by the overlay controller.
   const showLegend = mountOverlayLegend(document.body);
@@ -565,7 +554,7 @@ export function main(save: SaveV1 | null = null): void {
   };
 
   // a click on the top bar (funds and the rest) opens the Budget window (B, via the key table below)
-  document.querySelector('.pulse-dock')?.addEventListener('click', () => budgetPanel.toggle());
+  document.querySelector('.pulse-dock')?.addEventListener('click', () => panels.toggle('budget'));
 
   // ── Save/load (src/app/saves.ts): the city autosaves into the CURRENT slot (hourly via the economy, and on
   // tab-hide / pagehide) and a reload resumes it; the Saves window (S, or the palette's disk) backs the slots.
@@ -586,7 +575,15 @@ export function main(save: SaveV1 | null = null): void {
     mountPanel: (actions) => mountSavesPanel(document.body, actions),
     onToggle: () => toolbar.refreshMeta(),
   });
-  panels.saves = saves;
+  panels.attach({
+    budget: budgetPanel,
+    tech: techPanel,
+    restore: restorationPanel,
+    saves,
+    settings: settingsPanel,
+    help: helpPanel,
+  });
+  toolbar.refreshMeta();
 
   // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
   // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
@@ -601,35 +598,8 @@ export function main(save: SaveV1 | null = null): void {
       overlays.cycle(overlay); // the same body the dock's overlay buttons call
       return;
     }
-    switch (action) {
-      case 'budget':
-        budgetPanel.toggle();
-        break;
-      case 'saves':
-        saves.toggle();
-        break;
-      case 'life':
-        setAmbient(!ambientOn);
-        break;
-      case 'restoration':
-        // on open, show a fresh sample at once (flat — no spurious arrows from a stale prior); the civic
-        // cadence then trends it
-        if (restorationPanel.toggle()) {
-          const sample = sampleRestoration(ambientState, world.map);
-          restorationPanel.set(restorationLines(sample, null));
-          prevRestoration = sample;
-        }
-        break;
-      case 'settings':
-        settingsPanel.toggle();
-        break;
-      case 'help':
-        helpPanel.toggle();
-        break;
-      case 'tech':
-        techPanel.toggle();
-        break;
-    }
+    if (action === 'life') setAmbient(!ambientOn);
+    else if (isPanelId(action)) panels.toggle(action); // the same registry call its dock button makes
   });
 
   const previewAt = (tx: number, ty: number): void => {
@@ -741,12 +711,8 @@ export function main(save: SaveV1 | null = null): void {
       pulseDock.set(pulseText(wb));
       prevWellbeing = wb;
       // Restoration readout: sample the live metrics on this cadence and trend vs the prior sample
-      // (only while the panel is shown — no work when hidden).
-      if (restorationPanel.visible()) {
-        const sample = sampleRestoration(ambientState, world.map);
-        restorationPanel.set(restorationLines(sample, prevRestoration));
-        prevRestoration = sample;
-      }
+      // (a no-op inside the panel while it is closed).
+      restorationPanel.refresh();
       // Revival/decay seam: sample the LIVE occupancy into the hashed stock — thriving
       // homes heal + densify (R1→R2→R3), struggling ones crumble toward a derelict
       // ruin (reversibly). Runs HERE on the slow civic cadence (sim side), never in

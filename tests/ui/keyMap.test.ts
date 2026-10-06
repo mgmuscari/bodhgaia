@@ -21,7 +21,7 @@ const EXPECTED: [string, KeyAction][] = [
   ['b', 'budget'],
   ['s', 'saves'],
   ['l', 'life'],
-  ['g', 'restoration'],
+  ['g', 'restore'],
   [',', 'settings'],
   ['?', 'help'],
   ['h', 'help'],
