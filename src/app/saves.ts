@@ -8,7 +8,8 @@
 import { captureGame, type GameParts, type SaveV1 } from '../save/snapshot';
 import * as browserStore from '../save/store';
 import { CURRENT, type SlotInfo } from '../save/store';
-import type { SavesPanelDeps, SavesPanelHandle } from '../ui/savesPanel';
+import type { SavesPanelDeps } from '../ui/savesPanel';
+import type { PanelHandle } from '../ui/panelHandle';
 
 /** The storage the wiring drives (save/store.ts in the browser). */
 export interface SaveStore {
@@ -30,7 +31,7 @@ export interface SavesDeps {
   /** Where the tab's lifecycle events arrive (document: visibilitychange; window: pagehide). */
   lifecycle: { document: EventTarget & { readonly hidden: boolean }; window: EventTarget };
   /** Mount the Saves window over these actions. */
-  mountPanel: (actions: SavesPanelDeps) => SavesPanelHandle;
+  mountPanel: (actions: SavesPanelDeps) => PanelHandle;
   /** The window opened or closed (the dock's active-state). */
   onToggle: () => void;
   store?: SaveStore;
@@ -39,12 +40,11 @@ export interface SavesDeps {
   warn?: (...args: unknown[]) => void;
 }
 
-export interface SavesController {
+/** The Saves window's handle, plus capture and autosave. */
+export interface SavesController extends PanelHandle {
   captureNow(): SaveV1;
   /** Write the game into CURRENT (dropped while a write is in flight, or once a load / new city began). */
   autosave(): void;
-  toggle(): boolean;
-  visible(): boolean;
 }
 
 export function createSaves(deps: SavesDeps): SavesController {
@@ -99,10 +99,5 @@ export function createSaves(deps: SavesDeps): SavesController {
     onToggle: () => deps.onToggle(),
   });
 
-  return {
-    captureNow,
-    autosave,
-    toggle: () => panel.toggle(),
-    visible: () => panel.visible(),
-  };
+  return { ...panel, captureNow, autosave };
 }

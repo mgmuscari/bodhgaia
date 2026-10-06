@@ -18,34 +18,23 @@ import { SIDEBAR_W } from './ui/toolbar';
 import { installUiTheme } from './ui/uiTheme';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
-import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, applyLiveCaps } from './ui/ambientContent';
 import { loadSettings, saveSettings } from './ui/settingsStore';
-import { mountSettingsPanel } from './ui/settingsPanel';
 import { materializeSkin } from './ui/tilesetLoader';
 import { paintSnesSkin } from './ui/snesTileset';
 import { footprintCellKey } from './ui/renderKey';
 
-import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
-import { residentialCensus } from './citizens/census';
-import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
-import { pulseLine } from './ui/pulseContent';
 import { mountPulseDock } from './ui/pulseDock';
-import { sampleRestoration, restorationLines, type RestorationSample } from './ui/restorationContent';
-import { mountRestorationPanel } from './ui/restorationPanel';
-import { sampleUnhoused, unhousedSuffix } from './ui/unhousedContent';
+import { sampleRestoration } from './ui/restorationContent';
+import { sampleUnhoused } from './ui/unhousedContent';
 import { isRepairTool } from './ui/repairTools';
 import { TECH_TREE } from './tech/tree';
 import { createTechState } from './tech/state';
 import { wellbeing } from './tech/effort';
-import { branchColumns, effortLine, panelSignature } from './ui/techContent';
-import { techLayout } from './ui/techLayout';
-import { mountTechPanel } from './ui/techPanel';
+import { branchColumns, panelSignature } from './ui/techContent';
 import { resolveKey, overlayKindOf } from './ui/keyMap';
 import { availableTools, previewTool, applyTool, toolDef, type ToolId } from './tools/tools';
-import { practiceProject } from './economy/run';
-import { mountBudgetPanel } from './ui/budgetPanel';
 import { isLineTool } from './ui/lineTools';
 import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
 import { buildToolMenu, type ToolCategory } from './ui/toolMenuContent';
@@ -55,8 +44,7 @@ import { computeNeighborhoods } from './civic/neighborhoods';
 import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
-import { plantPollution } from './growth/power';
-import { restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
+import { restoreWorld, restoreTech, restoreCivic, type SaveV1 } from './save/snapshot';
 import { CURRENT, readSlot } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
 import { setPixelFavicon, installDevHandle } from './app/devHandle';
@@ -66,6 +54,8 @@ import { createPowerController } from './app/power';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
 import { createEconomyController } from './app/economy';
 import { createSaves } from './app/saves';
+import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/panels';
+import { createLive } from './app/live';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -80,11 +70,10 @@ export function main(save: SaveV1 | null = null): void {
   // a resumed game (save/store.ts: the CURRENT slot) brings its own seed and size
   const seed = save?.seed ?? params.get('seed') ?? DEFAULT_SEED;
 
-  // Settings: live caps apply NOW (perf ceilings the agent layer reads); the world size feeds
-  // worldgen at creation (a different size is a different seeded world — apply-on-restart). Persisted
-  // in localStorage; defaults reproduce today's 128² medium-preset game byte-for-byte.
+  // Settings: the live caps apply when the live layer is set up (perf ceilings the agent layer reads); the world
+  // size feeds worldgen at creation (a different size is a different seeded world — apply-on-restart).
+  // Persisted in localStorage; defaults reproduce today's 128² medium-preset game byte-for-byte.
   let settings = loadSettings();
-  applyLiveCaps(settings.live);
   const world = runPipeline(
     { seed, width: save?.width ?? settings.world.mapWidth, height: save?.height ?? settings.world.mapHeight },
     [terrainStage(), mosesCenturyStage(), ecoSeedStage()],
@@ -190,48 +179,18 @@ export function main(save: SaveV1 | null = null): void {
     dirty = true;
   };
 
-  // Ambient life (purely visual, read-only). A SEPARATE rng fork + a SEPARATE clock
-  // so ambient timing can never perturb the sim: the sim's `last` is owned by the
-  // sim path alone (its FixedTickLoop clamp owns catch-up), and `lastAmbient` is
-  // owned by the ambient path (its own stepAmbient clamp owns catch-up). Default on
-  // (PRD Q2); the [Life] toggle / L key flip it. ambientOn=false restores the exact
-  // legacy dirty-driven render path.
-  let ambientOn = true;
-  const ambientRng = createRng(seed).fork('ambient');
-  // Seed the ambient state (incl. the world's prevailing wind) from the ambient fork — a SEPARATE
-  // fork so the wind draw never advances the per-frame ambient stream below.
-  const ambientState = createAmbientState(createRng(seed).fork('ambient-wind'));
-  // Revival/decay rng: a stable stream for the slow-cadence growth seam (densify
-  // draws). Forked off the world seed, independent of the ambient + sim streams.
-  const revivalRng = createRng(seed).fork('revival');
-  let lastAmbient = performance.now();
-
-  // The parking lots that STORE the moving cars: a trip-car parks in the nearest one on
-  // arrival (cars=trips, lots=storage). Each lot publishes its centre + stall grid.
-  // Recomputed at startup and on each civic tick so it tracks the built layer as the
-  // player rezones lots.
-  const refreshParkingLots = (): void => {
-    setParkingLots(
-      ambientState,
-      parkingLots(world.map).map((lot) => ({
-        cx: (lot.x0 + lot.x1) / 2,
-        cy: (lot.y0 + lot.y1) / 2,
-        x0: lot.x0,
-        y0: lot.y0,
-        x1: lot.x1,
-        y1: lot.y1,
-        stalls: parkingStalls(lot),
-      })),
-    );
-  };
-  refreshParkingLots();
-
-  // The residential census the ambient layer spawns daily-itinerary citizens from. Recomputed
-  // at startup and on each civic tick so it tracks homes as the city grows/decays.
-  const refreshHouseholds = (): void => {
-    setHouseholds(ambientState, residentialCensus(world.parcels));
-  };
-  refreshHouseholds();
+  // The live layer (src/app/live.ts): ambient life, purely visual and read-only over the world — its own rng
+  // forks and its own clock, so it can never perturb the sim. It publishes the parking lots, households and
+  // dirty-plant emitters it reads, seeds the decay a century left (a save's stocks go over it), and applies
+  // the live caps. On by default (PRD Q2); the [Life] toggle / L key flip `live.on`.
+  const live = createLive({
+    seed,
+    map: world.map,
+    parcels: world.parcels,
+    caps: settings.live,
+    saved: save?.live ?? null,
+    walkable: () => tech.hasCapability('walkability'), // Walkable Streets: people walk farther
+  });
 
   // Power grid (src/app/power.ts): solved now for the current in-game hour and published to the renderer;
   // re-solved on placement, the civic cadence, and each new in-game hour (frame loop).
@@ -241,33 +200,6 @@ export function main(save: SaveV1 | null = null): void {
     publish: (anchors) => renderer.setPowerGrid(anchors),
   });
 
-  // Dirty-plant smog: publish the air-pollution emitters from the built layer (each
-  // coal/gas plant smogs its footprint + a 2-tile plume). Recomputed on placement;
-  // the live pollution field (cars + plants) drags land value → occupancy → revival,
-  // so dirty power poisons what it powers and renewables read clean.
-  const PLUME_RADIUS = 2;
-  const recomputePlantEmitters = (): void => {
-    const emitters: { tile: number; amount: number }[] = [];
-    for (const idx of world.parcels.aliveIndices()) {
-      const p = world.parcels.get(idx);
-      const amt = plantPollution(p.kind);
-      if (amt <= 0) continue;
-      for (let yy = -PLUME_RADIUS; yy < p.height + PLUME_RADIUS; yy++) {
-        for (let xx = -PLUME_RADIUS; xx < p.width + PLUME_RADIUS; xx++) {
-          const tx = p.x + xx;
-          const ty = p.y + yy;
-          if (world.map.inBounds(tx, ty)) emitters.push({ tile: world.map.idx(tx, ty), amount: amt });
-        }
-      }
-    }
-    setPlantEmitters(ambientState, emitters);
-  };
-  recomputePlantEmitters();
-
-  // The city starts DECAYED: a century of car-culture has already trampled the urban ground
-  // into desire paths and polluted the shorelines, before the player arrives to heal it.
-  seedDecay(ambientState, world.map);
-  if (save) restoreLive(ambientState, save.live); // the saved stocks over the seeded decay
 
   // Dev / live-pass hook (`window.bodhitropolis`) — DEV BUILDS ONLY (folded away in production). It reads the
   // reassigned power grid / GPU renderer through getters, never snapshots.
@@ -275,7 +207,7 @@ export function main(save: SaveV1 | null = null): void {
     installDevHandle({
       camera,
       world,
-      ambient: ambientState,
+      ambient: live.state,
       tech,
       power: power.grid,
       markDirty,
@@ -303,7 +235,7 @@ export function main(save: SaveV1 | null = null): void {
     tech,
     civic,
     sim: deps,
-    live: ambientState,
+    live: live.state,
     powerGrid: power.grid,
     initial: save?.econ ?? null,
     autosave: () => saves.autosave(),
@@ -313,64 +245,18 @@ export function main(save: SaveV1 | null = null): void {
         toolbar.flash();
         snapshotDock();
         snapshotPanel();
-        techPanel.refresh();
+        panels.get('tech').refresh();
       },
       hourRefreshed: (reliefNow) => {
         toolbar.refresh();
-        techPanel.refresh(); // projects advanced (no-op while the panel is closed)
-        budgetPanel.refresh();
-        if (reliefNow) budgetPanel.open(); // the grant and its strings, shown as they arrive
+        panels.get('tech').refresh(); // projects advanced (no-op while the panel is closed)
+        panels.get('budget').refresh();
+        if (reliefNow) panels.get('budget').open(); // the grant and its strings, shown as they arrive
       },
-      pulse: () => pulseDock.set(`${economy.readout()}  ·  ${lastPulse}`),
+      pulse: () => pulse.refresh(),
     },
   });
   const wallet = economy.wallet;
-  // The Budget window: tax sliders, the police line, the hourly ledger, and loans (Maddy 2026-10-01: "we need
-  // taxes and loans, once you go negative you can't dig back out")
-  const budgetPanel = mountBudgetPanel(document.body, {
-    getView: () => economy.budgetView(),
-    onTax: (cls, rate) => economy.setTax(cls, rate),
-    onPolice: (perHour) => economy.setPolice(perHour),
-    onBorrow: (amount) => {
-      if (!economy.borrow(amount)) return;
-      toolbar.refresh(); // the fabric may be affordable again
-      pulseDock.set(`${economy.readout()}  ·  ${lastPulse}`);
-    },
-    onToggle: () => toolbar.refreshMeta(),
-  });
-
-  // Tech panel: right-docked, toggled by `T` (via the one key table below). Zero game imports — it
-  // receives its content and the unlock action through deps.
-  const techPanel = mountTechPanel(document.body, {
-    getContent: () => ({ effort: effortLine(tech), layout: techLayout(TECH_TREE, tech) }),
-    art: (key) => renderer.artImage(key),
-    progress: (id) => economy.projectProgress(id),
-    costLine: (id) => {
-      const node = TECH_TREE.find((n) => n.id === id);
-      if (!node) return '';
-      const p = practiceProject(node);
-      return `${p.effort} effort + $${p.funds.toLocaleString('en-US')} over ${Math.round(p.hours / 24 * 10) / 10} days`;
-    },
-    // Cheap per-tick header source (no branchColumns derive) for refreshHeader (Y5).
-    getEffort: () => effortLine(tech),
-    onUnlock: (id) => {
-      // a practice is begun as a project (effort + funds over time); it unlocks when the work is done
-      const ok = economy.beginPractice(id);
-      if (ok) {
-        // The panel re-renders itself (its delegated click listener). Refresh the
-        // dock too — effort dropped (affordability) and an unlock may grant a new
-        // tool — and snapshot both signatures so the next sim-gated check is a
-        // no-op. The unlock FLASH still fires from the sim-gated addedIds path.
-        toolbar.refresh();
-        snapshotDock();
-        snapshotPanel();
-      }
-      return ok;
-    },
-    // Y3: fired for the T key, the dock [Tech] button, AND any dismiss — keeps the
-    // dock's [Tech] active-state in sync from ONE callback, off the rAF frame.
-    onToggle: () => toolbar.refreshMeta(),
-  });
 
   // Tool state: the selected tool id (null = none). A "line tool" (transport build
   // 5..9 or transport convert) paints a dragged line; everything else — building
@@ -389,7 +275,7 @@ export function main(save: SaveV1 | null = null): void {
     context: () => ({
       map: world.map,
       parcels: world.parcels,
-      live: ambientState,
+      live: live.state,
       poweredAnchors: power.grid().poweredAnchors,
       civic: deps.civic,
       tileToNeighborhood: deps.partition.tileToNeighborhood,
@@ -400,14 +286,14 @@ export function main(save: SaveV1 | null = null): void {
     refreshMeta: () => toolbar.refreshMeta(),
   });
 
+  // The panel registry (src/app/panels.ts): ONE {id → handle} table the key dispatch, the dock's onMeta and
+  // the dock's active flags all read. The handles attach once every panel is mounted (below); until then the
+  // registry reports them all closed — the dock reads its flags at its own mount.
+  const panels = createPanelRegistry();
+
   // Bottom tool dock: always on, derived from tech grants + selection + effort. The
-  // meta row ([Tech][Eco][Civic]) mirrors the T/E/C keys: getMetaButtons derives
-  // the active flags from the live panel/overlay state; onMeta routes a click to
-  // the SAME closures the keys use (techPanel.toggle / overlays.cycle).
-  // Panels the palette opens; mounted further down, so the palette reaches them through this holder
-  // (reading their consts before they're declared would throw).
-  type PanelHandle = { toggle(): boolean; visible(): boolean };
-  const panels: { restore?: PanelHandle; settings?: PanelHandle; help?: PanelHandle; saves?: PanelHandle } = {};
+  // meta row mirrors the keys: getMetaButtons derives the active flags from the live
+  // panel/overlay state; onMeta routes a click to the SAME closures the keys use.
 
   const toolbar = mountToolbar(document.body, {
     getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, economy.run().state.funds),
@@ -423,22 +309,10 @@ export function main(save: SaveV1 | null = null): void {
       openCategory = openCategory === id ? null : id;
       toolbar.refresh();
     },
-    getMetaButtons: () =>
-      metaButtons(techPanel.isOpen(), overlays.active(), ambientOn, {
-        restore: panels.restore?.visible() ?? false,
-        settings: panels.settings?.visible() ?? false,
-        help: panels.help?.visible() ?? false,
-        budget: budgetPanel.visible(),
-        saves: panels.saves?.visible() ?? false,
-      }),
+    getMetaButtons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
     onMeta: (id) => {
-      if (id === 'tech') techPanel.toggle();
-      else if (id === 'life') setAmbient(!ambientOn); // same toggle the L key calls
-      else if (id === 'restore') panels.restore?.toggle();
-      else if (id === 'settings') panels.settings?.toggle();
-      else if (id === 'help') panels.help?.toggle();
-      else if (id === 'budget') budgetPanel.toggle();
-      else if (id === 'saves') panels.saves?.toggle();
+      if (id === 'life') setAmbient(!live.on); // same toggle the L key calls
+      else if (isPanelId(id)) panels.toggle(id); // the same registry call its key makes
       else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
       toolbar.refreshMeta();
     },
@@ -480,92 +354,87 @@ export function main(save: SaveV1 | null = null): void {
       toolbar.flash();
       prevToolIds = ids;
     }
-    if (techPanel.isOpen()) {
-      techPanel.refreshHeader();
+    if (mounted.tech.isOpen()) {
+      mounted.tech.refreshHeader();
       const psig = panelSignature(branchColumns(TECH_TREE, tech));
       if (psig !== lastPanelSig) {
-        techPanel.refresh();
+        mounted.tech.refresh();
         lastPanelSig = psig;
       }
     }
   };
 
-  // Always-on wellbeing pulse dock: its OWN dedicated element (not the shared
-  // toolbar status, which inspect/legend clobber), refreshed on the civic cadence
-  // only to avoid per-tick flicker. The trend compares to the previous cadence.
-  const pulseDock = mountPulseDock(document.body);
-  let prevWellbeing: number | null = null;
-  // Unhoused residents (first cut): displaced-population count appended to the pulse line, trended on
-  // the civic cadence. Loop-coupled — decline raises it, healing/new housing lowers it.
-  let prevUnhoused: number | null = null;
-  let lastPulse = '';
-  const pulseText = (wb: number): string => {
-    // the unhoused: those the city's decline left without a home, plus households rent displaced
-    const unhoused = sampleUnhoused(ambientState, world.map.width).unhoused + Math.round(economy.run().state.displaced);
-    lastPulse = `${pulseLine(wb, prevWellbeing)}  ·  ${unhousedSuffix(unhoused, prevUnhoused)}`;
-    prevUnhoused = unhoused;
-    return `${economy.readout()}  ·  ${lastPulse}`;
-  };
-  const wellbeingNow = (): number =>
-    wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans });
-  pulseDock.set(pulseText(wellbeingNow())); // initial: flat, no prior cadence
-
-  // Restoration readout panel (G): "is my renewal helping?" — surveys the live metrics (land value,
-  // population, building health, ecology, air/ground/water pollution) with improvement-oriented trend
-  // arrows. Hidden by default; sampled on the civic cadence vs the previous sample only while shown.
-  const restorationPanel = mountRestorationPanel(document.body);
-  panels.restore = restorationPanel;
-  let prevRestoration: RestorationSample | null = null;
-
-  // Settings panel (',' key): live caps apply instantly via applyLiveCaps; world size persists for the
-  // next load. Every change re-persists the whole settings blob so a reload restores it.
-  const settingsPanel = mountSettingsPanel(document.body, {
-    getSettings: () => settings,
-    onLiveChange: (live: LiveCaps): void => {
-      // clamp the merged blob so applied == persisted == shown (the input could be out of range)
-      settings = clampSettings({ ...settings, live: { ...settings.live, ...live } });
-      applyLiveCaps(settings.live);
-      saveSettings(settings);
-    },
-    onWorldChange: (worldSettings: WorldSettings): void => {
-      settings = clampSettings({ ...settings, world: { ...worldSettings } });
-      saveSettings(settings); // takes effect on the next load (regenerate)
-    },
-    onRendererChange: (mode): void => {
-      settings = clampSettings({ ...settings, renderer: mode });
-      saveSettings(settings);
-      if (mode === 'gpu') {
-        if (!gpuRenderer) mountGpu();
-      } else {
-        unmountGpu();
-      }
-      markDirty();
-    },
+  // The always-on top bar (src/app/panels.ts): the economy readout · wellbeing · the unhoused — its OWN element
+  // (not the shared toolbar status, which inspect/legend clobber). The civic cadence re-samples and trends it
+  // (no per-tick flicker); the economy's hour and a loan rewrite its readout. A click opens the Budget window.
+  const pulseDock = mountPulseDock(document.body, { onClick: () => panels.toggle('budget') });
+  const pulse = createPulse({
+    set: (line) => pulseDock.set(line),
+    readout: () => economy.readout(),
+    wellbeing: () => wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }),
+    // the city's decline left them without a home, or rent displaced them (loop-coupled: healing lowers it)
+    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
   });
 
-  // Always-visible controls hint (bottom-left) → opens a full keybinding reference. Makes every key
-  // (Settings included) discoverable; toggled by the hint, the ✕, or '?'/'h'.
-  const helpPanel = mountHelpPanel(document.body);
-  panels.help = helpPanel;
-  panels.settings = settingsPanel;
-  toolbar.refreshMeta();
+  // The windows (src/app/panels.ts) — Budget, Tech, Restoration, Settings, Help — mounted after the dock and the
+  // top bar (DOM order is stacking order). Saves is mounted by its wiring below; the registry attaches them all.
+  const mounted = mountPanels({
+    container: document.body,
+    economy,
+    tech,
+    art: (key) => renderer.artImage(key),
+    sampleRestoration: () => sampleRestoration(live.state, world.map),
+    // Settings: live caps apply instantly (live.applyCaps); world size persists for the next load. Every
+    // change re-persists the whole settings blob so a reload restores it.
+    settings: {
+      getSettings: () => settings,
+      onLiveChange: (caps: LiveCaps): void => {
+        // clamp the merged blob so applied == persisted == shown (the input could be out of range)
+        settings = clampSettings({ ...settings, live: { ...settings.live, ...caps } });
+        live.applyCaps(settings.live);
+        saveSettings(settings);
+      },
+      onWorldChange: (worldSettings: WorldSettings): void => {
+        settings = clampSettings({ ...settings, world: { ...worldSettings } });
+        saveSettings(settings); // takes effect on the next load (regenerate)
+      },
+      onRendererChange: (mode): void => {
+        settings = clampSettings({ ...settings, renderer: mode });
+        saveSettings(settings);
+        if (mode === 'gpu') {
+          if (!gpuRenderer) mountGpu();
+        } else {
+          unmountGpu();
+        }
+        markDirty();
+      },
+    },
+    onBorrowed: () => {
+      toolbar.refresh(); // the fabric may be affordable again
+      pulse.refresh();
+    },
+    onPracticeBegun: () => {
+      // effort dropped (affordability) and an unlock may grant a new tool: refresh the dock and snapshot both
+      // signatures so the next sim-gated check is a no-op
+      toolbar.refresh();
+      snapshotDock();
+      snapshotPanel();
+    },
+    // fired for the key, the dock button AND any dismiss — the dock's active flags follow from ONE callback
+    onToggle: () => toolbar.refreshMeta(),
+  });
 
   // The overlay colour key (top-left over the map), shown/hidden by the overlay controller.
   const showLegend = mountOverlayLegend(document.body);
 
-  // The [Life] ambient toggle — one closure for the L key AND (Task 4) the dock
-  // [Life] button. Flips ambientOn, resets ONLY the ambient clock when turning ON
-  // (so the first dt after a dormant period is small — also clamp-guarded), repaints
-  // via markDirty, and refreshes the dock meta active-state.
+  // The [Life] ambient toggle — one closure for the L key AND the dock [Life] button. Flips live.on (turning
+  // it ON resets ONLY the ambient clock, so the first dt after a dormant period is small — also clamp-guarded),
+  // repaints via markDirty, and refreshes the dock meta active-state.
   const setAmbient = (on: boolean): void => {
-    ambientOn = on;
-    if (on) lastAmbient = performance.now();
+    live.on = on;
     markDirty();
     toolbar.refreshMeta();
   };
-
-  // a click on the top bar (funds and the rest) opens the Budget window (B, via the key table below)
-  document.querySelector('.pulse-dock')?.addEventListener('click', () => budgetPanel.toggle());
 
   // ── Save/load (src/app/saves.ts): the city autosaves into the CURRENT slot (hourly via the economy, and on
   // tab-hide / pagehide) and a reload resumes it; the Saves window (S, or the palette's disk) backs the slots.
@@ -578,7 +447,7 @@ export function main(save: SaveV1 | null = null): void {
       tech,
       civic,
       econ: economy.run(),
-      live: ambientState,
+      live: live.state,
       tick: currentTick,
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
     }),
@@ -586,7 +455,8 @@ export function main(save: SaveV1 | null = null): void {
     mountPanel: (actions) => mountSavesPanel(document.body, actions),
     onToggle: () => toolbar.refreshMeta(),
   });
-  panels.saves = saves;
+  panels.attach({ ...mounted, saves });
+  toolbar.refreshMeta();
 
   // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
   // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
@@ -601,35 +471,8 @@ export function main(save: SaveV1 | null = null): void {
       overlays.cycle(overlay); // the same body the dock's overlay buttons call
       return;
     }
-    switch (action) {
-      case 'budget':
-        budgetPanel.toggle();
-        break;
-      case 'saves':
-        saves.toggle();
-        break;
-      case 'life':
-        setAmbient(!ambientOn);
-        break;
-      case 'restoration':
-        // on open, show a fresh sample at once (flat — no spurious arrows from a stale prior); the civic
-        // cadence then trends it
-        if (restorationPanel.toggle()) {
-          const sample = sampleRestoration(ambientState, world.map);
-          restorationPanel.set(restorationLines(sample, null));
-          prevRestoration = sample;
-        }
-        break;
-      case 'settings':
-        settingsPanel.toggle();
-        break;
-      case 'help':
-        helpPanel.toggle();
-        break;
-      case 'tech':
-        techPanel.toggle();
-        break;
-    }
+    if (action === 'life') setAmbient(!live.on);
+    else if (isPanelId(action)) panels.toggle(action); // the same registry call its dock button makes
   });
 
   const previewAt = (tx: number, ty: number): void => {
@@ -651,20 +494,20 @@ export function main(save: SaveV1 | null = null): void {
     if (def.id === 'inspect') {
       // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
       // carries, the power status and the redline grade (src/ui/inspectContent.ts).
-      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, power.grid().poweredAnchors));
+      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, live.state, power.grid().poweredAnchors));
       return;
     }
     if (r.ok) {
       power.recompute(); // built layer changed → re-derive the grid (a new plant lights its district)
-      recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
+      live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
       markDirty(); // mutated the built/parcel layer → rebuild the cached base
       // Effort changed → dock affordability + (if open) tech-panel affordability.
       // Refresh directly and snapshot both signatures so the next sim-gated check
       // is a no-op (the discrete-event path, per Y5).
       toolbar.refresh();
       snapshotDock();
-      if (techPanel.isOpen()) {
-        techPanel.refresh();
+      if (mounted.tech.isOpen()) {
+        mounted.tech.refresh();
         snapshotPanel();
       }
       previewAt(tx, ty); // re-tint the just-touched tile
@@ -718,7 +561,7 @@ export function main(save: SaveV1 | null = null): void {
   // this handler is for smoothness, not safety.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
-    lastAmbient = performance.now();
+    live.resetClock();
     markDirty();
   });
 
@@ -737,16 +580,10 @@ export function main(save: SaveV1 | null = null): void {
     // never popping out of existence at a destination.
     overlays.onSimTick(r); // the active overlay's source ticked → re-push it
     if (r.civicTicked) {
-      const wb = wellbeingNow();
-      pulseDock.set(pulseText(wb));
-      prevWellbeing = wb;
+      pulse.tick();
       // Restoration readout: sample the live metrics on this cadence and trend vs the prior sample
-      // (only while the panel is shown — no work when hidden).
-      if (restorationPanel.visible()) {
-        const sample = sampleRestoration(ambientState, world.map);
-        restorationPanel.set(restorationLines(sample, prevRestoration));
-        prevRestoration = sample;
-      }
+      // (a no-op inside the panel while it is closed).
+      mounted.restore.refresh();
       // Revival/decay seam: sample the LIVE occupancy into the hashed stock — thriving
       // homes heal + densify (R1→R2→R3), struggling ones crumble toward a derelict
       // ruin (reversibly). Runs HERE on the slow civic cadence (sim side), never in
@@ -758,12 +595,12 @@ export function main(save: SaveV1 | null = null): void {
       const powerChanged = power.recompute();
       const revived = stepRevival(
         world,
-        (tile) => ambientState.occupancy.get(tile),
-        revivalRng,
+        (tile) => live.state.occupancy.get(tile),
+        live.revivalRng,
         (tile) => power.grid().poweredAnchors.has(tile),
       );
-      refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
-      refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
+      live.refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
+      live.refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
       if (revived > 0 || powerChanged) markDirty(); // stock/grid changed → rebuild base
     }
   }, { startTick: save?.tick ?? 0 }); // a resumed game keeps its clock (repair rings are stamped in ticks)
@@ -784,14 +621,12 @@ export function main(save: SaveV1 | null = null): void {
       lastBaseRefresh = now;
       renderer.invalidateBase();
     }
-    if (ambientOn && !document.hidden) {
+    if (live.on && !document.hidden) {
       // Continuous ambient path: step the ambient sim on its OWN clock (its Task-1
       // clamp owns catch-up), then composite + sprites. The base rebuilds inside
       // renderFrame iff invalidated, so this stays cheap.
-      ambientState.walkable = tech.hasCapability('walkability'); // Walkable Streets: people walk farther
-      stepAmbient(ambientState, world.map, ambientRng, now - lastAmbient);
-      lastAmbient = now;
-      renderer.renderFrame(world, camera, ambientState);
+      live.step(now);
+      renderer.renderFrame(world, camera, live.state);
       dirty = false;
     } else if (dirty || gpuRenderer) {
       // Legacy ambient-OFF path: repaint only when something changed. With GPU on we still run the
@@ -803,9 +638,9 @@ export function main(save: SaveV1 | null = null): void {
     // it samples the freshest baked tiles. The base re-uploads only when its version changed.
     gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion());
     // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
-    if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
+    if (gpuRenderer && live.on) gpuRenderer.renderAgents(live.state, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
     // GPU smog overlay (z2, above sprites): the atmospheric haze, now on the GPU instead of CPU plumes.
-    if (smogOverlay && ambientOn) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, ambientState.pollution, ambientState.wind);
+    if (smogOverlay && live.on) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, live.state.pollution, live.state.wind);
     // Sim-gated (Y5): re-derive the dock/panel signatures + refresh on change ONLY
     // when a sim tick has run since the last sync — not every rAF frame.
     if (simChanged) {

@@ -6,6 +6,7 @@
 
 import type { BudgetView } from './budgetContent';
 import { money, perHour } from './moneyFormat';
+import { panelVisibility, type PanelHandle } from './panelHandle';
 
 export interface BudgetPanelDeps {
   getView(): BudgetView;
@@ -16,20 +17,10 @@ export interface BudgetPanelDeps {
   onToggle?(open: boolean): void;
 }
 
-export interface BudgetPanelHandle {
-  /** Open it (no-op if already open) — e.g. the moment a relief grant arrives. */
-  open(): void;
-  toggle(): boolean;
-  visible(): boolean;
-  /** Re-read the view (the economy ticked) — no-op while hidden. */
-  refresh(): void;
-}
 
-
-export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps): BudgetPanelHandle {
+export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps): PanelHandle {
   const panel = document.createElement('div');
   panel.className = 'budget-panel';
-  panel.hidden = true;
 
   const head = document.createElement('div');
   head.className = 'budget-head';
@@ -40,7 +31,7 @@ export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps):
   close.className = 'budget-close';
   close.textContent = '✕';
   close.setAttribute('aria-label', 'Close the budget');
-  close.addEventListener('click', () => setOpen(false));
+  close.addEventListener('click', () => handle.close());
   head.append(title, close);
 
   const taxes = document.createElement('div');
@@ -52,7 +43,6 @@ export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps):
   panel.append(head, taxes, ledger, loans);
   container.appendChild(panel);
 
-  let open = false;
   // a slider updates only its own readout and the ledger/loans while it's dragged — rebuilding its section
   // would replace the slider under the pointer mid-drag
   const sliderRow = (label: string, value: number, max: number, step: number, show: (v: BudgetView) => string, onInput: (v: number) => void, view: BudgetView): HTMLElement => {
@@ -160,28 +150,16 @@ export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps):
     renderLoans(v);
   }
 
-  function setOpen(next: boolean): void {
-    open = next;
-    panel.hidden = !open;
-    if (open) render();
-    deps.onToggle?.(open);
-  }
-
-  return {
-    open: () => {
-      if (!open) setOpen(true);
-    },
-    toggle: () => {
-      setOpen(!open);
-      return open;
-    },
-    visible: () => open,
+  // open() is also how a relief grant shows itself the moment it arrives; refresh is the economy's hour —
+  // the ledger and loans move, the sliders keep their place
+  const handle = panelVisibility(panel, {
+    render,
     refresh: () => {
-      // the economy ticked: the ledger and loans move; the sliders keep their place
-      if (!open) return;
       const v = deps.getView();
       renderLedger(v);
       renderLoans(v);
     },
-  };
+    onToggle: deps.onToggle,
+  });
+  return handle;
 }
