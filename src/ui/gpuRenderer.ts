@@ -43,6 +43,7 @@ export class GpuRenderer {
   private shader: SatelliteShader | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private lastBaseVersion = -1;
+  private lastPatchVersion = -1;
   private readonly bridge: GridTextureBridge;
   private glow: GlowBatch | null = null;
   private glowData = new Float32Array(0);
@@ -200,14 +201,20 @@ export class GpuRenderer {
     timeSec: number,
     base: TexImageSource,
     baseVersion: number,
+    patch?: { version: number; rects: readonly { x: number; y: number; w: number; h: number }[] },
   ): void {
     if (!this.shader || !this.gl) return;
     this.shader.uploadDirty(this.bridge);
     // Re-upload the CPU base (the baked per-cell tiles) as the albedo ONLY when it changed (camera
     // move / built edit) — not every frame. The animation runs on the GPU via u_time over this base.
+    // A live-mark patch (worn ground, encampments, murk) re-uploads just the rects it re-drew.
     if (baseVersion !== this.lastBaseVersion) {
       this.shader.uploadBase(base);
       this.lastBaseVersion = baseVersion;
+      if (patch) this.lastPatchVersion = patch.version;
+    } else if (patch && patch.version !== this.lastPatchVersion) {
+      this.shader.uploadBaseRects(base, patch.rects);
+      this.lastPatchVersion = patch.version;
     }
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
