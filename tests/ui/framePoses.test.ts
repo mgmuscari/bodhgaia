@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { carPose, pedPose, createAmbientState, type Mover } from '../../src/ui/ambientContent';
+import { carPose, pedPose } from '../../src/live/poses';
+import { createAmbientState, type Mover } from '../../src/live/types';
 import { POSE_REACH, viewRect, inRect, computeFramePoses, shareFramePoses, sharedFramePoses } from '../../src/ui/framePoses';
 
 // A tiny seeded LCG so the property sweep is deterministic.

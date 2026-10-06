@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { moverPose, commitHeading, type Mover } from '../../src/ui/ambientContent';
+import { moverPose } from '../../src/live/poses';
+import { commitHeading } from '../../src/live/motion';
+import type { Mover } from '../../src/live/types';
 
 // Headings: 0=N 1=E 2=S 3=W (screen y-down). A leg runs from the tile at (tx - dx, ty - dy) to (tx, ty);
 // the pose is drawn half a tile behind the sim position, so across one leg it crosses the start tile
@@ -78,7 +80,9 @@ describe('moverPose — smooth motion through tiles and turns', () => {
   });
 });
 
-import { carPose, snapshotMovers, ambientAlpha, SUBSTEP_MS, createAmbientState } from '../../src/ui/ambientContent';
+import { carPose, snapshotMovers, ambientAlpha } from '../../src/live/poses';
+import { SUBSTEP_MS } from '../../src/live/tuning';
+import { createAmbientState } from '../../src/live/types';
 
 describe('render interpolation between 50 ms sim substeps (no 20 Hz stutter at 120 fps)', () => {
   it('ambientAlpha is the fraction of a substep accumulated since the last one ran', () => {
@@ -110,7 +114,7 @@ describe('render interpolation between 50 ms sim substeps (no 20 Hz stutter at 1
   });
 });
 
-import { pedPose } from '../../src/ui/ambientContent';
+import { pedPose } from '../../src/live/poses';
 
 describe('pedestrian edge cases — U-turns and stepping on/off the road stay smooth', () => {
   it('a U-turn sweeps the heading round instead of flipping 180° at the centre', () => {
@@ -139,7 +143,8 @@ describe('pedestrian edge cases — U-turns and stepping on/off the road stay sm
   });
 });
 
-import { legPaceFactor, LANE_OFFSET } from '../../src/ui/ambientContent';
+import { legPaceFactor } from '../../src/live/poses';
+import { LANE_OFFSET } from '../../src/live/geometry';
 
 describe('turning keeps pace (Maddy 2026-09-30: cars turning corners way too slow)', () => {
   it('a straight leg runs at normal pace', () => {

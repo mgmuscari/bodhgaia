@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GameMap, Water } from '../../src/engine/map';
-import { createAmbientState } from '../../src/ui/ambientContent';
+import { createAmbientState } from '../../src/live/types';
 import {
   sampleRestoration,
   restorationReadout,
