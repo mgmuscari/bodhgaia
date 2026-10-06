@@ -15,7 +15,7 @@ import type { AmbientState } from '../live/types';
 import type { WorldState } from '../worldgen/pipeline';
 
 export const SIM_TICK_MS = 100;
-/** Wear/junk/tents are baked into the cached base: it is refreshed on this slow cadence (ms). */
+/** Wear/junk/tents/murk are baked into the cached base: their changed tiles are re-drawn on this slow cadence (ms). */
 export const BASE_REFRESH_MS = 2000;
 
 export interface SimTickCtx {
@@ -96,7 +96,7 @@ export function createSimTick(ctx: SimTickCtx): SimTicker {
 export interface FrameView {
   renderer: Pick<
     Renderer,
-    'invalidateBase' | 'renderFrame' | 'render' | 'baseCanvas' | 'baseVersion' | 'emissiveBuildingList' | 'headlightBeams'
+    'refreshLiveMarks' | 'renderFrame' | 'render' | 'baseCanvas' | 'baseVersion' | 'basePatch' | 'emissiveBuildingList' | 'headlightBeams'
   >;
   camera: Camera;
   gpu(): Pick<GpuRenderer, 'render' | 'renderAgents'> | null;
@@ -136,11 +136,12 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     // the ambient dt into it.
     ctx.sim.advance(now - last);
     last = now;
-    // Wear/junk/tents are baked into the cached base (under the agents); refresh it on a slow cadence so
-    // newly-worn ground + encampments appear even with a static camera (they evolve over many seconds).
+    // Wear/junk/tents/murk are baked into the cached base (under the agents); refresh them on a slow cadence so
+    // newly-worn ground + encampments appear even with a static camera (they evolve over many seconds). Only the
+    // tiles whose mark changed are re-drawn (and re-uploaded to the GPU).
     if (now - lastBaseRefresh > BASE_REFRESH_MS) {
       lastBaseRefresh = now;
-      renderer.invalidateBase();
+      renderer.refreshLiveMarks();
     }
     const gpu = view.gpu();
     if (live.on && !ctx.hidden()) {
@@ -159,7 +160,7 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     const h = view.height();
     // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so it samples
     // the freshest baked tiles. The base re-uploads only when its version changed.
-    gpu?.render(camera, w, h, now / 1000, renderer.baseCanvas(), renderer.baseVersion());
+    gpu?.render(camera, w, h, now / 1000, renderer.baseCanvas(), renderer.baseVersion(), renderer.basePatch());
     // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
     if (gpu && live.on) gpu.renderAgents(live.state, camera, w, h, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
     // GPU smog overlay (z2, above sprites): the atmospheric haze.
