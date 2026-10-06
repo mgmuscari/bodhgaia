@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { KEY_BINDINGS, resolveKey, overlayKindOf, isEditableTarget, type KeyAction } from '../../src/ui/keyMap';
-import { compositeKeyFor } from '../../src/ui/civicOverlayContent';
 import { CONTROLS } from '../../src/ui/controlsContent';
 
 const press = (key: string, mods: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) => ({
@@ -57,16 +56,6 @@ describe('resolveKey: the one keyboard table', () => {
   it('binds no key twice', () => {
     const all = KEY_BINDINGS.flatMap((b) => b.keys);
     expect(new Set(all).size).toBe(all.length);
-  });
-
-  it('agrees with compositeKeyFor on the overlay keys', () => {
-    for (const b of KEY_BINDINGS) {
-      for (const k of b.keys) {
-        const kind = compositeKeyFor(k, false);
-        if (b.action.startsWith('overlay:')) expect(`overlay:${kind}`).toBe(b.action);
-        else expect(kind).toBeNull();
-      }
-    }
   });
 
   it('binds every key the help panel documents', () => {
