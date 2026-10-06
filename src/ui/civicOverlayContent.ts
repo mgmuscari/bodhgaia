@@ -1,17 +1,11 @@
 // Civic overlay content: pure presentation for the C-cycled neighborhood heatmap
-// — the three views, their value→colour ramps and legends — AND the E/C
-// exclusivity composite (cycleComposite + the shared key gate). No DOM, no
+// — the three views, their value→colour ramps and legends — plus the legacy key
+// gate (compositeKeyFor; keyMap.ts is the live key table). No DOM, no
 // transcendental Math (the architecture guard's pure-ui allowlist scans this
-// file). It imports the ecology view list (OVERLAY_VIEWS) so the composite cycle
-// can walk both dimensions; ecoOverlayContent never imports civic, so there is no
-// cycle. The renderer/main shell consumes these; keeping the cycle/ramps/gate
-// here lets them be unit-tested rather than left to manual QA.
+// file). The single-active-overlay composite and the per-kind dispatch live in
+// overlayRegistry.ts.
 
-import { OVERLAY_VIEWS } from './ecoOverlayContent';
-import { REDLINE_VIEWS } from './redlineOverlayContent';
-import { POLICE_VIEWS } from './policeViolenceOverlayContent';
-import { COVERAGE_VIEWS } from './coverageOverlayContent';
-import { POWER_VIEWS } from './powerOverlayContent';
+import type { OverlayKind } from './overlayRegistry';
 import type { OverlayLegend } from './overlayLegend';
 import { OVERLAY_ALPHA, lerpU8 } from './overlayTint';
 
@@ -73,55 +67,6 @@ export function civicLegend(view: CivicOverlayView): OverlayLegend {
       { color: hi, label: CIVIC_LEGEND_ENDS[view].hi },
     ],
   };
-}
-
-// --- E/C exclusivity composite -------------------------------------------
-//
-// A single composite overlay state replaces the two independent overlay states:
-// at most ONE of eco / civic is active at a time. Pressing a kind's key cycles
-// WITHIN that kind (off → first → … → last → off); pressing the OTHER kind's key
-// replaces the active overlay at the other kind's first view (exclusivity).
-
-/** Which overlay dimension is active. */
-export type OverlayKind = 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power';
-
-/** The single active overlay (kind + view), or null (both off). */
-export interface CompositeOverlay {
-  kind: OverlayKind;
-  /** A view of the active kind (an OverlayView or a CivicOverlayView). */
-  view: string;
-}
-export type CompositeState = CompositeOverlay | null;
-
-function viewsFor(kind: OverlayKind): readonly string[] {
-  return kind === 'eco'
-    ? OVERLAY_VIEWS
-    : kind === 'civic'
-      ? CIVIC_VIEWS
-      : kind === 'redline'
-        ? REDLINE_VIEWS
-        : kind === 'police'
-          ? POLICE_VIEWS
-          : kind === 'coverage'
-            ? COVERAGE_VIEWS
-            : POWER_VIEWS;
-}
-
-/**
- * Cycle the composite overlay on a key press for `pressed` (eco / civic):
- *  - off, or the OTHER kind active ⇒ switch to `pressed` at its FIRST view
- *    (exclusivity — the other kind is cleared);
- *  - the same kind active ⇒ advance to its next view, or off past the last.
- * Pure; the shell calls this and re-points the renderer overlay source.
- */
-export function cycleComposite(current: CompositeState, pressed: OverlayKind): CompositeState {
-  const views = viewsFor(pressed);
-  if (current === null || current.kind !== pressed) {
-    return { kind: pressed, view: views[0]! };
-  }
-  const i = views.indexOf(current.view);
-  if (i === views.length - 1) return null; // off-wrap
-  return { kind: pressed, view: views[i + 1]! };
 }
 
 /**

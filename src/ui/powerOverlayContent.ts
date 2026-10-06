@@ -26,7 +26,7 @@ export function powerTint(powered: boolean): RGBA {
 }
 
 /** The dock legend line for the power overlay. */
-export function powerLegendLine(_view: PowerOverlayView): string {
+export function powerLegendLine(): string {
   return 'Power grid — powered (green) vs dark (red)';
 }
 

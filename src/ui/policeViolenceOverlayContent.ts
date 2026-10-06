@@ -37,7 +37,7 @@ export function policeViolenceTint(value: number): RGBA {
 }
 
 /** The dock legend line for the police-violence overlay. */
-export function policeLegendLine(_view: PoliceOverlayView): string {
+export function policeLegendLine(): string {
   return 'Police violence — where the state does harm';
 }
 
