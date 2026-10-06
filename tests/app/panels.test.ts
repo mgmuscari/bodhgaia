@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createPanelRegistry, isPanelId, PANEL_IDS, trendReader } from '../../src/app/panels';
+import { createPanelRegistry, createPulse, isPanelId, PANEL_IDS, trendReader } from '../../src/app/panels';
 import { panelVisibility, type PanelHandle } from '../../src/ui/panelHandle';
 import { KEY_BINDINGS } from '../../src/ui/keyMap';
 import { metaButtons } from '../../src/ui/dockContent';
@@ -44,6 +44,49 @@ describe('panel ids: the key table, the dock and the registry agree', () => {
   it('overlays and life are not panels', () => {
     expect(isPanelId('eco')).toBe(false);
     expect(isPanelId('life')).toBe(false);
+  });
+});
+
+describe('createPulse: the top bar — the economy readout · the civic pulse (N6: one closure)', () => {
+  const setup = () => {
+    const lines: string[] = [];
+    const city = { funds: 100, wb: 50, unhoused: 3, wbReads: 0 };
+    const pulse = createPulse({
+      set: (l) => lines.push(l),
+      readout: () => `$${city.funds}`,
+      wellbeing: () => {
+        city.wbReads++;
+        return city.wb;
+      },
+      unhoused: () => city.unhoused,
+    });
+    return { pulse, lines, city };
+  };
+
+  it('writes a flat first line at once', () => {
+    const { lines } = setup();
+    expect(lines).toEqual(['$100  ·  Wellbeing 50 →  ·  Unhoused 3']);
+  });
+
+  it('the civic tick trends unhoused vs the previous sample and wellbeing vs the previous TICK', () => {
+    const { pulse, lines, city } = setup();
+    city.wb = 60;
+    city.unhoused = 1;
+    pulse.tick(); // the first line's wellbeing is not a prior (as before the move)
+    expect(lines.at(-1)).toBe('$100  ·  Wellbeing 60 →  ·  Unhoused 1 ↓');
+    city.wb = 55;
+    pulse.tick();
+    expect(lines.at(-1)).toBe('$100  ·  Wellbeing 55 ↘  ·  Unhoused 1');
+  });
+
+  it('refresh rewrites the readout over the last civic line, without re-sampling the city', () => {
+    const { pulse, lines, city } = setup();
+    const reads = city.wbReads;
+    city.funds = 250;
+    city.wb = 10;
+    pulse.refresh();
+    expect(lines.at(-1)).toBe('$250  ·  Wellbeing 50 →  ·  Unhoused 3');
+    expect(city.wbReads).toBe(reads);
   });
 });
 
