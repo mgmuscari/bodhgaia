@@ -6,7 +6,8 @@
 // the sprite pass applies its exact on-screen test to the pose, and the glow pass reads the same array.
 //
 // Pure: no DOM, no transcendental Math.
-import { carPose, pedPose, type AmbientState, type Mover, type Pose } from './ambientContent';
+import { carPose, pedPose, type Pose } from '../live/poses';
+import type { AmbientState, Mover } from '../live/types';
 
 /** A draw pose sits strictly less than this many tiles from its mover's raw (x, y) on each axis: the
  *  pose rides at most a tile and a half off the sim position, and an interpolated pose is blended from

@@ -38,7 +38,7 @@ import { boxDensity, distanceField } from '../../src/worldgen/fields';
 import { gradeRedline } from '../../src/worldgen/redline';
 import { computePowerGrid } from '../../src/growth/power';
 import { wideRoadAt } from '../../src/ui/decoration';
-import { canDrive } from '../../src/ui/ambientContent';
+import { canDrive } from '../../src/live/network';
 
 // Car-drivable reachability over canDrive edges — respects limited-access freeway
 // lanes, UNLIKE roadNetwork's 4-connected adjacency. Seeded from the nearest road

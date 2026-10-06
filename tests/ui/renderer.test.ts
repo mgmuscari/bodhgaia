@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { ParcelStore } from '../../src/engine/fabric';
 import { Camera } from '../../src/ui/camera';
-import { createAmbientState } from '../../src/ui/ambientContent';
+import { createAmbientState } from '../../src/live/types';
 
 // Headless backstop for the renderer cache split (CRITIC-YP8). The renderer is a
 // DOM shell and the node test env has no jsdom, so pixel parity stays the live

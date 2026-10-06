@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { paintSnesAgents, heading8, AGENT_TINTS, SMOG_SIZES } from '../../src/ui/snesAgents';
 import { SNES_PALETTE } from '../../src/ui/snesPalette';
-import { CAR_LENGTH, CAR_WIDTH } from '../../src/ui/ambientContent';
+import { CAR_LENGTH, CAR_WIDTH } from '../../src/live/geometry';
 import type { Pixels } from '../../src/ui/pixelArt';
 
 const tiles = new Map<string, Pixels>();

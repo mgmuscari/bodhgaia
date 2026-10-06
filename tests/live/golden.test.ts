@@ -20,13 +20,13 @@ import { parkingLots, parkingStalls } from '../../src/ui/parkingContent';
 import { plantPollution } from '../../src/growth/power';
 import {
   createAmbientState,
-  stepAmbient,
   setParkingLots,
   setHouseholds,
   setPlantEmitters,
-  seedDecay,
   type AmbientState,
-} from '../../src/ui/ambientContent';
+} from '../../src/live/types';
+import { stepAmbient } from '../../src/live/step';
+import { seedDecay } from '../../src/live/fields/pollution';
 
 // Seed chosen for coverage: at 48² it yields moving + parked cars, ~260 peds, police (arrests →
 // police violence), a train on the hand-laid rail, and a few flocks.

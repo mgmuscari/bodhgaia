@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
-import { createAmbientState, setHouseholds } from '../../src/ui/ambientContent';
+import { createAmbientState, setHouseholds } from '../../src/live/types';
 import { sampleUnhoused, unhousedSuffix } from '../../src/ui/unhousedContent';
 
 describe('sampleUnhoused — displacement = per-home shortfall vs the census baseline', () => {
