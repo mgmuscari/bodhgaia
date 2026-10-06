@@ -21,6 +21,7 @@
 import { GameMap, Water } from '../engine/map';
 import { isTransportKind } from '../engine/fabric';
 import { influenceOf, isUnsealed, RADIUS } from './influence';
+import { clampByte } from '../engine/clamp';
 
 const BASE_RECOVERY = 1; // soil heals toward 255 each tick on open land
 const PAVED_CAP = 40; // soil ceiling on sealed tiles (paved / built / water)
@@ -59,8 +60,6 @@ function getScratch(n: number): EcologyScratch {
   }
   return scratch;
 }
-
-const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
 
 /**
  * Advance the ecology layers of `map` by one tick. Reads built/parcel/water +

@@ -25,6 +25,8 @@
 //
 // All magnitudes are TUNING DATA; the tested contract is the directional behaviour of each loop.
 
+import { clamp } from '../engine/clamp';
+
 /** What the city reports each economy tick (aggregates the sim already computes). */
 export interface CityReading {
   /** Housed households (occupancy). */
@@ -142,8 +144,6 @@ export const ECON = {
   loanRateBest: 0.002,
   loanRateSpread: 0.008,
 } as const;
-
-const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
 export function createEconomy(funds = 2000): EconomyState {
   return { funds, loans: [], effort: 0, burnout: 0, goodwill: ECON.goodwillNeutral, approval: 50, rent: 0.3, displaced: 0, shock: 0, reliefTaken: false, tick: 0 };
