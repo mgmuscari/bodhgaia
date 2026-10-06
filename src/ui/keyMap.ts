@@ -4,7 +4,7 @@
 // nothing matches while the user is typing in a text field (the Settings number box, …).
 // Keys the camera owns (arrows, I/X/Escape) stay in input.ts; the help text lives in controlsContent.ts.
 
-import type { OverlayKind } from './civicOverlayContent';
+import type { OverlayKind } from './overlayRegistry';
 
 export type KeyAction =
   | `overlay:${OverlayKind}`
