@@ -4,7 +4,7 @@
 
 import type { Camera } from '../ui/camera';
 import type { WorldState } from '../worldgen/pipeline';
-import type { AmbientState } from '../ui/ambientContent';
+import type { AmbientState } from '../live/types';
 import type { TechState } from '../tech/state';
 import type { PowerGrid } from '../growth/power';
 
