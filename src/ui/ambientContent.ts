@@ -48,13 +48,8 @@ import {
   POLICE_VIOLENCE_MAX,
   POLICE_VIOLENCE_LAY,
   POLICE_VIOLENCE_DECAY,
-  SAMPLES_PER_SUBSTEP,
   CAR_SPEED,
   PED_SPEED,
-  TRAIN_SPEED,
-  TRAIN_LEN,
-  TRAIN_CAP,
-  TRAIN_RAIL_PER,
   PARK_RADIUS,
   LOT_REROUTE_RADIUS,
   LOT_ABSORB_MARGIN,
@@ -91,13 +86,6 @@ import {
   ROAD_CADENCE,
   INSIDE_DWELL_MIN,
   INSIDE_DWELL_SPAN,
-  FLOCK_MIN,
-  FLOCK_MAX,
-  BIRD_MAX_SPEED,
-  BIRD_COHESION,
-  BIRD_ALIGN,
-  BIRD_SEPARATION,
-  BIRD_SEP_RADIUS2,
   STUCK_GIVE_UP,
   JAM_SKIP_PENALTY,
 } from '../live/tuning';
@@ -105,10 +93,11 @@ import {
 import {
   DIR_DX,
   DIR_DY,
-  opposite,
 } from '../live/geometry';
 
-import type { Mover, Car, Ped, Bird, Flock, Train, ParkingLotInfo, AmbientState } from '../live/types';
+import type { Mover, Car, Ped, ParkingLotInfo, AmbientState } from '../live/types';
+import { spawnTrains, stepTrain } from '../live/trains';
+import { flockTile, advanceFlock, spawnFlocks } from '../live/birds';
 import { spawnTargetFor, stepOccupancy } from '../live/fields/occupancy';
 import { computeCoverage, recomputeLandValue, stepRoadDecay } from '../live/fields/landValue';
 import {
@@ -160,8 +149,6 @@ import {
   curbStallOffsets,
   canDrive,
   nextRoadStep,
-  railTraversable,
-  nextRailStep,
   carOffNetwork,
   isWalkable,
   reachedPlot,
@@ -169,7 +156,7 @@ import {
   adjacentRoad,
   pedDespawns,
 } from '../live/network';
-import { pedLegLateral, syncTrainLegs, snapshotMovers } from '../live/poses';
+import { pedLegLateral, snapshotMovers } from '../live/poses';
 
 export * from '../live/caps';
 export * from '../live/types';
@@ -271,6 +258,8 @@ export {
   spawnTargetFor,
   stepOccupancy,
 } from '../live/fields/occupancy';
+
+export { spawnTrains } from '../live/trains';
 
 /** The set of tiles within SAFE_RADIUS of any community-power building — refuge the cruisers avoid
  *  and never sweep. Built fresh from the map (sparse refuges); the player grows it by building. */
@@ -419,20 +408,6 @@ function lotBboxDist2(lot: ParkingLotInfo, x: number, y: number): number {
   const cx = x < lot.x0 ? lot.x0 : x > lot.x1 ? lot.x1 : x;
   const cy = y < lot.y0 ? lot.y0 : y > lot.y1 ? lot.y1 : y;
   return (cx - x) * (cx - x) + (cy - y) * (cy - y);
-}
-
-/** A flock's representative tile = its (in-bounds-clamped) centre of mass. */
-function flockTile(map: GameMap, f: Flock): { x: number; y: number } {
-  let cx = 0;
-  let cy = 0;
-  for (const b of f.birds) {
-    cx += b.x;
-    cy += b.y;
-  }
-  const n = f.birds.length;
-  const x = Math.min(map.width - 1, Math.max(0, Math.floor(cx / n)));
-  const y = Math.min(map.height - 1, Math.max(0, Math.floor(cy / n)));
-  return { x, y };
 }
 
 /**
@@ -787,56 +762,7 @@ function setDriveLeg(
   return true;
 }
 
-/** Advance one flock by one boids substep (cohesion + alignment + separation). */
-function advanceFlock(f: Flock): void {
-  const n = f.birds.length;
-  if (n === 0) return;
-  let cx = 0;
-  let cy = 0;
-  let avx = 0;
-  let avy = 0;
-  for (const b of f.birds) {
-    cx += b.x;
-    cy += b.y;
-    avx += b.vx;
-    avy += b.vy;
-  }
-  cx /= n;
-  cy /= n;
-  avx /= n;
-  avy /= n;
-  for (const b of f.birds) {
-    let ax = (cx - b.x) * BIRD_COHESION + (avx - b.vx) * BIRD_ALIGN;
-    let ay = (cy - b.y) * BIRD_COHESION + (avy - b.vy) * BIRD_ALIGN;
-    for (const o of f.birds) {
-      if (o === b) continue;
-      const dx = b.x - o.x;
-      const dy = b.y - o.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > 0 && d2 < BIRD_SEP_RADIUS2) {
-        const d = Math.sqrt(d2);
-        ax += (dx / d) * (BIRD_SEPARATION / d);
-        ay += (dy / d) * (BIRD_SEPARATION / d);
-      }
-    }
-    b.vx += ax;
-    b.vy += ay;
-    const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-    if (sp > BIRD_MAX_SPEED) {
-      b.vx = (b.vx / sp) * BIRD_MAX_SPEED;
-      b.vy = (b.vy / sp) * BIRD_MAX_SPEED;
-    }
-    b.x += b.vx;
-    b.y += b.vy;
-  }
-}
-
 // --- Spawning ------------------------------------------------------------
-
-/** A fresh random in-bounds tile (2 rng draws). */
-function sampleTile(map: GameMap, rng: Rng): { x: number; y: number } {
-  return { x: rng.nextInt(map.width), y: rng.nextInt(map.height) };
-}
 
 /**
  * Spawn trip-cars (or short-trip walkers) from given origin→destination paths: cars ARE trips.
@@ -1250,25 +1176,6 @@ function respawnAtHome(state: AmbientState, p: Ped, map: GameMap): boolean {
   return true;
 }
 
-function spawnFlocks(state: AmbientState, map: GameMap, rng: Rng): void {
-  for (let s = 0; s < SAMPLES_PER_SUBSTEP; s++) {
-    if (state.birds.length >= liveCaps.flockCap) return;
-    const { x, y } = sampleTile(map, rng);
-    if (!birdSpawnAt(map, x, y)) continue;
-    const size = FLOCK_MIN + rng.nextInt(FLOCK_MAX - FLOCK_MIN + 1);
-    const birds: Bird[] = [];
-    for (let i = 0; i < size; i++) {
-      birds.push({
-        x: x + (rng.next() - 0.5),
-        y: y + (rng.next() - 0.5),
-        vx: (rng.next() - 0.5) * BIRD_MAX_SPEED,
-        vy: (rng.next() - 0.5) * BIRD_MAX_SPEED,
-      });
-    }
-    state.birds.push({ birds });
-  }
-}
-
 // --- The substep + the public stepper ------------------------------------
 
 /**
@@ -1454,71 +1361,6 @@ export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: 
     layField(state.policeViolence, map.idx(Math.round(taken.x), Math.round(taken.y)), POLICE_VIOLENCE_LAY, POLICE_VIOLENCE_MAX);
     state.peds.splice(victim, 1); // taken off the street, for nothing
   }
-}
-
-/** Top the train fleet up toward one per {@link TRAIN_RAIL_PER} rail tiles (capped). When below
- *  target, scans for rail tiles that have a rail neighbour (so the train can move) and seeds one
- *  there — all cells stacked on the start tile, stretching out as it rides. The scan runs only while
- *  under target (trains persist + shuttle), so it's idle once the network is populated. */
-export function spawnTrains(state: AmbientState, map: GameMap, rng: Rng): void {
-  let railCount = 0;
-  const starts: number[] = [];
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      if (!railTraversable(map, x, y)) continue;
-      railCount++;
-      // a viable start has at least one rail neighbour to roll onto
-      for (let d = 0; d < 4; d++) {
-        if (railTraversable(map, x + DIR_DX[d]!, y + DIR_DY[d]!)) {
-          starts.push(map.idx(x, y));
-          break;
-        }
-      }
-    }
-  }
-  const target = Math.min(TRAIN_CAP, Math.floor(railCount / TRAIN_RAIL_PER));
-  if (state.trains.length >= target || starts.length === 0) return;
-  const idx = starts[rng.nextInt(starts.length)]!;
-  const sx = idx % map.width;
-  const sy = (idx - sx) / map.width;
-  const dir = nextRailStep(map, sx, sy, -1, rng); // any rail neighbour (no incoming heading)
-  if (dir < 0) return;
-  state.trains.push({
-    cells: [idx],
-    hx: sx,
-    hy: sy,
-    tx: sx + DIR_DX[dir]!,
-    ty: sy + DIR_DY[dir]!,
-    dir,
-  });
-}
-
-/** Advance a train along its rail; returns false when it should despawn (its head tile is no longer
- *  rail, or the line vanished under it). On reaching its target tile it pushes that tile onto the head
- *  and drops the tail (the cars trace the track), then picks the next rail step (U-turn at a dead-end
- *  → shuttles back). */
-function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
-  if (!railTraversable(map, Math.round(t.hx), Math.round(t.hy))) return false;
-  const dist = Math.abs(t.tx - t.hx) + Math.abs(t.ty - t.hy);
-  if (dist <= TRAIN_SPEED) {
-    t.hx = t.tx;
-    t.hy = t.ty;
-    const head = map.idx(t.tx, t.ty);
-    if (t.cells[0] !== head) {
-      t.cells.unshift(head);
-      if (t.cells.length > TRAIN_LEN) t.cells.pop();
-    }
-    const nd = nextRailStep(map, t.tx, t.ty, opposite(t.dir), rng);
-    if (nd < 0) return false; // isolated stub → despawn
-    t.dir = nd;
-    t.tx = t.tx + DIR_DX[nd]!;
-    t.ty = t.ty + DIR_DY[nd]!;
-  } else {
-    t.hx += DIR_DX[t.dir]! * TRAIN_SPEED;
-    t.hy += DIR_DY[t.dir]! * TRAIN_SPEED;
-  }
-  syncTrainLegs(t, map.width);
-  return true;
 }
 
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
