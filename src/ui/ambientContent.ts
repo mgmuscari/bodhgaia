@@ -19,42 +19,27 @@
 // `transportCategory`, which is therefore deliberately unused here, YP4).
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind, isRoadKind, isServiceStation } from '../engine/fabric';
+import { BuiltKind } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { visitValue } from '../citizens/plots';
 import { DAILY_ITINERARY } from '../citizens/itinerary';
 import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import type { Household } from '../citizens/census';
-import { layField, decayField, sampleField } from '../citizens/field';
+import { layField, decayField } from '../citizens/field';
 import type { Rng } from '../engine/rng';
 import { liveCaps } from '../live/caps';
 import {
   AMBIENT_MAX_FRAME_MS,
   SUBSTEP_MS,
-  CRUISER_CAP,
-  CRUISER_LIFE,
-  HUNT_RADIUS,
-  AMBUSH_LEAD,
-  SHY_RADIUS,
-  SAFE_RADIUS,
-  REFUGE_KINDS,
-  SCATTER_LEN,
-  CHASE_LEN,
   ARREST_CADENCE,
-  ARREST_CHANCE_MAX,
   ARREST_RADIUS,
   ARREST_DRAIN,
   ARREST_TRAUMA,
   POLICE_VIOLENCE_MAX,
   POLICE_VIOLENCE_LAY,
   POLICE_VIOLENCE_DECAY,
-  SAMPLES_PER_SUBSTEP,
   CAR_SPEED,
   PED_SPEED,
-  TRAIN_SPEED,
-  TRAIN_LEN,
-  TRAIN_CAP,
-  TRAIN_RAIL_PER,
   PARK_RADIUS,
   LOT_REROUTE_RADIUS,
   LOT_ABSORB_MARGIN,
@@ -66,46 +51,13 @@ import {
   HEALTH_DECAY,
   WALK_RANGE,
   RETIRED_CAR_LINGER,
-  TRAFFIC_MAX,
-  TRAFFIC_LAY,
   TRAFFIC_DECAY,
   POLL_MAX,
-  POLL_LAY_BASE,
-  POLL_FREEWAY_MULT,
-  POLL_CONGEST,
   POLL_DECAY,
   WIND_CADENCE,
-  WIND_FRACTION,
-  POLL_DIFFUSE_COEFF,
   RAIN_CADENCE,
-  RAIN_SMOG_DILUTION,
-  RAIN_RUNOFF_DILUTION,
-  LV_MAX,
-  LV_BASE,
-  LV_FLORA,
-  LV_FAUNA,
-  LV_AMENITY,
-  LV_RADIUS,
-  LV_POLL_PEN,
-  LV_TRAFFIC_PEN,
-  LV_WEAR_PEN,
-  LV_WATER_PEN,
-  LV_ROAD_PEN,
-  LV_COVERAGE_PEN,
-  COVERAGE_RADIUS,
   LV_CADENCE,
-  AMENITY_KINDS,
   OCC_CADENCE,
-  OCC_RATE,
-  OCC_LV_NEUTRAL,
-  OCC_POLL_W,
-  OCC_HEALTH_SCALE,
-  OCC_HEALTH_CAP,
-  OCC_FLOOR,
-  OCC_SETTLE_PASSES,
-  OCC_EXPECT_RATE,
-  OCC_ABSOLUTE,
-  OCC_HEADROOM,
   ROAD_WALK_PENALTY,
   WORN_DEGRADE_MIN,
   WORN_WALK_PENALTY,
@@ -116,52 +68,40 @@ import {
   WEAR_MAX,
   WEAR_RATE,
   WEAR_DECAY,
-  WATER_POLL_MAX,
   WATER_RUNOFF_CADENCE,
-  RUNOFF_URBAN,
-  RUNOFF_WILD,
-  RUNOFF_WORN,
-  RUNOFF_INDUSTRY,
-  WATER_FLOW_FRACTION,
-  WATER_TREAT_RADIUS,
-  WATER_TREAT_AMOUNT,
   GROUND_POLL_MAX,
   GROUND_RUNOFF_CADENCE,
-  GROUND_INDUSTRY,
-  GROUND_PLANT,
-  GROUND_SEEP,
-  GROUND_LITTER,
-  GROUND_DECAY,
   ABANDONED_DEGRADE_TIME,
   ABANDONED_GROUND_POLL,
-  ROAD_DECAY_MAX,
   ROAD_CADENCE,
-  ROAD_CRUMBLE_RATE,
-  ROAD_RECOVER_RATE,
-  ROAD_CARED_LV,
   INSIDE_DWELL_MIN,
   INSIDE_DWELL_SPAN,
-  FLOCK_MIN,
-  FLOCK_MAX,
-  BIRD_MAX_SPEED,
-  BIRD_COHESION,
-  BIRD_ALIGN,
-  BIRD_SEPARATION,
-  BIRD_SEP_RADIUS2,
   STUCK_GIVE_UP,
   JAM_SKIP_PENALTY,
-  GREEN_HEAL_KINDS,
-  GREEN_HEAL_RADIUS,
-  GROUND_GREEN_HEAL,
 } from '../live/tuning';
 
 import {
   DIR_DX,
   DIR_DY,
-  opposite,
 } from '../live/geometry';
 
-import type { Mover, Car, Ped, Bird, Flock, Train, ParkingLotInfo, AmbientState } from '../live/types';
+import type { Mover, Car, Ped, ParkingLotInfo, AmbientState } from '../live/types';
+import { buildSafeZones, policePhase, arrestChance, spawnCruisers, stepCruisers } from '../live/police';
+import { spawnTrains, stepTrain } from '../live/trains';
+import { flockTile, advanceFlock, spawnFlocks } from '../live/birds';
+import { spawnTargetFor, stepOccupancy } from '../live/fields/occupancy';
+import { computeCoverage, recomputeLandValue, stepRoadDecay } from '../live/fields/landValue';
+import {
+  layTraffic,
+  layPollution,
+  accumulateWaterRunoff,
+  accumulateGroundPollution,
+  driftPollution,
+  diffusePollution,
+  applyRain,
+  flowWaterPollution,
+  treatWaterPollution,
+} from '../live/fields/pollution';
 import {
   congestionSpeedMult,
   congestionCount,
@@ -195,25 +135,19 @@ import {
 import {
   isCarRoad,
   birdSpawnAt,
-  carPassable,
   isParkable,
   curbStallOffsets,
-  canDrive,
   nextRoadStep,
-  railTraversable,
-  nextRailStep,
   carOffNetwork,
   isWalkable,
   reachedPlot,
   isWearable,
-  adjacentRoad,
   pedDespawns,
 } from '../live/network';
-import { pedLegLateral, syncTrainLegs, snapshotMovers } from '../live/poses';
+import { pedLegLateral, snapshotMovers } from '../live/poses';
 
 export * from '../live/caps';
 export * from '../live/types';
-export { prevailingWind } from '../live/wind';
 
 export {
   AMBIENT_MAX_FRAME_MS,
@@ -290,64 +224,40 @@ export {
   boxBlocked,
 } from '../live/motion';
 
-/**
- * The set of tiles within COVERAGE_RADIUS of a fire station / healing commons — the live fire/health
- * SERVICE COVERAGE. Worldgen provides stations to the greenlined districts and withholds them from
- * the redlined, so the redlined zones start UNDER-served (uncovered → a land-value drag); the player
- * extends coverage by building stations, which repairs it. Built fresh from the map (sparse stations).
- */
-export function computeCoverage(map: GameMap): Set<number> {
-  const covered = new Set<number>();
-  for (let i = 0; i < map.built.length; i++) {
-    if (!isServiceStation(map.built[i]!)) continue;
-    const cx = i % map.width;
-    const cy = (i - cx) / map.width;
-    for (let dy = -COVERAGE_RADIUS; dy <= COVERAGE_RADIUS; dy++) {
-      for (let dx = -COVERAGE_RADIUS; dx <= COVERAGE_RADIUS; dx++) {
-        if (Math.abs(dx) + Math.abs(dy) > COVERAGE_RADIUS) continue;
-        const nx = cx + dx;
-        const ny = cy + dy;
-        if (map.inBounds(nx, ny)) covered.add(map.idx(nx, ny));
-      }
-    }
-  }
-  return covered;
-}
+export {
+  prevailingWind,
+  pollutionEmit,
+  accumulateWaterRunoff,
+  accumulateGroundPollution,
+  driftPollution,
+  diffusePollution,
+  applyRain,
+  flowWaterPollution,
+  treatWaterPollution,
+  seedDecay,
+} from '../live/fields/pollution';
 
-/** The set of tiles within SAFE_RADIUS of any community-power building — refuge the cruisers avoid
- *  and never sweep. Built fresh from the map (sparse refuges); the player grows it by building. */
-export function buildSafeZones(map: GameMap): Set<number> {
-  const safe = new Set<number>();
-  for (let i = 0; i < map.built.length; i++) {
-    if (!REFUGE_KINDS.has(map.built[i]!)) continue;
-    const cx = i % map.width;
-    const cy = (i - cx) / map.width;
-    for (let dy = -SAFE_RADIUS; dy <= SAFE_RADIUS; dy++) {
-      for (let dx = -SAFE_RADIUS; dx <= SAFE_RADIUS; dx++) {
-        const nx = cx + dx;
-        const ny = cy + dy;
-        if (map.inBounds(nx, ny)) safe.add(map.idx(nx, ny));
-      }
-    }
-  }
-  return safe;
-}
+export { computeCoverage, landValueAt, recomputeLandValue, stepRoadDecay } from '../live/fields/landValue';
 
-/** The fleet-wide police phase for a substep counter: 'scatter' (patrol, no hunting/arrests) or
- *  'chase' (hunt + arrest). Deterministic; the ghost cadence. */
-export function policePhase(tick: number): 'scatter' | 'chase' {
-  return tick % (SCATTER_LEN + CHASE_LEN) < SCATTER_LEN ? 'scatter' : 'chase';
-}
+export {
+  capacityOf,
+  occupancySignal,
+  occupancyStep,
+  spawnTargetFor,
+  stepOccupancy,
+} from '../live/fields/occupancy';
 
-/**
- * The per-sweep arrest probability for a cruiser standing on ground of this redline grade:
- * scales LINEARLY with the grade (0 at greenlined, ARREST_CHANCE_MAX at fully redlined), so the
- * over-policing pressure tracks the discrimination rather than switching on at a threshold.
- */
-export function arrestChance(grade: number): number {
-  const g = grade < 0 ? 0 : grade > 255 ? 255 : grade;
-  return (g / 255) * ARREST_CHANCE_MAX;
-}
+export { spawnTrains } from '../live/trains';
+
+export {
+  buildSafeZones,
+  policePhase,
+  arrestChance,
+  spawnCruisers,
+  huntTarget,
+  nextPatrolStep,
+  stepCruisers,
+} from '../live/police';
 
 /**
  * Put a citizen in its owned car and commit the car to a least-cost route to a free parking spot near
@@ -461,20 +371,6 @@ function lotBboxDist2(lot: ParkingLotInfo, x: number, y: number): number {
   const cx = x < lot.x0 ? lot.x0 : x > lot.x1 ? lot.x1 : x;
   const cy = y < lot.y0 ? lot.y0 : y > lot.y1 ? lot.y1 : y;
   return (cx - x) * (cx - x) + (cy - y) * (cy - y);
-}
-
-/** A flock's representative tile = its (in-bounds-clamped) centre of mass. */
-function flockTile(map: GameMap, f: Flock): { x: number; y: number } {
-  let cx = 0;
-  let cy = 0;
-  for (const b of f.birds) {
-    cx += b.x;
-    cy += b.y;
-  }
-  const n = f.birds.length;
-  const x = Math.min(map.width - 1, Math.max(0, Math.floor(cx / n)));
-  const y = Math.min(map.height - 1, Math.max(0, Math.floor(cy / n)));
-  return { x, y };
 }
 
 /**
@@ -829,56 +725,7 @@ function setDriveLeg(
   return true;
 }
 
-/** Advance one flock by one boids substep (cohesion + alignment + separation). */
-function advanceFlock(f: Flock): void {
-  const n = f.birds.length;
-  if (n === 0) return;
-  let cx = 0;
-  let cy = 0;
-  let avx = 0;
-  let avy = 0;
-  for (const b of f.birds) {
-    cx += b.x;
-    cy += b.y;
-    avx += b.vx;
-    avy += b.vy;
-  }
-  cx /= n;
-  cy /= n;
-  avx /= n;
-  avy /= n;
-  for (const b of f.birds) {
-    let ax = (cx - b.x) * BIRD_COHESION + (avx - b.vx) * BIRD_ALIGN;
-    let ay = (cy - b.y) * BIRD_COHESION + (avy - b.vy) * BIRD_ALIGN;
-    for (const o of f.birds) {
-      if (o === b) continue;
-      const dx = b.x - o.x;
-      const dy = b.y - o.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > 0 && d2 < BIRD_SEP_RADIUS2) {
-        const d = Math.sqrt(d2);
-        ax += (dx / d) * (BIRD_SEPARATION / d);
-        ay += (dy / d) * (BIRD_SEPARATION / d);
-      }
-    }
-    b.vx += ax;
-    b.vy += ay;
-    const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-    if (sp > BIRD_MAX_SPEED) {
-      b.vx = (b.vx / sp) * BIRD_MAX_SPEED;
-      b.vy = (b.vy / sp) * BIRD_MAX_SPEED;
-    }
-    b.x += b.vx;
-    b.y += b.vy;
-  }
-}
-
 // --- Spawning ------------------------------------------------------------
-
-/** A fresh random in-bounds tile (2 rng draws). */
-function sampleTile(map: GameMap, rng: Rng): { x: number; y: number } {
-  return { x: rng.nextInt(map.width), y: rng.nextInt(map.height) };
-}
 
 /**
  * Spawn trip-cars (or short-trip walkers) from given origin→destination paths: cars ARE trips.
@@ -962,41 +809,6 @@ function citizenCount(state: AmbientState): number {
   return n;
 }
 
-/** A residential building's occupancy CEILING (pure decision seam): its seeded baseline lifted by a
- *  per-kind headroom — a single house barely densifies, an apartment block holds far more. So a
- *  thriving home fills up toward this without the building itself changing (the deterministic stock
- *  is fixed); a derelict (zero baseline) holds nobody. */
-export function capacityOf(kind: number, baseCount: number): number {
-  return baseCount * (OCC_HEADROOM.get(kind) ?? 1.5);
-}
-
-/** The pull on a home's population (pure): land value above OCC_LV_NEUTRAL attracts residents, below
- *  it sheds them; nearby smog repels; the wellbeing its citizens carry home (building health) tips it
- *  either way. Sign drives grow vs shrink, magnitude scales the rate. */
-export function occupancySignal(landValue: number, pollution: number, health: number): number {
-  let s = (landValue - OCC_LV_NEUTRAL) / 255; // land value is the anchor
-  s -= (pollution / POLL_MAX) * OCC_POLL_W; // smog pushes out
-  const h = health / OCC_HEALTH_SCALE; // building health is only a small bounded nudge
-  s += h < -OCC_HEALTH_CAP ? -OCC_HEALTH_CAP : h > OCC_HEALTH_CAP ? OCC_HEALTH_CAP : h;
-  return s;
-}
-
-/** One occupancy drift step (pure): nudge toward the ceiling on a positive signal, toward the floor on
- *  a negative one, clamped to [floor, capacity]. The floor keeps a struggling home populated — a city
- *  thins but never becomes a literal ghost town. */
-export function occupancyStep(occ: number, floor: number, capacity: number, signal: number): number {
-  const next = occ + signal * OCC_RATE;
-  return next < floor ? floor : next > capacity ? capacity : next;
-}
-
-/** How many citizens to keep out on their round, from the live total occupancy: a THIRD of the
- *  residents (Maddy), scaling with the city — no flat ceiling, so a populous city fills the streets
- *  and a declining one visibly empties them. The hard perf ceiling is liveCaps.pedCap, applied where peds
- *  actually spawn (spawnCitizens), not here. */
-export function spawnTargetFor(totalOccupancy: number): number {
-  return Math.round(totalOccupancy / liveCaps.citizenOutDivisor);
-}
-
 /** The LIVE sample values the inspector appends to its readout — each undefined when the tile
  *  carries no such field (a road has traffic/smog but no population; a home the reverse). */
 export interface LiveSamples {
@@ -1029,39 +841,6 @@ export function liveInspectLine(s: LiveSamples): string {
   if (s.violence !== undefined) parts.push(`police violence ${Math.round(s.violence)}`);
   if (s.served !== undefined) parts.push(s.served ? 'served' : 'under-served');
   return parts.join(' · ');
-}
-
-/** Re-evaluate every home's occupancy from the live conditions at its tile (land value, smog, the
- *  wellbeing its citizens bring home), drifting it toward capacity or empty. Seeded lazily from the
- *  census baseline; rebuilt fresh over the current homes each pass so a demolished home drops out.
- *  Gated to OCC_CADENCE by the caller. Live layer — reads the other live fields, writes only occupancy. */
-export function stepOccupancy(state: AmbientState, map: GameMap): void {
-  const homes = state.households;
-  if (!homes || homes.length === 0) {
-    state.occupancy.clear();
-    return;
-  }
-  const next = new Map<number, number>();
-  const expect = new Map<number, number>();
-  const settling = state.occPasses < OCC_SETTLE_PASSES;
-  for (const h of homes) {
-    const t = map.idx(h.x, h.y);
-    const cap = capacityOf(map.built[t]!, h.count);
-    const floor = h.count * OCC_FLOOR; // a home never thins below this fraction of its seeded baseline
-    const cur = state.occupancy.get(t) ?? h.count; // seed lazily at the census baseline
-    const raw = occupancySignal(
-      sampleField(state.landValue, t),
-      sampleField(state.pollution, t),
-      state.buildingHealth.get(t) ?? 0,
-    );
-    // a new home (or the opening) takes its conditions as normal
-    const was = settling ? raw : (state.occExpect.get(t) ?? raw);
-    next.set(t, occupancyStep(cur, floor, cap, raw - was + OCC_ABSOLUTE * raw));
-    expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
-  }
-  state.occupancy = next;
-  state.occExpect = expect;
-  state.occPasses += 1;
 }
 
 /** Top the daily-itinerary population up from the LIVE occupancy: the spawn target tracks total
@@ -1280,107 +1059,6 @@ function zonedNeighbor(map: GameMap, roadIdx: number): number {
 }
 
 /** Add `value` (signed) to a home building's health, clamped. */
-/** A driving car lays live traffic at the tile under it — the agent-driven traffic field (cars ARE
- *  the traffic). Other cars' pathfinding routes around it; pedestrians shun it. */
-function layTraffic(state: AmbientState, map: GameMap, x: number, y: number): void {
-  layField(state.traffic, map.idx(x, y), TRAFFIC_LAY, TRAFFIC_MAX);
-}
-
-/** How much air pollution a car emits at the tile under it this substep (pure decision seam): a base
- *  amount on a surface road, doubled on a freeway (faster, heavier flow), plus up to POLL_CONGEST
- *  more scaled by how jammed the tile is (`congestion` 0..1 = local traffic / TRAFFIC_MAX) — idling
- *  in a jam smogs the most. The car IS the source; the macro smog pattern emerges from the agents. */
-export function pollutionEmit(onFreeway: boolean, congestion: number): number {
-  return POLL_LAY_BASE * (onFreeway ? POLL_FREEWAY_MULT : 1) + congestion * POLL_CONGEST;
-}
-
-/** A driving car lays live air pollution at the tile under it, scaled by freeway/congestion via
- *  pollutionEmit. Peds shun it (pedCost) and it drags land value down — the agent-driven air layer. */
-function layPollution(state: AmbientState, map: GameMap, x: number, y: number, onFreeway: boolean): void {
-  const i = map.idx(x, y);
-  const congestion = sampleField(state.traffic, i) / TRAFFIC_MAX;
-  layField(state.pollution, i, pollutionEmit(onFreeway, congestion), POLL_MAX);
-}
-
-/** A plot tile's DERIVED land value (0..LV_MAX, pure decision seam): the healed land it sits on +
- *  a bonus per adjacent amenity green, MINUS the live nuisances under/over it (air pollution, traffic
- *  congestion, trampled-ground decay). The live fields are optional so the contract is unit-testable
- *  in isolation; absent ⇒ no nuisance. This is the readout the city's desirability emerges from. */
-export function landValueAt(
-  map: GameMap,
-  x: number,
-  y: number,
-  pollution?: ReadonlyMap<number, number>,
-  traffic?: ReadonlyMap<number, number>,
-  wear?: ReadonlyMap<number, number>,
-  water?: ReadonlyMap<number, number>,
-  road?: ReadonlyMap<number, number>,
-  coverage?: ReadonlySet<number>,
-): number {
-  const i = map.idx(x, y);
-  let v = LV_BASE + (map.floraVitality[i]! / 255) * LV_FLORA + (map.faunaPresence[i]! / 255) * LV_FAUNA;
-  // Under-served: an inhabited plot with no fire/health station in reach is a real drag.
-  if (coverage && !coverage.has(i)) v -= LV_COVERAGE_PEN;
-  // Amenities and nuisances are felt over a RADIUS, not just on the plot tile — a building's smog and
-  // congestion come from the ROADS beside it, and a park lifts a whole block. Amenities sum (with a
-  // linear falloff: more greens near = nicer); nuisances take the worst nearby (one jammed/smoggy road
-  // is enough to drag a plot down).
-  let amenity = 0;
-  let pollNear = 0;
-  let trafNear = 0;
-  let wearNear = 0;
-  let waterNear = 0;
-  let roadNear = 0;
-  for (let dy = -LV_RADIUS; dy <= LV_RADIUS; dy++) {
-    for (let dx = -LV_RADIUS; dx <= LV_RADIUS; dx++) {
-      const dist = Math.abs(dx) + Math.abs(dy);
-      if (dist > LV_RADIUS) continue;
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!map.inBounds(nx, ny)) continue;
-      const ni = map.idx(nx, ny);
-      const falloff = 1 - dist / (LV_RADIUS + 1); // 1 on the tile → ~0 at the edge of the radius
-      if (AMENITY_KINDS.has(map.built[ni]!)) amenity += falloff;
-      // Nuisances felt by distance: the worst weighted road nearby sets the drag (one jam is enough).
-      if (pollution) pollNear = Math.max(pollNear, sampleField(pollution, ni) * falloff);
-      if (traffic) trafNear = Math.max(trafNear, sampleField(traffic, ni) * falloff);
-      if (wear) wearNear = Math.max(wearNear, sampleField(wear, ni) * falloff);
-      // The contaminated creek on the banks: the worst nearby water pollution drags the plot.
-      if (water) waterNear = Math.max(waterNear, sampleField(water, ni) * falloff);
-      // Crumbling road frontage drags the plot (disinvested infrastructure).
-      if (road) roadNear = Math.max(roadNear, sampleField(road, ni) * falloff);
-    }
-  }
-  v += amenity * LV_AMENITY;
-  v -= (pollNear / POLL_MAX) * LV_POLL_PEN;
-  v -= (trafNear / TRAFFIC_MAX) * LV_TRAFFIC_PEN;
-  v -= (wearNear / WEAR_MAX) * LV_WEAR_PEN;
-  v -= (waterNear / WATER_POLL_MAX) * LV_WATER_PEN;
-  v -= (roadNear / ROAD_DECAY_MAX) * LV_ROAD_PEN;
-  return v < 0 ? 0 : v > LV_MAX ? LV_MAX : v;
-}
-
-/** Recompute the land-value field over every inhabited PLOT tile (zoneTypeOf !== None), reading the
- *  current live nuisance fields. Rebuilt fresh each pass (cleared first) so a demolished plot drops
- *  out. Whole-map scan — gated to LV_CADENCE by the caller (a slow, cheap readout). */
-export function recomputeLandValue(state: AmbientState, map: GameMap): void {
-  state.landValue.clear();
-  const W = map.width;
-  const H = map.height;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = map.idx(x, y);
-      if (zoneTypeOf(map.built[i]!) === ZoneType.None) continue; // only inhabited plots carry a value
-      state.landValue.set(
-        i,
-        landValueAt(
-          map, x, y, state.pollution, state.traffic, state.wear, state.waterPollution, state.roadDecay, state.coverage,
-        ),
-      );
-    }
-  }
-}
-
 function depositHealth(state: AmbientState, homeTile: number, value: number): void {
   if (value === 0) return;
   const cur = state.buildingHealth.get(homeTile) ?? 0;
@@ -1461,167 +1139,7 @@ function respawnAtHome(state: AmbientState, p: Ped, map: GameMap): boolean {
   return true;
 }
 
-function spawnFlocks(state: AmbientState, map: GameMap, rng: Rng): void {
-  for (let s = 0; s < SAMPLES_PER_SUBSTEP; s++) {
-    if (state.birds.length >= liveCaps.flockCap) return;
-    const { x, y } = sampleTile(map, rng);
-    if (!birdSpawnAt(map, x, y)) continue;
-    const size = FLOCK_MIN + rng.nextInt(FLOCK_MAX - FLOCK_MIN + 1);
-    const birds: Bird[] = [];
-    for (let i = 0; i < size; i++) {
-      birds.push({
-        x: x + (rng.next() - 0.5),
-        y: y + (rng.next() - 0.5),
-        vx: (rng.next() - 0.5) * BIRD_MAX_SPEED,
-        vy: (rng.next() - 0.5) * BIRD_MAX_SPEED,
-      });
-    }
-    state.birds.push({ birds });
-  }
-}
-
 // --- The substep + the public stepper ------------------------------------
-
-/**
- * Spawn police cruisers out of the precincts (≈ one per 2x2 precinct, capped) until the patrol
- * count is met. Each spawns on a road beside a precinct and patrols from there. The precincts sit
- * in the redlined districts, so the patrols concentrate there — the over-policing made visible.
- * Renderer-side; reads the built layer, writes only state.cruisers.
- */
-export function spawnCruisers(state: AmbientState, map: GameMap, rng: Rng): void {
-  const precincts: number[] = [];
-  for (let i = 0; i < map.built.length; i++) if (map.built[i] === BuiltKind.Precinct) precincts.push(i);
-  if (precincts.length === 0) return;
-  const target = Math.min(CRUISER_CAP, Math.ceil(precincts.length / 4)); // ≈ one per 2x2 precinct
-  let guard = precincts.length;
-  while (state.cruisers.length < target && guard-- > 0) {
-    const pi = precincts[rng.nextInt(precincts.length)]!;
-    const px = pi % map.width;
-    const py = (pi - px) / map.width;
-    const road = adjacentRoad(map, px, py);
-    if (road < 0) continue;
-    const rx = road % map.width;
-    const ry = (road - rx) / map.width;
-    // Spread personalities across the fleet (direct / ambush / shy) so the patrol reads varied.
-    state.cruisers.push({
-      x: rx, y: ry, dir: rng.nextInt(4), tx: rx, ty: ry, dwell: CRUISER_LIFE, recent: [],
-      personality: state.cruisers.length % 3,
-    });
-  }
-}
-
-/** The nearest on-foot citizen to (x, y) within HUNT_RADIUS, or null. */
-function nearestPed(peds: readonly Ped[], x: number, y: number): Ped | null {
-  let best = HUNT_RADIUS + 1;
-  let found: Ped | null = null;
-  for (const p of peds) {
-    if (p.phase === 'inside' || p.phase === 'driving') continue; // not on the street
-    const d = Math.abs(Math.round(p.x) - x) + Math.abs(Math.round(p.y) - y);
-    if (d < best) {
-      best = d;
-      found = p;
-    }
-  }
-  return found;
-}
-
-/**
- * The tile a cruiser aims for this step, by its ghost PERSONALITY (or null → patrol/seek grade):
- *   0 direct (Blinky)  — the citizen's tile;
- *   1 ambush (Pinky)   — AMBUSH_LEAD tiles AHEAD of the citizen's heading, to cut them off;
- *   2 shy (Clyde)      — the citizen's tile ONLY when within SHY_RADIUS, else null (it patrols).
- * Deterministic; reads the nearest on-foot citizen.
- */
-export function huntTarget(c: Mover, peds: readonly Ped[]): { x: number; y: number } | null {
-  const cx = Math.round(c.x);
-  const cy = Math.round(c.y);
-  const p = nearestPed(peds, cx, cy);
-  if (!p) return null;
-  const px = Math.round(p.x);
-  const py = Math.round(p.y);
-  const pers = c.personality ?? 0;
-  if (pers === 1) return { x: px + DIR_DX[p.dir]! * AMBUSH_LEAD, y: py + DIR_DY[p.dir]! * AMBUSH_LEAD };
-  if (pers === 2) return Math.abs(px - cx) + Math.abs(py - cy) <= SHY_RADIUS ? { x: px, y: py } : null;
-  return { x: px, y: py };
-}
-
-/**
- * Deliberate cruiser patrol (replaces the old random wander): among the passable, non-reversing,
- * non-recent road neighbours, pick the one that (a) closes on the nearest on-foot citizen if one
- * is within HUNT_RADIUS — the cruiser HUNTS — else (b) climbs toward more redlined ground (higher
- * grade), so patrols seek the redlined streets instead of drifting into greenlined ones. A small
- * rng jitter breaks ties. Returns the reverse on a dead-end, or -1 when boxed in (caller despawns).
- * Deterministic in `rng`.
- */
-export function nextPatrolStep(
-  map: GameMap,
-  x: number,
-  y: number,
-  fromDir: number,
-  rng: Rng,
-  recent: readonly number[] | undefined,
-  target: { x: number; y: number } | null,
-  safe?: ReadonlySet<number>,
-): number {
-  const options: number[] = [];
-  let uTurn = -1;
-  for (let d = 0; d < 4; d++) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    // the same edge-aware rule every car obeys: one-way freeway lanes, limited access, no median
-    // crossing (Maddy 2026-09-30: cruisers were cutting across opposing freeway lanes)
-    if (!canDrive(map, x, y, nx, ny)) continue;
-    if (safe?.has(map.idx(nx, ny))) continue; // community refuge — cruisers won't enter it
-    if (d === fromDir) {
-      uTurn = d;
-      continue;
-    }
-    options.push(d);
-  }
-  if (options.length === 0) return uTurn; // dead-end: reverse, or -1 if truly isolated
-  let pool = options;
-  if (recent && recent.length > 0) {
-    const fresh = options.filter((d) => !recent.includes(map.idx(x + DIR_DX[d]!, y + DIR_DY[d]!)));
-    if (fresh.length === 0) return -1; // boxed in by its own path → despawn
-    pool = fresh;
-  }
-  let bestDir = pool[0]!;
-  let bestScore = -Infinity;
-  for (const d of pool) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    // Hunt: distance to the citizen dominates (×10). Else seek the redline grade. +jitter tiebreak.
-    const score = target
-      ? -(Math.abs(nx - target.x) + Math.abs(ny - target.y)) * 10 + rng.nextInt(3)
-      : map.redline[map.idx(nx, ny)]! + rng.nextInt(3);
-    if (score > bestScore) {
-      bestScore = score;
-      bestDir = d;
-    }
-  }
-  return bestDir;
-}
-
-/**
- * Move every cruiser one substep: a DELIBERATE patrol (hunt nearby citizens, else seek redlined
- * streets — see nextPatrolStep), despawning if its road was bulldozed or it boxes itself in, and
- * counting down its patrol life so the fleet recirculates from the precincts. Renderer-side;
- * deterministic in `rng`.
- */
-export function stepCruisers(state: AmbientState, map: GameMap, rng: Rng, safe?: ReadonlySet<number>, grid?: Map<number, Mover[]>): void {
-  const chasing = policePhase(state.policeTick) === 'chase';
-  const blocked = grid ? (mm: Mover): boolean => blockedAhead(grid, map.width, mm) : undefined;
-  state.cruisers = state.cruisers.filter((c) => {
-    if ((c.dwell ?? 0) <= 0) return false; // shift over → recycle (respawn tops up from the precinct)
-    c.dwell! -= 1;
-    if (!carPassable(map, Math.round(c.x), Math.round(c.y))) return false; // road gone
-    // Chase → aim per the cruiser's ghost personality; scatter → no target, so it seeks redlined streets.
-    const target = chasing ? huntTarget(c, state.peds) : null;
-    return advanceMover(c, CAR_SPEED, map, (x, y, fromDir, recent) =>
-      nextPatrolStep(map, x, y, fromDir, rng, recent, target, safe), blocked,
-    );
-  });
-}
 
 /**
  * Arrest sweep: each cruiser may seize the nearest on-foot citizen within ARREST_RADIUS — removing
@@ -1665,71 +1183,6 @@ export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: 
     layField(state.policeViolence, map.idx(Math.round(taken.x), Math.round(taken.y)), POLICE_VIOLENCE_LAY, POLICE_VIOLENCE_MAX);
     state.peds.splice(victim, 1); // taken off the street, for nothing
   }
-}
-
-/** Top the train fleet up toward one per {@link TRAIN_RAIL_PER} rail tiles (capped). When below
- *  target, scans for rail tiles that have a rail neighbour (so the train can move) and seeds one
- *  there — all cells stacked on the start tile, stretching out as it rides. The scan runs only while
- *  under target (trains persist + shuttle), so it's idle once the network is populated. */
-export function spawnTrains(state: AmbientState, map: GameMap, rng: Rng): void {
-  let railCount = 0;
-  const starts: number[] = [];
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      if (!railTraversable(map, x, y)) continue;
-      railCount++;
-      // a viable start has at least one rail neighbour to roll onto
-      for (let d = 0; d < 4; d++) {
-        if (railTraversable(map, x + DIR_DX[d]!, y + DIR_DY[d]!)) {
-          starts.push(map.idx(x, y));
-          break;
-        }
-      }
-    }
-  }
-  const target = Math.min(TRAIN_CAP, Math.floor(railCount / TRAIN_RAIL_PER));
-  if (state.trains.length >= target || starts.length === 0) return;
-  const idx = starts[rng.nextInt(starts.length)]!;
-  const sx = idx % map.width;
-  const sy = (idx - sx) / map.width;
-  const dir = nextRailStep(map, sx, sy, -1, rng); // any rail neighbour (no incoming heading)
-  if (dir < 0) return;
-  state.trains.push({
-    cells: [idx],
-    hx: sx,
-    hy: sy,
-    tx: sx + DIR_DX[dir]!,
-    ty: sy + DIR_DY[dir]!,
-    dir,
-  });
-}
-
-/** Advance a train along its rail; returns false when it should despawn (its head tile is no longer
- *  rail, or the line vanished under it). On reaching its target tile it pushes that tile onto the head
- *  and drops the tail (the cars trace the track), then picks the next rail step (U-turn at a dead-end
- *  → shuttles back). */
-function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
-  if (!railTraversable(map, Math.round(t.hx), Math.round(t.hy))) return false;
-  const dist = Math.abs(t.tx - t.hx) + Math.abs(t.ty - t.hy);
-  if (dist <= TRAIN_SPEED) {
-    t.hx = t.tx;
-    t.hy = t.ty;
-    const head = map.idx(t.tx, t.ty);
-    if (t.cells[0] !== head) {
-      t.cells.unshift(head);
-      if (t.cells.length > TRAIN_LEN) t.cells.pop();
-    }
-    const nd = nextRailStep(map, t.tx, t.ty, opposite(t.dir), rng);
-    if (nd < 0) return false; // isolated stub → despawn
-    t.dir = nd;
-    t.tx = t.tx + DIR_DX[nd]!;
-    t.ty = t.ty + DIR_DY[nd]!;
-  } else {
-    t.hx += DIR_DX[t.dir]! * TRAIN_SPEED;
-    t.hy += DIR_DY[t.dir]! * TRAIN_SPEED;
-  }
-  syncTrainLegs(t, map.width);
-  return true;
 }
 
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
@@ -2194,379 +1647,6 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   //    neighborhoods' roads recover. Runs after land value so it reads the fresh field.
   state.roadTick += 1;
   if (state.roadTick % ROAD_CADENCE === 0) stepRoadDecay(state, map);
-}
-
-/** One water-runoff pass: every water tile with ground neighbours collects their runoff
- *  (paved/built/worn ground sheds most), accumulating toward WATER_POLL_MAX. Open water with no
- *  ground neighbours stays clean. Whole-map scan — gated to WATER_RUNOFF_CADENCE by the caller. */
-export function accumulateWaterRunoff(state: AmbientState, map: GameMap): void {
-  const W = map.width;
-  const H = map.height;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = map.idx(x, y);
-      if (map.water[i] === 0) continue; // only water collects runoff
-      let runoff = 0;
-      for (let d = 0; d < 4; d++) {
-        const nx = x + DIR_DX[d]!;
-        const ny = y + DIR_DY[d]!;
-        if (!map.inBounds(nx, ny)) continue;
-        const ni = map.idx(nx, ny);
-        if (map.water[ni] !== 0) continue; // a water neighbour sheds nothing
-        const k = map.built[ni]!;
-        if (zoneTypeOf(k) === ZoneType.Industrial) {
-          // Industry is the toxic source; redlined industry sheds the MOST (least
-          // regulated, concentrated there by policy) — scale by the tile's grade.
-          // This is the Hackensack: the contamination starts at the redlined plant.
-          runoff += RUNOFF_INDUSTRY * (1 + map.redline[ni]! / 255);
-        } else if (isRoadKind(k) || k === BuiltKind.ParkingLot || zoneTypeOf(k) !== ZoneType.None) {
-          // Redlined built ground sheds more toxic runoff — the disinvested district
-          // (no drainage, dumping, industrial legacy) poisons its own water. Grade-
-          // scaled so the mechanic holds even where worldgen gutted the industry.
-          runoff += RUNOFF_URBAN * (1 + map.redline[ni]! / 255);
-        } else {
-          runoff += RUNOFF_WILD; // wilderness is not a toxic source, regardless of grade
-        }
-        if ((state.wear.get(ni) ?? 0) > 40) runoff += RUNOFF_WORN;
-      }
-      if (runoff === 0) continue;
-      layField(state.waterPollution, i, runoff, WATER_POLL_MAX);
-    }
-  }
-}
-
-/** Lay the LAND-contamination field: each ground tile accrues pollution from its OWN source-ness
- *  (industry + a dirty power plant sitting on it, grade-scaled), the litter/wear of demand paths
- *  that cross it, and a seep from adjacent industrial/plant tiles (the plume spreads a tile). Then
- *  the whole field decays slowly, so removing a source (bulldoze the plant, calm the path, rewild)
- *  lets the land recover — the toxic legacy is lingering but reparable. Whole-map scan; gated to
- *  GROUND_RUNOFF_CADENCE by the caller. Live/non-hashed. */
-export function accumulateGroundPollution(state: AmbientState, map: GameMap): void {
-  const W = map.width;
-  const H = map.height;
-  const plants =
-    state.plantEmitters && state.plantEmitters.length > 0
-      ? new Set(state.plantEmitters.map((e) => e.tile))
-      : null;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = map.idx(x, y);
-      if (map.water[i] !== 0) continue; // ground only — water keeps its own runoff field
-      let load = 0;
-      const k = map.built[i]!;
-      // The tile's OWN source-ness: industry + dirty power poison the ground they stand on.
-      if (zoneTypeOf(k) === ZoneType.Industrial) load += GROUND_INDUSTRY * (1 + map.redline[i]! / 255);
-      if (plants && plants.has(i)) load += GROUND_PLANT;
-      // Demand-path litter: the trampled, littered ground of a beaten path leaches into the soil.
-      const wear = state.wear.get(i) ?? 0;
-      if (wear > 0) load += (wear / WEAR_MAX) * GROUND_LITTER;
-      // Seep from adjacent sources — the contamination spreads a tile into the surrounding land.
-      for (let d = 0; d < 4; d++) {
-        const nx = x + DIR_DX[d]!;
-        const ny = y + DIR_DY[d]!;
-        if (!map.inBounds(nx, ny)) continue;
-        const ni = map.idx(nx, ny);
-        if (map.water[ni] !== 0) continue;
-        if (zoneTypeOf(map.built[ni]!) === ZoneType.Industrial) {
-          load += GROUND_SEEP * (1 + map.redline[ni]! / 255);
-        } else if (plants && plants.has(ni)) {
-          load += GROUND_SEEP;
-        }
-      }
-      if (load > 0) layField(state.groundPollution, i, load, GROUND_POLL_MAX);
-    }
-  }
-  decayField(state.groundPollution, GROUND_DECAY); // lingers, but clears once the sources are gone
-  healGroundNearGreens(state, map); // de-paving heals the soil — pollution clears faster near greens
-}
-
-/** Is there a player green within {@link GREEN_HEAL_RADIUS} (Chebyshev) of (x, y)? */
-function nearPlayerGreen(map: GameMap, x: number, y: number): boolean {
-  for (let dy = -GREEN_HEAL_RADIUS; dy <= GREEN_HEAL_RADIUS; dy++) {
-    for (let dx = -GREEN_HEAL_RADIUS; dx <= GREEN_HEAL_RADIUS; dx++) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (map.inBounds(nx, ny) && GREEN_HEAL_KINDS.has(map.built[map.idx(nx, ny)]!)) return true;
-    }
-  }
-  return false;
-}
-
-/** Extra ground-pollution clearing on tiles near the player's greens: de-paving (greening) heals the
- *  contaminated soil it replaces (Maddy: healing redline helps clear ground pollution). Sparse pass
- *  over the live field; the de-paved land recovers faster than the lingering GROUND_DECAY alone. */
-function healGroundNearGreens(state: AmbientState, map: GameMap): void {
-  if (state.groundPollution.size === 0) return;
-  for (const [i, v] of state.groundPollution) {
-    if (v <= 0) continue;
-    const x = i % map.width;
-    const y = (i - x) / map.width;
-    if (!nearPlayerGreen(map, x, y)) continue;
-    const nv = v * GROUND_GREEN_HEAL;
-    if (nv <= 0.5) state.groundPollution.delete(i);
-    else state.groundPollution.set(i, nv);
-  }
-}
-
-/**
- * Flow water pollution DOWNSTREAM: each polluted water tile pushes WATER_FLOW_FRACTION
- * of its load to its lower-elevation water neighbours. Processed high→low elevation so
- * contamination cascades downhill in a single pass — so a community DOWNSTREAM of the
- * redlined industry is poisoned even with no polluting neighbour of its own (the
- * Hackensack: the harm is sited upstream, borne downstream). Live/non-hashed;
- * deterministic (sorted order); integer/rational only.
- */
-/** One smog-drift pass: carry WIND_FRACTION of every air-pollution tile's load ONE tile downwind
- *  (along `state.wind`), so plumes streak away from their sources instead of only diffusing in place.
- *  A conservative transfer — what leaves a tile arrives at its downwind neighbour (smog at the map
- *  edge blows off the map and leaves the system); the normal POLL_DECAY then fades the whole plume
- *  with distance/time. Air ignores substrate — it drifts over land and water alike. Departures are
- *  computed from the pre-pass values and arrivals applied AFTER the scan, so it's a clean
- *  simultaneous update (no within-pass cascade). Live/non-hashed; gated to WIND_CADENCE by the
- *  caller. */
-export function driftPollution(state: AmbientState, map: GameMap): void {
-  const { dx, dy } = state.wind;
-  if (dx === 0 && dy === 0) return;
-  if (state.pollution.size === 0) return;
-  const arrivals: Array<[number, number]> = []; // (downwind tile, amount) — applied after the scan
-  for (const [i, p] of state.pollution) {
-    if (p <= 0) continue;
-    const x = i % map.width;
-    const y = (i - x) / map.width;
-    const nx = x + dx;
-    const ny = y + dy;
-    if (!map.inBounds(nx, ny)) continue; // blows off the map edge — leaves the system (no wrap)
-    const move = p * WIND_FRACTION;
-    if (move <= 0) continue;
-    arrivals.push([map.idx(nx, ny), move]);
-    state.pollution.set(i, p - move);
-  }
-  for (const [ni, amt] of arrivals) layField(state.pollution, ni, amt, POLL_MAX);
-}
-
-/** Isotropic DIFFUSION of the smog field (Maddy: "smog diffuses in addition to blowing in the wind").
- *  Each tile sheds `coeff` of its value, split equally to its 4 neighbours; the share toward an
- *  off-map edge LEAVES the system (no wrap). Wind {@link driftPollution} streaks the plume downwind;
- *  this fattens/softens it so it isn't a hard streak. Departures from pre-pass values, arrivals after
- *  (a clean simultaneous update). Live/non-hashed; gated to WIND_CADENCE by the caller. */
-export function diffusePollution(state: AmbientState, map: GameMap, coeff = POLL_DIFFUSE_COEFF): void {
-  if (state.pollution.size === 0 || coeff <= 0) return;
-  const arrivals: Array<[number, number]> = [];
-  for (const [i, p] of state.pollution) {
-    if (p <= 0) continue;
-    const x = i % map.width;
-    const y = (i - x) / map.width;
-    const share = (p * coeff) / 4; // each direction's share; off-map shares are lost
-    if (share <= 0) continue;
-    for (let d = 0; d < 4; d++) {
-      const nx = x + DIR_DX[d]!;
-      const ny = y + DIR_DY[d]!;
-      if (!map.inBounds(nx, ny)) continue; // off-map → the share leaves the system
-      arrivals.push([map.idx(nx, ny), share]);
-    }
-    state.pollution.set(i, p - p * coeff); // sheds the full coeff fraction; only in-bounds shares arrive
-  }
-  for (const [ni, amt] of arrivals) layField(state.pollution, ni, amt, POLL_MAX);
-}
-
-/** A RAIN event (Maddy): rain washes airborne smog DOWN onto the land, then mobilises ground
- *  contamination into runoff that SEEKS water — each conversion diluted by a fraction < 1, so the
- *  pollution RELOCATES (toward the low-lying redlined/industrial banks) rather than vanishing. Two
- *  passes: (1) smog→ground over land (× RAIN_SMOG_DILUTION); (2) ground→adjacent water, else downhill
- *  to a lower-elevation land neighbour (runoff travels), × RAIN_RUNOFF_DILUTION. Live/non-hashed;
- *  gated to RAIN_CADENCE by the caller. Reparable (WastewaterWorks, remediation, source removal). */
-export function applyRain(state: AmbientState, map: GameMap): void {
-  // 1. Smog → ground: rain washes a fraction of each LAND tile's airborne smog down onto it.
-  const groundAdds: Array<[number, number]> = [];
-  for (const [i, p] of state.pollution) {
-    if (p <= 0 || map.water[i] !== 0) continue; // only over land (smog over water just falls into it)
-    const wash = p * RAIN_SMOG_DILUTION;
-    if (wash <= 0) continue;
-    groundAdds.push([i, wash]);
-    state.pollution.set(i, p - wash);
-  }
-  for (const [i, a] of groundAdds) layField(state.groundPollution, i, a, GROUND_POLL_MAX);
-
-  // 2. Ground → runoff: mobilise ground pollution toward an adjacent water body, else downhill to the
-  //    lowest lower-elevation land neighbour (the runoff travels; over passes it reaches the water).
-  const waterAdds: Array<[number, number]> = [];
-  const landAdds: Array<[number, number]> = [];
-  for (const [i, p] of state.groundPollution) {
-    if (p <= 0) continue;
-    const x = i % map.width;
-    const y = (i - x) / map.width;
-    let waterTarget = -1;
-    let lowLand = -1;
-    let lowE = map.elevation[i]!;
-    for (let d = 0; d < 4; d++) {
-      const nx = x + DIR_DX[d]!;
-      const ny = y + DIR_DY[d]!;
-      if (!map.inBounds(nx, ny)) continue;
-      const ni = map.idx(nx, ny);
-      if (map.water[ni] !== 0) {
-        waterTarget = ni; // a water neighbour is the sink — runoff reaches the bank
-        break;
-      }
-      if (map.elevation[ni]! < lowE) {
-        lowE = map.elevation[ni]!;
-        lowLand = ni;
-      }
-    }
-    const target = waterTarget !== -1 ? waterTarget : lowLand;
-    if (target === -1) continue; // flat inland with no water neighbour → stays put this storm
-    const move = p * RAIN_RUNOFF_DILUTION;
-    if (move <= 0) continue;
-    state.groundPollution.set(i, p - move);
-    (waterTarget !== -1 ? waterAdds : landAdds).push([target, move]);
-  }
-  for (const [i, a] of waterAdds) layField(state.waterPollution, i, a, WATER_POLL_MAX);
-  for (const [i, a] of landAdds) layField(state.groundPollution, i, a, GROUND_POLL_MAX);
-}
-
-export function flowWaterPollution(state: AmbientState, map: GameMap): void {
-  if (state.waterPollution.size === 0) return;
-  const tiles = [...state.waterPollution.keys()].filter((i) => map.water[i] !== 0);
-  tiles.sort((a, b) => map.elevation[b]! - map.elevation[a]! || a - b);
-  for (const i of tiles) {
-    const p = state.waterPollution.get(i) ?? 0;
-    if (p <= 0) continue;
-    const x = i % map.width;
-    const y = (i - x) / map.width;
-    const e = map.elevation[i]!;
-    const lower: number[] = [];
-    for (let d = 0; d < 4; d++) {
-      const nx = x + DIR_DX[d]!;
-      const ny = y + DIR_DY[d]!;
-      if (!map.inBounds(nx, ny)) continue;
-      const ni = map.idx(nx, ny);
-      if (map.water[ni] !== 0 && map.elevation[ni]! < e) lower.push(ni);
-    }
-    if (lower.length === 0) continue;
-    const move = (p * WATER_FLOW_FRACTION) / lower.length;
-    if (move <= 0) continue;
-    for (const ni of lower) layField(state.waterPollution, ni, move, WATER_POLL_MAX);
-    state.waterPollution.set(i, p - move * lower.length);
-  }
-}
-
-/**
- * Step road decay: each road tile crumbles (scaled by its redline grade — redlined roads
- * crumble, greenlined stay sound) UNLESS its neighborhood is cared-for (the best adjacent plot's
- * land value is at/above ROAD_CARED_LV), in which case the pavement recovers. So the player's
- * existing healing — raising a redlined district's land value — also fixes its roads; no separate
- * repair tool. Live/non-hashed; reads land value + grade, writes only roadDecay.
- */
-export function stepRoadDecay(state: AmbientState, map: GameMap): void {
-  const W = map.width;
-  const H = map.height;
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const i = map.idx(x, y);
-      if (!isRoadKind(map.built[i]!)) continue;
-      // Local care = the best land value among the plots this road serves (4-neighbours).
-      let caredLV = 0;
-      for (let d = 0; d < 4; d++) {
-        const nx = x + DIR_DX[d]!;
-        const ny = y + DIR_DY[d]!;
-        if (!map.inBounds(nx, ny)) continue;
-        caredLV = Math.max(caredLV, state.landValue.get(map.idx(nx, ny)) ?? 0);
-      }
-      if (caredLV >= ROAD_CARED_LV) {
-        const cur = state.roadDecay.get(i);
-        if (cur === undefined) continue;
-        const nv = cur - ROAD_RECOVER_RATE;
-        if (nv <= 0) state.roadDecay.delete(i);
-        else state.roadDecay.set(i, nv);
-      } else {
-        const crumble = ROAD_CRUMBLE_RATE * (map.redline[i]! / 255); // redlined crumbles, greenlined ~0
-        if (crumble > 0) layField(state.roadDecay, i, crumble, ROAD_DECAY_MAX);
-      }
-    }
-  }
-}
-
-/**
- * Reparation: a WastewaterWorks cleans contaminated water within WATER_TREAT_RADIUS,
- * strongest at the works and falling off with distance. The player's heal for the
- * poisoned creek — restore the water, restore the bankside community's land value and
- * health (the inverse of the harm). Rewilding the banks also helps implicitly (wild
- * ground sheds almost nothing). Live/non-hashed; few works, so cheap.
- */
-export function treatWaterPollution(state: AmbientState, map: GameMap): void {
-  if (state.waterPollution.size === 0) return;
-  for (let wi = 0; wi < map.built.length; wi++) {
-    if (map.built[wi] !== BuiltKind.WastewaterWorks) continue;
-    const wx = wi % map.width;
-    const wy = (wi - wx) / map.width;
-    for (let dy = -WATER_TREAT_RADIUS; dy <= WATER_TREAT_RADIUS; dy++) {
-      for (let dx = -WATER_TREAT_RADIUS; dx <= WATER_TREAT_RADIUS; dx++) {
-        const dist = Math.abs(dx) + Math.abs(dy);
-        if (dist > WATER_TREAT_RADIUS) continue;
-        const nx = wx + dx;
-        const ny = wy + dy;
-        if (!map.inBounds(nx, ny)) continue;
-        const ni = map.idx(nx, ny);
-        if (map.water[ni] === 0) continue;
-        const cur = state.waterPollution.get(ni);
-        if (cur === undefined) continue;
-        const nv = cur - WATER_TREAT_AMOUNT * (1 - dist / (WATER_TREAT_RADIUS + 1));
-        if (nv <= 0) state.waterPollution.delete(ni);
-        else state.waterPollution.set(ni, nv);
-      }
-    }
-  }
-}
-
-/** Number of urban (road / parking / built) tiles in the 8-neighbourhood of (x, y). */
-function urbanNeighbours(map: GameMap, x: number, y: number): number {
-  let n = 0;
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      if (dx === 0 && dy === 0) continue;
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!map.inBounds(nx, ny)) continue;
-      const k = map.built[map.idx(nx, ny)]!;
-      if (isRoadKind(k) || k === BuiltKind.ParkingLot || zoneTypeOf(k) !== ZoneType.None) n++;
-    }
-  }
-  return n;
-}
-
-/** Seed the live decay a century of car-culture left BEFORE the player arrives, so the city
- *  starts degraded rather than pristine: empty urban ground is already trampled brown (wear,
- *  by how hemmed-in it is) and the shorelines are already polluted (runoff). Derived from the
- *  worldgen world; the live layers evolve from here as the player heals or neglects the city. */
-export function seedDecay(state: AmbientState, map: GameMap): void {
-  const PLOT_SEED_RADIUS = 5; // how far a home "feels" the plots around it
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      const k = map.built[map.idx(x, y)]!;
-      // Trampled urban ground: hemmed-in empty land is already a beaten path.
-      if (k === BuiltKind.None && map.water[map.idx(x, y)] === 0) {
-        const urban = urbanNeighbours(map, x, y);
-        if (urban >= 2) state.wear.set(map.idx(x, y), Math.min(WEAR_MAX, urban * 26));
-        continue;
-      }
-      // Precomputed home wellbeing: a century in this environment, summed from the plots a
-      // home's citizens would visit nearby (industry drags it down, commerce/civic/new-urbanist
-      // lift it) — so homes START with a wellbeing reflecting where they sit, not zero.
-      if (zoneTypeOf(k) === ZoneType.Residential) {
-        let h = 0;
-        for (let dy = -PLOT_SEED_RADIUS; dy <= PLOT_SEED_RADIUS; dy++) {
-          for (let dx = -PLOT_SEED_RADIUS; dx <= PLOT_SEED_RADIUS; dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (!map.inBounds(nx, ny)) continue;
-            h += visitValue(map.built[map.idx(nx, ny)]!);
-          }
-        }
-        if (h !== 0) state.buildingHealth.set(map.idx(x, y), Math.max(-HEALTH_MAX, Math.min(HEALTH_MAX, h)));
-      }
-    }
-  }
-  // A century of runoff already in the water — saturate the urban shorelines.
-  for (let n = 0; n < 60; n++) accumulateWaterRunoff(state, map);
 }
 
 /**

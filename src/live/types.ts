@@ -6,7 +6,7 @@ import type { Rng } from '../engine/rng';
 import type { StopCategory } from '../citizens/itinerary';
 import type { TravelMode } from '../citizens/modes';
 import type { Household } from '../citizens/census';
-import { prevailingWind } from './wind';
+import { prevailingWind } from './fields/pollution';
 
 /** A grid-following sprite: float world position + heading + committed target tile. */
 export interface Mover {
