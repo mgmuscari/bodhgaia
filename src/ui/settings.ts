@@ -2,20 +2,14 @@
 // localStorage, no transcendental Math, so it headless-tests like the engine layers (on the pure-ui
 // allowlist). The localStorage IO lives in the sibling `settingsStore.ts`; the interactive shell in
 // `settingsPanel.ts`. Two setting classes (the determinism split, see docs/design/settings-menu.md):
-//   • live caps  — pure live-layer perf ceilings, mutable at runtime (ambientContent.applyLiveCaps);
+//   • live caps  — pure live-layer perf ceilings, mutable at runtime (live/caps.applyLiveCaps);
 //   • world size — feeds runPipeline at world creation, so it REGENERATES (apply-on-restart). It must
 //     never be live-mutated — a different size is a different (still deterministic) seeded world.
 
-/** Live agent/render perf ceilings — the "fast PC vs slow PC" knob. Mutable at runtime; the shape is
- *  the single source of truth for `ambientContent`'s caps (imported there as a type). */
-export interface LiveCaps {
-  carCap: number;
-  pedCap: number;
-  flockCap: number;
-  /** Citizens kept out on their round = total occupancy ÷ this (bigger → fewer out → lighter). */
-  citizenOutDivisor: number;
-  spawnPerSubstep: number;
-}
+import type { LiveCaps } from '../live/caps';
+
+/** Live agent/render perf ceilings — the shape lives in the live layer (live/caps.ts). */
+export type { LiveCaps };
 
 /** World-generation settings (apply-on-restart; they change the seeded world). */
 export interface WorldSettings {
