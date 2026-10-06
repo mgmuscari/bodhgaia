@@ -95,6 +95,40 @@ function washLevel(v: number): number {
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
 const ENCAMPMENT_WEAR = 225; // wear at/above which the heaviest-worn empty tile shows an encampment tent
 
+/** What a tile's desire-path wear bakes into the base: beaten earth in three depths, then junk, then tents. */
+function wearMarks(wear: number): { level: number; nJunk: number; nTents: number } {
+  return {
+    level: wear >= 200 ? 3 : wear >= 120 ? 2 : wear >= 50 ? 1 : 0,
+    nJunk: wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1,
+    nTents: wear >= ENCAMPMENT_WEAR ? Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12)) : 0,
+  };
+}
+
+/** A signature of exactly what wearMarks draws on a tile (0 = nothing), with or without the encampment layer. */
+function wearSig(wear: number, encampments: boolean): number {
+  const m = wearMarks(wear);
+  if (!encampments || wear < GARBAGE_WEAR) return m.level;
+  return m.level | (m.nJunk << 2) | (m.nTents << 4) | 64;
+}
+
+/** A device-pixel rect of the base canvas (a patched tile, for the GPU's sub-upload). */
+export interface BaseRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Tiles inclusive, like Camera.visibleTileRange. */
+interface TileBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+const BASE_BG = '#14121f';
+
 const BANDS = 4; // elevation bands per terrain kind
 
 // Atlas values are any drawable (the skin's materialized canvases).
@@ -227,6 +261,14 @@ export class Renderer {
   // per sprite image, per 8-way light direction, the warm near-half of its pixels.
   private beams: HeadlightBeam[] = [];
   private murkSig = 0; // signature of the water-pollution levels the cached base was drawn with
+  // The live marks the cached base was baked with — wear/junk/tents per tile (wearSig) and murk per water tile —
+  // so the slow refresh (refreshLiveMarks) re-draws only the tiles whose mark changed, each clipped to its own
+  // rect, instead of the whole base; `patchRects` are the device rects the last refresh re-drew (GPU sub-upload).
+  private readonly bakedMarks = new Map<number, number>();
+  private readonly bakedMurk = new Map<number, number>();
+  private marksDue = false;
+  private patchVersion = 0;
+  private patchRects: BaseRect[] = [];
   private readonly litCache = new WeakMap<object, (HTMLCanvasElement | null)[]>();
 
   constructor(
@@ -397,6 +439,20 @@ export class Renderer {
     this.baseDirty = true;
   }
 
+  /** The slow-cadence refresh of the live marks baked into the base (wear, junk, tents, murk): the next
+   *  renderFrame patches just the tiles whose mark changed. A base overlay may read live fields, so with one up
+   *  this stays a full rebuild. */
+  refreshLiveMarks(): void {
+    if (this.overlay) this.baseDirty = true;
+    else this.marksDue = true;
+  }
+
+  /** The base rects the last live-mark patch re-drew; `version` moves with each patch (the GPU path re-uploads
+   *  just these when the full baseVersion has not moved). */
+  basePatch(): { version: number; rects: readonly BaseRect[] } {
+    return { version: this.patchVersion, rects: this.patchRects };
+  }
+
   /**
    * Draw the cached BASE pass — terrain + built + power-line decoration + ecology
    * overlay — into the offscreen base canvas. Explicitly NOT the preview (which is
@@ -405,17 +461,30 @@ export class Renderer {
    * pixel-identical to today's terrain+built+overlay layer (CRITIC-YP2 / YP5).
    */
   private drawBase(world: WorldState, camera: Camera, ambient?: AmbientState): void {
-    const { map, parcels } = world;
     const ctx = this.baseCtx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.imageSmoothingEnabled = false; // base ctx scales BASE_TILE→ts; off = crisp
-    ctx.fillStyle = '#14121f';
+    ctx.fillStyle = BASE_BG;
     ctx.fillRect(0, 0, this.cssWidth, this.cssHeight);
-
-    const ts = camera.tileSize;
-    const range = camera.visibleTileRange();
     this.emissiveBuildings.length = 0; // re-collected this pass (refreshed on every base rebuild)
     this.unpoweredFootprints.length = 0; // likewise
+    this.bakedMarks.clear(); // re-recorded this pass
+    this.bakedMurk.clear();
+    this.paintTiles(world, camera, ambient, camera.visibleTileRange(), null);
+  }
+
+  /**
+   * The base's draw passes over the tiles of `range` — the tile loop, then the wear/junk/tents, then the poles
+   * and signals — in the one order both a full rebuild and a patch use. A FULL pass (`near` null) also collects
+   * the per-frame lists (lights, unpowered pips) and records the baked live marks; a PATCH (under a clip to one
+   * tile) replays only the draws of the tiles `near` it (the clipped tile ±1, which covers every overhang — a
+   * deck's lift, its shadow, an encampment) and records nothing.
+   */
+  private paintTiles(world: WorldState, camera: Camera, ambient: AmbientState | undefined, range: TileBox, near: TileBox | null): void {
+    const { map, parcels } = world;
+    const ctx = this.baseCtx;
+    const full = near === null;
+    const ts = camera.tileSize;
     // A street-furniture overlay at a tile.
     const ink = (key: string, dx: number, dy: number): void => {
       const img = this.roadInk.get(key);
@@ -436,6 +505,7 @@ export class Renderer {
         const picked = pickVariantKey(terrainKey, tx, ty, this.tileVariants);
         // polluted water is the same tile palette-swapped toward murk (snesTileset murkTiles), by level
         const murk = isWater && ambient ? washLevel(murkAt(map, ambient.waterPollution, tx, ty)) : 0;
+        if (full && murk > 0) this.bakedMurk.set(i, murk);
         const terrain =
           (murk > 0 ? this.atlas.get(`${picked}~m${murk}`) : undefined) ?? this.atlas.get(picked) ?? this.atlas.get(terrainKey)!;
         ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
@@ -607,7 +677,7 @@ export class Renderer {
           if (pa) poles.push({ x: tx, y: ty, axis: pa });
 
           // Collect this parcel's power state and lights; the decision is pure (isPowerConsumer).
-          if (!isT && pid !== 0) {
+          if (full && !isT && pid !== 0) {
             const pp = parcels.get(pid - 1);
             if (tx === pp.x && ty === pp.y) {
               const unpowered =
@@ -655,21 +725,24 @@ export class Renderer {
       const skinJunk = [0, 1, 2, 3].map((i) => this.sprites.get(`@sprite/junk/${i}`)).filter((x): x is AtlasImage => !!x);
       const ps = ts / BASE_TILE; // one art pixel
       const mapW2 = world.map.width;
+      const encampments = camera.zoom >= 2 && skinTents.length > 0;
       for (const [tile, wear] of ambient.wear) {
         const wx = tile % mapW2;
         const wy = (tile - wx) / mapW2;
-        const { sx, sy } = camera.worldToScreen(wx, wy);
-        if (sx < -ts || sx > this.cssWidth + ts || sy < -ts || sy > this.cssHeight + ts) continue;
+        if (near && (wx < near.x0 || wx > near.x1 || wy < near.y0 || wy > near.y1)) continue;
+        if (!this.wearShown(camera, wx, wy)) continue;
+        if (full) {
+          const sig = wearSig(wear, encampments);
+          if (sig !== 0) this.bakedMarks.set(tile, sig);
+        }
         const tileHash = Math.imul(((wx * 73856093) ^ (wy * 19349663)) >>> 0, 0x9e3779b1) >>> 0;
         {
           // beaten earth in three depths (no translucent wash over the pixel art)
-          const level = wear >= 200 ? 3 : wear >= 120 ? 2 : wear >= 50 ? 1 : 0;
+          const { level, nJunk, nTents } = wearMarks(wear);
           const o = camera.tileOrigin(wx, wy);
           const img = level > 0 ? this.sprites.get(`@wear/${level}`) : undefined;
           if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, o.dx, o.dy, ts, ts);
-          if (camera.zoom >= 2 && skinTents.length > 0 && wear >= GARBAGE_WEAR) {
-            const nJunk = wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1;
-            const nTents = wear >= ENCAMPMENT_WEAR ? Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12)) : 0;
+          if (encampments && wear >= GARBAGE_WEAR) {
             const pick = (set: AtlasImage[], k: number): AtlasImage =>
               set[(Math.imul((tileHash ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 16) % set.length]!;
             const items = [
@@ -698,6 +771,98 @@ export class Renderer {
 
     // Parked cars are no longer painted into the static base — they are the trip-cars that
     // parked (cars=trips, lots=storage), drawn dynamically in drawSprites from ambient.cars.
+  }
+
+  /** The wear pass's cull: a worn tile on (or within a tile of) the screen. */
+  private wearShown(camera: Camera, wx: number, wy: number): boolean {
+    const ts = camera.tileSize;
+    const { sx, sy } = camera.worldToScreen(wx, wy);
+    return !(sx < -ts || sx > this.cssWidth + ts || sy < -ts || sy > this.cssHeight + ts);
+  }
+
+  /** Compare the live marks with what the base was baked with and re-draw only the tiles that changed (or
+   *  rebuild it all when the change is wide). */
+  private patchLiveMarks(world: WorldState, camera: Camera, ambient: AmbientState): void {
+    const { map } = world;
+    const dirty = new Set<number>();
+    const encampments = camera.zoom >= 2 && [0, 1, 2].some((k) => this.sprites.has(`@sprite/tent/${k}`));
+    const marks = new Map<number, number>();
+    for (const [tile, wear] of ambient.wear) {
+      const wx = tile % map.width;
+      if (!this.wearShown(camera, wx, (tile - wx) / map.width)) continue;
+      const sig = wearSig(wear, encampments);
+      if (sig !== 0) marks.set(tile, sig);
+      if (sig !== (this.bakedMarks.get(tile) ?? 0)) dirty.add(tile);
+    }
+    for (const tile of this.bakedMarks.keys()) if (!marks.has(tile)) dirty.add(tile);
+    // murk is a 3×3 water average, so a neighbour's runoff can move a tile's level with no entry changing its own
+    const range = camera.visibleTileRange();
+    const murk = new Map<number, number>();
+    const consider = (j: number): void => {
+      if (murk.has(j)) return;
+      const x = j % map.width;
+      const y = (j - x) / map.width;
+      if (x < range.x0 || x > range.x1 || y < range.y0 || y > range.y1) return;
+      const k = kindOf(map, j);
+      if (k !== 'ocean' && k !== 'lake' && k !== 'river') return;
+      const level = washLevel(murkAt(map, ambient.waterPollution, x, y));
+      murk.set(j, level);
+      if (level !== (this.bakedMurk.get(j) ?? 0)) dirty.add(j);
+    };
+    for (const tile of ambient.waterPollution.keys()) {
+      const x = tile % map.width;
+      const y = (tile - x) / map.width;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (map.inBounds(x + dx, y + dy)) consider(map.idx(x + dx, y + dy));
+    }
+    for (const tile of this.bakedMurk.keys()) consider(tile);
+    if (dirty.size === 0) return;
+    const visible = (range.x1 - range.x0 + 1) * (range.y1 - range.y0 + 1);
+    if (dirty.size > Math.max(16, visible / 4)) {
+      this.baseDirty = true; // a wide change: one full rebuild is cheaper than many patches
+      return;
+    }
+    this.patchRects = [];
+    this.patchVersion++;
+    for (const tile of [...dirty].sort((a, b) => a - b)) {
+      const tx = tile % map.width;
+      this.patchTile(world, camera, ambient, range, tx, (tile - tx) / map.width);
+      const sig = marks.get(tile);
+      if (sig !== undefined) this.bakedMarks.set(tile, sig);
+      else this.bakedMarks.delete(tile);
+      const level = murk.get(tile);
+      if (level !== undefined) {
+        if (level > 0) this.bakedMurk.set(tile, level);
+        else this.bakedMurk.delete(tile);
+      }
+    }
+  }
+
+  /** Re-draw one tile of the base exactly as a full rebuild would: clip to its device rect, lay the
+   *  background, and replay every draw of the tiles around it in the full pass's order. */
+  private patchTile(world: WorldState, camera: Camera, ambient: AmbientState, range: TileBox, tx: number, ty: number): void {
+    const dpr = this.dpr;
+    const a = camera.tileOrigin(tx, ty);
+    const b = camera.tileOrigin(tx + 1, ty + 1);
+    const x0 = Math.max(0, Math.floor(a.dx * dpr));
+    const y0 = Math.max(0, Math.floor(a.dy * dpr));
+    const x1 = Math.min(this.base.width, Math.floor(b.dx * dpr));
+    const y1 = Math.min(this.base.height, Math.floor(b.dy * dpr));
+    if (x1 <= x0 || y1 <= y0) return; // off the canvas
+    const ctx = this.baseCtx;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.beginPath();
+    ctx.rect(x0, y0, x1 - x0, y1 - y0);
+    ctx.clip();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = BASE_BG;
+    ctx.fillRect(0, 0, this.cssWidth, this.cssHeight);
+    const near = { x0: tx - 1, y0: ty - 1, x1: tx + 1, y1: ty + 1 };
+    const box = { x0: Math.max(range.x0, near.x0), y0: Math.max(range.y0, near.y0), x1: Math.min(range.x1, near.x1), y1: Math.min(range.y1, near.y1) };
+    this.paintTiles(world, camera, ambient, box, near);
+    ctx.restore();
+    this.patchRects.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
   }
 
   /**
@@ -761,6 +926,10 @@ export class Renderer {
     if (sig !== this.murkSig) {
       this.murkSig = sig;
       this.baseDirty = true;
+    }
+    if (this.marksDue) {
+      this.marksDue = false;
+      if (!this.baseDirty) this.patchLiveMarks(world, camera, ambient);
     }
     this.composite(world, camera, ambient); // ambient → drawBase bakes wear/junk/tents under the agents
     this.drawSprites(world, camera, ambient);

@@ -107,11 +107,12 @@ function frameSetup(opts: { liveOn?: boolean; gpu?: boolean; hidden?: boolean; c
     },
     view: {
       renderer: {
-        invalidateBase: () => log.push('invalidateBase'),
+        refreshLiveMarks: () => log.push('refreshLiveMarks'),
         renderFrame: () => log.push('renderFrame'),
         render: () => log.push('render'),
         baseCanvas: () => null as never,
         baseVersion: () => 0,
+        basePatch: () => ({ version: 0, rects: [] }),
         emissiveBuildingList: () => [],
         headlightBeams: () => [],
       },
@@ -142,12 +143,12 @@ describe('createFrame', () => {
     expect(h.isDirty()).toBe(false);
     h.log.length = 0;
     h.frame(2032);
-    expect(h.log).toEqual(['hour', 'econ', 'sim:1016', 'invalidateBase', 'live.step', 'renderFrame']);
+    expect(h.log).toEqual(['hour', 'econ', 'sim:1016', 'refreshLiveMarks', 'live.step', 'renderFrame']);
     h.log.length = 0;
     h.frame(3100);
-    expect(h.log).not.toContain('invalidateBase'); // inside 2 s of the last refresh
+    expect(h.log).not.toContain('refreshLiveMarks'); // inside 2 s of the last refresh
     h.frame(4100);
-    expect(h.log).toContain('invalidateBase');
+    expect(h.log).toContain('refreshLiveMarks');
   });
 
   it('with life off on the CPU path, repaints only when dirty', () => {
