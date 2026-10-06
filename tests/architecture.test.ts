@@ -49,7 +49,7 @@ const growthDir = path.join(root, 'src/growth');
 // aggregates, so it imports nothing from ui/civic/ecology/worldgen.
 const economyDir = path.join(root, 'src/economy');
 // src/live is scanned fail-closed: the live agent layer (cars, peds, police, trains, birds + the live
-// fields) is being split out of ui/ambientContent.ts into here. It is renderer-side state but must stay
+// fields) lives here (split out of the old ui/ambientContent.ts). It is renderer-side state but must stay
 // headless (no DOM) and transcendental-free (every random choice draws from the ambient rng fork). It
 // reads the world via engine + citizens only — never ui/civic/ecology/worldgen.
 const liveDir = path.join(root, 'src/live');
@@ -121,9 +121,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/unhousedContent.ts',
   'src/ui/repairTools.ts',
   'src/ui/lineTools.ts',
-  'src/ui/reconcile.ts',
   'src/ui/dockContent.ts',
-  'src/ui/ambientContent.ts',
   'src/ui/parkingContent.ts',
   'src/ui/toolMenuContent.ts',
   'src/ui/techLayout.ts',

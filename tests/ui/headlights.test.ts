@@ -3,7 +3,7 @@ import { GameMap } from '../../src/engine/map';
 import { BuiltKind } from '../../src/engine/fabric';
 import { castHeadlights, BEAM_REACH, type Body } from '../../src/ui/headlights';
 import { ART_PX } from '../../src/ui/artGrid';
-import { CAR_LENGTH, CAR_WIDTH } from '../../src/ui/ambientContent';
+import { CAR_LENGTH, CAR_WIDTH } from '../../src/live/geometry';
 
 // Headlights stop at what they hit and light it (Maddy 2026-09-30: "headlights cast forward should stop
 // and illuminate the next sprite they hit"), instead of beams laid over everything.

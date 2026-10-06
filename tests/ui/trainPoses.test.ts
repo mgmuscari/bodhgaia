@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { trainPoses, type Train } from '../../src/ui/ambientContent';
+import { trainPoses } from '../../src/live/poses';
+import type { Train } from '../../src/live/types';
 
 // Trains move like the other sprite movers (Maddy 2026-09-30): every car interpolates (not just the
 // locomotive), and the consist rounds a bend in the same quarter arcs cars do, one car after another.
@@ -54,7 +55,8 @@ describe('trainPoses', () => {
   });
 });
 
-import { syncTrainLegs, snapshotMovers, type AmbientState } from '../../src/ui/ambientContent';
+import { syncTrainLegs, snapshotMovers } from '../../src/live/poses';
+import type { AmbientState } from '../../src/live/types';
 
 describe('trains run on the shared mover path (Maddy 2026-09-30: "move train sprites into the same mover code")', () => {
   it('each car is a Mover the substep snapshot covers, so a frame between substeps blends like a car', () => {

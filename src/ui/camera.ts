@@ -4,6 +4,8 @@
 // is BASE_TILE * zoom pixels wide, with zoom an integer in [1, 4] for crisp
 // pixel-art scaling.
 
+import { clamp } from '../engine/clamp';
+
 export const BASE_TILE = 16;
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 4;
@@ -23,10 +25,6 @@ export interface TileRange {
   y0: number;
   x1: number;
   y1: number;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, v));
 }
 
 export class Camera {

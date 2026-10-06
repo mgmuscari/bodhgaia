@@ -20,6 +20,7 @@
 // build tool (see the tools layer). See the tech-tree + build-tools PRPs.
 
 import { GameMap, Water, FNV_OFFSET, FNV_PRIME, fnv1aBytes } from './map';
+import { floorClampByte } from './clamp';
 
 export const BuiltKind = {
   None: 0,
@@ -172,8 +173,6 @@ export interface Parcel {
   condition: number;
 }
 
-const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : Math.floor(v));
-
 /** A ParcelStore as plain columns (see exportColumns). */
 export interface ParcelColumns {
   x: number[];
@@ -311,7 +310,7 @@ export class ParcelStore {
 
   /** Set condition, clamped to 0..255 (0 = derelict, 255 = pristine). */
   setCondition(i: number, v: number): void {
-    this.condition[i] = clampByte(v);
+    this.condition[i] = floorClampByte(v);
   }
 
   setDensity(i: number, v: number): void {

@@ -4,6 +4,8 @@
 // GLSL in satelliteShader.ts MIRRORS this — keep the two in sync (the unit tests pin the numbers).
 // IO-free + pure (Math.sin is fine here — this module is NOT on the pure-ui allowlist). Time is seconds.
 
+import { clamp01 } from '../engine/clamp';
+
 export const DAYSPEED = 0.04; // sun-arc rate (full day/night ≈ 2π/DAYSPEED ≈ 157s); shared with the shader
 const NIGHT_FLOOR = 0.45; // darkest the scene gets at night (never fully black)
 
@@ -22,8 +24,4 @@ export function dayNightBrightness(tSec: number): number {
   const alt = Math.sin(tSec * DAYSPEED);
   const t = clamp01((alt + 0.2) / 0.5); // smoothstep(-0.2, 0.3, alt)
   return NIGHT_FLOOR + (1 - NIGHT_FLOOR) * (t * t * (3 - 2 * t));
-}
-
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
 }

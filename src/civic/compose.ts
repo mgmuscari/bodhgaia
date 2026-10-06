@@ -1,5 +1,5 @@
-// Composite sim orchestrator: one deterministic step that advances effort,
-// ecology, and civic in a FIXED order (effort → ecology → civic), owning the
+// Composite sim orchestrator: one deterministic step that advances ecology and
+// civic in a FIXED order (ecology → civic), owning the
 // post-tick report recomputes so the cached means stay coherent across the
 // 10/50 cadence boundaries. main.ts calls this once per sim tick and only READS
 // `deps` for rendering — the cadence logic and the eco/civic caches live here,
@@ -7,12 +7,12 @@
 //
 // Headless + transcendental-Math-free (the architecture guard scans src/civic). The step
 // draws no randomness today (traffic is agent-driven in the live layer, not simulated here).
+// Communal effort is NOT accrued here: the stock-and-flow economy (src/economy) owns it.
 // Sanctioned dependency direction: civic → engine, ecology, tech (the composite wires them;
 // none imports back). NO worldgen edge — `world` is typed STRUCTURALLY as {map, parcels}.
 
 import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
-import { accrue } from '../tech/effort';
 import type { TechState } from '../tech/state';
 import { ECO_CADENCE } from '../ecology/influence';
 import { ecologyTick } from '../ecology/tick';
@@ -35,60 +35,44 @@ export interface SimWorld {
  * The mutated-in-place sim state. `partition` is the LIVE NeighborhoodMap
  * (replaced on each civic refresh) that main.ts reads to resolve a repair's
  * (x, y) → neighborhoodId between refreshes. `ecoMeans`/`civicMeans` are the
- * caches effort.ts consumes — undefined until their first recompute (effort then
- * contributes 0 for that term, the pre-civic degrade).
+ * caches the economy's wellbeing reading consumes — undefined until their first
+ * recompute (that term then contributes 0, the pre-civic degrade).
  */
 export interface SimDeps {
   world: SimWorld;
   tech: TechState;
   civic: CivicState;
   partition: NeighborhoodMap;
-  /** World seed — the root for any per-tick rng fork a sim layer needs (none draws one today). */
-  seed: string;
   ecoMeans?: { soil: number; flora: number; fauna: number };
   civicMeans?: { belonging: number; voice: number; trust: number };
-  /** 'tick' (default): effort accrues every sim tick, the original endless counter. 'economy': the
-   *  stock-and-flow economy (src/economy) owns effort, so the tick accrues nothing. */
-  effortAccrual?: 'tick' | 'economy';
 }
 
 /** What fired this tick — for the shell's dirty-marking. */
 export interface SimTickResult {
   ecoTicked: boolean;
   civicTicked: boolean;
-  /** Effort accrued this tick (always ≥ 1). */
-  effortGained: number;
 }
 
 /**
- * Advance the composite sim by one tick, fixed order effort → ecology → civic:
+ * Advance the composite sim by one tick, fixed order ecology → civic:
  *
- *  1. EFFORT accrues EVERY tick, consuming the means CACHED from the PRIOR
- *     recompute (stale-by-cadence but deterministic — effort runs first, so it
- *     sees the last recompute's means, never this tick's).
- *  2. ECOLOGY at tick>0 && %ECO_CADENCE: ecologyTick, THEN recompute ecologyReport
+ *  1. ECOLOGY at tick>0 && %ECO_CADENCE: ecologyTick, THEN recompute ecologyReport
  *     and write `deps.ecoMeans`.
- *  3. CIVIC at tick>0 && %CIVIC_CADENCE: recompute the partition, REMAP the civic
+ *  2. CIVIC at tick>0 && %CIVIC_CADENCE: recompute the partition, REMAP the civic
  *     state onto it, run civicTick, THEN recompute civicReport and write
  *     `deps.civicMeans`. The capabilities are resolved from tech HERE (passed to
  *     dynamics as booleans, so civic never imports tech for the consume).
  *
- * Returns the per-tick fire flags + effort gained.
+ * Returns the per-tick fire flags. Effort is untouched — the economy owns it.
  */
 export function simTick(deps: SimDeps, tick: number): SimTickResult {
-  // 1. Effort every tick, on the prior recompute's cached means.
-  const effortGained =
-    deps.effortAccrual === 'economy'
-      ? 0
-      : accrue(deps.tech, { parcels: deps.world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }, 1);
+  // Traffic is AGENT-DRIVEN (the 1989 aggregate O-D field is retired): the live travelers
+  // (citizen cars in the ambient layer) lay a live traffic density as they actually drive, route
+  // AROUND it, and pedestrians shun it. Nothing here touches traffic — the seeded WORLD stays
+  // reproducible while the dynamic traffic layer emerges from the agents.
+  // See docs/decisions/live-agent-layer.md.
 
-  // 2. Traffic is AGENT-DRIVEN (the 1989 aggregate O-D field is retired): the live travelers
-  //    (citizen cars in the ambient layer) lay a live traffic density as they actually drive, route
-  //    AROUND it, and pedestrians shun it. Nothing here touches traffic — the seeded WORLD stays
-  //    reproducible while the dynamic traffic layer emerges from the agents.
-  //    See docs/decisions/live-agent-layer.md.
-
-  // 3. Ecology cadence → tick + recompute means.
+  // 1. Ecology cadence → tick + recompute means.
   let ecoTicked = false;
   if (tick > 0 && tick % ECO_CADENCE === 0) {
     ecologyTick(deps.world.map);
@@ -97,7 +81,7 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
     ecoTicked = true;
   }
 
-  // 4. Civic cadence → partition refresh, remap, dynamics, recompute means.
+  // 2. Civic cadence → partition refresh, remap, dynamics, recompute means.
   let civicTicked = false;
   if (tick > 0 && tick % CIVIC_CADENCE === 0) {
     const newPartition = computeNeighborhoods(deps.world.map);
@@ -118,5 +102,5 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
     civicTicked = true;
   }
 
-  return { ecoTicked, civicTicked, effortGained };
+  return { ecoTicked, civicTicked };
 }

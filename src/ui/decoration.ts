@@ -6,6 +6,7 @@
 
 import type { GameMap } from '../engine/map';
 import { isRoadKind, BuiltKind, isLimitedAccessBoundary, freewayCrossing } from '../engine/fabric';
+import { DIRS4_EWSN, DIRS4_NESW } from '../engine/dirs';
 
 /** Power poles fall every Nth tile along a street/avenue run. */
 export const POLE_SPACING = 4;
@@ -112,16 +113,9 @@ function isLinkKind(k: number): boolean {
   return k === BuiltKind.RoadStreet || k === BuiltKind.RoadRamp;
 }
 
-const DIRS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-
 function roadNeighbours(map: GameMap, x: number, y: number): Array<[number, number]> {
   const out: Array<[number, number]> = [];
-  for (const [dx, dy] of DIRS) if (roadish(map, x + dx, y + dy)) out.push([x + dx, y + dy]);
+  for (const [dx, dy] of DIRS4_EWSN) if (roadish(map, x + dx, y + dy)) out.push([x + dx, y + dy]);
   return out;
 }
 
@@ -180,7 +174,9 @@ export function crosswalkMask(map: GameMap, x: number, y: number): number {
   const legacyJunction = (jx: number, jy: number): boolean => lineRoadAt(map, jx, jy) && roadNeighbours(map, jx, jy).length >= 3;
   const oneWide = !wideRoadAt(map, x, y) && roadNeighbours(map, x, y).length <= 2;
   let m = 0;
-  for (const [dx, dy, bit] of [[0, -1, 1], [1, 0, 2], [0, 1, 4], [-1, 0, 8]] as const) {
+  for (let k = 0; k < 4; k++) {
+    const [dx, dy] = DIRS4_NESW[k]!;
+    const bit = 1 << k; // N=1 E=2 S=4 W=8
     const nx = x + dx;
     const ny = y + dy;
     // an approach: the road runs toward the box (narrow across, so this is a lane meeting it, not a band
