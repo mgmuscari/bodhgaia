@@ -4,11 +4,10 @@ import {
   CIVIC_OVERLAY_ALPHA,
   civicOverlayTint,
   civicLegendLine,
-  cycleComposite,
   compositeKeyFor,
   type CivicOverlayView,
-  type CompositeState,
 } from '../../src/ui/civicOverlayContent';
+import { cycleComposite, type CompositeState } from '../../src/ui/overlayRegistry';
 
 // civicOverlayContent is pure presentation (allowlisted, DOM-free, no
 // transcendental Math): the C-overlay views/ramps/legends AND the E/C exclusivity
