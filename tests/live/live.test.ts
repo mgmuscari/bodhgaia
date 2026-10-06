@@ -25,7 +25,6 @@ import {
 } from '../../src/live/types';
 import { stepAmbient } from '../../src/live/step';
 import {
-  ingestTrips,
   stopReachable,
   skipJammedStop,
   parkOwnedCarSomewhere,
@@ -34,6 +33,7 @@ import {
   abandonOwnedCar,
   degradeAbandonedCar,
 } from '../../src/live/agents';
+import { spawnTrips } from './tripFixture';
 import {
   chooseMode,
   tripEvaporates,
@@ -217,13 +217,13 @@ describe('isCarRoad (the traversability predicate — closes the spawn-vs-move g
   });
 });
 
-describe('ingestTrips (cars ARE the sim O-D trips)', () => {
+describe('trip fixture (path-following trip-cars)', () => {
   it('spawns a car per trip that follows its committed path and parks on arrival', () => {
     const map = new GameMap(16, 8);
     for (let x = 2; x <= 8; x++) map.built[map.idx(x, 4)] = BuiltKind.RoadStreet;
     const state = createAmbientState();
     const path = [map.idx(2, 4), map.idx(3, 4), map.idx(4, 4), map.idx(5, 4)];
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     expect(state.cars.length).toBe(1);
     const car = state.cars[0]!;
     expect(car.x).toBe(2); // starts at the path origin
@@ -244,8 +244,8 @@ describe('ingestTrips (cars ARE the sim O-D trips)', () => {
     const trip = { path: [map.idx(2, 4), map.idx(3, 4), map.idx(4, 4)] };
     const a = createAmbientState();
     const b = createAmbientState();
-    ingestTrips(a, [{ path: [map.idx(1, 4)] }, trip], map); // first trip too short → skipped
-    ingestTrips(b, [{ path: [map.idx(1, 4)] }, trip], map);
+    spawnTrips(a, [{ path: [map.idx(1, 4)] }, trip], map); // first trip too short → skipped
+    spawnTrips(b, [{ path: [map.idx(1, 4)] }, trip], map);
     expect(a.cars.length).toBe(1);
     expect(a.cars).toEqual(b.cars); // deterministic
   });
@@ -1946,7 +1946,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const { map, path } = roadWithLot();
     const state = createAmbientState();
     setParkingLots(state, lotInfo(map));
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     const rng = ambientFork('park');
     let parked = false;
     for (let i = 0; i < 120 && !parked; i++) {
@@ -1963,7 +1963,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
   it('with no lots, a trip-car street-parks at its destination (does not despawn)', () => {
     const { map, path } = roadWithLot(); // lots NOT published to the ambient state
     const state = createAmbientState();
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     const rng = ambientFork('nolot');
     const car = state.cars[0]!;
     for (let i = 0; i < 120 && !car.parked; i++) stepAmbient(state, map, rng, 50);
@@ -1975,7 +1975,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const { map, path } = roadWithLot();
     const state = createAmbientState();
     setParkingLots(state, lotInfo(map));
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     const rng = ambientFork('parkped');
     for (let i = 0; i < 120 && !state.cars.some((c) => c.parked); i++) stepAmbient(state, map, rng, 50);
     expect(state.cars.some((c) => c.parked)).toBe(true);
@@ -1987,7 +1987,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const { map, path } = roadWithLot();
     const state = createAmbientState();
     setParkingLots(state, lotInfo(map));
-    ingestTrips(state, Array.from({ length: 17 }, () => ({ path })), map); // more cars than one tile holds
+    spawnTrips(state, Array.from({ length: 17 }, () => ({ path })), map); // more cars than one tile holds
     const rng = ambientFork('cap');
     // Budget is generous: 17 cars ingested onto ONE tile at once lockstep under the strong traffic
     // pileup and take a while to filter to the lots. Each per-tile lot must hold at most its 3x3 stalls.
@@ -2012,7 +2012,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const { map, path } = roadWithLot();
     const state = createAmbientState();
     setParkingLots(state, lotInfo(map));
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     const rng = ambientFork('bound');
     const car = state.cars[0]!;
     for (let i = 0; i < 120 && !car.parked; i++) stepAmbient(state, map, rng, 50);
@@ -2027,7 +2027,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const { map, path } = roadWithLot();
     const state = createAmbientState();
     setParkingLots(state, lotInfo(map));
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     const rng = ambientFork('wait');
     const car = state.cars[0]!;
     for (let i = 0; i < 120 && !car.parked; i++) stepAmbient(state, map, rng, 50);
@@ -2063,7 +2063,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const state = createAmbientState();
     const path: number[] = [];
     for (let x = 2; x <= 6; x++) path.push(map.idx(x, 5));
-    ingestTrips(state, [{ path }], map); // no lots → street-park
+    spawnTrips(state, [{ path }], map); // no lots → street-park
     const rng = ambientFork('curbdir');
     const car = state.cars[0]!;
     for (let i = 0; i < 120 && !car.parked; i++) stepAmbient(state, map, rng, 50);
@@ -2083,7 +2083,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const state = createAmbientState();
     const path: number[] = [];
     for (let x = 2; x <= 8; x++) path.push(map.idx(x, 5));
-    ingestTrips(state, [{ path }, { path }], map); // two cars, same destination
+    spawnTrips(state, [{ path }, { path }], map); // two cars, same destination
     const rng = ambientFork('crowd');
     for (let i = 0; i < 150 && state.cars.filter((c) => c.parked).length < 2; i++) {
       stepAmbient(state, map, rng, 50);
@@ -2103,8 +2103,8 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const b = createAmbientState();
     setParkingLots(a, lotInfo(map));
     setParkingLots(b, lotInfo(map));
-    ingestTrips(a, [{ path }], map);
-    ingestTrips(b, [{ path }], map);
+    spawnTrips(a, [{ path }], map);
+    spawnTrips(b, [{ path }], map);
     const ra = ambientFork('det');
     const rb = ambientFork('det');
     for (let i = 0; i < 150; i++) {
@@ -2155,7 +2155,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     const { map, path } = roadWithLot();
     const state = createAmbientState();
     setParkingLots(state, lotInfo(map));
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     const car = state.cars[0]!;
     expect(typeof car.tint).toBe('number'); // a colour is bound to the car at spawn
     const spawnTint = car.tint;
@@ -2174,7 +2174,7 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
       { path: [map.idx(10, 5), map.idx(11, 5), map.idx(12, 5)] },
       { path: [map.idx(15, 5), map.idx(16, 5), map.idx(17, 5)] },
     ];
-    ingestTrips(state, trips, map);
+    spawnTrips(state, trips, map);
     const tints = new Set(state.cars.map((c) => c.tint));
     expect(tints.size).toBeGreaterThan(1); // not all the same colour
   });
@@ -2195,7 +2195,7 @@ describe('building health from citizen trips (plot-use wellbeing carried home)',
 
   function runUntilDeposit(map: GameMap, path: number[], home: number, state: ReturnType<typeof createAmbientState>): boolean {
     const rng = ambientFork('health');
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     for (let i = 0; i < 800; i++) {
       stepAmbient(state, map, rng, 50);
       if ((state.buildingHealth.get(home) ?? 0) !== 0) return true;
@@ -2212,7 +2212,7 @@ describe('building health from citizen trips (plot-use wellbeing carried home)',
     const path: number[] = [];
     for (let x = 2; x <= 8; x++) path.push(map.idx(x, 4));
     const probe = createAmbientState();
-    ingestTrips(probe, [{ path }], map);
+    spawnTrips(probe, [{ path }], map);
     expect(probe.cars.length).toBe(0); // short → walks
     const ped = probe.peds.find((p) => p.homeTile === home);
     expect(ped).toBeDefined(); // a walking citizen tagged with its home
@@ -2240,7 +2240,7 @@ describe('building health from citizen trips (plot-use wellbeing carried home)',
     const road = make(BuiltKind.RoadStreet);
     const rs = createAmbientState();
     const rng = ambientFork('roadwalk');
-    ingestTrips(rs, [{ path: road.path }], road.map);
+    spawnTrips(rs, [{ path: road.path }], road.map);
     for (let i = 0; i < 800 && rs.peds.some((p) => p.phase !== undefined); i++) stepAmbient(rs, road.map, rng, 50);
     // the road-walk toll cancels the small commercial value → no positive deposit
     expect(rs.buildingHealth.get(road.home) ?? 0).toBeLessThanOrEqual(0);
@@ -2249,7 +2249,7 @@ describe('building health from citizen trips (plot-use wellbeing carried home)',
   it('mode choice: a long residential trip DRIVES (car), a short one WALKS (ped)', () => {
     const short = citizenTrip(BuiltKind.CommercialStrip); // 7-tile path
     const s = createAmbientState();
-    ingestTrips(s, [{ path: short.path }], short.map);
+    spawnTrips(s, [{ path: short.path }], short.map);
     expect(s.cars.length).toBe(0);
     expect(s.peds.length).toBe(1);
 
@@ -2260,7 +2260,7 @@ describe('building health from citizen trips (plot-use wellbeing carried home)',
     const longPath: number[] = [];
     for (let x = 2; x <= 20; x++) longPath.push(map.idx(x, 4));
     const l = createAmbientState();
-    ingestTrips(l, [{ path: longPath }], map);
+    spawnTrips(l, [{ path: longPath }], map);
     expect(l.peds.length).toBe(0);
     expect(l.cars.length).toBe(1);
     expect(l.cars[0]!.homeTile).toBe(map.idx(2, 3)); // long trip drives, still a tagged citizen
@@ -2278,7 +2278,7 @@ describe('building health from citizen trips (plot-use wellbeing carried home)',
     map.built[map.idx(2, 3)] = BuiltKind.Offices; // origin is commercial now, not a home
     const state = createAmbientState();
     const rng = ambientFork('freight');
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     expect(state.cars[0]!.homeTile).toBeUndefined(); // freight — no home
     for (let i = 0; i < 500; i++) stepAmbient(state, map, rng, 50);
     expect(state.buildingHealth.size).toBe(0);
@@ -2366,7 +2366,7 @@ describe('desire-path wear (pedestrians trample wild green into brown + trash)',
     map.built[map.idx(7, 3)] = BuiltKind.CommercialStrip; // destination
     const state = createAmbientState();
     const path = [2, 3, 4, 5, 6, 7].map((x) => map.idx(x, 4));
-    ingestTrips(state, [{ path }], map);
+    spawnTrips(state, [{ path }], map);
     expect(state.peds.length).toBe(0); // short, but the freeway forces it to drive
     expect(state.cars.length).toBe(1);
   });
