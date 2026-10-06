@@ -56,8 +56,8 @@ import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
 import { plantPollution } from './growth/power';
-import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
-import { CURRENT, writeSlot, readSlot, deleteSlot, listSlots, loadSlot, newCity, exportFile, importFile } from './save/store';
+import { restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
+import { CURRENT, readSlot } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
 import { setPixelFavicon, installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
@@ -65,6 +65,7 @@ import { inspectReadout } from './ui/inspectContent';
 import { createPowerController } from './app/power';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
 import { createEconomyController } from './app/economy';
+import { createSaves } from './app/saves';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -295,8 +296,7 @@ export function main(save: SaveV1 | null = null): void {
 
   // ── The economy (src/app/economy.ts): funds, perishable effort, burnout, approval and rent, stepped every
   // in-game hour from the frame loop. The hour tells the shell what to refresh through `ui`; autosave is read
-  // at call time (the Saves wiring below fills it in and blanks it on load / new city).
-  let autosave = (): void => {};
+  // at call time (the Saves wiring is mounted below; it blanks autosave on load / new city).
   const economy = createEconomyController({
     map: world.map,
     parcels: world.parcels,
@@ -306,7 +306,7 @@ export function main(save: SaveV1 | null = null): void {
     live: ambientState,
     powerGrid: power.grid,
     initial: save?.econ ?? null,
-    autosave: () => autosave(),
+    autosave: () => saves.autosave(),
     ui: {
       practiceGranted: () => {
         toolbar.refresh();
@@ -567,14 +567,13 @@ export function main(save: SaveV1 | null = null): void {
   // a click on the top bar (funds and the rest) opens the Budget window (B, via the key table below)
   document.querySelector('.pulse-dock')?.addEventListener('click', () => budgetPanel.toggle());
 
-  // ── Save/load (src/save): the city autosaves into the CURRENT slot and a reload resumes it. The Saves
-  // window (S, or the palette's disk) saves into new slots, loads, exports and imports `.bodhi` files.
+  // ── Save/load (src/app/saves.ts): the city autosaves into the CURRENT slot (hourly via the economy, and on
+  // tab-hide / pagehide) and a reload resumes it; the Saves window (S, or the palette's disk) backs the slots.
   const cityTitle = save?.name ?? cityName(createRng(seed).fork('city-name'));
-  const captureNow = (): SaveV1 =>
-    captureGame({
+  const saves = createSaves({
+    parts: () => ({
       seed,
       name: cityTitle,
-      savedAt: Date.now(),
       world,
       tech,
       civic,
@@ -582,47 +581,12 @@ export function main(save: SaveV1 | null = null): void {
       live: ambientState,
       tick: currentTick,
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
-    });
-  let saving = false;
-  autosave = (): void => {
-    if (saving) return; // one write at a time
-    saving = true;
-    writeSlot(CURRENT, captureNow())
-      .catch((e: unknown) => console.warn('[save] autosave failed:', e))
-      .finally(() => {
-        saving = false;
-      });
-  };
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) autosave(); // leaving the tab (or closing it) keeps the city
-  });
-  window.addEventListener('pagehide', () => autosave());
-  const savesPanel = mountSavesPanel(document.body, {
-    list: listSlots,
-    saveNew: async () => {
-      const snap = captureNow();
-      await writeSlot(`slot-${snap.savedAt}`, snap);
-    },
-    load: async (id) => {
-      autosave = () => {}; // don't let a last autosave overwrite the slot being loaded
-      await loadSlot(id);
-    },
-    remove: deleteSlot,
-    exportSave: async (id) => {
-      const snap = id ? await readSlot(id) : captureNow();
-      if (snap) await exportFile(snap);
-    },
-    importFile: async (file) => {
-      const snap = await importFile(file);
-      await writeSlot(`slot-${Date.now()}`, { ...snap, savedAt: snap.savedAt || Date.now() });
-    },
-    newCity: async () => {
-      autosave = () => {};
-      await newCity();
-    },
+    }),
+    lifecycle: { document, window },
+    mountPanel: (actions) => mountSavesPanel(document.body, actions),
     onToggle: () => toolbar.refreshMeta(),
   });
-  panels.saves = savesPanel;
+  panels.saves = saves;
 
   // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
   // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
@@ -642,7 +606,7 @@ export function main(save: SaveV1 | null = null): void {
         budgetPanel.toggle();
         break;
       case 'saves':
-        savesPanel.toggle();
+        saves.toggle();
         break;
       case 'life':
         setAmbient(!ambientOn);
