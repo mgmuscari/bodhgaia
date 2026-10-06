@@ -1,19 +1,25 @@
 // Live-layer POLICE: cruisers out of the precincts, the scatter/chase ghost cadence, hunting and
 // patrol steps that avoid community refuges (safe zones), and the arrest odds that track the redline
-// grade. Cut verbatim from ui/ambientContent.ts. The arrest sweep itself (stepArrests) is still there:
-// it calls the owned-car chain (abandonOwnedCar) and depositHealth, which move with the agents (L11).
+// grade, and the arrest sweep that lays police violence and trauma where it lands. Cut verbatim from
+// ui/ambientContent.ts.
 
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import type { Rng } from '../engine/rng';
+import { layField } from '../citizens/field';
 import {
   AMBUSH_LEAD,
   ARREST_CHANCE_MAX,
+  ARREST_DRAIN,
+  ARREST_RADIUS,
+  ARREST_TRAUMA,
   CAR_SPEED,
   CHASE_LEN,
   CRUISER_CAP,
   CRUISER_LIFE,
   HUNT_RADIUS,
+  POLICE_VIOLENCE_LAY,
+  POLICE_VIOLENCE_MAX,
   REFUGE_KINDS,
   SAFE_RADIUS,
   SCATTER_LEN,
@@ -23,6 +29,7 @@ import { DIR_DX, DIR_DY } from './geometry';
 import type { AmbientState, Mover, Ped } from './types';
 import { advanceMover, blockedAhead } from './motion';
 import { adjacentRoad, canDrive, carPassable } from './network';
+import { abandonOwnedCar, depositHealth } from './agents';
 
 /** The set of tiles within SAFE_RADIUS of any community-power building — refuge the cruisers avoid
  *  and never sweep. Built fresh from the map (sparse refuges); the player grows it by building. */
@@ -198,4 +205,48 @@ export function stepCruisers(state: AmbientState, map: GameMap, rng: Rng, safe?:
       nextPatrolStep(map, x, y, fromDir, rng, recent, target, safe), blocked,
     );
   });
+}
+
+/**
+ * Arrest sweep: each cruiser may seize the nearest on-foot citizen within ARREST_RADIUS — removing
+ * them from the street AND draining a person from their household's occupancy — with a probability
+ * that SCALES WITH the redline grade under the cruiser (arrestChance: 0 at greenlined, max at fully
+ * redlined). For nothing: no cause, only the grade. The player ends it by defunding the precinct
+ * (no precinct → no cruisers → no arrests). Renderer-side; deterministic in `rng`.
+ */
+export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: ReadonlySet<number>): void {
+  if (state.cruisers.length === 0 || state.peds.length === 0) return;
+  for (const c of state.cruisers) {
+    const cx = Math.round(c.x);
+    const cy = Math.round(c.y);
+    if (!map.inBounds(cx, cy)) continue;
+    if (safe?.has(map.idx(cx, cy))) continue; // no arrests inside a community refuge
+    // Arrest pressure scales with how redlined the ground is (0 at greenlined) — no threshold.
+    if (!rng.chance(arrestChance(map.redline[map.idx(cx, cy)]!))) continue;
+    // Nearest on-foot citizen within reach (riders/indoors aren't on the street).
+    let victim = -1;
+    let best = ARREST_RADIUS + 1;
+    for (let i = 0; i < state.peds.length; i++) {
+      const p = state.peds[i]!;
+      if (p.phase === 'inside' || p.phase === 'driving') continue;
+      const d = Math.abs(Math.round(p.x) - cx) + Math.abs(Math.round(p.y) - cy);
+      if (d < best) {
+        best = d;
+        victim = i;
+      }
+    }
+    if (victim < 0) continue;
+    const taken = state.peds[victim]!;
+    if (taken.homeTile !== undefined) {
+      const cur = state.occupancy.get(taken.homeTile);
+      if (cur !== undefined) state.occupancy.set(taken.homeTile, Math.max(0, cur - ARREST_DRAIN));
+      depositHealth(state, taken.homeTile, -ARREST_TRAUMA); // the trauma craters the household's wellbeing
+    }
+    // The taken citizen is removed from the game, so their car is ABANDONED where they were seized —
+    // a derelict dumped on an empty tile that rusts into ground pollution (not driven home).
+    abandonOwnedCar(state, map, taken);
+    // Stain the spot — the police-violence record (the anti-crime-map) builds where arrests fall.
+    layField(state.policeViolence, map.idx(Math.round(taken.x), Math.round(taken.y)), POLICE_VIOLENCE_LAY, POLICE_VIOLENCE_MAX);
+    state.peds.splice(victim, 1); // taken off the street, for nothing
+  }
 }
