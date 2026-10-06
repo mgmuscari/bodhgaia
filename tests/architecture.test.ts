@@ -123,7 +123,6 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/lineTools.ts',
   'src/ui/reconcile.ts',
   'src/ui/dockContent.ts',
-  'src/ui/ambientContent.ts', // re-export barrel; only main.ts/app import it — drop this entry when the barrel is deleted
   'src/ui/parkingContent.ts',
   'src/ui/toolMenuContent.ts',
   'src/ui/techLayout.ts',
