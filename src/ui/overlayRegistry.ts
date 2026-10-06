@@ -179,6 +179,8 @@ export const OVERLAYS = {
     alpha: OVERLAY_ALPHA,
     legendLine: powerLegendLine,
     legend: powerLegend,
+    // the grid is re-solved on the civic cadence (and on placements): follow it, don't freeze at open time
+    refresh: { on: 'civic', rederive: () => true },
     // each power-consumer plot, via its parcel anchor: on the grid or dark
     source: (_view, { map, parcels, poweredAnchors }) => ({
       dimBase: true,
