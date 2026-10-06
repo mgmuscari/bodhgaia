@@ -533,3 +533,131 @@ export function adjacentRoad(map: GameMap, x: number, y: number): number {
 export function pedDespawns(map: GameMap, p: Ped): boolean {
   return p.phase !== 'driving' && p.walkTo === undefined && pedOffNetwork(map, p);
 }
+
+// --- Precomputed network masks (the A* hot loop) ---------------------------
+//
+// A* asks the same per-neighbour questions over and over — isWalkable for walkers, canDrive (with its
+// freewayLane run scans) for cars — so they are tabulated once per map: `walk[i]` = isWalkable, and
+// bit d of `drive[i]` = canDrive from tile i one step in direction d. Both are pure functions of
+// map.built + map.water (and the map's bounds). The live layer never sees placement events and the map
+// is written directly (`map.built[i] = …`) all over, so the cache can't be told when to refresh: it
+// VALIDATES instead — each lookup compares built/water against a private copy, a word at a time (a
+// few µs on a 96² map, against a search of hundreds). A changed tile re-derives its own walk entry and
+// the drive edges of every tile within MASK_REACH (the furthest canDrive reads: a lane-run scan from
+// the far end of the edge); a large change rebuilds the whole table. Exact by construction — the masks
+// are the predicates, read through a table.
+
+/** How far (Chebyshev) from an edge's origin canDrive can read: the step, then a freewayLane run scan
+ *  of LANE_SCAN_CAP tiles from the far tile. */
+const MASK_REACH = LANE_SCAN_CAP + 1;
+
+/** The tabulated predicates for one map: `walk[i]` (isWalkable, 0/1) and `drive[i]` (canDrive from i
+ *  in direction d at bit d). Valid until the map's built/water layers next change. */
+export interface NetworkMasks {
+  readonly walk: Uint8Array;
+  readonly drive: Uint8Array;
+}
+
+interface MaskCache extends NetworkMasks {
+  /** The built/water layers the masks were derived from, and 32-bit word views of them + the map's. */
+  built: Uint16Array;
+  water: Uint8Array;
+  builtWords: Int32Array;
+  builtCopyWords: Int32Array;
+  waterWords: Int32Array;
+  waterCopyWords: Int32Array;
+}
+
+const maskCache = new WeakMap<GameMap, MaskCache>();
+
+function driveBits(map: GameMap, x: number, y: number): number {
+  let bits = 0;
+  for (let d = 0; d < 4; d++) if (canDrive(map, x, y, x + DIR_DX[d]!, y + DIR_DY[d]!)) bits |= 1 << d;
+  return bits;
+}
+
+function rebuildAll(map: GameMap, c: MaskCache): void {
+  c.built.set(map.built);
+  c.water.set(map.water);
+  const W = map.width;
+  for (let i = 0; i < c.walk.length; i++) {
+    const x = i % W;
+    const y = (i - x) / W;
+    c.walk[i] = isWalkable(map, x, y) ? 1 : 0;
+    c.drive[i] = driveBits(map, x, y);
+  }
+}
+
+/** Re-derive the masks around the tiles in `changed` (their copies already updated). */
+function rebuildAround(map: GameMap, c: MaskCache, changed: readonly number[]): void {
+  const W = map.width;
+  const H = map.height;
+  for (const i of changed) {
+    const cx = i % W;
+    const cy = (i - cx) / W;
+    c.walk[i] = isWalkable(map, cx, cy) ? 1 : 0;
+    const y1 = Math.min(H - 1, cy + MASK_REACH);
+    const x1 = Math.min(W - 1, cx + MASK_REACH);
+    for (let y = Math.max(0, cy - MASK_REACH); y <= y1; y++) {
+      for (let x = Math.max(0, cx - MASK_REACH); x <= x1; x++) c.drive[y * W + x] = driveBits(map, x, y);
+    }
+  }
+}
+
+/** A 32-bit word view of a typed array's whole words (the tail, if any, is compared per element). */
+function words(a: Uint8Array | Uint16Array): Int32Array {
+  return a.byteOffset % 4 === 0 ? new Int32Array(a.buffer, a.byteOffset, a.byteLength >> 2) : new Int32Array(0);
+}
+
+/** Append to `out` every index where `cur` differs from `copy` (`a`/`b` their word views), updating
+ *  `copy` as it goes. */
+function diffInto(cur: Uint8Array | Uint16Array, copy: Uint8Array | Uint16Array, a: Int32Array, b: Int32Array, out: number[]): void {
+  const per = 4 / cur.BYTES_PER_ELEMENT;
+  for (let w = 0; w < a.length; w++) {
+    if (a[w] === b[w]) continue;
+    for (let i = w * per; i < w * per + per; i++) {
+      if (cur[i] !== copy[i]) {
+        copy[i] = cur[i]!;
+        out.push(i);
+      }
+    }
+  }
+  for (let i = a.length * per; i < cur.length; i++) {
+    if (cur[i] !== copy[i]) {
+      copy[i] = cur[i]!;
+      out.push(i);
+    }
+  }
+}
+
+/** The network masks for `map`, current with its built/water layers (built on first use, then patched
+ *  or rebuilt whenever those layers have changed since the last call). */
+export function networkMasks(map: GameMap): NetworkMasks {
+  let c = maskCache.get(map);
+  if (!c) {
+    const n = map.width * map.height;
+    const built = new Uint16Array(n);
+    const water = new Uint8Array(n);
+    c = {
+      built,
+      water,
+      walk: new Uint8Array(n),
+      drive: new Uint8Array(n),
+      builtWords: words(map.built),
+      builtCopyWords: words(built),
+      waterWords: words(map.water),
+      waterCopyWords: words(water),
+    };
+    maskCache.set(map, c);
+    rebuildAll(map, c);
+    return c;
+  }
+  const changed: number[] = [];
+  diffInto(map.built, c.built, c.builtWords, c.builtCopyWords, changed);
+  diffInto(map.water, c.water, c.waterWords, c.waterCopyWords, changed);
+  if (changed.length === 0) return c;
+  const area = (2 * MASK_REACH + 1) * (2 * MASK_REACH + 1);
+  if (changed.length * area >= c.walk.length) rebuildAll(map, c);
+  else rebuildAround(map, c, changed);
+  return c;
+}

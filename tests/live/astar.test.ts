@@ -221,6 +221,33 @@ describe('A* (roadPath / walkPath) returns exactly the original search’s path'
     expect(found).toBeGreaterThan(50);
   });
 
+  it('on a map edited IN PLACE between searches (P6: the cached walk/drive masks track built + water)', () => {
+    // direct writes to map.built / map.water — the way placement and tests mutate the map — must be
+    // seen by the very next search: single-tile edits (a lane cut, a median, a road over water), small
+    // clusters near freeways (the lane classification reads LANE_SCAN_CAP tiles away), and a wholesale
+    // rewrite that changes most of the map at once
+    const rnd = lcg(2026);
+    for (const [seed, size] of [
+      ['lotus', 64],
+      ['moss', 48],
+    ] as const) {
+      const map = worldMap(seed, size);
+      const n = size * size;
+      let found = 0;
+      for (let round = 0; round < 14; round++) {
+        found += compareOn(map, rnd, 12).found;
+        const edits = round === 9 ? n : 1 + Math.floor(rnd() * 6);
+        const at = Math.floor(rnd() * n);
+        for (let e = 0; e < edits; e++) {
+          const i = round === 9 ? e : Math.min(n - 1, at + Math.floor(rnd() * 3) + Math.floor(rnd() * 3) * size);
+          if (rnd() < 0.15) map.water[i] = map.water[i] === 0 ? 1 : 0;
+          else map.built[i] = KINDS[Math.floor(rnd() * KINDS.length)]!;
+        }
+      }
+      expect(found).toBeGreaterThan(20);
+    }
+  });
+
   it('on uniform open ground (every cost ties) — including searches cut off by the iteration bound', () => {
     const map = new GameMap(90, 90); // all BuiltKind.None, dry: one big walkable field
     const rnd = lcg(7);
