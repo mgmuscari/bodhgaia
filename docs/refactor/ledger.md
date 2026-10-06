@@ -34,8 +34,8 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | L8c | live split | fields: occupancy → `live/fields/occupancy.ts` | done | 23f22def |
 | L9 | live split | birds + trains → `live/birds.ts`, `live/trains.ts` | done | 24795acd |
 | L10 | live split | police → `live/police.ts` | done | b85ffef6 (stepArrests waits for L11 → L10b) |
-| L11 | live split | parking, owned cars, citizens → `live/agents.ts` | in-progress | refactor/b5-live |
-| L12 | live split | `substep`/`stepAmbient` → `live/step.ts`; ambientContent becomes a barrel | in-progress | refactor/b5-live |
+| L11 | live split | parking, owned cars, citizens → `live/agents.ts` | done | 9caa4dac |
+| L12 | live split | `substep`/`stepAmbient` → `live/step.ts`; ambientContent becomes a barrel | done | 0f715969 |
 | L13 | live split | migrate importers, delete the barrel, drop it from the allowlist | todo | — |
 | L14 | live split | (optional) split agents → parking / citizens | todo | — |
 | L15 | live split | (rewrite) lift the inline ped state machine into `stepPed`/`stepCar` | todo | — |
@@ -43,11 +43,11 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | M2 | main split | opening mount → `app/opening.ts` | done | 7e128874 |
 | M3 | main split | pure `inspectReadout` out of `applyAt` (+ unit test) | done | e1a8f4db |
 | M4 | main split | power controller → `app/power.ts` | done | 74f0912c |
-| M5 | main split | live-layer setup → `app/live.ts` | in-progress | refactor/b5-main |
+| M5 | main split | live-layer setup → `app/live.ts` | done | d22976e7 |
 | M6 | main split | overlay controller → `app/overlays.ts` | done | 7e8b1b1e |
 | M7 | main split | economy controller → `app/economy.ts` | done | 69ce0869 |
 | M8 | main split | saves wiring → `app/saves.ts` | done | 5994352b |
-| M9 | main split | panels → `app/panels.ts` | in-progress | refactor/b5-main |
+| M9 | main split | panels → `app/panels.ts` | done | 7ef1fdf9 |
 | M10 | main split | one keyboard map → `app/keys.ts` | todo | — |
 | M11 | main split | tool controller → `app/tools.ts` | todo | — |
 | M12 | main split | sim tick + frame loop → `app/loop.ts`; `main()` ≈ 100 lines of wiring | todo | — |
@@ -70,7 +70,7 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | C4 | consistency | overlay constants + `lerp` shared | done | 6e667a62 |
 | C5 | consistency | overlay registry: one dispatch instead of main's if-chains/ternaries | done | 9fa1a047 |
 | C6 | consistency + BUG | one keyboard table; fixes Cmd+L / Cmd+G / Cmd+, being swallowed | done | 77a0b240 |
-| C7 | consistency | one panel handle shape (`toggle`/`isOpen`/`refresh`, one visibility mechanism) | in-progress | refactor/b5-main |
+| C7 | consistency | one panel handle shape (`toggle`/`isOpen`/`refresh`, one visibility mechanism) | done | 1914fc23 |
 | C8 | consistency | settle `reconcile.ts` (wire it in or delete it) | todo | — |
 | P1 | perf | cull before posing; one pose array per frame for both renderers | done | 5f46378d |
 | P2 | perf | `snapPose` stops copying whole agents | done | f50ebc22 |
@@ -93,18 +93,21 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 
 - **Batch 3** (started 2026-10-05; DONE — integrated on `refactor/batch-3`, 1,848 tests, golden unchanged, 9 frames pixel-identical, verified from a subpath at 60 fps): live split part 2 (L4–L7) · power + overlay registry (M4, C5/M6) · render culling (P1, P5a).
 | B1 | bug | power overlay froze at the grid it was opened with — now refreshes on the civic tick | done | 8120bf9d |
-| C11 | consistency | dockContent hardcodes the six overlay kinds — iterate OVERLAY_KINDS | in-progress | refactor/b5-perf |
-| D10 | dead code | `compositeKeyFor` (civic), `cycleOverlay`/`shouldCycleOverlay` (eco) are test-only | in-progress | refactor/b5-perf |
-| N4 | notes | C7: one `{id → handle}` panel registry collapses onMeta + keydown switches; the restoration toggle's open-time sample runs on the key path only (dock path skips it) | in-progress | refactor/b5-main |
+| C11 | consistency | dockContent hardcodes the six overlay kinds — iterate OVERLAY_KINDS | done | 1af41c22 |
+| D10 | dead code | `compositeKeyFor` (civic), `cycleOverlay`/`shouldCycleOverlay` (eco) are test-only | done | 665ac315 |
+| N4 | notes | C7: one `{id → handle}` panel registry collapses onMeta + keydown switches; the restoration toggle's open-time sample runs on the key path only (dock path skips it) | done | 1914fc23 (restoration open samples) |
 | N5 | notes | L8: decide whether `layTraffic` moves with the fields; L11: `stopReachable` moves with parking | todo | — |
 
 - **Batch 4** (started 2026-10-05; DONE — integrated on `refactor/batch-4`, 1,887 tests, golden unchanged, 10 frames pixel-identical, A* paths oracle-identical, verified from a subpath at 60 fps): live split part 3 (L8a–c, L9, L10, N1) · economy + saves out of main (M7, M8) · agent-copy + A* perf (P2, P4).
-| L10b | live split | move `stepArrests` into police.ts once the owned-car chain is out (with/after L11); `depositHealth` may sit in fields/occupancy | in-progress | refactor/b5-live |
-| P6 | perf | A*'s cost is now the per-neighbour predicates (pedCost, isWalkable, canDrive/freewayLane/sameRun): precomputed walk/drive masks rebuilt on built-layer change | in-progress | refactor/b5-perf |
-| P7 | perf | `moverPose` still allocates a profile + closure per call for numeric laterals | in-progress | refactor/b5-perf |
+| L10b | live split | move `stepArrests` into police.ts once the owned-car chain is out (with/after L11); `depositHealth` may sit in fields/occupancy | done | d9f30220 |
+| P6 | perf | A*'s cost is now the per-neighbour predicates (pedCost, isWalkable, canDrive/freewayLane/sameRun): precomputed walk/drive masks rebuilt on built-layer change | done | 2e9bf8ab (road 3.5–4× faster) |
+| P7 | perf | `moverPose` still allocates a profile + closure per call for numeric laterals | done | f5f249f1 |
 | N6 | notes | M9: one shared `pulse()` (budget onBorrow and economy's ui.pulse both build it); budgetPanel needs refresh/open in the C7 shape · M12: loop exposes a tick getter (saves reads currentTick) · L13: tests/app/saves.test.ts imports createAmbientState via the barrel | todo | — |
 
-- **Batch 5** (started 2026-10-05): agents/arrests/step out of ambientContent (L11, L10b, L12) · panel registry + live setup (C7, M9, M5, N4 fix) · path masks + consistency (P6, P7, C11, D10).
+- **Batch 5** (started 2026-10-05; DONE — integrated on `refactor/batch-5`, 1,917 tests, golden unchanged, verified from a subpath): agents/arrests/step out of ambientContent (L11, L10b, L12) · panel registry + live setup (C7, M9, M5, N4 fix) · path masks + consistency (P6, P7, C11, D10).
+| P8 | perf | walkPath: a static per-tile base-cost table beside the masks (pedCost dominates; 176² hits the iteration cap) | todo | — |
+| P9 | perf | a revision counter on GameMap → O(1) mask freshness (engine change) | todo | — |
+| N7 | notes | L13 importer list: 9 src + 14 tests (+ tests/app/live.test.ts), inline `import('…ambientContent').Car/Ped` types in ambientContent.test.ts; allowlist line + 2 comments | todo | — |
 
 ## Survey notes (2026-10-05)
 
