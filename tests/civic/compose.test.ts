@@ -32,11 +32,10 @@ function makeDeps(): SimDeps {
 }
 
 describe('simTick: cadence phases (tick>0 gated)', () => {
-  it('fires nothing at tick 0 but still accrues effort', () => {
+  it('fires nothing at tick 0', () => {
     const r = simTick(makeDeps(), 0);
     expect(r.ecoTicked).toBe(false);
     expect(r.civicTicked).toBe(false);
-    expect(r.effortGained).toBeGreaterThan(0);
   });
 
   it('fires ecology only on a %10 non-%50 tick', () => {
@@ -57,7 +56,7 @@ describe('simTick: cadence phases (tick>0 gated)', () => {
     expect(r.civicTicked).toBe(false);
   });
 
-  it('caches eco/civic means after their recompute (effort then consumes them)', () => {
+  it('caches eco/civic means after their recompute (the economy then reads them)', () => {
     const deps = makeDeps();
     expect(deps.ecoMeans).toBeUndefined();
     expect(deps.civicMeans).toBeUndefined();
@@ -77,7 +76,7 @@ describe('simTick: composite determinism (N=120 double-run)', () => {
       return {
         map: deps.world.map.snapshot(),
         civic: deps.civic.snapshotBytes(),
-        tech: deps.tech.snapshotBytes(), // includes effort → covers eco/civic cache coherence
+        tech: deps.tech.snapshotBytes(), // includes effort → covers the sim never writing tech
       };
     };
     const a = run();
@@ -96,12 +95,15 @@ describe('simTick: composite determinism (N=120 double-run)', () => {
 });
 
 describe('simTick: TechState integration guard (delta accounting)', () => {
-  it('moves tech.effort ONLY by accruals and an explicit placement spend', () => {
+  // The economy owns effort (Maddy 2026-09-30: no endless accrual), so across eco AND civic cadence
+  // ticks the sim never writes tech — only an explicit placement spend moves it.
+  it('moves tech.effort ONLY by an explicit placement spend (the sim tick never accrues)', () => {
     const deps = makeDeps();
+    deps.tech.effort = 500; // a stock the economy would have handed over
     let expected = deps.tech.effort;
     for (let tick = 1; tick <= 60; tick++) {
-      const r = simTick(deps, tick);
-      expected += r.effortGained;
+      simTick(deps, tick);
+      if (tick === 29) expect(deps.tech.effort).toBe(500); // eco cadences passed: no accrual
       if (tick === 30) {
         // a real tools placement (bulldoze the highway): a pure TechState.spend.
         const before = deps.tech.effort;
@@ -153,16 +155,5 @@ describe('simTick: fabric isolation on pure runs (no placements)', () => {
     expect(deps.world.map.built).toEqual(builtBefore);
     expect(deps.world.map.parcel).toEqual(parcelLayerBefore);
     expect(deps.world.parcels.snapshotBytes()).toEqual(parcelsBefore);
-  });
-});
-
-
-describe('simTick: effort can be handed to the economy (Maddy 2026-09-30: no endless accrual)', () => {
-  it("with effortAccrual 'economy' the tick accrues nothing", () => {
-    const deps = { ...makeDeps(), effortAccrual: 'economy' as const };
-    const before = deps.tech.effort;
-    const r = simTick(deps, 1);
-    expect(r.effortGained).toBe(0);
-    expect(deps.tech.effort).toBe(before);
   });
 });
