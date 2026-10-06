@@ -30,8 +30,6 @@ import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings'
 import { residentialCensus } from './citizens/census';
 import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
-import { OVERLAYS, cycleComposite, type CompositeState, type OverlayContext, type OverlayKind } from './ui/overlayRegistry';
-import type { OverlayLegend } from './ui/overlayLegend';
 import { pulseLine } from './ui/pulseContent';
 import { mountPulseDock } from './ui/pulseDock';
 import { sampleRestoration, restorationLines, type RestorationSample } from './ui/restorationContent';
@@ -72,6 +70,7 @@ import { setPixelFavicon, installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { inspectReadout } from './ui/inspectContent';
 import { createPowerController } from './app/power';
+import { createOverlayController, mountOverlayLegend } from './app/overlays';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -472,15 +471,29 @@ export function main(save: SaveV1 | null = null): void {
   // category tile; the picked tool stays selected with the flyout left open.
   let openCategory: ToolCategory | null = null;
 
-  // The single composite overlay (eco | civic | null). Declared HERE — before the
-  // dock mount — because the dock's getMetaButtons reads it at mount time and on
-  // every refreshMeta. applyOverlay / cycleOverlay below own the transitions.
-  let activeOverlay: CompositeState = null;
+  // The map overlays (src/app/overlays.ts): ONE active overlay, cycled by its key or dock button. Created
+  // HERE — before the dock mount — because the dock's getMetaButtons reads it at mount and on every
+  // refreshMeta. The colour key mounts further down (showLegend); its tint reads this context per apply.
+  const overlays = createOverlayController({
+    renderer,
+    context: () => ({
+      map: world.map,
+      parcels: world.parcels,
+      live: ambientState,
+      poweredAnchors: power.grid().poweredAnchors,
+      civic: deps.civic,
+      tileToNeighborhood: deps.partition.tileToNeighborhood,
+    }),
+    showLegend: (legend) => showLegend(legend),
+    setStatus: (text) => toolbar.setStatus(text),
+    markDirty,
+    refreshMeta: () => toolbar.refreshMeta(),
+  });
 
   // Bottom tool dock: always on, derived from tech grants + selection + effort. The
   // meta row ([Tech][Eco][Civic]) mirrors the T/E/C keys: getMetaButtons derives
   // the active flags from the live panel/overlay state; onMeta routes a click to
-  // the SAME closures the keys use (techPanel.toggle / cycleOverlay).
+  // the SAME closures the keys use (techPanel.toggle / overlays.cycle).
   // Panels the palette opens; mounted further down, so the palette reaches them through this holder
   // (reading their consts before they're declared would throw).
   type PanelHandle = { toggle(): boolean; visible(): boolean };
@@ -501,7 +514,7 @@ export function main(save: SaveV1 | null = null): void {
       toolbar.refresh();
     },
     getMetaButtons: () =>
-      metaButtons(techPanel.isOpen(), activeOverlay && { kind: activeOverlay.kind }, ambientOn, {
+      metaButtons(techPanel.isOpen(), overlays.active(), ambientOn, {
         restore: panels.restore?.visible() ?? false,
         settings: panels.settings?.visible() ?? false,
         help: panels.help?.visible() ?? false,
@@ -516,7 +529,7 @@ export function main(save: SaveV1 | null = null): void {
       else if (id === 'help') panels.help?.toggle();
       else if (id === 'budget') budgetPanel.toggle();
       else if (id === 'saves') panels.saves?.toggle();
-      else cycleOverlay(id); // a map overlay — the SAME closure its letter key calls
+      else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
       toolbar.refreshMeta();
     },
     art: (key) => renderer.artImage(key),
@@ -627,80 +640,8 @@ export function main(save: SaveV1 | null = null): void {
   panels.settings = settingsPanel;
   toolbar.refreshMeta();
 
-  // Map overlays: a SINGLE active overlay (eco | civic | redline | police | coverage | power), each key
-  // cycling its kind's views then off; another kind's key replaces it (exclusivity). Per-kind views, tints,
-  // legends and refresh cadence live in the overlay registry (src/ui/overlayRegistry.ts).
-  // Visible colour KEY for the active overlay — a swatch per ramp endpoint / band with its label,
-  // so the eco/civic/redline/police maps are legible at a glance (not just a one-line caption).
-  const legendEl = document.createElement('div');
-  legendEl.className = 'overlay-legend';
-  legendEl.hidden = true;
-  legendEl.style.cssText =
-    'position:fixed;left:12px;top:12px;z-index:50;background:rgba(20,22,30,0.82);color:#e8e6e0;' +
-    'font:12px monospace;padding:6px 9px;border-radius:6px;pointer-events:none;line-height:1.5;';
-  document.body.appendChild(legendEl);
-  const updateLegend = (legend: OverlayLegend | null): void => {
-    if (!legend) {
-      legendEl.hidden = true;
-      legendEl.textContent = '';
-      return;
-    }
-    legendEl.hidden = false;
-    legendEl.textContent = '';
-    const title = document.createElement('div');
-    title.textContent = legend.title;
-    title.style.cssText = 'font-weight:bold;margin-bottom:3px;';
-    legendEl.appendChild(title);
-    for (const stop of legend.stops) {
-      const row = document.createElement('div');
-      const sw = document.createElement('span');
-      sw.style.cssText = `display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:middle;background:rgb(${stop.color[0]},${stop.color[1]},${stop.color[2]});`;
-      const lbl = document.createElement('span');
-      lbl.textContent = stop.label;
-      row.append(sw, lbl);
-      legendEl.appendChild(row);
-    }
-  };
-
-  // Every kind dispatches through the overlay registry (src/ui/overlayRegistry.ts): its tint source reads
-  // this context, gathered fresh at each (re)apply — the partition and power grid are replaced over time.
-  const overlayContext = (): OverlayContext => ({
-    map: world.map,
-    parcels: world.parcels,
-    live: ambientState,
-    poweredAnchors: power.grid().poweredAnchors,
-    civic: deps.civic,
-    tileToNeighborhood: deps.partition.tileToNeighborhood,
-  });
-  const applyOverlay = (): void => {
-    // A live overlay (police) is drawn per frame from its field, not baked into the cached base.
-    const entry = activeOverlay && OVERLAYS[activeOverlay.kind];
-    renderer.setLiveOverlay(entry?.live ?? null);
-    renderer.setOverlay(activeOverlay && entry?.source ? entry.source(activeOverlay.view, overlayContext()) : null);
-  };
-
-  // The SHARED overlay-cycle body — one closure for BOTH the overlay keys and the dock
-  // buttons, so a key press and a button click can never diverge. Cycles the single
-  // composite overlay, re-points the renderer, surfaces the legend line in the dock
-  // status slot and the colour key, and refreshes the dock meta active-state.
-  const cycleOverlay = (kind: OverlayKind): void => {
-    activeOverlay = cycleComposite(activeOverlay, kind);
-    applyOverlay();
-    const entry = activeOverlay && OVERLAYS[activeOverlay.kind];
-    toolbar.setStatus(activeOverlay && entry ? entry.legendLine(activeOverlay.view) : null);
-    updateLegend(activeOverlay && entry ? entry.legend(activeOverlay.view) : null);
-    markDirty(); // the overlay tint lives in the cached base → invalidate it
-    toolbar.refreshMeta(); // the active overlay changed → dock meta state
-  };
-
-  // A sim tick re-pushes the active overlay when its source ticked (eco / civic cadence): rebuild the
-  // source if it is derived (biodiversity, the civic partition + values), then repaint the base.
-  const refreshOverlayOnTick = (r: { ecoTicked: boolean; civicTicked: boolean }): void => {
-    const refresh = activeOverlay && OVERLAYS[activeOverlay.kind].refresh;
-    if (!activeOverlay || !refresh || !(refresh.on === 'eco' ? r.ecoTicked : r.civicTicked)) return;
-    if (refresh.rederive(activeOverlay.view)) applyOverlay();
-    markDirty(); // the overlay tint lives in the cached base → invalidate it
-  };
+  // The overlay colour key (top-left over the map), shown/hidden by the overlay controller.
+  const showLegend = mountOverlayLegend(document.body);
 
   // The [Life] ambient toggle — one closure for the L key AND (Task 4) the dock
   // [Life] button. Flips ambientOn, resets ONLY the ambient clock when turning ON
@@ -783,7 +724,7 @@ export function main(save: SaveV1 | null = null): void {
     event.preventDefault();
     const overlay = overlayKindOf(action);
     if (overlay !== null) {
-      cycleOverlay(overlay); // the same body the dock's overlay buttons call
+      overlays.cycle(overlay); // the same body the dock's overlay buttons call
       return;
     }
     switch (action) {
@@ -920,7 +861,7 @@ export function main(save: SaveV1 | null = null): void {
     // agent layer IS the traffic: the CITIZENS (owned cars + walkers/cyclists/transit riders) lay the
     // live traffic density as they actually drive, and are persistent — they park and are walked to,
     // never popping out of existence at a destination.
-    refreshOverlayOnTick(r); // the active overlay's source ticked → re-push it
+    overlays.onSimTick(r); // the active overlay's source ticked → re-push it
     if (r.civicTicked) {
       const wb = wellbeingNow();
       pulseDock.set(pulseText(wb));
