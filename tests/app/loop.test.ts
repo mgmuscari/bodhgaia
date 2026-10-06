@@ -19,7 +19,7 @@ function simSetup(startTick = 0, withHome = true) {
   placeTransport(map, 8, 8, BuiltKind.RoadStreet);
   map.soilHealth.fill(100);
   const partition = computeNeighborhoods(map);
-  const sim: SimDeps = { world: { map, parcels }, tech: createTechState(TECH_TREE), civic: createCivicState(partition), partition, seed: 'loop-test' };
+  const sim: SimDeps = { world: { map, parcels }, tech: createTechState(TECH_TREE), civic: createCivicState(partition), partition };
   const log: string[] = [];
   let powerChanged = false;
   const ctx: SimTickCtx = {

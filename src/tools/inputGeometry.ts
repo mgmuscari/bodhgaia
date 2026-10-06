@@ -1,7 +1,7 @@
 // Pure pointer/line geometry for the build-tools input shell. Extracted from the
 // DOM so the determinism-sensitive bits — the click-vs-drag threshold and the
 // axis-major line enumeration — are unit-tested rather than left to manual QA
-// (the shouldTogglePanel precedent). No DOM, no transcendental Math, no imports:
+// (the pure-seam pattern). No DOM, no transcendental Math, no imports:
 // just integer/float arithmetic that the architecture guard scans in src/tools.
 
 export type PointerKind = 'click' | 'drag';

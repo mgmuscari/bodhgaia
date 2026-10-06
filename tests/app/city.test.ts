@@ -20,8 +20,10 @@ describe('createCity', () => {
     expect(c.sim.world).toBe(c.world);
     expect(c.sim.tech).toBe(c.tech);
     expect(c.sim.civic).toBe(c.civic);
-    expect(c.sim.seed).toBe('city-test');
-    expect(c.sim.effortAccrual).toBe('economy'); // effort is the economy's perishable stock
+    expect(c.seed).toBe('city-test');
+    // the sim carries no seed (it draws no randomness) and no effort mode (the economy owns effort)
+    expect('seed' in c.sim).toBe(false);
+    expect('effortAccrual' in c.sim).toBe(false);
     expect(c.tech.unlocked.size).toBe(0);
   });
 
@@ -48,7 +50,7 @@ describe('createCity', () => {
     });
     const b = createCity({ seed: 'ignored', size: { width: 16, height: 16 }, save });
     expect([b.world.map.width, b.world.map.height]).toEqual([48, 40]);
-    expect(b.sim.seed).toBe('city-test');
+    expect(b.seed).toBe('city-test'); // the save's seed, not the one asked for
     expect(b.world.map.soilHealth.every((v) => v === 7)).toBe(true);
     expect([...b.tech.unlocked]).toEqual([TECH_TREE[0]!.id]);
     expect(b.tech.effort).toBe(321);
