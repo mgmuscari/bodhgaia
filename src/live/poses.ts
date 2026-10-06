@@ -29,6 +29,10 @@ export function pedLegLateral(map: GameMap, p: Mover): number {
   return map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!) ? PED_CURB : 0;
 }
 
+/** The leg state a pose is computed from — all {@link moverPose} and {@link pedLateral} read. A mover
+ *  is one; so is its pre-substep snapshot (`Mover.snap`), which is posed directly, never copied. */
+export type LegState = Pick<Mover, 'x' | 'y' | 'dir' | 'prevDir' | 'tx' | 'ty'>;
+
 /** A sprite's draw pose: world position of its centre (tile units, +0.5 already applied) + a unit
  *  heading vector (screen y-down; the renderer turns it into a rotation). */
 export interface Pose {
@@ -96,7 +100,7 @@ export function trainPoses(t: Train, W: number, alpha = 1): Pose[] {
   return cars.map((m) => movingPose(m, 0, alpha));
 }
 
-export function moverPose(m: Mover, lateral: number | LateralProfile): Pose {
+export function moverPose(m: LegState, lateral: number | LateralProfile): Pose {
   const prof = typeof lateral === 'number' ? { entry: lateral, mid: lateral, exit: lateral } : lateral;
   const latAt = (p: number): number => (p < 0.5 ? prof.entry + (prof.mid - prof.entry) * p * 2 : prof.mid + (prof.exit - prof.mid) * (p * 2 - 1));
   const d = m.dir;
@@ -177,11 +181,10 @@ export function blendPose(a: Pose, b: Pose, t: number): Pose {
 }
 
 /** The pose of a mover as it stood before the latest substep (its snapshot), or null if none. */
-export function snapPose(m: Mover, lateral: number | ((mv: Mover) => LateralProfile)): Pose | null {
+export function snapPose(m: Mover, lateral: number | ((leg: LegState) => LateralProfile)): Pose | null {
   const sn = m.snap;
   if (!sn) return null;
-  const mv = { ...m, x: sn.x, y: sn.y, dir: sn.dir, prevDir: sn.prevDir, tx: sn.tx, ty: sn.ty };
-  return moverPose(mv, typeof lateral === 'number' ? lateral : lateral(mv));
+  return moverPose(sn, typeof lateral === 'number' ? lateral : lateral(sn));
 }
 
 /**
@@ -233,7 +236,7 @@ export function movingPose(m: Mover, lateral: number, alpha: number): Pose {
  * averaged at each edge with the neighbour across it — so a walker slides onto/off the kerb instead of
  * jumping as it steps between a road and a lot.
  */
-export function pedLateral(m: Mover, onRoadAt: (x: number, y: number) => boolean): LateralProfile {
+export function pedLateral(m: LegState, onRoadAt: (x: number, y: number) => boolean): LateralProfile {
   const lat = (x: number, y: number): number => (onRoadAt(x, y) ? PED_CURB : 0);
   const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
   if (!onLeg) {
