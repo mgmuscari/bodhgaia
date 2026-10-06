@@ -20,6 +20,7 @@ import { branchColumns, panelSignature } from '../ui/techContent';
 import type { ToolbarDeps, ToolbarHandle } from '../ui/toolbar';
 import type { MetaButton } from '../ui/dockContent';
 import type { PreviewTile } from '../ui/renderer';
+import type { InputHandlers } from '../ui/input';
 
 export interface ToolsDeps {
   world: ToolWorld;
@@ -55,6 +56,8 @@ export interface ToolController {
   previewAt(tx: number, ty: number): void;
   applyAt(tx: number, ty: number): void;
   clearHover(): void;
+  /** The map pointer's tool handlers (attachInput's, less the camera's onChange). */
+  readonly input: Omit<InputHandlers, 'onChange'>;
   /** Effort moved outside a placement (a practice begun or granted, a loan): refresh + snapshot both signatures. */
   afterEffortChange(): void;
   /** The sim-gated sync: re-derive the dock rows and refresh / flash ONLY on a real change (+ the open tech panel). */
@@ -140,21 +143,28 @@ export function createToolController(deps: ToolsDeps): ToolController {
     if (isRepairTool(def)) deps.repaired(tx, ty);
   };
 
+  const hasTool = (): boolean => selectedToolId !== null;
+  const lineTool = (): boolean => {
+    const def = selectedDef();
+    return def !== undefined && isLineTool(def);
+  };
+  const hotkey = (action: string): void =>
+    select(action === 'inspect' ? 'inspect' : action === 'bulldoze' ? 'bulldoze' : null);
+  const clearHover = (): void => {
+    renderer.setPreview(null);
+    deps.markPreviewDirty(); // cleared the preview only — no base change
+  };
+
   return {
     toolbar,
     selected: () => selectedToolId,
-    hasTool: () => selectedToolId !== null,
-    isLineTool: () => {
-      const def = selectedDef();
-      return def !== undefined && isLineTool(def);
-    },
-    hotkey: (action) => select(action === 'inspect' ? 'inspect' : action === 'bulldoze' ? 'bulldoze' : null),
+    hasTool,
+    isLineTool: lineTool,
+    hotkey,
     previewAt,
     applyAt,
-    clearHover: () => {
-      renderer.setPreview(null);
-      deps.markPreviewDirty(); // cleared the preview only — no base change
-    },
+    clearHover,
+    input: { hasTool, isLineTool: lineTool, applyAt, hover: previewAt, clearHover, onHotkey: hotkey },
     afterEffortChange: () => {
       toolbar.refresh();
       snapshotDock();

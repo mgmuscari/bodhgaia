@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSimTick, createFrame, SIM_TICK_MS, type SimTickCtx, type FrameCtx } from '../../src/app/loop';
+import { createSimTick, createFrame, runFrames, SIM_TICK_MS, type SimTickCtx, type FrameCtx } from '../../src/app/loop';
 import { GameMap } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
 import { computeNeighborhoods } from '../../src/civic/neighborhoods';
@@ -183,5 +183,22 @@ describe('createFrame', () => {
     h.log.length = 0;
     h.frame(1032);
     expect(h.log).not.toContain('syncDock');
+  });
+});
+
+describe('runFrames', () => {
+  it('runs the frame body, then requests the next frame (a throwing frame stops the loop, as before)', () => {
+    const queue: Array<(now: number) => void> = [];
+    const seen: number[] = [];
+    runFrames((now) => {
+      seen.push(now);
+      if (now === 3) throw new Error('boom');
+    }, (cb) => void queue.push(cb));
+    expect(seen).toEqual([]);
+    queue.shift()!(1);
+    queue.shift()!(2);
+    expect(seen).toEqual([1, 2]);
+    expect(() => queue.shift()!(3)).toThrow('boom');
+    expect(queue).toEqual([]);
   });
 });

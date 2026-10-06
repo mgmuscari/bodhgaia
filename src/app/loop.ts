@@ -169,3 +169,12 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     if (ctx.sim.takeChanged()) ctx.syncDock();
   };
 }
+
+/** Drive `frame` from requestAnimationFrame: the body runs, THEN the next frame is requested. */
+export function runFrames(frame: (now: number) => void, raf: (cb: (now: number) => void) => void): void {
+  const loop = (now: number): void => {
+    frame(now);
+    raf(loop);
+  };
+  raf(loop);
+}
