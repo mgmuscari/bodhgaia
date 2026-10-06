@@ -14,7 +14,7 @@ import type { ParcelColumns, ParcelStore } from '../engine/fabric';
 import type { TechState } from '../tech/state';
 import type { CivicState } from '../civic/state';
 import type { EconomyRun } from '../economy/run';
-import type { AmbientState } from '../ui/ambientContent';
+import type { AmbientState } from '../live/types';
 
 export const SAVE_FORMAT = 'bodhitropolis-save';
 export const SAVE_VERSION = 2;

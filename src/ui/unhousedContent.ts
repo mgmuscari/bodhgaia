@@ -10,7 +10,7 @@
 // explicit displacement transitions — are intentionally NOT modelled here; see
 // docs/design/unhoused-residents.md. Pure: no DOM, no transcendental Math (pure-ui allowlist).
 
-import type { AmbientState } from './ambientContent';
+import type { AmbientState } from '../live/types';
 
 export interface UnhousedSample {
   /** Total housing capacity — the seeded census population (sum of household counts). */

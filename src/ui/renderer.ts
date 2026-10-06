@@ -24,14 +24,14 @@ import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { ambientAlpha, trainPoses } from './ambientContent';
+import { ambientAlpha, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
-import { CAR_LENGTH, CAR_WIDTH } from './ambientContent';
-import type { AmbientState } from './ambientContent';
+import { CAR_LENGTH, CAR_WIDTH } from '../live/geometry';
+import type { AmbientState } from '../live/types';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 

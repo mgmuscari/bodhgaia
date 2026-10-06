@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind } from '../../src/engine/fabric';
 import { parkingLots, parkingStalls, STALL_COLS, STALL_ROWS, STALLS_PER_TILE } from '../../src/ui/parkingContent';
-import { CAR_LENGTH, CAR_WIDTH } from '../../src/ui/ambientContent';
+import { CAR_LENGTH, CAR_WIDTH } from '../../src/live/geometry';
 
 describe('parkingLots (one 1x1 lot per ParkingLot tile)', () => {
   it('makes each ParkingLot tile its own 1x1 lot (a contiguous block = many 1x1 lots)', () => {

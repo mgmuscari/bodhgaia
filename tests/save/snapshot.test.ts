@@ -9,7 +9,7 @@ import { TECH_TREE } from '../../src/tech/tree';
 import { CivicState } from '../../src/civic/state';
 import { createEconomy } from '../../src/economy/model';
 import { DEFAULT_LEVERS, practiceProject } from '../../src/economy/run';
-import { createAmbientState } from '../../src/ui/ambientContent';
+import { createAmbientState } from '../../src/live/types';
 import { encodeBytes, decodeBytes, captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, parseSave, SAVE_VERSION, type GameParts } from '../../src/save/snapshot';
 
 // Save/load (Maddy 2026-10-02): the game's STOCKS serialize; everything derived (land value, coverage,
