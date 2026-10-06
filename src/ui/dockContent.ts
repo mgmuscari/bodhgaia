@@ -5,9 +5,11 @@
 // lets it be unit-tested rather than left to manual QA — and gives main ONE pure
 // source of truth that the dock and the keyboard paths both feed.
 
+import { OVERLAY_KINDS, type OverlayKind } from './overlayRegistry';
+
 /** One dock meta button: which control it is, its label, and whether it's active. */
 export interface MetaButton {
-  id: 'budget' | 'tech' | 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' | 'life' | 'restore' | 'saves' | 'settings' | 'help';
+  id: 'budget' | 'tech' | OverlayKind | 'life' | 'restore' | 'saves' | 'settings' | 'help';
   label: string;
   /** The pixel icon drawn as the button face (uiIcons.ts); the label becomes its tooltip. */
   art: string;
@@ -32,16 +34,17 @@ const META_LABELS: Record<MetaButton['id'], string> = {
 };
 
 /**
- * The five dock meta buttons in fixed tech/eco/civic/redline/life order, with their
- * active flags derived from the live UI state: Tech is active iff the tech panel is
- * open; Eco/Civic/Redline are active iff the single composite overlay is of that
- * kind (they are mutually exclusive, so at most one is ever active); Life is active
+ * The dock meta buttons in fixed order (budget, tech, the overlays in OVERLAY_KINDS
+ * order, life, restore, saves, settings, help), with their active flags derived from
+ * the live UI state: Tech is active iff the tech panel is open; an overlay button is
+ * active iff the single composite overlay is of that kind (mutually exclusive, so at
+ * most one is ever active); Life is active
  * iff ambient animation is on. Pure — main passes (techPanel.isOpen(), the active
  * overlay's kind or null, the ambientOn flag).
  */
 export function metaButtons(
   panelOpen: boolean,
-  activeOverlay: { kind: 'eco' | 'civic' | 'redline' | 'police' | 'coverage' | 'power' } | null,
+  activeOverlay: { kind: OverlayKind } | null,
   ambientOn: boolean,
   open: { restore?: boolean; settings?: boolean; help?: boolean; budget?: boolean; saves?: boolean } = {},
 ): MetaButton[] {
@@ -49,12 +52,7 @@ export function metaButtons(
   return [
     b('budget', open.budget ?? false),
     b('tech', panelOpen),
-    b('eco', activeOverlay?.kind === 'eco'),
-    b('civic', activeOverlay?.kind === 'civic'),
-    b('redline', activeOverlay?.kind === 'redline'),
-    b('police', activeOverlay?.kind === 'police'),
-    b('coverage', activeOverlay?.kind === 'coverage'),
-    b('power', activeOverlay?.kind === 'power'),
+    ...OVERLAY_KINDS.map((kind) => b(kind, activeOverlay?.kind === kind)),
     b('life', ambientOn),
     b('restore', open.restore ?? false),
     b('saves', open.saves ?? false),
