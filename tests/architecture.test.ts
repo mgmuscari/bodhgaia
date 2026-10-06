@@ -148,6 +148,8 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/keyMap.ts',
   'src/ui/inspectContent.ts',
   'src/ui/overlayRegistry.ts',
+  'src/ui/framePoses.ts',
+  'src/ui/litWarmup.ts',
   'src/ui/budgetContent.ts',
   'src/ui/satelliteFormat.ts',
   'src/ui/gridTextureBridge.ts',
