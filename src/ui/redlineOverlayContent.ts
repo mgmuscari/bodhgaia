@@ -44,7 +44,7 @@ export function redlineOverlayTint(value: number): RGBA {
 }
 
 /** The dock legend line for the redline overlay. */
-export function redlineLegendLine(_view: RedlineOverlayView): string {
+export function redlineLegendLine(): string {
   return 'Redline grade — A greenlined (best) to D redlined (HOLC)';
 }
 

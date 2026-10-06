@@ -12,7 +12,8 @@ import type { LightPoint } from './glowBatch';
 import { BEAM_REACH, type Beam } from './headlights';
 import { DAYSPEED, dayNightBrightness } from './lighting';
 import { carPose, ambientAlpha } from './ambientContent';
-import type { AmbientState } from './ambientContent';
+import { sharedFramePoses, type Posed } from './framePoses';
+import type { AmbientState, Mover } from './ambientContent';
 import type { GameMap } from '../engine/map';
 import type { Camera } from './camera';
 
@@ -134,17 +135,19 @@ export class GpuRenderer {
     // Taillights: a red pool behind every moving car and cruiser.
     const tail = (x: number, y: number, hx: number, hy: number, mul: number): void =>
       radial(x - hx * 0.24, y - hy * 0.24, 0.4, 1.0, 0.18, 0.12, 0.16 * mul);
+    // The sprite pass's poses for this frame (every mover near the view — a glow from further out can't
+    // reach it); posed here only if this pass runs on its own.
+    const fp = sharedFramePoses(ambient, alpha);
+    const posed = (list: readonly Mover[]): Posed[] => list.map((m) => ({ m, pose: carPose(m, alpha) }));
     if (night > 0.02) {
-      for (const c of ambient.cars) {
+      for (const { m: c, pose } of fp ? fp.cars : posed(ambient.cars)) {
         if (c.parked) continue;
-        const pose = carPose(c, alpha);
         tail(pose.x, pose.y, pose.hx, pose.hy, night);
       }
     }
     // Cruisers: a flashing red/blue roof-bar pool (emergency), day and night.
     const blue = Math.floor(timeSec * 1000 / 180) % 2 === 0;
-    for (const c of ambient.cruisers) {
-      const pose = carPose(c, alpha);
+    for (const { pose } of fp ? fp.cruisers : posed(ambient.cruisers)) {
       tail(pose.x, pose.y, pose.hx, pose.hy, Math.max(night, 0.5));
       if (blue) radial(pose.x, pose.y, 0.75, 0.3, 0.45, 1.0, 0.5);
       else radial(pose.x, pose.y, 0.75, 1.0, 0.25, 0.2, 0.5);

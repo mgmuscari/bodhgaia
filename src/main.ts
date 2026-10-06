@@ -8,8 +8,6 @@ import { runPipeline } from './worldgen/pipeline';
 import { terrainStage } from './worldgen/terrain';
 import { mosesCenturyStage } from './worldgen/moses';
 import { ecoSeedStage } from './worldgen/ecoseed';
-import { biodiversityField } from './ecology/biodiversity';
-import { Water } from './engine/map';
 import { BuiltKind } from './engine/fabric';
 import { createRng } from './engine/rng';
 import { cityName } from './engine/names';
@@ -32,21 +30,6 @@ import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings'
 import { residentialCensus } from './citizens/census';
 import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
-import { overlayTint, legendLine, ecoLegend, type OverlayView } from './ui/ecoOverlayContent';
-import {
-  civicOverlayTint,
-  civicLegendLine,
-  civicLegend,
-  cycleComposite,
-  type CompositeState,
-  type CivicOverlayView,
-  type OverlayKind,
-} from './ui/civicOverlayContent';
-import { redlineOverlayTint, redlineLegendLine, redlineLegend } from './ui/redlineOverlayContent';
-import { policeLegendLine, policeLegend } from './ui/policeViolenceOverlayContent';
-import { coverageTint, coverageLegendLine, coverageLegend } from './ui/coverageOverlayContent';
-import { powerTint, powerLegendLine, powerLegend } from './ui/powerOverlayContent';
-import type { OverlayLegend } from './ui/overlayLegend';
 import { pulseLine } from './ui/pulseContent';
 import { mountPulseDock } from './ui/pulseDock';
 import { sampleRestoration, restorationLines, type RestorationSample } from './ui/restorationContent';
@@ -77,7 +60,7 @@ import { computeNeighborhoods } from './civic/neighborhoods';
 import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
-import { computePowerGrid, isPowerConsumer, plantPollution } from './growth/power';
+import { isPowerConsumer, plantPollution } from './growth/power';
 import { gameClock } from './ui/lighting';
 import { TRUST_FLOOR } from './civic/dynamics';
 import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
@@ -86,6 +69,8 @@ import { mountSavesPanel } from './ui/savesPanel';
 import { setPixelFavicon, installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { inspectReadout } from './ui/inspectContent';
+import { createPowerController } from './app/power';
+import { createOverlayController, mountOverlayLegend } from './app/overlays';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -255,26 +240,13 @@ export function main(save: SaveV1 | null = null): void {
   };
   refreshHouseholds();
 
-  // Power grid: a live DERIVED field (flood-fill from plants over the built layer,
-  // capacity vs demand → which consumers are powered). Recomputed on placement + the
-  // civic cadence; published to the renderer (unpowered consumers get a red pip) and
-  // read by inspect. Derived from the hashed built layer → never hashed itself.
-  let powerGrid = computePowerGrid(world.map, world.parcels, gameClock(performance.now() / 1000));
-  let powerSig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
-  // The grid is solved for the current in-game hour (time-varying demand + rolling blackouts), and
-  // re-solved every in-game hour from the frame loop below.
-  let powerSlot = gameClock(performance.now() / 1000).slot;
-  const recomputePower = (): boolean => {
-    const clock = gameClock(performance.now() / 1000);
-    powerSlot = clock.slot;
-    powerGrid = computePowerGrid(world.map, world.parcels, clock);
-    renderer.setPowerGrid(powerGrid.poweredAnchors);
-    const sig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
-    const changed = sig !== powerSig;
-    powerSig = sig;
-    return changed;
-  };
-  renderer.setPowerGrid(powerGrid.poweredAnchors);
+  // Power grid (src/app/power.ts): solved now for the current in-game hour and published to the renderer;
+  // re-solved on placement, the civic cadence, and each new in-game hour (frame loop).
+  const power = createPowerController({
+    map: world.map,
+    parcels: world.parcels,
+    publish: (anchors) => renderer.setPowerGrid(anchors),
+  });
 
   // Dirty-plant smog: publish the air-pollution emitters from the built layer (each
   // coal/gas plant smogs its footprint + a 2-tile plume). Recomputed on placement;
@@ -312,7 +284,7 @@ export function main(save: SaveV1 | null = null): void {
       world,
       ambient: ambientState,
       tech,
-      power: () => powerGrid,
+      power: power.grid,
       markDirty,
       gpu: { isOn: () => gpuRenderer !== null, mount: mountGpu, unmount: unmountGpu },
     });
@@ -403,7 +375,7 @@ export function main(save: SaveV1 | null = null): void {
     // harms this hour: the share of powered consumers in blackout, and fresh police violence
     let consumers = 0;
     for (const i of world.parcels.aliveIndices()) if (isPowerConsumer(world.parcels.get(i).kind)) consumers++;
-    const dark = Math.max(0, consumers - powerGrid.poweredAnchors.size);
+    const dark = Math.max(0, consumers - power.grid().poweredAnchors.size);
     const violence = violenceTotal();
     // blackout severity: a city entirely in the dark weighs 2 blackout-hours on trust each hour
     const harms = { blackouts: consumers > 0 ? (dark / consumers) * 2 : 0, policeViolence: Math.max(0, violence - prevViolence) / 50, takings: 0 };
@@ -499,15 +471,29 @@ export function main(save: SaveV1 | null = null): void {
   // category tile; the picked tool stays selected with the flyout left open.
   let openCategory: ToolCategory | null = null;
 
-  // The single composite overlay (eco | civic | null). Declared HERE — before the
-  // dock mount — because the dock's getMetaButtons reads it at mount time and on
-  // every refreshMeta. applyOverlay / cycleOverlay below own the transitions.
-  let activeOverlay: CompositeState = null;
+  // The map overlays (src/app/overlays.ts): ONE active overlay, cycled by its key or dock button. Created
+  // HERE — before the dock mount — because the dock's getMetaButtons reads it at mount and on every
+  // refreshMeta. The colour key mounts further down (showLegend); its tint reads this context per apply.
+  const overlays = createOverlayController({
+    renderer,
+    context: () => ({
+      map: world.map,
+      parcels: world.parcels,
+      live: ambientState,
+      poweredAnchors: power.grid().poweredAnchors,
+      civic: deps.civic,
+      tileToNeighborhood: deps.partition.tileToNeighborhood,
+    }),
+    showLegend: (legend) => showLegend(legend),
+    setStatus: (text) => toolbar.setStatus(text),
+    markDirty,
+    refreshMeta: () => toolbar.refreshMeta(),
+  });
 
   // Bottom tool dock: always on, derived from tech grants + selection + effort. The
   // meta row ([Tech][Eco][Civic]) mirrors the T/E/C keys: getMetaButtons derives
   // the active flags from the live panel/overlay state; onMeta routes a click to
-  // the SAME closures the keys use (techPanel.toggle / cycleOverlay).
+  // the SAME closures the keys use (techPanel.toggle / overlays.cycle).
   // Panels the palette opens; mounted further down, so the palette reaches them through this holder
   // (reading their consts before they're declared would throw).
   type PanelHandle = { toggle(): boolean; visible(): boolean };
@@ -528,7 +514,7 @@ export function main(save: SaveV1 | null = null): void {
       toolbar.refresh();
     },
     getMetaButtons: () =>
-      metaButtons(techPanel.isOpen(), activeOverlay && { kind: activeOverlay.kind }, ambientOn, {
+      metaButtons(techPanel.isOpen(), overlays.active(), ambientOn, {
         restore: panels.restore?.visible() ?? false,
         settings: panels.settings?.visible() ?? false,
         help: panels.help?.visible() ?? false,
@@ -543,7 +529,7 @@ export function main(save: SaveV1 | null = null): void {
       else if (id === 'help') panels.help?.toggle();
       else if (id === 'budget') budgetPanel.toggle();
       else if (id === 'saves') panels.saves?.toggle();
-      else cycleOverlay(id); // a map overlay — the SAME closure its letter key calls
+      else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
       toolbar.refreshMeta();
     },
     art: (key) => renderer.artImage(key),
@@ -654,205 +640,8 @@ export function main(save: SaveV1 | null = null): void {
   panels.settings = settingsPanel;
   toolbar.refreshMeta();
 
-  // Composite heatmap overlay: a SINGLE active overlay (eco or civic, never both),
-  // cycled by E (off → soil → flora → fauna → biodiversity → off) and C (off →
-  // belonging → voice → trust → off). Pressing the other key replaces the active
-  // overlay (exclusivity). Eco soil/flora/fauna read the LIVE layers; biodiversity
-  // and every civic view are recomputed/re-pushed when their source ticks. Water
-  // tiles are not tinted (eco lives on land); civic tiles with no neighborhood
-  // (id 0) are not tinted.
-  // Visible colour KEY for the active overlay — a swatch per ramp endpoint / band with its label,
-  // so the eco/civic/redline/police maps are legible at a glance (not just a one-line caption).
-  const legendEl = document.createElement('div');
-  legendEl.className = 'overlay-legend';
-  legendEl.hidden = true;
-  legendEl.style.cssText =
-    'position:fixed;left:12px;top:12px;z-index:50;background:rgba(20,22,30,0.82);color:#e8e6e0;' +
-    'font:12px monospace;padding:6px 9px;border-radius:6px;pointer-events:none;line-height:1.5;';
-  document.body.appendChild(legendEl);
-  const updateLegend = (legend: OverlayLegend | null): void => {
-    if (!legend) {
-      legendEl.hidden = true;
-      legendEl.textContent = '';
-      return;
-    }
-    legendEl.hidden = false;
-    legendEl.textContent = '';
-    const title = document.createElement('div');
-    title.textContent = legend.title;
-    title.style.cssText = 'font-weight:bold;margin-bottom:3px;';
-    legendEl.appendChild(title);
-    for (const stop of legend.stops) {
-      const row = document.createElement('div');
-      const sw = document.createElement('span');
-      sw.style.cssText = `display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:middle;background:rgb(${stop.color[0]},${stop.color[1]},${stop.color[2]});`;
-      const lbl = document.createElement('span');
-      lbl.textContent = stop.label;
-      row.append(sw, lbl);
-      legendEl.appendChild(row);
-    }
-  };
-
-  const overlayWater = world.map.water;
-  const applyOverlay = (): void => {
-    // Police violence is a LIVE field, drawn per-frame (not in the cached base) so it tracks
-    // arrests + decay; every other kind clears that flag and uses the base overlay source.
-    renderer.setLiveOverlay(activeOverlay?.kind === 'police' ? 'police' : null);
-    if (activeOverlay === null || activeOverlay.kind === 'police') {
-      renderer.setOverlay(null);
-      return;
-    }
-    if (activeOverlay.kind === 'coverage') {
-      // Tint each developed plot tile by whether a fire/health station is in reach (served/under);
-      // dim the rest so the served/under-served plots read as a layer view, not faint specks.
-      const cov = ambientState.coverage;
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) => (world.map.parcel[i] !== 0 ? coverageTint(cov.has(i)) : null),
-      });
-      return;
-    }
-    if (activeOverlay.kind === 'power') {
-      // Tint each power-consumer plot green (on the grid) or red (dark), via its parcel anchor;
-      // dim the rest so lit/dark buildings read as a layer view, not faint specks on the terrain.
-      const lit = powerGrid.poweredAnchors;
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) => {
-          const pid = world.map.parcel[i];
-          if (!pid || !isPowerConsumer(world.parcels.kindAt(pid - 1))) return null;
-          const p = world.parcels.get(pid - 1);
-          return powerTint(lit.has(world.map.idx(p.x, p.y)));
-        },
-      });
-      return;
-    }
-    if (activeOverlay.kind === 'redline') {
-      // The HOLC grade is a hashed map layer — tint land tiles by it directly.
-      // Water carries a grade too (the near-water "cover" nudge), but tinting the
-      // river/ocean red reads wrong, so land only — like the eco overlays.
-      const redline = world.map.redline;
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) => (overlayWater[i] !== Water.None ? null : redlineOverlayTint(redline[i]!)),
-      });
-      return;
-    }
-    if (activeOverlay.kind === 'civic') {
-      const view = activeOverlay.view as CivicOverlayView;
-      const count = deps.civic.count();
-      const values = new Uint8Array(count); // per-neighborhood value, rebuilt per refresh
-      for (let id = 1; id <= count; id++) {
-        const v = deps.civic.getValues(id);
-        values[id - 1] = view === 'belonging' ? v.belonging : view === 'voice' ? v.voice : v.trust;
-      }
-      const t2n = deps.partition.tileToNeighborhood;
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) => {
-          const id = t2n[i]!;
-          return id === 0 ? null : civicOverlayTint(view, values[id - 1]!);
-        },
-      });
-      return;
-    }
-    const view = activeOverlay.view as OverlayView;
-    if (view === 'biodiversity') {
-      const field = biodiversityField(world.map);
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) => (overlayWater[i] !== Water.None ? null : overlayTint('biodiversity', field[i]!)),
-      });
-      return;
-    }
-    if (view === 'airPollution') {
-      // The live agent-driven smog field (cars + dirty plants emit it), over LAND — a heatmap that
-      // refreshes as the base redraws on the eco cadence. Clean where the player has calmed traffic.
-      const poll = ambientState.pollution;
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) =>
-          overlayWater[i] !== Water.None ? null : overlayTint('airPollution', Math.min(255, poll.get(i) ?? 0)),
-      });
-      return;
-    }
-    if (view === 'groundPollution') {
-      // The live land-contamination field, over LAND — industry + dirty power + demand-path litter
-      // poison the ground; clean land elsewhere. Reparable: it clears as the player heals/rewilds.
-      const gp = ambientState.groundPollution;
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) =>
-          overlayWater[i] !== Water.None ? null : overlayTint('groundPollution', Math.min(255, gp.get(i) ?? 0)),
-      });
-      return;
-    }
-    if (view === 'waterPollution') {
-      // The live runoff field, over WATER — the dingy creeks downstream of redlined industry. Clean
-      // blue where the water is healthy, murky where contamination collects.
-      const wp = ambientState.waterPollution;
-      renderer.setOverlay({
-        dimBase: true,
-        tint: (i) =>
-          overlayWater[i] === Water.None ? null : overlayTint('waterPollution', Math.min(255, wp.get(i) ?? 0)),
-      });
-      return;
-    }
-    const layer =
-      view === 'soil'
-        ? world.map.soilHealth
-        : view === 'flora'
-          ? world.map.floraVitality
-          : world.map.faunaPresence;
-    renderer.setOverlay({
-      dimBase: true,
-      tint: (i) => (overlayWater[i] !== Water.None ? null : overlayTint(view, layer[i]!)),
-    });
-  };
-
-  // The SHARED overlay-cycle body — one closure for BOTH the E/C keys and the dock
-  // [Eco]/[Civic] buttons, so a key press and a button click can never diverge.
-  // Cycles the single composite overlay, re-points the renderer, surfaces the
-  // legend in the dock status slot, and refreshes the dock meta active-state.
-  const cycleOverlay = (kind: OverlayKind): void => {
-    activeOverlay = cycleComposite(activeOverlay, kind);
-    applyOverlay();
-    const legend =
-      activeOverlay === null
-        ? null
-        : activeOverlay.kind === 'eco'
-          ? legendLine(activeOverlay.view as OverlayView)
-          : activeOverlay.kind === 'redline'
-            ? redlineLegendLine('grade')
-            : activeOverlay.kind === 'police'
-              ? policeLegendLine('violence')
-              : activeOverlay.kind === 'coverage'
-                ? coverageLegendLine('coverage')
-                : activeOverlay.kind === 'power'
-                  ? powerLegendLine('power')
-                  : civicLegendLine(activeOverlay.view as CivicOverlayView);
-    toolbar.setStatus(legend);
-    // The visible colour key for the active overlay (eco/civic ramps, redline bands, police ramp).
-    updateLegend(
-      activeOverlay === null
-        ? null
-        : activeOverlay.kind === 'eco'
-          ? ecoLegend(activeOverlay.view as OverlayView)
-          : activeOverlay.kind === 'civic'
-            ? civicLegend(activeOverlay.view as CivicOverlayView)
-            : activeOverlay.kind === 'redline'
-              ? redlineLegend()
-              : activeOverlay.kind === 'police'
-                ? policeLegend()
-                : activeOverlay.kind === 'coverage'
-                  ? coverageLegend()
-                  : activeOverlay.kind === 'power'
-                    ? powerLegend()
-                    : policeLegend(),
-    );
-    markDirty(); // the overlay tint lives in the cached base → invalidate it
-    toolbar.refreshMeta(); // the active overlay changed → dock [Eco]/[Civic] state
-  };
+  // The overlay colour key (top-left over the map), shown/hidden by the overlay controller.
+  const showLegend = mountOverlayLegend(document.body);
 
   // The [Life] ambient toggle — one closure for the L key AND (Task 4) the dock
   // [Life] button. Flips ambientOn, resets ONLY the ambient clock when turning ON
@@ -935,7 +724,7 @@ export function main(save: SaveV1 | null = null): void {
     event.preventDefault();
     const overlay = overlayKindOf(action);
     if (overlay !== null) {
-      cycleOverlay(overlay); // the same body the dock's overlay buttons call
+      overlays.cycle(overlay); // the same body the dock's overlay buttons call
       return;
     }
     switch (action) {
@@ -988,11 +777,11 @@ export function main(save: SaveV1 | null = null): void {
     if (def.id === 'inspect') {
       // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
       // carries, the power status and the redline grade (src/ui/inspectContent.ts).
-      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, powerGrid.poweredAnchors));
+      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, power.grid().poweredAnchors));
       return;
     }
     if (r.ok) {
-      recomputePower(); // built layer changed → re-derive the grid (a new plant lights its district)
+      power.recompute(); // built layer changed → re-derive the grid (a new plant lights its district)
       recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
       markDirty(); // mutated the built/parcel layer → rebuild the cached base
       // Effort changed → dock affordability + (if open) tech-panel affordability.
@@ -1072,19 +861,8 @@ export function main(save: SaveV1 | null = null): void {
     // agent layer IS the traffic: the CITIZENS (owned cars + walkers/cyclists/transit riders) lay the
     // live traffic density as they actually drive, and are persistent — they park and are walked to,
     // never popping out of existence at a destination.
-    if (r.ecoTicked && activeOverlay?.kind === 'eco') {
-      // biodiversity is derived → recompute + re-push; soil/flora/fauna read the
-      // live layers and need no recompute.
-      if (activeOverlay.view === 'biodiversity') applyOverlay();
-      markDirty(); // eco overlay re-push changes the base tint → invalidate base
-    }
+    overlays.onSimTick(r); // the active overlay's source ticked → re-push it
     if (r.civicTicked) {
-      // the partition was refreshed/remapped and values changed → rebuild the
-      // civic overlay against the new partition + values.
-      if (activeOverlay?.kind === 'civic') {
-        applyOverlay();
-        markDirty(); // civic overlay re-push changes the base tint → invalidate base
-      }
       const wb = wellbeingNow();
       pulseDock.set(pulseText(wb));
       prevWellbeing = wb;
@@ -1103,12 +881,12 @@ export function main(save: SaveV1 | null = null): void {
       // Re-derive the grid FIRST so revival reads the current power state, then run
       // the seam: a powered home heals/densifies by occupancy; an unpowered one is
       // hard-gated (no growth, slow decay) until the player restores power.
-      const powerChanged = recomputePower();
+      const powerChanged = power.recompute();
       const revived = stepRevival(
         world,
         (tile) => ambientState.occupancy.get(tile),
         revivalRng,
-        (tile) => powerGrid.poweredAnchors.has(tile),
+        (tile) => power.grid().poweredAnchors.has(tile),
       );
       refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
       refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
@@ -1119,7 +897,7 @@ export function main(save: SaveV1 | null = null): void {
   let lastBaseRefresh = 0;
   const frame = (now: number): void => {
     // a new in-game hour: demand re-draws and the blackout may roll to another block
-    if (gameClock(now / 1000).slot !== powerSlot && recomputePower()) markDirty();
+    if (power.maybeResolveHour(now)) markDirty();
     // the economy steps once per in-game hour (catching up a few if the tab was in the background)
     const hourNow = gameClock(now / 1000).slot;
     for (let k = 0; k < 6 && econSlot < hourNow; k++) {
