@@ -24,10 +24,10 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | L1 | live split | tuning constants → `live/tuning.ts` | done | 91c1b0ae |
 | L2 | live split | geometry (DIR tables, lane/curb offsets) → `live/geometry.ts` | done | 85472718 |
 | L3 | live split | types + `createAmbientState` + setters → `live/types.ts` | done | 29e3dae8 (+ live/wind.ts) |
-| L4 | live split | poses → `live/poses.ts` | in-progress | refactor/b3-live |
-| L5 | live split | network predicates → `live/network.ts` | in-progress | refactor/b3-live |
-| L6 | live split | motion & collision → `live/motion.ts` | in-progress | refactor/b3-live |
-| L7 | live split | pathing & mode choice → `live/pathing.ts` | in-progress | refactor/b3-live |
+| L4 | live split | poses → `live/poses.ts` | done | 6b543905 |
+| L5 | live split | network predicates → `live/network.ts` | done | f7cf458f |
+| L6 | live split | motion & collision → `live/motion.ts` | done | fb4cccfc |
+| L7 | live split | pathing & mode choice → `live/pathing.ts` | done | b6098ddb |
 | Lg | live split | GOLDEN determinism test (N substeps → digest of agents + field maps) — before L8 | done | d4f91255 |
 | L8a | live split | fields: pollution/wind/rain/water/ground + seedDecay → `live/fields/pollution.ts` | todo | — |
 | L8b | live split | fields: coverage, land value, road decay → `live/fields/landValue.ts` | todo | — |
@@ -42,9 +42,9 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | M1 | main split | favicon + dev handle → `app/devHandle.ts` | done | 0e6546b2 |
 | M2 | main split | opening mount → `app/opening.ts` | done | 7e128874 |
 | M3 | main split | pure `inspectReadout` out of `applyAt` (+ unit test) | done | e1a8f4db |
-| M4 | main split | power controller → `app/power.ts` | in-progress | refactor/b3-main |
+| M4 | main split | power controller → `app/power.ts` | done | 74f0912c |
 | M5 | main split | live-layer setup → `app/live.ts` | todo | — |
-| M6 | main split | overlay controller → `app/overlays.ts` | in-progress | refactor/b3-main |
+| M6 | main split | overlay controller → `app/overlays.ts` | done | 7e8b1b1e |
 | M7 | main split | economy controller → `app/economy.ts` | todo | — |
 | M8 | main split | saves wiring → `app/saves.ts` | todo | — |
 | M9 | main split | panels → `app/panels.ts` | todo | — |
@@ -68,15 +68,15 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | C2 | consistency | one clamp family (keep floor / no-floor variants; hash-sensitive) | todo | — |
 | C3 | consistency | one 4-neighbour direction table (iteration order preserved) | todo | — |
 | C4 | consistency | overlay constants + `lerp` shared | done | 6e667a62 |
-| C5 | consistency | overlay registry: one dispatch instead of main's if-chains/ternaries | in-progress | refactor/b3-main |
+| C5 | consistency | overlay registry: one dispatch instead of main's if-chains/ternaries | done | 9fa1a047 |
 | C6 | consistency + BUG | one keyboard table; fixes Cmd+L / Cmd+G / Cmd+, being swallowed | done | 77a0b240 |
 | C7 | consistency | one panel handle shape (`toggle`/`isOpen`/`refresh`, one visibility mechanism) | todo | — |
 | C8 | consistency | settle `reconcile.ts` (wire it in or delete it) | todo | — |
-| P1 | perf | cull before posing; one pose array per frame for both renderers | in-progress | refactor/b3-perf |
+| P1 | perf | cull before posing; one pose array per frame for both renderers | done | 5f46378d |
 | P2 | perf | `snapPose` stops copying whole agents | todo | — |
 | P3 | perf | reachability: reuse the found path; component labels for O(1) "can't reach" | todo | — |
 | P4 | perf | A*: binary heap + typed arrays (same tie order) | todo | — |
-| P5a | perf | warm headlight silhouettes in idle time | in-progress | refactor/b3-perf |
+| P5a | perf | warm headlight silhouettes in idle time | done | cdf325fd |
 | P5b | perf | dirty-tile base refresh instead of the 2 s full redraw (touches main.ts) | todo | — |
 | C9 | consistency + BUG | keys fire while typing in an input (Settings number box): skip editable targets | done | b1e3edc3 + 1c98f904 (input.ts) |
 | C10 | consistency | Help's controls list is missing B (Budget) and S (Saves) | done | 79940c8a |
@@ -91,7 +91,12 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | N2 | notes | L13: `inspectContent.ts` imports `liveInspectLine` from the ambientContent barrel — migrate with the rest | todo | — |
 | N3 | notes | M5 (live setup in main) lands after L13 or imports only via the barrel; keep restoreLive after seedDecay | todo | — |
 
-- **Batch 3** (started 2026-10-05): live split part 2 (L4–L7) · power + overlay registry (M4, C5/M6) · render culling (P1, P5a).
+- **Batch 3** (started 2026-10-05; DONE — integrated on `refactor/batch-3`, 1,848 tests, golden unchanged, 9 frames pixel-identical, verified from a subpath at 60 fps): live split part 2 (L4–L7) · power + overlay registry (M4, C5/M6) · render culling (P1, P5a).
+| B1 | bug | power overlay froze at the grid it was opened with — now refreshes on the civic tick | done | 8120bf9d |
+| C11 | consistency | dockContent hardcodes the six overlay kinds — iterate OVERLAY_KINDS | todo | — |
+| D10 | dead code | `compositeKeyFor` (civic), `cycleOverlay`/`shouldCycleOverlay` (eco) are test-only | todo | — |
+| N4 | notes | C7: one `{id → handle}` panel registry collapses onMeta + keydown switches; the restoration toggle's open-time sample runs on the key path only (dock path skips it) | todo | — |
+| N5 | notes | L8: decide whether `layTraffic` moves with the fields; L11: `stopReachable` moves with parking | todo | — |
 
 ## Survey notes (2026-10-05)
 
