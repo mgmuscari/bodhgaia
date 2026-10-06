@@ -18,15 +18,12 @@ import { SIDEBAR_W } from './ui/toolbar';
 import { installUiTheme } from './ui/uiTheme';
 import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
-import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, applyLiveCaps } from './ui/ambientContent';
 import { loadSettings, saveSettings } from './ui/settingsStore';
 import { materializeSkin } from './ui/tilesetLoader';
 import { paintSnesSkin } from './ui/snesTileset';
 import { footprintCellKey } from './ui/renderKey';
 
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
-import { residentialCensus } from './citizens/census';
-import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
 import { mountPulseDock } from './ui/pulseDock';
 import { sampleRestoration } from './ui/restorationContent';
@@ -47,8 +44,7 @@ import { computeNeighborhoods } from './civic/neighborhoods';
 import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
-import { plantPollution } from './growth/power';
-import { restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
+import { restoreWorld, restoreTech, restoreCivic, type SaveV1 } from './save/snapshot';
 import { CURRENT, readSlot } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
 import { setPixelFavicon, installDevHandle } from './app/devHandle';
@@ -59,6 +55,7 @@ import { createOverlayController, mountOverlayLegend } from './app/overlays';
 import { createEconomyController } from './app/economy';
 import { createSaves } from './app/saves';
 import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/panels';
+import { createLive } from './app/live';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -73,11 +70,10 @@ export function main(save: SaveV1 | null = null): void {
   // a resumed game (save/store.ts: the CURRENT slot) brings its own seed and size
   const seed = save?.seed ?? params.get('seed') ?? DEFAULT_SEED;
 
-  // Settings: live caps apply NOW (perf ceilings the agent layer reads); the world size feeds
-  // worldgen at creation (a different size is a different seeded world — apply-on-restart). Persisted
-  // in localStorage; defaults reproduce today's 128² medium-preset game byte-for-byte.
+  // Settings: the live caps apply when the live layer is set up (perf ceilings the agent layer reads); the world
+  // size feeds worldgen at creation (a different size is a different seeded world — apply-on-restart).
+  // Persisted in localStorage; defaults reproduce today's 128² medium-preset game byte-for-byte.
   let settings = loadSettings();
-  applyLiveCaps(settings.live);
   const world = runPipeline(
     { seed, width: save?.width ?? settings.world.mapWidth, height: save?.height ?? settings.world.mapHeight },
     [terrainStage(), mosesCenturyStage(), ecoSeedStage()],
@@ -183,48 +179,18 @@ export function main(save: SaveV1 | null = null): void {
     dirty = true;
   };
 
-  // Ambient life (purely visual, read-only). A SEPARATE rng fork + a SEPARATE clock
-  // so ambient timing can never perturb the sim: the sim's `last` is owned by the
-  // sim path alone (its FixedTickLoop clamp owns catch-up), and `lastAmbient` is
-  // owned by the ambient path (its own stepAmbient clamp owns catch-up). Default on
-  // (PRD Q2); the [Life] toggle / L key flip it. ambientOn=false restores the exact
-  // legacy dirty-driven render path.
-  let ambientOn = true;
-  const ambientRng = createRng(seed).fork('ambient');
-  // Seed the ambient state (incl. the world's prevailing wind) from the ambient fork — a SEPARATE
-  // fork so the wind draw never advances the per-frame ambient stream below.
-  const ambientState = createAmbientState(createRng(seed).fork('ambient-wind'));
-  // Revival/decay rng: a stable stream for the slow-cadence growth seam (densify
-  // draws). Forked off the world seed, independent of the ambient + sim streams.
-  const revivalRng = createRng(seed).fork('revival');
-  let lastAmbient = performance.now();
-
-  // The parking lots that STORE the moving cars: a trip-car parks in the nearest one on
-  // arrival (cars=trips, lots=storage). Each lot publishes its centre + stall grid.
-  // Recomputed at startup and on each civic tick so it tracks the built layer as the
-  // player rezones lots.
-  const refreshParkingLots = (): void => {
-    setParkingLots(
-      ambientState,
-      parkingLots(world.map).map((lot) => ({
-        cx: (lot.x0 + lot.x1) / 2,
-        cy: (lot.y0 + lot.y1) / 2,
-        x0: lot.x0,
-        y0: lot.y0,
-        x1: lot.x1,
-        y1: lot.y1,
-        stalls: parkingStalls(lot),
-      })),
-    );
-  };
-  refreshParkingLots();
-
-  // The residential census the ambient layer spawns daily-itinerary citizens from. Recomputed
-  // at startup and on each civic tick so it tracks homes as the city grows/decays.
-  const refreshHouseholds = (): void => {
-    setHouseholds(ambientState, residentialCensus(world.parcels));
-  };
-  refreshHouseholds();
+  // The live layer (src/app/live.ts): ambient life, purely visual and read-only over the world — its own rng
+  // forks and its own clock, so it can never perturb the sim. It publishes the parking lots, households and
+  // dirty-plant emitters it reads, seeds the decay a century left (a save's stocks go over it), and applies
+  // the live caps. On by default (PRD Q2); the [Life] toggle / L key flip `live.on`.
+  const live = createLive({
+    seed,
+    map: world.map,
+    parcels: world.parcels,
+    caps: settings.live,
+    saved: save?.live ?? null,
+    walkable: () => tech.hasCapability('walkability'), // Walkable Streets: people walk farther
+  });
 
   // Power grid (src/app/power.ts): solved now for the current in-game hour and published to the renderer;
   // re-solved on placement, the civic cadence, and each new in-game hour (frame loop).
@@ -234,33 +200,6 @@ export function main(save: SaveV1 | null = null): void {
     publish: (anchors) => renderer.setPowerGrid(anchors),
   });
 
-  // Dirty-plant smog: publish the air-pollution emitters from the built layer (each
-  // coal/gas plant smogs its footprint + a 2-tile plume). Recomputed on placement;
-  // the live pollution field (cars + plants) drags land value → occupancy → revival,
-  // so dirty power poisons what it powers and renewables read clean.
-  const PLUME_RADIUS = 2;
-  const recomputePlantEmitters = (): void => {
-    const emitters: { tile: number; amount: number }[] = [];
-    for (const idx of world.parcels.aliveIndices()) {
-      const p = world.parcels.get(idx);
-      const amt = plantPollution(p.kind);
-      if (amt <= 0) continue;
-      for (let yy = -PLUME_RADIUS; yy < p.height + PLUME_RADIUS; yy++) {
-        for (let xx = -PLUME_RADIUS; xx < p.width + PLUME_RADIUS; xx++) {
-          const tx = p.x + xx;
-          const ty = p.y + yy;
-          if (world.map.inBounds(tx, ty)) emitters.push({ tile: world.map.idx(tx, ty), amount: amt });
-        }
-      }
-    }
-    setPlantEmitters(ambientState, emitters);
-  };
-  recomputePlantEmitters();
-
-  // The city starts DECAYED: a century of car-culture has already trampled the urban ground
-  // into desire paths and polluted the shorelines, before the player arrives to heal it.
-  seedDecay(ambientState, world.map);
-  if (save) restoreLive(ambientState, save.live); // the saved stocks over the seeded decay
 
   // Dev / live-pass hook (`window.bodhitropolis`) — DEV BUILDS ONLY (folded away in production). It reads the
   // reassigned power grid / GPU renderer through getters, never snapshots.
@@ -268,7 +207,7 @@ export function main(save: SaveV1 | null = null): void {
     installDevHandle({
       camera,
       world,
-      ambient: ambientState,
+      ambient: live.state,
       tech,
       power: power.grid,
       markDirty,
@@ -296,7 +235,7 @@ export function main(save: SaveV1 | null = null): void {
     tech,
     civic,
     sim: deps,
-    live: ambientState,
+    live: live.state,
     powerGrid: power.grid,
     initial: save?.econ ?? null,
     autosave: () => saves.autosave(),
@@ -336,7 +275,7 @@ export function main(save: SaveV1 | null = null): void {
     context: () => ({
       map: world.map,
       parcels: world.parcels,
-      live: ambientState,
+      live: live.state,
       poweredAnchors: power.grid().poweredAnchors,
       civic: deps.civic,
       tileToNeighborhood: deps.partition.tileToNeighborhood,
@@ -370,9 +309,9 @@ export function main(save: SaveV1 | null = null): void {
       openCategory = openCategory === id ? null : id;
       toolbar.refresh();
     },
-    getMetaButtons: () => metaButtons(panels.isOpen('tech'), overlays.active(), ambientOn, panels.openFlags()),
+    getMetaButtons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
     onMeta: (id) => {
-      if (id === 'life') setAmbient(!ambientOn); // same toggle the L key calls
+      if (id === 'life') setAmbient(!live.on); // same toggle the L key calls
       else if (isPanelId(id)) panels.toggle(id); // the same registry call its key makes
       else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
       toolbar.refreshMeta();
@@ -434,7 +373,7 @@ export function main(save: SaveV1 | null = null): void {
     readout: () => economy.readout(),
     wellbeing: () => wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }),
     // the city's decline left them without a home, or rent displaced them (loop-coupled: healing lowers it)
-    unhoused: () => sampleUnhoused(ambientState, world.map.width).unhoused + Math.round(economy.run().state.displaced),
+    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
   });
 
   // The windows (src/app/panels.ts) — Budget, Tech, Restoration, Settings, Help — mounted after the dock and the
@@ -444,15 +383,15 @@ export function main(save: SaveV1 | null = null): void {
     economy,
     tech,
     art: (key) => renderer.artImage(key),
-    sampleRestoration: () => sampleRestoration(ambientState, world.map),
-    // Settings: live caps apply instantly via applyLiveCaps; world size persists for the next load. Every
+    sampleRestoration: () => sampleRestoration(live.state, world.map),
+    // Settings: live caps apply instantly (live.applyCaps); world size persists for the next load. Every
     // change re-persists the whole settings blob so a reload restores it.
     settings: {
       getSettings: () => settings,
-      onLiveChange: (live: LiveCaps): void => {
+      onLiveChange: (caps: LiveCaps): void => {
         // clamp the merged blob so applied == persisted == shown (the input could be out of range)
-        settings = clampSettings({ ...settings, live: { ...settings.live, ...live } });
-        applyLiveCaps(settings.live);
+        settings = clampSettings({ ...settings, live: { ...settings.live, ...caps } });
+        live.applyCaps(settings.live);
         saveSettings(settings);
       },
       onWorldChange: (worldSettings: WorldSettings): void => {
@@ -488,13 +427,11 @@ export function main(save: SaveV1 | null = null): void {
   // The overlay colour key (top-left over the map), shown/hidden by the overlay controller.
   const showLegend = mountOverlayLegend(document.body);
 
-  // The [Life] ambient toggle — one closure for the L key AND (Task 4) the dock
-  // [Life] button. Flips ambientOn, resets ONLY the ambient clock when turning ON
-  // (so the first dt after a dormant period is small — also clamp-guarded), repaints
-  // via markDirty, and refreshes the dock meta active-state.
+  // The [Life] ambient toggle — one closure for the L key AND the dock [Life] button. Flips live.on (turning
+  // it ON resets ONLY the ambient clock, so the first dt after a dormant period is small — also clamp-guarded),
+  // repaints via markDirty, and refreshes the dock meta active-state.
   const setAmbient = (on: boolean): void => {
-    ambientOn = on;
-    if (on) lastAmbient = performance.now();
+    live.on = on;
     markDirty();
     toolbar.refreshMeta();
   };
@@ -510,7 +447,7 @@ export function main(save: SaveV1 | null = null): void {
       tech,
       civic,
       econ: economy.run(),
-      live: ambientState,
+      live: live.state,
       tick: currentTick,
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
     }),
@@ -534,7 +471,7 @@ export function main(save: SaveV1 | null = null): void {
       overlays.cycle(overlay); // the same body the dock's overlay buttons call
       return;
     }
-    if (action === 'life') setAmbient(!ambientOn);
+    if (action === 'life') setAmbient(!live.on);
     else if (isPanelId(action)) panels.toggle(action); // the same registry call its dock button makes
   });
 
@@ -557,12 +494,12 @@ export function main(save: SaveV1 | null = null): void {
     if (def.id === 'inspect') {
       // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
       // carries, the power status and the redline grade (src/ui/inspectContent.ts).
-      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, power.grid().poweredAnchors));
+      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, live.state, power.grid().poweredAnchors));
       return;
     }
     if (r.ok) {
       power.recompute(); // built layer changed → re-derive the grid (a new plant lights its district)
-      recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
+      live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
       markDirty(); // mutated the built/parcel layer → rebuild the cached base
       // Effort changed → dock affordability + (if open) tech-panel affordability.
       // Refresh directly and snapshot both signatures so the next sim-gated check
@@ -624,7 +561,7 @@ export function main(save: SaveV1 | null = null): void {
   // this handler is for smoothness, not safety.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
-    lastAmbient = performance.now();
+    live.resetClock();
     markDirty();
   });
 
@@ -658,12 +595,12 @@ export function main(save: SaveV1 | null = null): void {
       const powerChanged = power.recompute();
       const revived = stepRevival(
         world,
-        (tile) => ambientState.occupancy.get(tile),
-        revivalRng,
+        (tile) => live.state.occupancy.get(tile),
+        live.revivalRng,
         (tile) => power.grid().poweredAnchors.has(tile),
       );
-      refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
-      refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
+      live.refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
+      live.refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
       if (revived > 0 || powerChanged) markDirty(); // stock/grid changed → rebuild base
     }
   }, { startTick: save?.tick ?? 0 }); // a resumed game keeps its clock (repair rings are stamped in ticks)
@@ -684,14 +621,12 @@ export function main(save: SaveV1 | null = null): void {
       lastBaseRefresh = now;
       renderer.invalidateBase();
     }
-    if (ambientOn && !document.hidden) {
+    if (live.on && !document.hidden) {
       // Continuous ambient path: step the ambient sim on its OWN clock (its Task-1
       // clamp owns catch-up), then composite + sprites. The base rebuilds inside
       // renderFrame iff invalidated, so this stays cheap.
-      ambientState.walkable = tech.hasCapability('walkability'); // Walkable Streets: people walk farther
-      stepAmbient(ambientState, world.map, ambientRng, now - lastAmbient);
-      lastAmbient = now;
-      renderer.renderFrame(world, camera, ambientState);
+      live.step(now);
+      renderer.renderFrame(world, camera, live.state);
       dirty = false;
     } else if (dirty || gpuRenderer) {
       // Legacy ambient-OFF path: repaint only when something changed. With GPU on we still run the
@@ -703,9 +638,9 @@ export function main(save: SaveV1 | null = null): void {
     // it samples the freshest baked tiles. The base re-uploads only when its version changed.
     gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion());
     // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
-    if (gpuRenderer && ambientOn) gpuRenderer.renderAgents(ambientState, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
+    if (gpuRenderer && live.on) gpuRenderer.renderAgents(live.state, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
     // GPU smog overlay (z2, above sprites): the atmospheric haze, now on the GPU instead of CPU plumes.
-    if (smogOverlay && ambientOn) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, ambientState.pollution, ambientState.wind);
+    if (smogOverlay && live.on) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, live.state.pollution, live.state.wind);
     // Sim-gated (Y5): re-derive the dock/panel signatures + refresh on change ONLY
     // when a sim tick has run since the last sync — not every rAF frame.
     if (simChanged) {
