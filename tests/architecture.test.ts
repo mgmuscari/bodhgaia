@@ -435,6 +435,17 @@ describe('architecture guard: src/live scanned fail-closed', () => {
     expect(liveFiles).toContain(path.join(liveDir, 'caps.ts'));
   });
 
+  it('recurses into src/live subdirectories (fields/ is scanned too)', () => {
+    expect(liveFiles).toContain(path.join(liveDir, 'fields', 'pollution.ts'));
+    const probe = path.join(liveDir, 'fields', '__guard_probe__.ts');
+    fs.writeFileSync(probe, 'export const x = document.body;\n');
+    try {
+      expect(tsFiles(liveDir), 'scan did not discover the nested probe').toContain(probe);
+    } finally {
+      fs.unlinkSync(probe);
+    }
+  });
+
   it('discovers and flags a synthetic DOM violation dropped into src/live', () => {
     const probe = path.join(liveDir, '__guard_probe__.ts');
     fs.writeFileSync(probe, 'export const x = window.innerWidth + Math.random();\n');
