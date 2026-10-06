@@ -45,7 +45,7 @@ export function createCity({ seed: urlSeed, size, save }: CityDeps): City {
   const partition = computeNeighborhoods(world.map);
   const civic = createCivicState(partition);
   if (save) restoreCivic(civic, save.civic);
-  // effortAccrual 'economy': communal effort is the economy's perishable stock (src/economy), not a counter
-  const sim: SimDeps = { world, tech, civic, partition, seed, effortAccrual: 'economy' };
+  // communal effort is the economy's perishable stock (src/economy) — simTick never accrues it
+  const sim: SimDeps = { world, tech, civic, partition };
   return { seed, world, tech, civic, sim };
 }

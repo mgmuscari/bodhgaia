@@ -43,14 +43,8 @@ export interface SimDeps {
   tech: TechState;
   civic: CivicState;
   partition: NeighborhoodMap;
-  /** @deprecated Unread — simTick draws no randomness. Accepted (and ignored) only so existing
-   *  callers that still pass it keep compiling; drop it at the call site. */
-  seed?: string;
   ecoMeans?: { soil: number; flora: number; fauna: number };
   civicMeans?: { belonging: number; voice: number; trust: number };
-  /** @deprecated Ignored — the economy always owns effort now (the old per-tick 'tick' accrual is
-   *  gone). Accepted only so existing callers that still pass it keep compiling. */
-  effortAccrual?: 'economy';
 }
 
 /** What fired this tick — for the shell's dirty-marking. */
