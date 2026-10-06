@@ -27,11 +27,6 @@ import {
   AMBIENT_MAX_FRAME_MS,
   SUBSTEP_MS,
   ARREST_CADENCE,
-  ARREST_RADIUS,
-  ARREST_DRAIN,
-  ARREST_TRAUMA,
-  POLICE_VIOLENCE_MAX,
-  POLICE_VIOLENCE_LAY,
   POLICE_VIOLENCE_DECAY,
   CAR_SPEED,
   PED_SPEED,
@@ -70,7 +65,6 @@ import {
   parkOwnedCarSomewhere,
   routeToParking,
   retireOwnedCar,
-  abandonOwnedCar,
   degradeAbandonedCar,
   spawnCitizens,
   tryPark,
@@ -79,7 +73,7 @@ import {
   depositVisit,
   respawnAtHome,
 } from '../live/agents';
-import { buildSafeZones, policePhase, arrestChance, spawnCruisers, stepCruisers } from '../live/police';
+import { buildSafeZones, policePhase, spawnCruisers, stepCruisers, stepArrests } from '../live/police';
 import { spawnTrains, stepTrain } from '../live/trains';
 import { flockTile, advanceFlock, spawnFlocks } from '../live/birds';
 import { stepOccupancy } from '../live/fields/occupancy';
@@ -239,6 +233,7 @@ export {
   huntTarget,
   nextPatrolStep,
   stepCruisers,
+  stepArrests,
 } from '../live/police';
 
 export {
@@ -287,50 +282,6 @@ export function liveInspectLine(s: LiveSamples): string {
 }
 
 // --- The substep + the public stepper ------------------------------------
-
-/**
- * Arrest sweep: each cruiser may seize the nearest on-foot citizen within ARREST_RADIUS — removing
- * them from the street AND draining a person from their household's occupancy — with a probability
- * that SCALES WITH the redline grade under the cruiser (arrestChance: 0 at greenlined, max at fully
- * redlined). For nothing: no cause, only the grade. The player ends it by defunding the precinct
- * (no precinct → no cruisers → no arrests). Renderer-side; deterministic in `rng`.
- */
-export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: ReadonlySet<number>): void {
-  if (state.cruisers.length === 0 || state.peds.length === 0) return;
-  for (const c of state.cruisers) {
-    const cx = Math.round(c.x);
-    const cy = Math.round(c.y);
-    if (!map.inBounds(cx, cy)) continue;
-    if (safe?.has(map.idx(cx, cy))) continue; // no arrests inside a community refuge
-    // Arrest pressure scales with how redlined the ground is (0 at greenlined) — no threshold.
-    if (!rng.chance(arrestChance(map.redline[map.idx(cx, cy)]!))) continue;
-    // Nearest on-foot citizen within reach (riders/indoors aren't on the street).
-    let victim = -1;
-    let best = ARREST_RADIUS + 1;
-    for (let i = 0; i < state.peds.length; i++) {
-      const p = state.peds[i]!;
-      if (p.phase === 'inside' || p.phase === 'driving') continue;
-      const d = Math.abs(Math.round(p.x) - cx) + Math.abs(Math.round(p.y) - cy);
-      if (d < best) {
-        best = d;
-        victim = i;
-      }
-    }
-    if (victim < 0) continue;
-    const taken = state.peds[victim]!;
-    if (taken.homeTile !== undefined) {
-      const cur = state.occupancy.get(taken.homeTile);
-      if (cur !== undefined) state.occupancy.set(taken.homeTile, Math.max(0, cur - ARREST_DRAIN));
-      depositHealth(state, taken.homeTile, -ARREST_TRAUMA); // the trauma craters the household's wellbeing
-    }
-    // The taken citizen is removed from the game, so their car is ABANDONED where they were seized —
-    // a derelict dumped on an empty tile that rusts into ground pollution (not driven home).
-    abandonOwnedCar(state, map, taken);
-    // Stain the spot — the police-violence record (the anti-crime-map) builds where arrests fall.
-    layField(state.policeViolence, map.idx(Math.round(taken.x), Math.round(taken.y)), POLICE_VIOLENCE_LAY, POLICE_VIOLENCE_MAX);
-    state.peds.splice(victim, 1); // taken off the street, for nothing
-  }
-}
 
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // 1. Despawn anything whose substrate vanished (read-only self-healing). See pedDespawns for the
