@@ -27,6 +27,7 @@
 import { Water, type GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import { distanceField } from './fields';
+import { clampByte } from '../engine/clamp';
 
 /** HOLC grades over the continuous redline field: A (best) .. D (redlined/worst). */
 export const RedlineGrade = { A: 0, B: 1, C: 2, D: 3 } as const;
@@ -52,8 +53,6 @@ export const DEFAULT_REDLINE_PARAMS: RedlineParams = {
   waterNudge: 20,
   waterRadius: 4,
 };
-
-const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
 
 /**
  * Bucket the continuous 0..255 grade into the four HOLC grades for legibility.

@@ -5,8 +5,6 @@
 // citizens are mutually recursive, so they share one module. Cut verbatim from ui/ambientContent.ts.
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind } from '../engine/fabric';
-import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { visitValue } from '../citizens/plots';
 import { DAILY_ITINERARY } from '../citizens/itinerary';
 import { TravelMode } from '../citizens/modes';
@@ -29,7 +27,6 @@ import {
   PARK_MAX_WAIT,
   PARK_RADIUS,
   RETIRED_CAR_LINGER,
-  WALK_RANGE,
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
 import type { AmbientState, Car, ParkingLotInfo, Ped } from './types';
@@ -517,80 +514,6 @@ export function setDriveLeg(
 
 // --- Spawning ------------------------------------------------------------
 
-/**
- * Spawn trip-cars (or short-trip walkers) from given origin→destination paths: cars ARE trips.
- * Each car follows its committed `path` leg by leg and parks on arrival; capped at
- * liveCaps.carCap. NOT driven by the sim any more (the O-D generator is retired; citizens'
- * own cars carry traffic) — retained as the test seam that spawns path-following cars for the
- * parking / kerb / tint / health-deposit tests. Deterministic; the animation draws no rng.
- */
-export function ingestTrips(
-  state: AmbientState,
-  trips: ReadonlyArray<{ path: readonly number[] }>,
-  map: GameMap,
-): void {
-  let moving = 0; // parked cars are stored, not traffic — cap only the moving ones
-  for (const c of state.cars) if (!c.parked) moving++;
-  for (const trip of trips) {
-    if (trip.path.length < 2) continue; // need at least one leg to travel
-    const p0 = trip.path[0]!;
-    const p1 = trip.path[1]!;
-    const x0 = p0 % map.width;
-    const y0 = (p0 - x0) / map.width;
-    const x1 = p1 % map.width;
-    const y1 = (p1 - x1) / map.width;
-    const dir = x1 > x0 ? 1 : x1 < x0 ? 3 : y1 > y0 ? 2 : 0;
-    // A trip that leaves a residential plot is a CITIZEN (others are freight). Tag its home so
-    // the destination's wellbeing is deposited there.
-    const home = residentialHome(map, p0);
-
-    // MODE CHOICE: a citizen on a SHORT trip whose route doesn't need a FREEWAY walks the whole
-    // way (a pedestrian routes it); longer trips, freeway trips, and all freight drive. (A
-    // freeway is impassable on foot, so a cross-freeway trip must drive — otherwise its walker
-    // would dead-end at the freeway edge and vanish.) As destinations come closer / streets
-    // calm, more trips fall under WALK_RANGE → people shift out of cars.
-    const usesFreeway = trip.path.some((t) => map.built[t]! === BuiltKind.RoadHighway);
-    if (home >= 0 && trip.path.length <= WALK_RANGE && !usesFreeway) {
-      if (state.peds.length >= liveCaps.pedCap) continue; // walkers are full this cadence
-      const destPlot = zonedNeighbor(map, trip.path[trip.path.length - 1]!);
-      if (destPlot >= 0) {
-        const dpx = destPlot % map.width;
-        const dpy = (destPlot - dpx) / map.width;
-        state.peds.push({
-          x: x0,
-          y: y0,
-          dir,
-          tx: x0,
-          ty: y0,
-          walkTo: { x: dpx, y: dpy },
-          phase: 'to-building',
-          homeTile: home,
-          building: { x: dpx, y: dpy },
-        });
-        continue; // walked — no car
-      }
-      // no destination plot to aim at → fall through and drive
-    }
-
-    if (moving >= liveCaps.carCap) continue;
-    // Colour bound to the car: a spread hash of (origin, next) so neighbouring trips differ.
-    // imul/xor are integer-exact (allowlist-safe); the renderer maps it mod its palette.
-    const tint = (Math.imul(p0 ^ p1, 0x9e3779b1) >>> 0) % 0x10000;
-    state.cars.push({
-      x: x0,
-      y: y0,
-      dir,
-      tx: x1,
-      ty: y1,
-      path: trip.path,
-      leg: 2,
-      tint,
-      homeTile: home >= 0 ? home : undefined,
-    });
-    moving++;
-  }
-}
-
 /** How many daily-itinerary citizens are out right now — counting both active travellers (peds with
  *  an itinerary) and DRIVERS (citizen-cars with an itinerary), so the population cap covers both. */
 export function citizenCount(state: AmbientState): number {
@@ -782,36 +705,6 @@ export function spawnBoundPed(state: AmbientState, c: Car, building: { x: number
 /** Find a (parked) car by its id, so a returning pedestrian can rebind to it. */
 export function findCar(state: AmbientState, id: number): Car | undefined {
   return state.cars.find((c) => c.id === id);
-}
-
-/** The residential building tile 4-adjacent to a trip's origin road (its home), or -1 if the
- *  origin doesn't front a home — i.e. a non-residential (freight) trip. */
-export function residentialHome(map: GameMap, roadIdx: number): number {
-  const x = roadIdx % map.width;
-  const y = (roadIdx - x) / map.width;
-  for (let d = 0; d < 4; d++) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    if (!map.inBounds(nx, ny)) continue;
-    const t = map.idx(nx, ny);
-    if (zoneTypeOf(map.built[t]!) === ZoneType.Residential) return t;
-  }
-  return -1;
-}
-
-/** Any zoned (R/C/I/Civic) building tile 4-adjacent to a road — the destination PLOT a trip's
- *  end road fronts, or -1 if none. Used to aim a walking citizen at the plot it's visiting. */
-export function zonedNeighbor(map: GameMap, roadIdx: number): number {
-  const x = roadIdx % map.width;
-  const y = (roadIdx - x) / map.width;
-  for (let d = 0; d < 4; d++) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    if (!map.inBounds(nx, ny)) continue;
-    const t = map.idx(nx, ny);
-    if (zoneTypeOf(map.built[t]!) !== ZoneType.None) return t;
-  }
-  return -1;
 }
 
 /** Add `value` (signed) to a home building's health, clamped. */

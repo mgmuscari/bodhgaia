@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   branchColumns,
   effortLine,
-  shouldTogglePanel,
   panelSignature,
   techNodeClass,
   type BranchColumn,
@@ -120,25 +119,6 @@ describe('effortLine', () => {
     const line = effortLine(s);
     expect(line).toMatch(/42/);
     expect(line.length).toBeLessThanOrEqual(90);
-  });
-});
-
-describe('shouldTogglePanel gate', () => {
-  it('is true for t/T only when no overlay is active', () => {
-    expect(shouldTogglePanel('t', false)).toBe(true);
-    expect(shouldTogglePanel('T', false)).toBe(true);
-  });
-
-  it('is false for t/T while an overlay is active', () => {
-    expect(shouldTogglePanel('t', true)).toBe(false);
-    expect(shouldTogglePanel('T', true)).toBe(false);
-  });
-
-  it('is false for any non-toggle key regardless of overlay', () => {
-    expect(shouldTogglePanel('x', false)).toBe(false);
-    expect(shouldTogglePanel('Enter', false)).toBe(false);
-    expect(shouldTogglePanel('Escape', true)).toBe(false);
-    expect(shouldTogglePanel('', false)).toBe(false);
   });
 });
 

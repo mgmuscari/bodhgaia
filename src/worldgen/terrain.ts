@@ -17,6 +17,7 @@
 
 import { GameMap, Water, LandCover } from '../engine/map';
 import type { Rng } from '../engine/rng';
+import { DIRS4_EWSN } from '../engine/dirs';
 import { fbm, type FbmParams } from './noise';
 import type { WorldgenStage } from './pipeline';
 
@@ -159,13 +160,6 @@ export function selectSprings(
   return springs;
 }
 
-const RIVER_DIRS: ReadonlyArray<readonly [number, number]> = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-
 /**
  * Carve a river from each spring, walking steepest-descent with directional
  * momentum (4-connected, so every terminal river cell is 4-adjacent to the
@@ -209,9 +203,9 @@ export function carveRivers(
       const curE = elevation[ci]!;
       let chosen = -1;
       let chosenScore = Infinity;
-      for (let k = 0; k < RIVER_DIRS.length; k++) {
-        const dx = RIVER_DIRS[k]![0];
-        const dy = RIVER_DIRS[k]![1];
+      for (let k = 0; k < DIRS4_EWSN.length; k++) {
+        const dx = DIRS4_EWSN[k]![0];
+        const dy = DIRS4_EWSN[k]![1];
         const nx = x + dx;
         const ny = y + dy;
         if (!map.inBounds(nx, ny)) continue;
@@ -234,8 +228,8 @@ export function carveRivers(
         break;
       }
 
-      const dx = RIVER_DIRS[chosen]![0];
-      const dy = RIVER_DIRS[chosen]![1];
+      const dx = DIRS4_EWSN[chosen]![0];
+      const dy = DIRS4_EWSN[chosen]![1];
       x += dx;
       y += dy;
       pdx = dx;
@@ -282,9 +276,9 @@ export function computeMoisture(
     const x = i % width;
     const y = (i - x) / width;
     const nd = dist[i]! + 1;
-    for (let kk = 0; kk < RIVER_DIRS.length; kk++) {
-      const nx = x + RIVER_DIRS[kk]![0];
-      const ny = y + RIVER_DIRS[kk]![1];
+    for (let kk = 0; kk < DIRS4_EWSN.length; kk++) {
+      const nx = x + DIRS4_EWSN[kk]![0];
+      const ny = y + DIRS4_EWSN[kk]![1];
       if (!map.inBounds(nx, ny)) continue;
       const ni = map.idx(nx, ny);
       if (dist[ni] === -1) {
