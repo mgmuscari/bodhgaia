@@ -20,32 +20,24 @@ import { GpuRenderer } from './ui/gpuRenderer';
 import { SmogOverlay } from './ui/smogOverlay';
 import { createAmbientState, stepAmbient, setParkingLots, setHouseholds, setPlantEmitters, seedDecay, applyLiveCaps } from './ui/ambientContent';
 import { loadSettings, saveSettings } from './ui/settingsStore';
-import { mountSettingsPanel } from './ui/settingsPanel';
 import { materializeSkin } from './ui/tilesetLoader';
 import { paintSnesSkin } from './ui/snesTileset';
 import { footprintCellKey } from './ui/renderKey';
 
-import { mountHelpPanel } from './ui/helpPanel';
 import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { residentialCensus } from './citizens/census';
 import { parkingLots, parkingStalls } from './ui/parkingContent';
 import { attachInput } from './ui/input';
-import { pulseLine } from './ui/pulseContent';
 import { mountPulseDock } from './ui/pulseDock';
-import { sampleRestoration, restorationLines } from './ui/restorationContent';
-import { mountRestorationPanel } from './ui/restorationPanel';
-import { sampleUnhoused, unhousedSuffix } from './ui/unhousedContent';
+import { sampleRestoration } from './ui/restorationContent';
+import { sampleUnhoused } from './ui/unhousedContent';
 import { isRepairTool } from './ui/repairTools';
 import { TECH_TREE } from './tech/tree';
 import { createTechState } from './tech/state';
 import { wellbeing } from './tech/effort';
-import { branchColumns, effortLine, panelSignature } from './ui/techContent';
-import { techLayout } from './ui/techLayout';
-import { mountTechPanel } from './ui/techPanel';
+import { branchColumns, panelSignature } from './ui/techContent';
 import { resolveKey, overlayKindOf } from './ui/keyMap';
 import { availableTools, previewTool, applyTool, toolDef, type ToolId } from './tools/tools';
-import { practiceProject } from './economy/run';
-import { mountBudgetPanel } from './ui/budgetPanel';
 import { isLineTool } from './ui/lineTools';
 import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
 import { buildToolMenu, type ToolCategory } from './ui/toolMenuContent';
@@ -66,7 +58,7 @@ import { createPowerController } from './app/power';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
 import { createEconomyController } from './app/economy';
 import { createSaves } from './app/saves';
-import { createPanelRegistry, isPanelId, trendReader } from './app/panels';
+import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/panels';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -314,64 +306,18 @@ export function main(save: SaveV1 | null = null): void {
         toolbar.flash();
         snapshotDock();
         snapshotPanel();
-        techPanel.refresh();
+        panels.get('tech').refresh();
       },
       hourRefreshed: (reliefNow) => {
         toolbar.refresh();
-        techPanel.refresh(); // projects advanced (no-op while the panel is closed)
-        budgetPanel.refresh();
-        if (reliefNow) budgetPanel.open(); // the grant and its strings, shown as they arrive
+        panels.get('tech').refresh(); // projects advanced (no-op while the panel is closed)
+        panels.get('budget').refresh();
+        if (reliefNow) panels.get('budget').open(); // the grant and its strings, shown as they arrive
       },
-      pulse: () => pulseDock.set(`${economy.readout()}  ·  ${lastPulse}`),
+      pulse: () => pulse.refresh(),
     },
   });
   const wallet = economy.wallet;
-  // The Budget window: tax sliders, the police line, the hourly ledger, and loans (Maddy 2026-10-01: "we need
-  // taxes and loans, once you go negative you can't dig back out")
-  const budgetPanel = mountBudgetPanel(document.body, {
-    getView: () => economy.budgetView(),
-    onTax: (cls, rate) => economy.setTax(cls, rate),
-    onPolice: (perHour) => economy.setPolice(perHour),
-    onBorrow: (amount) => {
-      if (!economy.borrow(amount)) return;
-      toolbar.refresh(); // the fabric may be affordable again
-      pulseDock.set(`${economy.readout()}  ·  ${lastPulse}`);
-    },
-    onToggle: () => toolbar.refreshMeta(),
-  });
-
-  // Tech panel: right-docked, toggled by `T` (via the one key table below). Zero game imports — it
-  // receives its content and the unlock action through deps.
-  const techPanel = mountTechPanel(document.body, {
-    getContent: () => ({ effort: effortLine(tech), layout: techLayout(TECH_TREE, tech) }),
-    art: (key) => renderer.artImage(key),
-    progress: (id) => economy.projectProgress(id),
-    costLine: (id) => {
-      const node = TECH_TREE.find((n) => n.id === id);
-      if (!node) return '';
-      const p = practiceProject(node);
-      return `${p.effort} effort + $${p.funds.toLocaleString('en-US')} over ${Math.round(p.hours / 24 * 10) / 10} days`;
-    },
-    // Cheap per-tick header source (no branchColumns derive) for refreshHeader (Y5).
-    getEffort: () => effortLine(tech),
-    onUnlock: (id) => {
-      // a practice is begun as a project (effort + funds over time); it unlocks when the work is done
-      const ok = economy.beginPractice(id);
-      if (ok) {
-        // The panel re-renders itself (its delegated click listener). Refresh the
-        // dock too — effort dropped (affordability) and an unlock may grant a new
-        // tool — and snapshot both signatures so the next sim-gated check is a
-        // no-op. The unlock FLASH still fires from the sim-gated addedIds path.
-        toolbar.refresh();
-        snapshotDock();
-        snapshotPanel();
-      }
-      return ok;
-    },
-    // Y3: fired for the T key, the dock [Tech] button, AND any dismiss — keeps the
-    // dock's [Tech] active-state in sync from ONE callback, off the rAF frame.
-    onToggle: () => toolbar.refreshMeta(),
-  });
 
   // Tool state: the selected tool id (null = none). A "line tool" (transport build
   // 5..9 or transport convert) paints a dragged line; everything else — building
@@ -469,75 +415,75 @@ export function main(save: SaveV1 | null = null): void {
       toolbar.flash();
       prevToolIds = ids;
     }
-    if (techPanel.isOpen()) {
-      techPanel.refreshHeader();
+    if (mounted.tech.isOpen()) {
+      mounted.tech.refreshHeader();
       const psig = panelSignature(branchColumns(TECH_TREE, tech));
       if (psig !== lastPanelSig) {
-        techPanel.refresh();
+        mounted.tech.refresh();
         lastPanelSig = psig;
       }
     }
   };
 
-  // Always-on wellbeing pulse dock: its OWN dedicated element (not the shared
-  // toolbar status, which inspect/legend clobber), refreshed on the civic cadence
-  // only to avoid per-tick flicker. The trend compares to the previous cadence.
-  const pulseDock = mountPulseDock(document.body);
-  let prevWellbeing: number | null = null;
-  // Unhoused residents (first cut): displaced-population count appended to the pulse line, trended on
-  // the civic cadence. Loop-coupled — decline raises it, healing/new housing lowers it.
-  let prevUnhoused: number | null = null;
-  let lastPulse = '';
-  const pulseText = (wb: number): string => {
-    // the unhoused: those the city's decline left without a home, plus households rent displaced
-    const unhoused = sampleUnhoused(ambientState, world.map.width).unhoused + Math.round(economy.run().state.displaced);
-    lastPulse = `${pulseLine(wb, prevWellbeing)}  ·  ${unhousedSuffix(unhoused, prevUnhoused)}`;
-    prevUnhoused = unhoused;
-    return `${economy.readout()}  ·  ${lastPulse}`;
-  };
-  const wellbeingNow = (): number =>
-    wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans });
-  pulseDock.set(pulseText(wellbeingNow())); // initial: flat, no prior cadence
-
-  // Restoration readout panel (G): "is my repair helping?" — surveys the live metrics (land value,
-  // population, building health, ecology, air/ground/water pollution) with improvement-oriented trend
-  // arrows. Hidden by default; opening (key or dock) shows a fresh sample at once (flat — no stale arrows),
-  // then the civic cadence's refresh trends it against the previous sample (no work while closed).
-  const restorationPanel = mountRestorationPanel(document.body, {
-    read: trendReader(() => sampleRestoration(ambientState, world.map), restorationLines),
-    onToggle: () => toolbar.refreshMeta(),
+  // The always-on top bar (src/app/panels.ts): the economy readout · wellbeing · the unhoused — its OWN element
+  // (not the shared toolbar status, which inspect/legend clobber). The civic cadence re-samples and trends it
+  // (no per-tick flicker); the economy's hour and a loan rewrite its readout. A click opens the Budget window.
+  const pulseDock = mountPulseDock(document.body, { onClick: () => panels.toggle('budget') });
+  const pulse = createPulse({
+    set: (line) => pulseDock.set(line),
+    readout: () => economy.readout(),
+    wellbeing: () => wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }),
+    // the city's decline left them without a home, or rent displaced them (loop-coupled: healing lowers it)
+    unhoused: () => sampleUnhoused(ambientState, world.map.width).unhoused + Math.round(economy.run().state.displaced),
   });
 
-  // Settings panel (',' key): live caps apply instantly via applyLiveCaps; world size persists for the
-  // next load. Every change re-persists the whole settings blob so a reload restores it.
-  const settingsPanel = mountSettingsPanel(document.body, {
-    getSettings: () => settings,
-    onLiveChange: (live: LiveCaps): void => {
-      // clamp the merged blob so applied == persisted == shown (the input could be out of range)
-      settings = clampSettings({ ...settings, live: { ...settings.live, ...live } });
-      applyLiveCaps(settings.live);
-      saveSettings(settings);
+  // The windows (src/app/panels.ts) — Budget, Tech, Restoration, Settings, Help — mounted after the dock and the
+  // top bar (DOM order is stacking order). Saves is mounted by its wiring below; the registry attaches them all.
+  const mounted = mountPanels({
+    container: document.body,
+    economy,
+    tech,
+    art: (key) => renderer.artImage(key),
+    sampleRestoration: () => sampleRestoration(ambientState, world.map),
+    // Settings: live caps apply instantly via applyLiveCaps; world size persists for the next load. Every
+    // change re-persists the whole settings blob so a reload restores it.
+    settings: {
+      getSettings: () => settings,
+      onLiveChange: (live: LiveCaps): void => {
+        // clamp the merged blob so applied == persisted == shown (the input could be out of range)
+        settings = clampSettings({ ...settings, live: { ...settings.live, ...live } });
+        applyLiveCaps(settings.live);
+        saveSettings(settings);
+      },
+      onWorldChange: (worldSettings: WorldSettings): void => {
+        settings = clampSettings({ ...settings, world: { ...worldSettings } });
+        saveSettings(settings); // takes effect on the next load (regenerate)
+      },
+      onRendererChange: (mode): void => {
+        settings = clampSettings({ ...settings, renderer: mode });
+        saveSettings(settings);
+        if (mode === 'gpu') {
+          if (!gpuRenderer) mountGpu();
+        } else {
+          unmountGpu();
+        }
+        markDirty();
+      },
     },
-    onWorldChange: (worldSettings: WorldSettings): void => {
-      settings = clampSettings({ ...settings, world: { ...worldSettings } });
-      saveSettings(settings); // takes effect on the next load (regenerate)
+    onBorrowed: () => {
+      toolbar.refresh(); // the fabric may be affordable again
+      pulse.refresh();
     },
-    onRendererChange: (mode): void => {
-      settings = clampSettings({ ...settings, renderer: mode });
-      saveSettings(settings);
-      if (mode === 'gpu') {
-        if (!gpuRenderer) mountGpu();
-      } else {
-        unmountGpu();
-      }
-      markDirty();
+    onPracticeBegun: () => {
+      // effort dropped (affordability) and an unlock may grant a new tool: refresh the dock and snapshot both
+      // signatures so the next sim-gated check is a no-op
+      toolbar.refresh();
+      snapshotDock();
+      snapshotPanel();
     },
+    // fired for the key, the dock button AND any dismiss — the dock's active flags follow from ONE callback
     onToggle: () => toolbar.refreshMeta(),
   });
-
-  // Always-visible controls hint (bottom-left) → opens a full keybinding reference. Makes every key
-  // (Settings included) discoverable; toggled by the hint, the ✕, or '?'/'h'.
-  const helpPanel = mountHelpPanel(document.body, { onToggle: () => toolbar.refreshMeta() });
 
   // The overlay colour key (top-left over the map), shown/hidden by the overlay controller.
   const showLegend = mountOverlayLegend(document.body);
@@ -552,9 +498,6 @@ export function main(save: SaveV1 | null = null): void {
     markDirty();
     toolbar.refreshMeta();
   };
-
-  // a click on the top bar (funds and the rest) opens the Budget window (B, via the key table below)
-  document.querySelector('.pulse-dock')?.addEventListener('click', () => panels.toggle('budget'));
 
   // ── Save/load (src/app/saves.ts): the city autosaves into the CURRENT slot (hourly via the economy, and on
   // tab-hide / pagehide) and a reload resumes it; the Saves window (S, or the palette's disk) backs the slots.
@@ -575,14 +518,7 @@ export function main(save: SaveV1 | null = null): void {
     mountPanel: (actions) => mountSavesPanel(document.body, actions),
     onToggle: () => toolbar.refreshMeta(),
   });
-  panels.attach({
-    budget: budgetPanel,
-    tech: techPanel,
-    restore: restorationPanel,
-    saves,
-    settings: settingsPanel,
-    help: helpPanel,
-  });
+  panels.attach({ ...mounted, saves });
   toolbar.refreshMeta();
 
   // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
@@ -633,8 +569,8 @@ export function main(save: SaveV1 | null = null): void {
       // is a no-op (the discrete-event path, per Y5).
       toolbar.refresh();
       snapshotDock();
-      if (techPanel.isOpen()) {
-        techPanel.refresh();
+      if (mounted.tech.isOpen()) {
+        mounted.tech.refresh();
         snapshotPanel();
       }
       previewAt(tx, ty); // re-tint the just-touched tile
@@ -707,12 +643,10 @@ export function main(save: SaveV1 | null = null): void {
     // never popping out of existence at a destination.
     overlays.onSimTick(r); // the active overlay's source ticked → re-push it
     if (r.civicTicked) {
-      const wb = wellbeingNow();
-      pulseDock.set(pulseText(wb));
-      prevWellbeing = wb;
+      pulse.tick();
       // Restoration readout: sample the live metrics on this cadence and trend vs the prior sample
       // (a no-op inside the panel while it is closed).
-      restorationPanel.refresh();
+      mounted.restore.refresh();
       // Revival/decay seam: sample the LIVE occupancy into the hashed stock — thriving
       // homes heal + densify (R1→R2→R3), struggling ones crumble toward a derelict
       // ruin (reversibly). Runs HERE on the slow civic cadence (sim side), never in
