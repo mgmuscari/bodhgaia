@@ -10,7 +10,7 @@
 import { createRng, type Rng } from '../engine/rng';
 import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
-import { stepAmbient } from '../ui/ambientContent';
+import { stepAmbient } from '../live/step';
 import { applyLiveCaps, type LiveCaps } from '../live/caps';
 import { createAmbientState, setParkingLots, setHouseholds, setPlantEmitters, type AmbientState } from '../live/types';
 import { seedDecay } from '../live/fields/pollution';

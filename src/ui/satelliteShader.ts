@@ -219,6 +219,20 @@ export class SatelliteShader {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
   }
 
+  /** Re-upload just these rects of the CPU base (a live-mark patch): the same texture, sub-images in place. */
+  uploadBaseRects(src: TexImageSource, rects: readonly { x: number; y: number; w: number; h: number }[]): void {
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.baseTex);
+    for (const r of rects) {
+      gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, r.x);
+      gl.pixelStorei(gl.UNPACK_SKIP_ROWS, r.y);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, r.x, r.y, r.w, r.h, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    }
+    gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+    gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+  }
+
   /**
    * Draw the full-screen pass: sample the CPU base albedo (unit 1) + jeuje it (water/grass/traffic/
    * glints/clouds/shadows). `origin`/`view` are the visible world window in cells (camera pan/zoom);

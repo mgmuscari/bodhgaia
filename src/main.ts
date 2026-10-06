@@ -1,208 +1,66 @@
-// Browser entry point. Generates a world from the URL seed, then drives a
-// requestAnimationFrame render loop and a fixed-tick simulation loop. The sim
-// step is the composite orchestrator simTick (effort → ecology → civic); this
-// shell only reads its deps for rendering. All DOM access is guarded so this
-// module stays safe to import headless under Vitest.
+// Browser entry point — the composition root. Builds the city from the URL seed (or the save in progress), then
+// wires the controllers in src/app/ together: the view, the live layer, power, the economy, overlays, the tool
+// dock, the panels, saves, keys, and the two clocks (src/app/loop.ts). Each controller documents itself; this
+// file only says what talks to what. All DOM access is guarded so this module stays safe to import headless.
 
-import { runPipeline } from './worldgen/pipeline';
-import { terrainStage } from './worldgen/terrain';
-import { mosesCenturyStage } from './worldgen/moses';
-import { ecoSeedStage } from './worldgen/ecoseed';
-import { BuiltKind } from './engine/fabric';
 import { createRng } from './engine/rng';
 import { cityName } from './engine/names';
-import { FixedTickLoop } from './engine/loop';
-import { Camera } from './ui/camera';
-import { Renderer } from './ui/renderer';
-import { SIDEBAR_W } from './ui/toolbar';
 import { installUiTheme } from './ui/uiTheme';
-import { GpuRenderer } from './ui/gpuRenderer';
-import { SmogOverlay } from './ui/smogOverlay';
-import { loadSettings, saveSettings } from './ui/settingsStore';
-import { materializeSkin } from './ui/tilesetLoader';
-import { paintSnesSkin } from './ui/snesTileset';
-import { footprintCellKey } from './ui/renderKey';
-
-import { clampSettings, type LiveCaps, type WorldSettings } from './ui/settings';
 import { attachInput } from './ui/input';
 import { mountPulseDock } from './ui/pulseDock';
-import { sampleRestoration } from './ui/restorationContent';
-import { sampleUnhoused } from './ui/unhousedContent';
-import { isRepairTool } from './ui/repairTools';
-import { TECH_TREE } from './tech/tree';
-import { createTechState } from './tech/state';
-import { wellbeing } from './tech/effort';
-import { branchColumns, panelSignature } from './ui/techContent';
-import { resolveKey, overlayKindOf } from './ui/keyMap';
-import { availableTools, previewTool, applyTool, toolDef, type ToolId } from './tools/tools';
-import { isLineTool } from './ui/lineTools';
-import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
-import { buildToolMenu, type ToolCategory } from './ui/toolMenuContent';
 import { mountToolbar } from './ui/toolbar';
 import { metaButtons } from './ui/dockContent';
-import { computeNeighborhoods } from './civic/neighborhoods';
-import { createCivicState } from './civic/state';
-import { simTick, type SimDeps } from './civic/compose';
-import { stepRevival } from './growth/revival';
-import { restoreWorld, restoreTech, restoreCivic, type SaveV1 } from './save/snapshot';
-import { CURRENT, readSlot } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
-import { setPixelFavicon, installDevHandle } from './app/devHandle';
-import { mountOpeningFor } from './app/opening';
 import { inspectReadout } from './ui/inspectContent';
-import { createPowerController } from './app/power';
-import { createOverlayController, mountOverlayLegend } from './app/overlays';
-import { createEconomyController } from './app/economy';
-import { createSaves } from './app/saves';
-import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/panels';
+import { sampleRestoration } from './ui/restorationContent';
+import { sampleUnhoused } from './ui/unhousedContent';
+import { wellbeing } from './tech/effort';
+import type { SaveV1 } from './save/snapshot';
+import { CURRENT, readSlot } from './save/store';
+import { createCity } from './app/city';
+import { createSettingsController } from './app/settings';
+import { createView } from './app/view';
 import { createLive } from './app/live';
+import { createPowerController } from './app/power';
+import { installDevHandle } from './app/devHandle';
+import { mountOpeningFor } from './app/opening';
+import { createEconomyController } from './app/economy';
+import { createOverlayController, mountOverlayLegend } from './app/overlays';
+import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/panels';
+import { createToolController } from './app/tools';
+import { createSaves } from './app/saves';
+import { installKeys } from './app/keys';
+import { createSimTick, createFrame, runFrames } from './app/loop';
 
 const DEFAULT_SEED = 'bodhitropolis';
-const SIM_TICK_MS = 100;
 
 export function main(save: SaveV1 | null = null): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing #game canvas');
   installUiTheme(); // the pixel UI kit: palette variables, 9-slice frames, pixel font
-
   const params = new URLSearchParams(window.location.search);
 
-  // a resumed game (save/store.ts: the CURRENT slot) brings its own seed and size
-  const seed = save?.seed ?? params.get('seed') ?? DEFAULT_SEED;
+  // Settings (persisted; the world size feeds worldgen, so it applies on the next load), then the city.
+  const settings = createSettingsController({ applyLive: (caps) => live.applyCaps(caps), setRenderer: (m) => view.setMode(m) });
+  const { world: size } = settings.current();
+  const city = createCity({ seed: params.get('seed') ?? DEFAULT_SEED, size: { width: size.mapWidth, height: size.mapHeight }, save });
+  const { seed, world, tech, civic, sim: deps } = city;
 
-  // Settings: the live caps apply when the live layer is set up (perf ceilings the agent layer reads); the world
-  // size feeds worldgen at creation (a different size is a different seeded world — apply-on-restart).
-  // Persisted in localStorage; defaults reproduce today's 128² medium-preset game byte-for-byte.
-  let settings = loadSettings();
-  const world = runPipeline(
-    { seed, width: save?.width ?? settings.world.mapWidth, height: save?.height ?? settings.world.mapHeight },
-    [terrainStage(), mosesCenturyStage(), ecoSeedStage()],
-  );
+  // The opening is up unless `?nointro=1` or a resumed city; while it is, the key table swallows every game key.
+  let openingUp = params.get('nointro') !== '1' && !save;
 
-  // Tech-tree state: communal effort accrues into it each sim tick (see below).
-  // Save/load: the world is regenerated from the seed, then the saved layers and parcels overwrite it — before
-  // anything below derives from it (the partition, the census, the power grid…).
-  if (save) restoreWorld(world, save.world);
-  const tech = createTechState(TECH_TREE);
-  if (save) restoreTech(tech, save.tech);
-
-  // Civic state: the neighborhood partition + per-neighborhood belonging/voice/
-  // trust. simTick refreshes the partition and remaps the state on the civic
-  // cadence; this shell reads `deps.partition` to resolve a repair's tile.
-  const partition = computeNeighborhoods(world.map);
-  const civic = createCivicState(partition);
-  if (save) restoreCivic(civic, save.civic);
-  // effortAccrual 'economy': communal effort is the economy's perishable stock (src/economy), not a counter
-  const deps: SimDeps = { world, tech, civic, partition, seed, effortAccrual: 'economy' };
-
-  // The latest sim tick, captured for the repair-forwarding hook (which fires
-  // from pointer events, outside the sim loop).
-  let currentTick = 0;
-
-  // The opening overlay owns its own keydown and exposes no active-state; the
-  // single composition root tracks whether it is up so the key table suppresses
-  // every game key underneath it (init: up unless `?nointro=1`).
-  let overlayActive = params.get('nointro') !== '1' && !save; // a resumed city skips the opening
-
-  // the map pane sits right of the docked tool palette, never under it
-  document.documentElement.style.setProperty('--sidebar-w', `${SIDEBAR_W}px`);
-  let cssWidth = window.innerWidth - SIDEBAR_W;
-  let cssHeight = window.innerHeight;
-  const camera = new Camera({
-    mapWidth: world.map.width,
-    mapHeight: world.map.height,
-    viewportWidth: cssWidth,
-    viewportHeight: cssHeight,
-    zoom: save?.camera.zoom ?? 2,
-    x: save?.camera.x,
-    y: save?.camera.y,
-  });
-
-  // The one aesthetic (Maddy 2026-09-30): the code-painted Super (16-bit) skin, materialized before the
-  // first frame (eager tiles now, buildings + light maps on first draw).
-  const skin = materializeSkin(paintSnesSkin());
-  const renderer = new Renderer(canvas, skin);
-  setPixelFavicon(skin.lazy?.get(footprintCellKey(BuiltKind.HouseSingle, 1, 1, 0, 0, 0)));
-  renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-  canvas.style.position = 'fixed'; // the map pane, ABOVE the GPU canvas (z-index 0)
-  canvas.style.left = 'var(--sidebar-w)';
-  canvas.style.top = '0';
-  canvas.style.zIndex = '1';
-
-  // GPU hybrid path: a WebGL2 canvas under the Canvas2D sprite/UI layer, driven by the live camera.
-  // settings.renderer picks it (default 'gpu'); mountGpu falls back to the CPU path (returns false)
-  // if WebGL2 is unavailable.
-  let gpuRenderer: GpuRenderer | null = null;
-  let smogOverlay: SmogOverlay | null = null;
-  const mountGpu = (): boolean => {
-    try {
-      gpuRenderer = new GpuRenderer(world.map);
-      gpuRenderer.mount();
-      gpuRenderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-      // GPU smog overlay (z2, above the sprite canvas) — the atmospheric haze on top of everything.
-      smogOverlay = new SmogOverlay(world.map.width, world.map.height);
-      smogOverlay.mount();
-      smogOverlay.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-      renderer.setGpuMode(true);
-      return true;
-    } catch (e) {
-      console.warn('WebGL2 unavailable — staying on the CPU renderer:', e);
-      gpuRenderer?.dispose();
-      smogOverlay?.dispose();
-      gpuRenderer = null;
-      smogOverlay = null;
-      return false;
-    }
-  };
-  const unmountGpu = (): void => {
-    gpuRenderer?.dispose();
-    smogOverlay?.dispose();
-    gpuRenderer = null;
-    smogOverlay = null;
-    renderer.setGpuMode(false);
-  };
-  if (settings.renderer === 'gpu') mountGpu();
-
-  // Two named dirty chokepoints (CRITIC-YP2). markDirty invalidates the cached
-  // renderer base (map/camera/overlay changed); markPreviewDirty only requests a
-  // repaint (preview/selection changed — it lives in the per-frame composite, not
-  // the base, so a hover never triggers an O(visible-tiles) base rebuild). Forward
-  // rule: a base/camera/overlay change calls markDirty(); a preview/selection-only
-  // change calls markPreviewDirty(); never a raw `dirty = true`.
-  let dirty = true;
-  const markDirty = (): void => {
-    dirty = true;
-    renderer.invalidateBase();
-    gpuRenderer?.invalidate(); // re-pack the world grid for the GPU path (cheap dirty-rect upload)
-  };
-  const markPreviewDirty = (): void => {
-    dirty = true;
-  };
-
-  // The live layer (src/app/live.ts): ambient life, purely visual and read-only over the world — its own rng
-  // forks and its own clock, so it can never perturb the sim. It publishes the parking lots, households and
-  // dirty-plant emitters it reads, seeds the decay a century left (a save's stocks go over it), and applies
-  // the live caps. On by default (PRD Q2); the [Life] toggle / L key flip `live.on`.
+  const view = createView({ canvas, map: world.map, camera: save?.camera, mode: settings.current().renderer });
+  const { camera, renderer, markDirty, markPreviewDirty } = view;
   const live = createLive({
     seed,
     map: world.map,
     parcels: world.parcels,
-    caps: settings.live,
+    caps: settings.current().live,
     saved: save?.live ?? null,
     walkable: () => tech.hasCapability('walkability'), // Walkable Streets: people walk farther
   });
+  const power = createPowerController({ map: world.map, parcels: world.parcels, publish: (a) => renderer.setPowerGrid(a) });
 
-  // Power grid (src/app/power.ts): solved now for the current in-game hour and published to the renderer;
-  // re-solved on placement, the civic cadence, and each new in-game hour (frame loop).
-  const power = createPowerController({
-    map: world.map,
-    parcels: world.parcels,
-    publish: (anchors) => renderer.setPowerGrid(anchors),
-  });
-
-
-  // Dev / live-pass hook (`window.bodhitropolis`) — DEV BUILDS ONLY (folded away in production). It reads the
-  // reassigned power grid / GPU renderer through getters, never snapshots.
   if (import.meta.env.DEV) {
     installDevHandle({
       camera,
@@ -211,24 +69,16 @@ export function main(save: SaveV1 | null = null): void {
       tech,
       power: power.grid,
       markDirty,
-      gpu: { isOn: () => gpuRenderer !== null, mount: mountGpu, unmount: unmountGpu },
+      gpu: { isOn: () => view.gpu() !== null, mount: view.mountGpu, unmount: view.unmountGpu },
     });
   }
-
-  // Opening challenge overlay. Computed from the same world, mounted over the
-  // live map unless `?nointro=1`. The map input stays attached beneath; the
-  // overlay captures pointer events until the player dismisses it (Begin /
-  // Enter / Escape), after which the map is interactive.
-  if (params.get('nointro') !== '1' && !save) {
+  if (openingUp) {
     mountOpeningFor(world, seed, () => {
-      overlayActive = false;
+      openingUp = false;
       markDirty();
     });
   }
 
-  // ── The economy (src/app/economy.ts): funds, perishable effort, burnout, approval and rent, stepped every
-  // in-game hour from the frame loop. The hour tells the shell what to refresh through `ui`; autosave is read
-  // at call time (the Saves wiring is mounted below; it blanks autosave on load / new city).
   const economy = createEconomyController({
     map: world.map,
     parcels: world.parcels,
@@ -238,13 +88,11 @@ export function main(save: SaveV1 | null = null): void {
     live: live.state,
     powerGrid: power.grid,
     initial: save?.econ ?? null,
-    autosave: () => saves.autosave(),
+    autosave: () => saves.autosave(), // read at call time (loading a slot blanks autosave first)
     ui: {
       practiceGranted: () => {
-        toolbar.refresh();
+        tools.afterEffortChange();
         toolbar.flash();
-        snapshotDock();
-        snapshotPanel();
         panels.get('tech').refresh();
       },
       hourRefreshed: (reliefNow) => {
@@ -256,20 +104,9 @@ export function main(save: SaveV1 | null = null): void {
       pulse: () => pulse.refresh(),
     },
   });
-  const wallet = economy.wallet;
 
-  // Tool state: the selected tool id (null = none). A "line tool" (transport build
-  // 5..9 or transport convert) paints a dragged line; everything else — building
-  // build AND building convert (rezoning greens) — is point-apply. The predicate
-  // lives in src/ui/lineTools.ts (pure, unit-tested); it reads the ToolDef's kind.
-  let selectedToolId: ToolId | null = null;
-  // Which category flyout is open in the dock (null = none). Toggled by clicking a
-  // category tile; the picked tool stays selected with the flyout left open.
-  let openCategory: ToolCategory | null = null;
-
-  // The map overlays (src/app/overlays.ts): ONE active overlay, cycled by its key or dock button. Created
-  // HERE — before the dock mount — because the dock's getMetaButtons reads it at mount and on every
-  // refreshMeta. The colour key mounts further down (showLegend); its tint reads this context per apply.
+  // Created BEFORE the dock mounts: the dock reads the overlay and the panel flags at mount (the registry reports
+  // every panel closed until attach()).
   const overlays = createOverlayController({
     renderer,
     context: () => ({
@@ -285,88 +122,43 @@ export function main(save: SaveV1 | null = null): void {
     markDirty,
     refreshMeta: () => toolbar.refreshMeta(),
   });
-
-  // The panel registry (src/app/panels.ts): ONE {id → handle} table the key dispatch, the dock's onMeta and
-  // the dock's active flags all read. The handles attach once every panel is mounted (below); until then the
-  // registry reports them all closed — the dock reads its flags at its own mount.
   const panels = createPanelRegistry();
 
-  // Bottom tool dock: always on, derived from tech grants + selection + effort. The
-  // meta row mirrors the keys: getMetaButtons derives the active flags from the live
-  // panel/overlay state; onMeta routes a click to the SAME closures the keys use.
+  // The [Life] toggle — one closure for the L key AND the dock button (turning it ON restarts the live clock).
+  const setAmbient = (on: boolean): void => {
+    live.on = on;
+    markDirty();
+    toolbar.refreshMeta();
+  };
 
-  const toolbar = mountToolbar(document.body, {
-    getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, economy.run().state.funds),
-    onSelect: (id) => {
-      selectedToolId = id as ToolId;
-      renderer.setPreview(null);
-      toolbar.setStatus(null); // a prior inspect readout is stale on tool change
-      markPreviewDirty(); // selection-only: the preview lives in the composite
-      toolbar.refresh();
-      snapshotDock(); // selection moved the signature → keep the sim-gated check a no-op
+  const tools = createToolController({
+    world,
+    tech,
+    wallet: economy.wallet,
+    renderer,
+    markDirty,
+    markPreviewDirty,
+    mount: (d) => mountToolbar(document.body, d),
+    meta: {
+      buttons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
+      onMeta: (id) => {
+        if (id === 'life') setAmbient(!live.on);
+        else if (isPanelId(id)) panels.toggle(id);
+        else overlays.cycle(id); // each the SAME closure its key calls
+      },
     },
-    onToggleCategory: (id) => {
-      openCategory = openCategory === id ? null : id;
-      toolbar.refresh();
+    techPanel: () => mounted.tech,
+    inspect: (info, tx, ty) => inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors),
+    placed: () => {
+      power.recompute(); // a new plant lights its district
+      live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
     },
-    getMetaButtons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
-    onMeta: (id) => {
-      if (id === 'life') setAmbient(!live.on); // same toggle the L key calls
-      else if (isPanelId(id)) panels.toggle(id); // the same registry call its key makes
-      else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
-      toolbar.refreshMeta();
-    },
-    art: (key) => renderer.artImage(key),
+    // credit the anchor tile's neighborhood from the LIVE partition (id 0 = none: a safe no-op)
+    repaired: (tx, ty) => deps.civic.recordRepair(deps.partition.tileToNeighborhood[world.map.idx(tx, ty)] ?? 0, sim.tick()),
   });
+  const toolbar = tools.toolbar;
 
-  // Sim-cadence gating (Y5): the heavy availableTools / branchColumns derivations +
-  // signature compares run at most ONCE per frame, and only when a sim tick has
-  // moved state (simChanged) — NOT every rAF frame. Discrete events (select /
-  // hotkey / unlock) refresh directly and snapshot the signature so the immediately
-  // following gated check is a no-op. prevToolIds is SEEDED from the initial rows
-  // (Y7) so the first diff is empty → no spurious unlock flash on load.
-  const initRows = toolbarRows(availableTools(tech), selectedToolId, tech.effort);
-  let lastToolSig = refreshSignature(initRows);
-  let prevToolIds: string[] = initRows.map((r) => r.id);
-  let lastPanelSig = panelSignature(branchColumns(TECH_TREE, tech));
-  let simChanged = false;
-
-  const snapshotDock = (): void => {
-    lastToolSig = refreshSignature(toolbarRows(availableTools(tech), selectedToolId, tech.effort));
-  };
-  const snapshotPanel = (): void => {
-    lastPanelSig = panelSignature(branchColumns(TECH_TREE, tech));
-  };
-
-  // The sim-gated sync (run once per frame when simChanged): re-derive the dock
-  // rows + signature and refresh ONLY on a real change; flash the dock when a new
-  // tool id appears (Y7); while the panel is open, cheaply refresh its header each
-  // tick and fully refresh only when the panel signature flips (a status change).
-  const syncDock = (): void => {
-    const rows = toolbarRows(availableTools(tech), selectedToolId, tech.effort);
-    const sig = refreshSignature(rows);
-    if (sig !== lastToolSig) {
-      toolbar.refresh();
-      lastToolSig = sig;
-    }
-    const ids = rows.map((r) => r.id);
-    if (addedIds(prevToolIds, ids).length > 0) {
-      toolbar.flash();
-      prevToolIds = ids;
-    }
-    if (mounted.tech.isOpen()) {
-      mounted.tech.refreshHeader();
-      const psig = panelSignature(branchColumns(TECH_TREE, tech));
-      if (psig !== lastPanelSig) {
-        mounted.tech.refresh();
-        lastPanelSig = psig;
-      }
-    }
-  };
-
-  // The always-on top bar (src/app/panels.ts): the economy readout · wellbeing · the unhoused — its OWN element
-  // (not the shared toolbar status, which inspect/legend clobber). The civic cadence re-samples and trends it
-  // (no per-tick flicker); the economy's hour and a loan rewrite its readout. A click opens the Budget window.
+  // The top bar, then the windows (DOM order is stacking order); Saves mounts with its wiring below.
   const pulseDock = mountPulseDock(document.body, { onClick: () => panels.toggle('budget') });
   const pulse = createPulse({
     set: (line) => pulseDock.set(line),
@@ -375,69 +167,22 @@ export function main(save: SaveV1 | null = null): void {
     // the city's decline left them without a home, or rent displaced them (loop-coupled: healing lowers it)
     unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
   });
-
-  // The windows (src/app/panels.ts) — Budget, Tech, Restoration, Settings, Help — mounted after the dock and the
-  // top bar (DOM order is stacking order). Saves is mounted by its wiring below; the registry attaches them all.
   const mounted = mountPanels({
     container: document.body,
     economy,
     tech,
     art: (key) => renderer.artImage(key),
     sampleRestoration: () => sampleRestoration(live.state, world.map),
-    // Settings: live caps apply instantly (live.applyCaps); world size persists for the next load. Every
-    // change re-persists the whole settings blob so a reload restores it.
-    settings: {
-      getSettings: () => settings,
-      onLiveChange: (caps: LiveCaps): void => {
-        // clamp the merged blob so applied == persisted == shown (the input could be out of range)
-        settings = clampSettings({ ...settings, live: { ...settings.live, ...caps } });
-        live.applyCaps(settings.live);
-        saveSettings(settings);
-      },
-      onWorldChange: (worldSettings: WorldSettings): void => {
-        settings = clampSettings({ ...settings, world: { ...worldSettings } });
-        saveSettings(settings); // takes effect on the next load (regenerate)
-      },
-      onRendererChange: (mode): void => {
-        settings = clampSettings({ ...settings, renderer: mode });
-        saveSettings(settings);
-        if (mode === 'gpu') {
-          if (!gpuRenderer) mountGpu();
-        } else {
-          unmountGpu();
-        }
-        markDirty();
-      },
-    },
+    settings: settings.panel,
     onBorrowed: () => {
       toolbar.refresh(); // the fabric may be affordable again
       pulse.refresh();
     },
-    onPracticeBegun: () => {
-      // effort dropped (affordability) and an unlock may grant a new tool: refresh the dock and snapshot both
-      // signatures so the next sim-gated check is a no-op
-      toolbar.refresh();
-      snapshotDock();
-      snapshotPanel();
-    },
-    // fired for the key, the dock button AND any dismiss — the dock's active flags follow from ONE callback
-    onToggle: () => toolbar.refreshMeta(),
+    onPracticeBegun: () => tools.afterEffortChange(),
+    onToggle: () => toolbar.refreshMeta(), // the key, the dock button AND any dismiss
   });
-
-  // The overlay colour key (top-left over the map), shown/hidden by the overlay controller.
   const showLegend = mountOverlayLegend(document.body);
 
-  // The [Life] ambient toggle — one closure for the L key AND the dock [Life] button. Flips live.on (turning
-  // it ON resets ONLY the ambient clock, so the first dt after a dormant period is small — also clamp-guarded),
-  // repaints via markDirty, and refreshes the dock meta active-state.
-  const setAmbient = (on: boolean): void => {
-    live.on = on;
-    markDirty();
-    toolbar.refreshMeta();
-  };
-
-  // ── Save/load (src/app/saves.ts): the city autosaves into the CURRENT slot (hourly via the economy, and on
-  // tab-hide / pagehide) and a reload resumes it; the Saves window (S, or the palette's disk) backs the slots.
   const cityTitle = save?.name ?? cityName(createRng(seed).fork('city-name'));
   const saves = createSaves({
     parts: () => ({
@@ -448,7 +193,7 @@ export function main(save: SaveV1 | null = null): void {
       civic,
       econ: economy.run(),
       live: live.state,
-      tick: currentTick,
+      tick: sim.tick(),
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
     }),
     lifecycle: { document, window },
@@ -458,198 +203,22 @@ export function main(save: SaveV1 | null = null): void {
   panels.attach({ ...mounted, saves });
   toolbar.refreshMeta();
 
-  // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
-  // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
-  // the opening overlay, nor while typing in a text field (resolveKey reads `event.target`). Each action calls
-  // the same closure its dock button does. preventDefault only on a match.
-  window.addEventListener('keydown', (event) => {
-    const action = resolveKey(event, overlayActive); // `event` carries its target → editable fields are skipped
-    if (action === null) return;
-    event.preventDefault();
-    const overlay = overlayKindOf(action);
-    if (overlay !== null) {
-      overlays.cycle(overlay); // the same body the dock's overlay buttons call
-      return;
-    }
-    if (action === 'life') setAmbient(!live.on);
-    else if (isPanelId(action)) panels.toggle(action); // the same registry call its dock button makes
-  });
-
-  const previewAt = (tx: number, ty: number): void => {
-    if (selectedToolId === null) return;
-    const def = toolDef(selectedToolId);
-    if (!def) return;
-    const p = previewTool(world, tech, def, tx, ty, wallet);
-    renderer.setPreview([{ x: tx, y: ty, valid: p.valid }]);
-    markPreviewDirty(); // hover tile-change: preview only, never a base rebuild
-  };
-
-  const applyAt = (tx: number, ty: number): void => {
-    if (selectedToolId === null) return;
-    const def = toolDef(selectedToolId);
-    if (!def) return;
-    const r = applyTool(world, tech, def, tx, ty, wallet);
-    // Inspect is free + non-mutating: surface its readout to the dock status line
-    // (PRD: a minimal console-free line in the dock) without the mutate-path churn.
-    if (def.id === 'inspect') {
-      // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
-      // carries, the power status and the redline grade (src/ui/inspectContent.ts).
-      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, live.state, power.grid().poweredAnchors));
-      return;
-    }
-    if (r.ok) {
-      power.recompute(); // built layer changed → re-derive the grid (a new plant lights its district)
-      live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
-      markDirty(); // mutated the built/parcel layer → rebuild the cached base
-      // Effort changed → dock affordability + (if open) tech-panel affordability.
-      // Refresh directly and snapshot both signatures so the next sim-gated check
-      // is a no-op (the discrete-event path, per Y5).
-      toolbar.refresh();
-      snapshotDock();
-      if (mounted.tech.isOpen()) {
-        mounted.tech.refresh();
-        snapshotPanel();
-      }
-      previewAt(tx, ty); // re-tint the just-touched tile
-      // Repair forwarding (the sanctioned tools→civic crossing): a successful
-      // repair-classified placement credits the anchor tile's neighborhood from
-      // the LIVE partition. id 0 (no neighborhood) is a safe no-op; bulldoze is
-      // excluded by isRepairTool. Multi-tile builds credit the anchor (tx, ty).
-      if (isRepairTool(def)) {
-        const nid = deps.partition.tileToNeighborhood[world.map.idx(tx, ty)] ?? 0;
-        deps.civic.recordRepair(nid, currentTick);
-      }
-    }
-  };
-
-  attachInput(canvas, camera, {
-    onChange: markDirty,
-    hasTool: () => selectedToolId !== null,
-    isLineTool: () => selectedToolId !== null && isLineTool(toolDef(selectedToolId)!),
-    applyAt,
-    hover: previewAt,
-    clearHover: () => {
-      renderer.setPreview(null);
-      markPreviewDirty(); // cleared the preview only — no base change
-    },
-    onHotkey: (action) => {
-      selectedToolId = action === 'inspect' ? 'inspect' : action === 'bulldoze' ? 'bulldoze' : null;
-      renderer.setPreview(null);
-      toolbar.setStatus(null);
-      markPreviewDirty(); // selection/preview only — preview is in the composite
-      toolbar.refresh();
-      snapshotDock(); // selection moved the signature → keep the sim-gated check a no-op
-    },
-  });
-
-  window.addEventListener('resize', () => {
-    cssWidth = window.innerWidth - SIDEBAR_W;
-    cssHeight = window.innerHeight;
-    camera.setViewport(cssWidth, cssHeight);
-    renderer.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-    gpuRenderer?.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-    smogOverlay?.resize(cssWidth, cssHeight, window.devicePixelRatio || 1);
-    gpuRenderer?.invalidateBase(); // base canvas resized → re-upload it next frame
-    markDirty();
-  });
-
-  // Tab visibility: on becoming visible, reset ONLY the ambient clock (so the
-  // ambient dt doesn't jump) and request a repaint. The sim's `last` is deliberately
-  // NOT reset — its FixedTickLoop catch-up (a long hidden gap clamped to maxFrameMs)
-  // must run exactly as today, keeping sim output byte-identical whether ambient is
-  // on or off (AC#7). The ambient clamp already makes a missed reset harmless, so
-  // this handler is for smoothness, not safety.
+  installKeys({ target: window, openingUp: () => openingUp, cycleOverlay: overlays.cycle, toggleLife: () => setAmbient(!live.on), togglePanel: panels.toggle });
+  attachInput(canvas, camera, { onChange: markDirty, ...tools.input });
+  window.addEventListener('resize', view.resize);
+  // Back from a hidden tab: reset ONLY the live clock (the sim's catch-up stays clamped by its own loop, so sim
+  // output is identical whether life is on or off) and repaint.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     live.resetClock();
     markDirty();
   });
 
-  // Simulation loop: the composite orchestrator advances effort every tick and
-  // ecology/civic on their cadences. Each tick sets simChanged so the next frame
-  // re-derives the dock/panel signatures ONCE (~10Hz), not per rAF frame (Y5).
-  // Overlays re-push on their source's tick; the pulse refreshes on the civic
-  // cadence only.
-  const sim = new FixedTickLoop(SIM_TICK_MS, (tick) => {
-    currentTick = tick;
-    const r = simTick(deps, tick);
-    simChanged = true; // effort accrued / grants may have moved → re-sync next frame
-    // NOTE: the sim no longer runs abstract O-D trips (compose.ts: trafficTicked is always false). The
-    // agent layer IS the traffic: the CITIZENS (owned cars + walkers/cyclists/transit riders) lay the
-    // live traffic density as they actually drive, and are persistent — they park and are walked to,
-    // never popping out of existence at a destination.
-    overlays.onSimTick(r); // the active overlay's source ticked → re-push it
-    if (r.civicTicked) {
-      pulse.tick();
-      // Restoration readout: sample the live metrics on this cadence and trend vs the prior sample
-      // (a no-op inside the panel while it is closed).
-      mounted.restore.refresh();
-      // Revival/decay seam: sample the LIVE occupancy into the hashed stock — thriving
-      // homes heal + densify (R1→R2→R3), struggling ones crumble toward a derelict
-      // ruin (reversibly). Runs HERE on the slow civic cadence (sim side), never in
-      // stepAmbient (which must leave the world hash untouched) and never in simTick
-      // (the N=120 gate pins its stock byte-stable). markDirty only on a real change.
-      // Re-derive the grid FIRST so revival reads the current power state, then run
-      // the seam: a powered home heals/densifies by occupancy; an unpowered one is
-      // hard-gated (no growth, slow decay) until the player restores power.
-      const powerChanged = power.recompute();
-      const revived = stepRevival(
-        world,
-        (tile) => live.state.occupancy.get(tile),
-        live.revivalRng,
-        (tile) => power.grid().poweredAnchors.has(tile),
-      );
-      live.refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
-      live.refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
-      if (revived > 0 || powerChanged) markDirty(); // stock/grid changed → rebuild base
-    }
-  }, { startTick: save?.tick ?? 0 }); // a resumed game keeps its clock (repair rings are stamped in ticks)
-  let last = performance.now();
-  let lastBaseRefresh = 0;
-  const frame = (now: number): void => {
-    // a new in-game hour: demand re-draws and the blackout may roll to another block
-    if (power.maybeResolveHour(now)) markDirty();
-    // the economy steps once per in-game hour (catching up a few if the tab was in the background)
-    economy.advance(now);
-    // Sim path is VERBATIM today's — two independent clocks (YP3): `last` drives the
-    // sim (its FixedTickLoop clamp owns catch-up); never fold the ambient dt into it.
-    sim.advance(now - last);
-    last = now;
-    // Wear/junk/tents are baked into the cached base (under the agents); refresh it on a slow cadence so
-    // newly-worn ground + encampments appear even with a static camera (they evolve over many seconds).
-    if (now - lastBaseRefresh > 2000) {
-      lastBaseRefresh = now;
-      renderer.invalidateBase();
-    }
-    if (live.on && !document.hidden) {
-      // Continuous ambient path: step the ambient sim on its OWN clock (its Task-1
-      // clamp owns catch-up), then composite + sprites. The base rebuilds inside
-      // renderFrame iff invalidated, so this stays cheap.
-      live.step(now);
-      renderer.renderFrame(world, camera, live.state);
-      dirty = false;
-    } else if (dirty || gpuRenderer) {
-      // Legacy ambient-OFF path: repaint only when something changed. With GPU on we still run the
-      // composite (it produces/clears the base the GPU samples) each frame the base is dirty.
-      if (dirty) renderer.render(world, camera);
-      dirty = false;
-    }
-    // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so
-    // it samples the freshest baked tiles. The base re-uploads only when its version changed.
-    gpuRenderer?.render(camera, cssWidth, cssHeight, now / 1000, renderer.baseCanvas(), renderer.baseVersion());
-    // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
-    if (gpuRenderer && live.on) gpuRenderer.renderAgents(live.state, camera, cssWidth, cssHeight, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
-    // GPU smog overlay (z2, above sprites): the atmospheric haze, now on the GPU instead of CPU plumes.
-    if (smogOverlay && live.on) smogOverlay.render(camera, cssWidth, cssHeight, now / 1000, live.state.pollution, live.state.wind);
-    // Sim-gated (Y5): re-derive the dock/panel signatures + refresh on change ONLY
-    // when a sim tick has run since the last sync — not every rAF frame.
-    if (simChanged) {
-      syncDock();
-      simChanged = false;
-    }
-    window.requestAnimationFrame(frame);
-  };
-  window.requestAnimationFrame(frame);
+  // The two clocks: the fixed-tick sim (a resumed game keeps its clock — repair rings are stamped in ticks) and
+  // the rAF frame (the live layer steps on its own clock inside it).
+  const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
+  const frame = createFrame({ start: performance.now(), power, economy, sim, view, live, world, hidden: () => document.hidden, syncDock: tools.syncDock });
+  runFrames(frame, (cb) => window.requestAnimationFrame(cb));
 }
 
 // Boot: resume the game in progress (the CURRENT slot, kept by autosave) unless `?new` asks for a fresh city;
