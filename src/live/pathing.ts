@@ -40,7 +40,7 @@ import {
   WEAR_MAX,
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
-import { canDrive, carPassable, isParkable, isWalkable, isWearable } from './network';
+import { carPassable, isParkable, isWalkable, isWearable, networkMasks } from './network';
 
 /** The nearest pedestrian-walkable tile to (x, y) within `maxR` (ring search, the tile itself
  *  first), or null if none is in reach. Rescues a ped that was placed OFF the walkable set — on
@@ -316,9 +316,12 @@ function searchPath(
   pollution: ReadonlyMap<number, number> | undefined,
 ): number[] | null {
   const W = map.width;
+  const H = map.height;
   const start = map.idx(sx, sy);
   const goal = map.idx(gx, gy);
-  beginSearch(W * map.height);
+  // the edge tests read precomputed masks (isWalkable / canDrive, tabulated per map — network.ts)
+  const { walk: walkable, drive } = networkMasks(map);
+  beginSearch(W * H);
   stamp[start] = gen;
   gScore[start] = 0;
   came[start] = -1;
@@ -330,10 +333,13 @@ function searchPath(
     const cy = (ci - cx) / W;
     if (walk ? Math.abs(cx - gx) + Math.abs(cy - gy) <= 1 : ci === goal) return tracePath(ci);
     const baseG = gScore[ci]!;
+    const edges = drive[ci]!;
     for (let d = 0; d < 4; d++) {
       const nx = cx + DIR_DX[d]!;
       const ny = cy + DIR_DY[d]!;
-      if (walk ? !isWalkable(map, nx, ny) : !canDrive(map, cx, cy, nx, ny)) continue; // directed edges for cars
+      if (walk) {
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H || walkable[ny * W + nx] === 0) continue;
+      } else if ((edges & (1 << d)) === 0) continue; // directed edges for cars
       const ni = map.idx(nx, ny);
       const ng = baseG + (walk ? pedCost(map, nx, ny, wear, traffic, pollution) : driveTileCost(map, nx, ny, traffic));
       if (stamp[ni] !== gen || ng < gScore[ni]!) {

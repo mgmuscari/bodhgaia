@@ -3,6 +3,7 @@
 // reload. A thin DOM shell — storage comes in through deps (save/store.ts), the save itself from the host.
 
 import type { SlotInfo } from '../save/store';
+import { panelVisibility, type PanelHandle } from './panelHandle';
 
 export interface SavesPanelDeps {
   list(): Promise<SlotInfo[]>;
@@ -17,20 +18,13 @@ export interface SavesPanelDeps {
   onToggle?(open: boolean): void;
 }
 
-export interface SavesPanelHandle {
-  toggle(): boolean;
-  visible(): boolean;
-}
-
 const when = (ms: number): string =>
   new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): SavesPanelHandle {
+export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): PanelHandle {
   const panel = document.createElement('div');
   panel.className = 'budget-panel saves-panel'; // the Budget window's frame and type
-  panel.hidden = true;
   container.appendChild(panel);
-  let open = false;
   let status = '';
 
   const button = (label: string, run: () => Promise<void>, cls = 'budget-borrow'): HTMLButtonElement => {
@@ -59,7 +53,7 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): S
     const title = document.createElement('span');
     title.className = 'budget-title';
     title.textContent = 'Saves';
-    const close = button('✕', async () => setOpen(false), 'budget-close');
+    const close = button('✕', async () => handle.close(), 'budget-close');
     close.setAttribute('aria-label', 'Close saves');
     head.append(title, close);
 
@@ -116,19 +110,14 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): S
     panel.replaceChildren(head, actions, slots, ...(status ? [div('budget-note', status)] : []));
   }
 
-  function setOpen(next: boolean): void {
-    open = next;
-    panel.hidden = !open;
-    status = '';
-    if (open) void render();
-    deps.onToggle?.(open);
-  }
-
-  return {
-    toggle: () => {
-      setOpen(!open);
-      return open;
+  // each open starts with a clean status line and a fresh slot list; refresh re-lists while open
+  const handle = panelVisibility(panel, {
+    render: () => {
+      status = '';
+      void render();
     },
-    visible: () => open,
-  };
+    refresh: () => void render(),
+    onToggle: deps.onToggle,
+  });
+  return handle;
 }
