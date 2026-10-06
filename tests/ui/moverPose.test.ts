@@ -166,3 +166,27 @@ describe('turning keeps pace (Maddy 2026-09-30: cars turning corners way too slo
     for (const s of steps) expect(Math.abs(s - mean) / mean).toBeLessThan(0.08);
   });
 });
+
+import { snapPose, pedLateral } from '../../src/live/poses';
+
+describe('snapPose poses the snapshot itself (P2: no per-frame copy of the agent)', () => {
+  it('hands the lateral callback the snapshot object, not a copy of the whole mover', () => {
+    const m = mover(5, 5, 1, 0);
+    m.snap = { x: 4.6, y: 5, dir: 1, prevDir: 0, tx: 5, ty: 5 };
+    let seen: unknown = null;
+    snapPose(m, (mv) => {
+      seen = mv;
+      return { entry: 0.2, mid: 0.2, exit: 0.2 };
+    });
+    expect(seen).toBe(m.snap);
+  });
+
+  it('poses exactly as the mover would at its snapshot leg state', () => {
+    const m = { ...mover(5, 5, 1, 0), x: 5.3, phase: 'to-building' } as Mover;
+    m.snap = { x: 4.6, y: 5, dir: 1, prevDir: 0, tx: 5, ty: 5 };
+    const asOf = { ...m, ...m.snap } as Mover;
+    expect(snapPose(m, 0.2)).toEqual(moverPose(asOf, 0.2));
+    const road = (x: number, y: number): boolean => (x + y) % 2 === 0;
+    expect(snapPose(m, (mv) => pedLateral(mv, road))).toEqual(moverPose(asOf, pedLateral(asOf, road)));
+  });
+});

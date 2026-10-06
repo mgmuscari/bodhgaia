@@ -199,10 +199,158 @@ export function driveTileCost(map: GameMap, x: number, y: number, traffic?: Read
   return c;
 }
 
+// ---- A* core: a binary heap over a node pool + typed-array scores reused across calls ----------------
+//
+// The original search kept its open list in an array, popped the FIRST lowest-f entry by linear scan
+// (splice keeps insertion order), and kept gScore / came-from in Maps. This is the same search, faster:
+// each push appends a NODE to a pool, so a node's pool index is its insertion sequence, and the heap
+// orders nodes by (f, sequence) — popping exactly what the scan popped, stale duplicates included, so
+// the iteration bound cuts off at the same point. gScore / came-from live in typed arrays sized to the
+// map, valid where `stamp` equals this search's generation (no clearing between calls).
+
+let cells = 0;
+let gen = 0;
+let stamp = new Uint32Array(0);
+let gScore = new Float64Array(0);
+let came = new Int32Array(0);
+let nodeTile = new Int32Array(256);
+let nodeF = new Float64Array(256);
+let heap = new Int32Array(256);
+let nodeLen = 0;
+let heapLen = 0;
+
+/** Start a search over `n` tiles: a fresh generation (typed arrays reallocated on a new map size). */
+function beginSearch(n: number): void {
+  if (n !== cells) {
+    cells = n;
+    stamp = new Uint32Array(n);
+    gScore = new Float64Array(n);
+    came = new Int32Array(n);
+    gen = 0;
+  }
+  if (gen === 0xffffffff) {
+    stamp.fill(0);
+    gen = 0;
+  }
+  gen++;
+  nodeLen = 0;
+  heapLen = 0;
+}
+
+/** Is node `a` popped before node `b`: lower f, then earlier insertion. */
+function before(a: number, b: number): boolean {
+  const fa = nodeF[a]!;
+  const fb = nodeF[b]!;
+  return fa < fb || (fa === fb && a < b);
+}
+
+function pushNode(tile: number, f: number): void {
+  if (nodeLen === nodeTile.length) {
+    const t = new Int32Array(nodeLen * 2);
+    t.set(nodeTile);
+    nodeTile = t;
+    const ff = new Float64Array(nodeLen * 2);
+    ff.set(nodeF);
+    nodeF = ff;
+    const h = new Int32Array(nodeLen * 2);
+    h.set(heap);
+    heap = h;
+  }
+  const node = nodeLen++;
+  nodeTile[node] = tile;
+  nodeF[node] = f;
+  let k = heapLen++;
+  while (k > 0) {
+    const parent = (k - 1) >> 1;
+    const pn = heap[parent]!;
+    if (!before(node, pn)) break;
+    heap[k] = pn;
+    k = parent;
+  }
+  heap[k] = node;
+}
+
+/** Pop the next node (its pool index); the heap must be non-empty. */
+function popNode(): number {
+  const top = heap[0]!;
+  const last = heap[--heapLen]!;
+  let k = 0;
+  for (;;) {
+    const l = 2 * k + 1;
+    if (l >= heapLen) break;
+    const r = l + 1;
+    const c = r < heapLen && before(heap[r]!, heap[l]!) ? r : l;
+    if (!before(heap[c]!, last)) break;
+    heap[k] = heap[c]!;
+    k = c;
+  }
+  if (heapLen > 0) heap[k] = last;
+  return top;
+}
+
+/** The route start → `end` by walking came-from back to the start (marked −1). */
+function tracePath(end: number): number[] {
+  const path = [end];
+  let p = end;
+  while (came[p] !== -1) {
+    p = came[p]!;
+    path.push(p);
+  }
+  return path.reverse();
+}
+
+/**
+ * The shared A*: from (sx,sy) toward (gx,gy) over the road network (`walk` false: canDrive edges,
+ * driveTileCost, arrive ON the goal) or the walkable set (`walk` true: isWalkable, pedCost, arrive
+ * within one of the goal — the door). f = g + Manhattan·0.5; at most ROAD_PATH_MAX_ITERS pops.
+ */
+function searchPath(
+  map: GameMap,
+  sx: number,
+  sy: number,
+  gx: number,
+  gy: number,
+  walk: boolean,
+  wear: ReadonlyMap<number, number> | undefined,
+  traffic: ReadonlyMap<number, number> | undefined,
+  pollution: ReadonlyMap<number, number> | undefined,
+): number[] | null {
+  const W = map.width;
+  const start = map.idx(sx, sy);
+  const goal = map.idx(gx, gy);
+  beginSearch(W * map.height);
+  stamp[start] = gen;
+  gScore[start] = 0;
+  came[start] = -1;
+  pushNode(start, Math.abs(sx - gx) + Math.abs(sy - gy));
+  let iters = 0;
+  while (heapLen > 0 && iters++ < ROAD_PATH_MAX_ITERS) {
+    const ci = nodeTile[popNode()]!;
+    const cx = ci % W;
+    const cy = (ci - cx) / W;
+    if (walk ? Math.abs(cx - gx) + Math.abs(cy - gy) <= 1 : ci === goal) return tracePath(ci);
+    const baseG = gScore[ci]!;
+    for (let d = 0; d < 4; d++) {
+      const nx = cx + DIR_DX[d]!;
+      const ny = cy + DIR_DY[d]!;
+      if (walk ? !isWalkable(map, nx, ny) : !canDrive(map, cx, cy, nx, ny)) continue; // directed edges for cars
+      const ni = map.idx(nx, ny);
+      const ng = baseG + (walk ? pedCost(map, nx, ny, wear, traffic, pollution) : driveTileCost(map, nx, ny, traffic));
+      if (stamp[ni] !== gen || ng < gScore[ni]!) {
+        stamp[ni] = gen;
+        gScore[ni] = ng;
+        came[ni] = ci;
+        pushNode(ni, ng + (Math.abs(nx - gx) + Math.abs(ny - gy)) * 0.5);
+      }
+    }
+  }
+  return null;
+}
+
 /** A* over the drivable road network from (sx,sy) to (gx,gy): the committed least-cost route a
  *  car-agent follows (so it never circles), preferring freeways and avoiding congestion via
  *  driveTileCost. Returns tile indices start-first (inclusive of both ends), or null if no route /
- *  the search bound is hit. Pure: array open-list + Maps + abs heuristic (allowlist-safe). */
+ *  the search bound is hit. Pure: heap + typed arrays + abs heuristic (allowlist-safe). */
 export function roadPath(
   map: GameMap,
   sx: number,
@@ -213,42 +361,8 @@ export function roadPath(
 ): number[] | null {
   if (!carPassable(map, sx, sy) || !carPassable(map, gx, gy)) return null;
   const start = map.idx(sx, sy);
-  const goal = map.idx(gx, gy);
-  if (start === goal) return [start];
-  const gScore = new Map<number, number>([[start, 0]]);
-  const came = new Map<number, number>();
-  const open: Array<{ i: number; x: number; y: number; f: number }> = [
-    { i: start, x: sx, y: sy, f: Math.abs(sx - gx) + Math.abs(sy - gy) },
-  ];
-  let iters = 0;
-  while (open.length > 0 && iters++ < ROAD_PATH_MAX_ITERS) {
-    let bi = 0; // pop lowest f (linear scan — road frontiers stay small)
-    for (let k = 1; k < open.length; k++) if (open[k]!.f < open[bi]!.f) bi = k;
-    const cur = open.splice(bi, 1)[0]!;
-    if (cur.i === goal) {
-      const path = [goal];
-      let p = goal;
-      while (came.has(p)) {
-        p = came.get(p)!;
-        path.push(p);
-      }
-      return path.reverse();
-    }
-    const baseG = gScore.get(cur.i)!;
-    for (let d = 0; d < 4; d++) {
-      const nx = cur.x + DIR_DX[d]!;
-      const ny = cur.y + DIR_DY[d]!;
-      if (!canDrive(map, cur.x, cur.y, nx, ny)) continue; // directed edges: one-way + limited-access
-      const ni = map.idx(nx, ny);
-      const ng = baseG + driveTileCost(map, nx, ny, traffic);
-      if (ng < (gScore.get(ni) ?? Infinity)) {
-        gScore.set(ni, ng);
-        came.set(ni, cur.i);
-        open.push({ i: ni, x: nx, y: ny, f: ng + (Math.abs(nx - gx) + Math.abs(ny - gy)) * 0.5 });
-      }
-    }
-  }
-  return null;
+  if (start === map.idx(gx, gy)) return [start];
+  return searchPath(map, sx, sy, gx, gy, false, undefined, traffic, undefined);
 }
 
 /**
@@ -259,7 +373,7 @@ export function roadPath(
  * saw: peds piling up + heading home "to nowhere" when a destination sat behind a barrier). Cost via
  * {@link pedCost} (promenades cheap, stroads/smog dear → the route still prefers the calm/green
  * city). Returns tile indices start-first, or null if no foot route / the search bound is hit. Pure
- * (allowlist-safe): array open-list + Maps + abs heuristic, no rng.
+ * (allowlist-safe): heap + typed arrays + abs heuristic, no rng.
  */
 export function walkPath(
   map: GameMap,
@@ -272,43 +386,8 @@ export function walkPath(
   pollution?: ReadonlyMap<number, number>,
 ): number[] | null {
   if (!isWalkable(map, sx, sy)) return null;
-  const start = map.idx(sx, sy);
-  const atDoor = (x: number, y: number): boolean => Math.abs(x - gx) + Math.abs(y - gy) <= 1;
-  if (atDoor(sx, sy)) return [start];
-  const gScore = new Map<number, number>([[start, 0]]);
-  const came = new Map<number, number>();
-  const open: Array<{ i: number; x: number; y: number; f: number }> = [
-    { i: start, x: sx, y: sy, f: Math.abs(sx - gx) + Math.abs(sy - gy) },
-  ];
-  let iters = 0;
-  while (open.length > 0 && iters++ < ROAD_PATH_MAX_ITERS) {
-    let bi = 0; // pop lowest f (linear scan — foot frontiers stay small)
-    for (let k = 1; k < open.length; k++) if (open[k]!.f < open[bi]!.f) bi = k;
-    const cur = open.splice(bi, 1)[0]!;
-    if (atDoor(cur.x, cur.y)) {
-      const path = [cur.i];
-      let p = cur.i;
-      while (came.has(p)) {
-        p = came.get(p)!;
-        path.push(p);
-      }
-      return path.reverse();
-    }
-    const baseG = gScore.get(cur.i)!;
-    for (let d = 0; d < 4; d++) {
-      const nx = cur.x + DIR_DX[d]!;
-      const ny = cur.y + DIR_DY[d]!;
-      if (!isWalkable(map, nx, ny)) continue;
-      const ni = map.idx(nx, ny);
-      const ng = baseG + pedCost(map, nx, ny, wear, traffic, pollution);
-      if (ng < (gScore.get(ni) ?? Infinity)) {
-        gScore.set(ni, ng);
-        came.set(ni, cur.i);
-        open.push({ i: ni, x: nx, y: ny, f: ng + (Math.abs(nx - gx) + Math.abs(ny - gy)) * 0.5 });
-      }
-    }
-  }
-  return null;
+  if (Math.abs(sx - gx) + Math.abs(sy - gy) <= 1) return [map.idx(sx, sy)];
+  return searchPath(map, sx, sy, gx, gy, true, wear, traffic, pollution);
 }
 
 /** A direction-NEUTRAL spread hash of a tile index, for breaking distance/score TIES without the
