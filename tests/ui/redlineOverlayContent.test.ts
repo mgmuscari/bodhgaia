@@ -60,7 +60,7 @@ describe('redlineOverlayTint — discrete HOLC bands', () => {
 
 describe('redlineLegendLine', () => {
   it('returns a non-empty line naming the grade', () => {
-    const line = redlineLegendLine('grade');
+    const line = redlineLegendLine();
     expect(line.length).toBeGreaterThan(0);
     expect(line.toLowerCase()).toContain('redline');
   });

@@ -22,8 +22,8 @@ import type { GameMap } from '../engine/map';
 import { BuiltKind, isRoadKind, isServiceStation } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { visitValue } from '../citizens/plots';
-import { stopCategoryOf, DAILY_ITINERARY, type StopCategory } from '../citizens/itinerary';
-import { TravelMode, modeSpec, modeRidesNetwork, modeSpeedMult, MODE_CHOICE_ORDER } from '../citizens/modes';
+import { DAILY_ITINERARY } from '../citizens/itinerary';
+import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import type { Household } from '../citizens/census';
 import { layField, decayField, sampleField } from '../citizens/field';
 import type { Rng } from '../engine/rng';
@@ -55,9 +55,6 @@ import {
   TRAIN_LEN,
   TRAIN_CAP,
   TRAIN_RAIL_PER,
-  PILEUP_K,
-  PILEUP_MIN,
-  LASTMILE_RADIUS,
   PARK_RADIUS,
   LOT_REROUTE_RADIUS,
   LOT_ABSORB_MARGIN,
@@ -68,21 +65,15 @@ import {
   HEALTH_MAX,
   HEALTH_DECAY,
   WALK_RANGE,
-  CITIZEN_TRIP_RADIUS,
-  BIKE_RANGE,
-  MODE_INFRA_RADIUS,
   RETIRED_CAR_LINGER,
   TRAFFIC_MAX,
   TRAFFIC_LAY,
   TRAFFIC_DECAY,
-  CONGESTION_WEIGHT,
-  ROAD_PATH_MAX_ITERS,
   POLL_MAX,
   POLL_LAY_BASE,
   POLL_FREEWAY_MULT,
   POLL_CONGEST,
   POLL_DECAY,
-  PED_POLL_WEIGHT,
   WIND_CADENCE,
   WIND_FRACTION,
   POLL_DIFFUSE_COEFF,
@@ -103,7 +94,6 @@ import {
   LV_COVERAGE_PEN,
   COVERAGE_RADIUS,
   LV_CADENCE,
-  LV_PULL,
   AMENITY_KINDS,
   OCC_CADENCE,
   OCC_RATE,
@@ -117,22 +107,11 @@ import {
   OCC_ABSOLUTE,
   OCC_HEADROOM,
   ROAD_WALK_PENALTY,
-  PED_GROUND_BASE,
-  PED_LUSH,
-  PED_BEATEN,
-  PED_GROUND_MIN,
-  PED_LOT,
   WORN_DEGRADE_MIN,
   WORN_WALK_PENALTY,
   FAILED_TRIP_PENALTY,
   FUEL_TANK,
   FUEL_LIMP_HOME,
-  FUEL_BURN_BASE,
-  FUEL_BURN_LUSH,
-  FUEL_BURN_BEATEN,
-  FUEL_BURN_MIN,
-  FUEL_REFUEL_BASE,
-  FUEL_REFUEL_PER_VALUE,
   GIVE_UP_PENALTY,
   WEAR_MAX,
   WEAR_RATE,
@@ -162,9 +141,6 @@ import {
   ROAD_CARED_LV,
   INSIDE_DWELL_MIN,
   INSIDE_DWELL_SPAN,
-  CAR_STRAIGHT_WEIGHT,
-  RECENT_CAP,
-  FAUNA_THRESHOLD,
   FLOCK_MIN,
   FLOCK_MAX,
   BIRD_MAX_SPEED,
@@ -172,15 +148,8 @@ import {
   BIRD_ALIGN,
   BIRD_SEPARATION,
   BIRD_SEP_RADIUS2,
-  STUCK_REPATH,
-  STUCK_UTURN,
   STUCK_GIVE_UP,
   JAM_SKIP_PENALTY,
-  STUCK_ESCAPE,
-  LANE_SCAN_CAP,
-  WALKABLE_STRETCH,
-  JAM_RADIUS,
-  EVAPORATION,
   GREEN_HEAL_KINDS,
   GREEN_HEAL_RADIUS,
   GROUND_GREEN_HEAL,
@@ -190,14 +159,57 @@ import {
   DIR_DX,
   DIR_DY,
   opposite,
-  LANE,
-  laneOffset,
-  PED_CURB,
-  KERB_PULL,
-  STALL_ALONG,
 } from '../live/geometry';
 
 import type { Mover, Car, Ped, Bird, Flock, Train, ParkingLotInfo, AmbientState } from '../live/types';
+import {
+  congestionSpeedMult,
+  congestionCount,
+  rerouteIfStuck,
+  uTurnIfStuck,
+  spaceClear,
+  commitHeading,
+  buildMoverGrid,
+  assignSerials,
+  blockedAhead,
+  boxBlocked,
+  advanceMover,
+  pathStep,
+} from '../live/motion';
+import {
+  nearestWalkable,
+  usesCommittedPath,
+  fuelBurn,
+  refuelFor,
+  nextStepToward,
+  roadPath,
+  walkPath,
+  nearestDemandTile,
+  nearestOfCategory,
+  chooseMode,
+  jamNear,
+  tripEvaporates,
+  nearestEmptyTile,
+  nearestDriveStart,
+} from '../live/pathing';
+import {
+  isCarRoad,
+  birdSpawnAt,
+  carPassable,
+  isParkable,
+  curbStallOffsets,
+  canDrive,
+  nextRoadStep,
+  railTraversable,
+  nextRailStep,
+  carOffNetwork,
+  isWalkable,
+  reachedPlot,
+  isWearable,
+  adjacentRoad,
+  pedDespawns,
+} from '../live/network';
+import { pedLegLateral, syncTrainLegs, snapshotMovers } from '../live/poses';
 
 export * from '../live/caps';
 export * from '../live/types';
@@ -222,6 +234,61 @@ export {
   laneOffset,
   curbParkOffset,
 } from '../live/geometry';
+
+export {
+  legPaceFactor,
+  type Pose,
+  type LateralProfile,
+  syncTrainLegs,
+  trainPoses,
+  moverPose,
+  snapshotMovers,
+  ambientAlpha,
+  carPose,
+  pedPose,
+} from '../live/poses';
+
+export {
+  carWeightForRoad,
+  isCarRoad,
+  type FreewayLane,
+  freewayLane,
+  isPedSubstrate,
+  birdSpawnAt,
+  isParkable,
+  curbStallOffsets,
+  canDrive,
+  nextRoadStep,
+  nextRailStep,
+  carOffNetwork,
+  reachedPlot,
+  isWearable,
+  pedDespawns,
+} from '../live/network';
+
+export {
+  nearestWalkable,
+  pedCost,
+  usesCommittedPath,
+  roadPath,
+  walkPath,
+  nearestOfCategory,
+  chooseMode,
+  jamNear,
+  tripEvaporates,
+} from '../live/pathing';
+
+export {
+  congestionSpeedMult,
+  congestionCount,
+  rerouteIfStuck,
+  uTurnIfStuck,
+  spaceClear,
+  commitHeading,
+  buildMoverGrid,
+  blockedAhead,
+  boxBlocked,
+} from '../live/motion';
 
 /**
  * The set of tiles within COVERAGE_RADIUS of a fire station / healing commons — the live fire/health
@@ -280,101 +347,6 @@ export function policePhase(tick: number): 'scatter' | 'chase' {
 export function arrestChance(grade: number): number {
   const g = grade < 0 ? 0 : grade > 255 ? 255 : grade;
   return (g / 255) * ARREST_CHANCE_MAX;
-}
-
-/** Speed multiplier (0..1] for `count` cars sharing a tile (count includes the car itself). 1 for a
- *  lone car; falls off as 1/(1 + PILEUP_K·(count−1)); floored at PILEUP_MIN so traffic crawls through
- *  a jam rather than freezing. Pure. */
-export function congestionSpeedMult(count: number): number {
-  if (count <= 1) return 1;
-  const mult = 1 / (1 + PILEUP_K * (count - 1));
-  return mult < PILEUP_MIN ? PILEUP_MIN : mult;
-}
-
-/** How many cars on a tile actually pile up against a car heading `dir`, given the tile's per-direction
- *  car histogram `dirCounts` ([N,E,S,W]). Cars heading the OPPOSITE way are just PASSING (oncoming
- *  traffic on a two-way road) — they don't make a jam — so they're excluded; same-direction and
- *  orthogonal cars (a queue or a crossing) DO count (Maddy). The car itself is included (same-dir).
- *  Pure. */
-export function congestionCount(dirCounts: readonly number[], dir: number): number {
-  let total = 0;
-  for (const n of dirCounts) total += n;
-  return total - (dirCounts[(dir + 2) % 4] ?? 0); // drop the opposite-heading cars
-}
-
-/**
- * How much faster a mover's current sim leg should run so its DRAWN path keeps its pace: a leg's pose
- * crosses one tile (moverPose), a unit line when straight but a quarter-arc of radius 0.5 ∓ lateral at
- * a turn — only ~0.53 tiles on a right turn. With every leg taking the same sim time, a turning car
- * visibly crawled round the corner (Maddy 2026-09-30). Returns straight/arc length (1 when straight).
- */
-export function legPaceFactor(m: Mover, lateral: number): number {
-  const d = m.dir;
-  const pd = m.prevDir ?? d;
-  const turn = DIR_DX[pd]! * DIR_DY[d]! - DIR_DY[pd]! * DIR_DX[d]!;
-  if (turn === 0) return 1;
-  return 1 / ((Math.PI / 2) * (0.5 - turn * lateral));
-}
-
-/** The kerb offset a pedestrian's current leg is DRAWN with at the tile it crosses (for legPaceFactor). */
-function pedLegLateral(map: GameMap, p: Mover): number {
-  const x = p.tx - DIR_DX[p.dir]!;
-  const y = p.ty - DIR_DY[p.dir]!;
-  return map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!) ? PED_CURB : 0;
-}
-
-/**
- * Gridlock relief: a path-following vehicle held at a tile centre for STUCK_REPATH substeps (and every
- * STUCK_REPATH after) re-plans from where it stands to the same destination, with the tile it is stuck
- * behind priced out — so it finds a way round the jam instead of waiting on it forever (Maddy
- * 2026-09-30). Returns true iff it took a new route. Pure given (map, traffic).
- */
-export function rerouteIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<number, number>): boolean {
-  const stuck = car.stuck ?? 0;
-  if (!car.path || stuck < STUCK_REPATH || stuck % STUCK_REPATH !== 0) return false;
-  if (car.x !== Math.round(car.x) || car.y !== Math.round(car.y)) return false; // re-plan from a tile centre only
-  const goal = car.path[car.path.length - 1]!;
-  const gx = goal % map.width;
-  const gy = (goal - gx) / map.width;
-  const avoid = new Map(traffic);
-  avoid.set(map.idx(car.tx, car.ty), 1e6); // the tile it's stuck behind
-  const path = roadPath(map, car.x, car.y, gx, gy, avoid);
-  if (!path || path.length < 2 || path.includes(map.idx(car.tx, car.ty))) return false;
-  const nx = path[1]! % map.width;
-  const ny = (path[1]! - nx) / map.width;
-  car.tx = nx;
-  car.ty = ny;
-  commitHeading(car, nx > car.x ? 1 : nx < car.x ? 3 : ny > car.y ? 2 : 0);
-  car.path = path;
-  car.leg = 2;
-  return true;
-}
-
-/**
- * Jam rung 2: a path-following vehicle held STUCK_UTURN substeps — typically MID-LEG in a queue, where a
- * re-plan can't start — turns back toward the tile its leg started from (when driving that edge in
- * reverse is legal; never on a one-way lane) and re-plans from there to the same destination, with the
- * jammed tile priced out. Returns true iff it turned.
- */
-export function uTurnIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<number, number>): boolean {
-  if (!car.path || (car.stuck ?? 0) < STUCK_UTURN) return false;
-  const fx = car.tx - DIR_DX[car.dir]!;
-  const fy = car.ty - DIR_DY[car.dir]!;
-  if (!map.inBounds(fx, fy) || !canDrive(map, car.tx, car.ty, fx, fy)) return false; // no driving back here
-  const goal = car.path[car.path.length - 1]!;
-  const gx = goal % map.width;
-  const gy = (goal - gx) / map.width;
-  const avoid = new Map(traffic);
-  avoid.set(map.idx(car.tx, car.ty), 1e6);
-  const path = roadPath(map, fx, fy, gx, gy, avoid);
-  if (!path || path.includes(map.idx(car.tx, car.ty))) return false;
-  car.tx = fx;
-  car.ty = fy;
-  commitHeading(car, opposite(car.dir));
-  car.path = path;
-  car.leg = 1; // on reaching (fx, fy), path[1] is next
-  car.stuck = 0;
-  return true;
 }
 
 /**
@@ -482,257 +454,6 @@ export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void 
   }
 }
 
-/** True when no moving vehicle's centre sits within `r` of (x, y) — a departure point is free to pull
- *  out onto (so cars leaving a lot don't all materialise on the same spot). */
-export function spaceClear(grid: Map<number, Mover[]>, mapW: number, x: number, y: number, r = 0.6): boolean {
-  for (let dj = -1; dj <= 1; dj++) {
-    for (let di = -1; di <= 1; di++) {
-      const cell = grid.get((Math.round(y) + dj) * mapW + (Math.round(x) + di));
-      if (!cell) continue;
-      for (const o of cell) if (Math.abs(o.x - x) < r && Math.abs(o.y - y) < r) return false;
-    }
-  }
-  return true;
-}
-
-/** Commit a mover to a new heading, remembering the one it turned from (for moverPose's turn arc). */
-export function commitHeading(m: Mover, nd: number): void {
-  m.prevDir = m.dir;
-  m.dir = nd;
-}
-
-/** A sprite's draw pose: world position of its centre (tile units, +0.5 already applied) + a unit
- *  heading vector (screen y-down; the renderer turns it into a rotation). */
-export interface Pose {
-  x: number;
-  y: number;
-  hx: number;
-  hy: number;
-}
-
-/**
- * Where to DRAW a grid-following mover, and which way it faces — smooth through turns (Maddy
- * 2026-09-30: "i like your approach to turning center lines"). Each leg runs centre-to-centre; the pose
- * is drawn half a tile BEHIND the sim position, so over one leg it crosses the leg's start tile from its
- * entry edge (the side it came in on, via `prevDir`) to its exit edge (via `dir`): a straight line, or a
- * quarter-circle round the tile corner between those edges at a 90° turn — the same geometry the SNES
- * lane lines use. `lateral` is the right-of-heading offset (car lane, ped kerb), carried round the arc
- * as the radius (0.5 − lateral on a right turn, 0.5 + lateral on a left), so a turning car never
- * jumps across the road. Leg ends meet exactly, so motion is continuous. Pure, no trig (nlerp + sqrt).
- */
-export interface LateralProfile {
-  /** Right-of-heading offset at the tile's entry edge, centre, and exit edge. */
-  entry: number;
-  mid: number;
-  exit: number;
-}
-
-/** The leg direction (0=N, 1=E, 2=S, 3=W) from tile index `a` to the adjacent tile index `b`. */
-function stepDir(a: number, b: number, W: number): number {
-  const dx = (b % W) - (a % W);
-  const dy = Math.floor(b / W) - Math.floor(a / W);
-  return dx > 0 ? 1 : dx < 0 ? 3 : dy > 0 ? 2 : 0;
-}
-
-/**
- * Re-sync a train's car movers to its trail (call after each substep): car k crosses its tile cells[k]
- * toward cells[k−1] (the locomotive toward its target) at the locomotive's own progress, so the consist
- * moves as one, and each car's previous leg (from the tile behind it) gives it moverPose's quarter-arc bend
- * at a corner — one car after another, a tile apart. The Mover objects persist, keeping their snapshots.
- */
-export function syncTrainLegs(t: Train, W: number): Mover[] {
-  const p = Math.min(1, Math.max(0, 1 - (Math.abs(t.tx - t.hx) + Math.abs(t.ty - t.hy))));
-  const cars = (t.cars ??= []);
-  cars.length = t.cells.length;
-  for (let k = 0; k < t.cells.length; k++) {
-    const a = t.cells[k]!;
-    const ax = a % W;
-    const ay = Math.floor(a / W);
-    const dir = k === 0 ? t.dir : stepDir(a, t.cells[k - 1]!, W);
-    const prevDir = k + 1 < t.cells.length ? stepDir(t.cells[k + 1]!, a, W) : dir;
-    const m = (cars[k] ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 } as Mover);
-    m.x = ax + DIR_DX[dir]! * p;
-    m.y = ay + DIR_DY[dir]! * p;
-    m.tx = ax + DIR_DX[dir]!;
-    m.ty = ay + DIR_DY[dir]!;
-    m.dir = dir;
-    m.prevDir = prevDir;
-  }
-  return cars;
-}
-
-/** Every car of a train posed on the shared mover path ({@link movingPose}), head first; `alpha`
- *  interpolates between substeps exactly as for cars. */
-export function trainPoses(t: Train, W: number, alpha = 1): Pose[] {
-  const cars = t.cars && t.cars.length === t.cells.length ? t.cars : syncTrainLegs(t, W);
-  return cars.map((m) => movingPose(m, 0, alpha));
-}
-
-export function moverPose(m: Mover, lateral: number | LateralProfile): Pose {
-  const prof = typeof lateral === 'number' ? { entry: lateral, mid: lateral, exit: lateral } : lateral;
-  const latAt = (p: number): number => (p < 0.5 ? prof.entry + (prof.mid - prof.entry) * p * 2 : prof.mid + (prof.exit - prof.mid) * (p * 2 - 1));
-  const d = m.dir;
-  const dx = DIR_DX[d]!;
-  const dy = DIR_DY[d]!;
-  const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
-  if (!onLeg) {
-    // idle / off-grid: the plain tile-centre pose
-    return { x: m.x + 0.5 - dy * prof.mid, y: m.y + 0.5 + dx * prof.mid, hx: dx, hy: dy };
-  }
-  const p = Math.min(1, Math.max(0, 1 - (Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y))));
-  const pd = m.prevDir ?? d;
-  const pdx = DIR_DX[pd]!;
-  const pdy = DIR_DY[pd]!;
-  const cx = m.tx - dx + 0.5; // centre of the tile being crossed
-  const cy = m.ty - dy + 0.5;
-  const turn = pdx * dy - pdy * dx; // +1 right (clockwise, y-down), −1 left, 0 straight / U-turn
-  const lat = latAt(p);
-  if (turn === 0 && pd === d) {
-    // straight through
-    const bx = cx + dx * (p - 0.5);
-    const by = cy + dy * (p - 0.5);
-    return { x: bx - dy * lat, y: by + dx * lat, hx: dx, hy: dy };
-  }
-  if (turn === 0) {
-    // U-turn: in along pd to the centre and back out, the heading sweeping round through its right-hand
-    // side in two nlerp halves (pd → right(pd) → d) — never a 180° flip
-    const rx = -pdy;
-    const ry = pdx;
-    const t = p < 0.5 ? p * 2 : p * 2 - 1;
-    const [ax, ay, bx2, by2] = p < 0.5 ? [pdx, pdy, rx, ry] : [rx, ry, dx, dy];
-    let hx = ax + (bx2 - ax) * t;
-    let hy = ay + (by2 - ay) * t;
-    const hl = Math.sqrt(hx * hx + hy * hy);
-    hx /= hl;
-    hy /= hl;
-    const along = p < 0.5 ? p - 0.5 : 0.5 - p; // toward the centre, then back out
-    const bx = cx + pdx * along;
-    const by = cy + pdy * along;
-    return { x: bx - hy * lat, y: by + hx * lat, hx, hy };
-  }
-  // quarter-circle round corner K between the entry edge (−pd side) and the exit edge (+d side)
-  const kx = cx - pdx * 0.5 + dx * 0.5;
-  const ky = cy - pdy * 0.5 + dy * 0.5;
-  // unit radials from K to the entry point (= −d) and to the exit point (= +pd); nlerp between them, with
-  // p re-timed (a cubic fitted to atan) so the angle sweeps at a near-constant rate — plain nlerp crawls
-  // at the start and end of the bend
-  const u = p + 0.915 * p * (1 - p) * (0.5 - p);
-  const vx0 = -dx * (1 - u) + pdx * u;
-  const vy0 = -dy * (1 - u) + pdy * u;
-  const len = Math.sqrt(vx0 * vx0 + vy0 * vy0);
-  const vx = vx0 / len;
-  const vy = vy0 / len;
-  const r = 0.5 - turn * lat; // right turn: the right-hand lane is the inside of the curve
-  // heading = the radial rotated ±90° (so it starts along pd and ends along d)
-  const hx = turn > 0 ? -vy : vy;
-  const hy = turn > 0 ? vx : -vx;
-  return { x: kx + vx * r, y: ky + vy * r, hx, hy };
-}
-
-/** Blend two poses (position lerp, heading nlerp). A jump over 1.5 tiles — a spawn, a park, a
- *  re-route snap — is a teleport: take the newer pose rather than slide across the map. */
-function blendPose(a: Pose, b: Pose, t: number): Pose {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  if (dx * dx + dy * dy > 2.25) return b;
-  let hx = a.hx + (b.hx - a.hx) * t;
-  let hy = a.hy + (b.hy - a.hy) * t;
-  const l = Math.sqrt(hx * hx + hy * hy);
-  if (l < 1e-6) {
-    hx = b.hx;
-    hy = b.hy;
-  } else {
-    hx /= l;
-    hy /= l;
-  }
-  return { x: a.x + dx * t, y: a.y + dy * t, hx, hy };
-}
-
-/** The pose of a mover as it stood before the latest substep (its snapshot), or null if none. */
-function snapPose(m: Mover, lateral: number | ((mv: Mover) => LateralProfile)): Pose | null {
-  const sn = m.snap;
-  if (!sn) return null;
-  const mv = { ...m, x: sn.x, y: sn.y, dir: sn.dir, prevDir: sn.prevDir, tx: sn.tx, ty: sn.ty };
-  return moverPose(mv, typeof lateral === 'number' ? lateral : lateral(mv));
-}
-
-/**
- * Record every mover's leg state before a substep runs, so the renderer can draw it `alpha` of the way
- * from that state to the next (render interpolation — the 50 ms substeps otherwise show as 20 Hz hops
- * on a 60–120 Hz display). Cosmetic state only; the world hash never sees it.
- */
-export function snapshotMovers(state: AmbientState): void {
-  for (const list of [state.cars, state.cruisers, state.peds, state.trains.flatMap((t) => t.cars ?? [])]) {
-    for (const m of list) {
-      const sn = (m.snap ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 });
-      sn.x = m.x;
-      sn.y = m.y;
-      sn.dir = m.dir;
-      sn.prevDir = m.prevDir;
-      sn.tx = m.tx;
-      sn.ty = m.ty;
-    }
-  }
-}
-
-/** How far (0..1) the display is between the last substep and the next — the interpolation factor. */
-export function ambientAlpha(state: AmbientState): number {
-  return Math.min(1, Math.max(0, state.accMs / SUBSTEP_MS));
-}
-
-/** A car's draw pose. Parked: on its stall/kerb spot, a kerb-parked car lying parallel to the kerb.
- *  Moving: {@link moverPose} in its right-hand lane, interpolated `alpha` of the way from its pose
- *  before the latest substep (1 = no interpolation). */
-export function carPose(c: Car, alpha = 1): Pose {
-  if (c.parked) {
-    // kerb-parked: parallel to the kerb; in a lot bay: east-west, the way the bays are laid out
-    const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.lotIdx !== undefined ? 1 : c.dir;
-    return { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! };
-  }
-  return movingPose(c, LANE, alpha);
-}
-
-/** A moving mover's draw pose: moverPose now, blended `alpha` of the way from its pose before the latest
- *  substep — the one path cars, cruisers and train cars share. */
-function movingPose(m: Mover, lateral: number, alpha: number): Pose {
-  const now = moverPose(m, lateral);
-  const before = alpha < 1 ? snapPose(m, lateral) : null;
-  return before ? blendPose(before, now, alpha) : now;
-}
-
-/**
- * A pedestrian's kerb offset across the tile its leg crosses: PED_CURB on a road tile, 0 on open ground,
- * averaged at each edge with the neighbour across it — so a walker slides onto/off the kerb instead of
- * jumping as it steps between a road and a lot.
- */
-function pedLateral(m: Mover, onRoadAt: (x: number, y: number) => boolean): LateralProfile {
-  const lat = (x: number, y: number): number => (onRoadAt(x, y) ? PED_CURB : 0);
-  const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
-  if (!onLeg) {
-    const here = lat(Math.round(m.x), Math.round(m.y));
-    return { entry: here, mid: here, exit: here };
-  }
-  const d = m.dir;
-  const pd = m.prevDir ?? d;
-  const tx = m.tx - DIR_DX[d]!;
-  const ty = m.ty - DIR_DY[d]!;
-  const mid = lat(tx, ty);
-  return {
-    entry: (lat(tx - DIR_DX[pd]!, ty - DIR_DY[pd]!) + mid) / 2,
-    mid,
-    exit: (mid + lat(m.tx, m.ty)) / 2,
-  };
-}
-
-/** A pedestrian's draw pose: on the kerb along a road, down the middle elsewhere, easing between the
- *  two across a tile edge — smooth through turns ({@link moverPose}; `walkTo` is only the trip's
- *  destination, walkers still follow grid legs) and interpolated between substeps like {@link carPose}. */
-export function pedPose(p: Ped, onRoadAt: (x: number, y: number) => boolean, alpha = 1): Pose {
-  const now = moverPose(p, pedLateral(p, onRoadAt));
-  const before = alpha < 1 ? snapPose(p, (mv) => pedLateral(mv, onRoadAt)) : null;
-  return before ? blendPose(before, now, alpha) : now;
-}
-
 /** Squared distance from (x, y) to the nearest point of a lot's bounding box (0 inside it). Lets a
  *  car at a big lot's EDGE select it even when its centre is far out of PARK_RADIUS (Maddy: big
  *  lot blocks held one car each because selection keyed off the distant centre). */
@@ -740,461 +461,6 @@ function lotBboxDist2(lot: ParkingLotInfo, x: number, y: number): number {
   const cx = x < lot.x0 ? lot.x0 : x > lot.x1 ? lot.x1 : x;
   const cy = y < lot.y0 ? lot.y0 : y > lot.y1 ? lot.y1 : y;
   return (cx - x) * (cx - x) + (cy - y) * (cy - y);
-}
-
-// --- Pure decision helpers (unit-test seams) -----------------------------
-
-/**
- * Spawn WEIGHT for cars by road class: highway 3 / avenue 2 / street 1, and 0 for
- * quiet streets, rail, buildings and empty land. THE load-bearing ratio contract —
- * an exact, deterministic function with no tolerance.
- */
-export function carWeightForRoad(kind: number): number {
-  switch (kind) {
-    case BuiltKind.RoadHighway:
-      return 3;
-    case BuiltKind.RoadAvenue:
-      return 2;
-    case BuiltKind.RoadStreet:
-      return 1;
-    default:
-      return 0;
-  }
-}
-
-/**
- * Car TRAVERSABILITY: kinds 1..3 (street/avenue/highway). Pinned to isRoadKind, NOT
- * transportCategory (which returns 1 for QuietStreet) — so a car neither spawns on
- * nor moves onto a quiet street. This is the seam that closes the spawn-vs-move gap.
- */
-export function isCarRoad(kind: number): boolean {
-  return isRoadKind(kind);
-}
-
-/** A lane within a divided multi-lane road (a widened avenue/freeway: parallel rows
- *  of the SAME road kind). An `outer` lane is one-way (right-hand traffic) with its
- *  `dir` heading and `outward` road edge; the `through` lane is the interior of a 3+-wide
- *  road and carries traffic BOTH ways along the road's axis (Maddy: middle goes both). The
- *  `median` role is reserved for the future planted no-traffic median (a road-diet upgrade). */
-export type FreewayLane =
-  | { role: 'outer'; dir: number; outward: number }
-  | { role: 'through'; horizontal: boolean }
-  | { role: 'median' };
-
-/** Length of the same-kind run from (x, y) in direction (dx, dy), exclusive of the
- *  origin, capped at LANE_SCAN_CAP. */
-function sameRun(map: GameMap, x: number, y: number, k: number, dx: number, dy: number): number {
-  let n = 0;
-  for (let i = 1; i <= LANE_SCAN_CAP; i++) {
-    const nx = x + dx * i;
-    const ny = y + dy * i;
-    if (!map.inBounds(nx, ny) || !inLaneBand(k, map.built[map.idx(nx, ny)]!)) break;
-    n++;
-  }
-  return n;
-}
-
-/**
- * Classify a road tile's place in a divided multi-lane road, or `null` if it is not a
- * clean multi-lane lane — a 1-wide road or a junction where the two same-kind bands are
- * equal (a square crossing). Those fall back to general straight-biased routing, so a
- * car CAN turn there: that is exactly "turns only at a true junction". Read purely from
- * same-kind neighbours (read-only, no rng):
- *   1. Measure the same-kind run length along each axis (capped). The shorter run is the
- *      road's WIDTH axis; the longer is its LENGTH. This ranks correctly at lane ends
- *      and mid-lane alike (an end tile still has the full width band).
- *   2. On the width axis: same-kind road on BOTH sides → `median` (interior of a 3+-wide
- *      road, no traffic). Same-kind on one side only → `outer`: the bare side is the road
- *      `outward` edge (kerb), and the one-way `dir` is the heading whose right-hand side
- *      is that edge (right-hand traffic). So a horizontal freeway's north lane runs west
- *      and its south lane runs east; `laneOffset(dir)` then nudges each carriageway to
- *      its own kerb. Neither side same → 1-wide road → `null`.
- */
-export function freewayLane(map: GameMap, x: number, y: number): FreewayLane | null {
-  const k = map.built[map.idx(x, y)]!;
-  // A planted median is a no-traffic lane in its own right (the road-diet upgrade) — classify it
-  // directly so canDrive treats it as a green barrier (no driving on or across it).
-  if (k === BuiltKind.PlantedMedian) return { role: 'median' };
-  // Only worldgen-WIDENED roads are divided: avenues are 2-wide, highways 3-wide.
-  // Streets are 1-wide by construction, so a same-kind street neighbour is a junction
-  // arm, never a parallel lane — classifying a street as a lane misreads a staggered
-  // street junction as two OPPOSING one-way tiles that oscillate (Maddy degenerate).
-  if (k !== BuiltKind.RoadAvenue && k !== BuiltKind.RoadHighway) return null;
-  const same = (d: number): boolean => {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    return map.inBounds(nx, ny) && inLaneBand(k, map.built[map.idx(nx, ny)]!);
-  };
-  const vert = 1 + sameRun(map, x, y, k, 0, -1) + sameRun(map, x, y, k, 0, 1);
-  const horiz = 1 + sameRun(map, x, y, k, -1, 0) + sameRun(map, x, y, k, 1, 0);
-  if (horiz > vert) {
-    // Horizontal road — width is the N–S axis. Outer lanes one-way (right-hand traffic); the
-    // interior is a two-way `through` lane (Maddy: south goes east, north goes west, middle both).
-    const n = same(0); // North neighbour same-kind?
-    const s = same(2); // South neighbour same-kind?
-    if (n && s) return { role: 'through', horizontal: true };
-    if (s && !n) return { role: 'outer', dir: 3, outward: 0 }; // north lane → West
-    if (n && !s) return { role: 'outer', dir: 1, outward: 2 }; // south lane → East
-    return null;
-  }
-  if (vert > horiz) {
-    // Vertical road — width is the E–W axis. Interior is a two-way `through` lane (see above).
-    const e = same(1); // East neighbour same-kind?
-    const w = same(3); // West neighbour same-kind?
-    if (e && w) return { role: 'through', horizontal: false };
-    if (e && !w) return { role: 'outer', dir: 2, outward: 3 }; // west lane → South
-    if (w && !e) return { role: 'outer', dir: 0, outward: 1 }; // east lane → North
-    return null;
-  }
-  return null; // equal bands — a square crossing → general routing (a true junction)
-}
-
-/**
- * Pedestrian SUBSTRATE at (x, y): a quiet street, promenade, or parklet tile, OR any
- * tile orthogonally adjacent to a community garden, park, or rewilded land. Peds
- * favour the calm/green city, never the road network.
- */
-export function isPedSubstrate(map: GameMap, x: number, y: number): boolean {
-  if (!map.inBounds(x, y)) return false;
-  // An elevated PROMENADE deck (an overpass) is walkable regardless of what's below — so a promenade
-  // overpass carries pedestrians ACROSS a freeway they could never cross at grade.
-  if (map.deck[map.idx(x, y)] === BuiltKind.Promenade) return true;
-  const k = map.built[map.idx(x, y)]!;
-  if (k === BuiltKind.QuietStreet || k === BuiltKind.Promenade || k === BuiltKind.Parklet) {
-    return true;
-  }
-  for (let d = 0; d < 4; d++) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    if (!map.inBounds(nx, ny)) continue;
-    const nk = map.built[map.idx(nx, ny)]!;
-    if (nk === BuiltKind.CommunityGarden || nk === BuiltKind.Park || nk === BuiltKind.RewildedLand) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Bird-flock spawn predicate: faunaPresence at (x, y) is at or above the threshold
- * (a dead zone — fauna below threshold, including 0 — is excluded).
- */
-export function birdSpawnAt(map: GameMap, x: number, y: number): boolean {
-  if (!map.inBounds(x, y)) return false;
-  return map.faunaPresence[map.idx(x, y)]! >= FAUNA_THRESHOLD;
-}
-
-/** Generic junction step: pick a connected passable neighbour direction, excluding
- *  the U-turn `fromDir` unless it is the only option (dead-end). -1 if isolated.
- *
- *  `straightWeight` (default 1 = uniform) biases the choice toward continuing in the
- *  current heading (the direction opposite the U-turn): with N ways open, the
- *  straight option weighs `straightWeight` against 1 for each turn. Cars pass a high
- *  weight so they run a road block and cross junctions instead of looping small
- *  blocks (Maddy playtest); peds keep the uniform default.
- *
- *  `recent` (tile indices recently occupied) drives loop avoidance: options leading to
- *  a recently-visited tile are dropped UNLESS that would leave nothing, in which case
- *  the mover is boxed in by its own path and the step returns -1 (the caller despawns
- *  it rather than letting it circle). A dead-end U-turn is still taken (it is the
- *  `options.length === 0` path, before avoidance). Determinism note: the dead-end and
- *  single-fresh-option paths consume the rng exactly as before, so junction-free maps
- *  are byte-identical when `recent` never prunes. */
-function pickStep(
-  map: GameMap,
-  x: number,
-  y: number,
-  fromDir: number,
-  rng: Rng,
-  passable: (nx: number, ny: number) => boolean,
-  straightWeight = 1,
-  recent?: readonly number[],
-): number {
-  const options: number[] = [];
-  let uTurn = -1;
-  for (let d = 0; d < 4; d++) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    if (!map.inBounds(nx, ny)) continue;
-    if (!passable(nx, ny)) continue;
-    if (d === fromDir) {
-      uTurn = d;
-      continue;
-    }
-    options.push(d);
-  }
-  if (options.length === 0) return uTurn; // dead-end (or -1 if truly isolated)
-  // Loop avoidance: prefer options that do not revisit a recent tile. If every option
-  // is recent, the mover is boxed in by its own path → -1 (caller despawns it).
-  let pool = options;
-  if (recent && recent.length > 0) {
-    const fresh = options.filter((d) => !recent.includes(map.idx(x + DIR_DX[d]!, y + DIR_DY[d]!)));
-    if (fresh.length === 0) return -1;
-    pool = fresh;
-  }
-  // Uniform choice when there's nothing to bias toward: a single option, no weight,
-  // or no incoming heading (fromDir < 0, i.e. spawn) — at spawn there is no "straight"
-  // to prefer, and keeping the uniform draw makes spawn rng-identical to before.
-  if (pool.length === 1 || straightWeight <= 1 || fromDir < 0) {
-    return pool[rng.nextInt(pool.length)]!;
-  }
-  // Weighted junction choice: the straight-ahead direction (opposite the U-turn)
-  // outweighs each turn by `straightWeight`, so traffic flows through the corridor.
-  const straight = opposite(fromDir);
-  let total = 0;
-  for (const d of pool) total += d === straight ? straightWeight : 1;
-  let r = rng.nextInt(total);
-  for (const d of pool) {
-    r -= d === straight ? straightWeight : 1;
-    if (r < 0) return d;
-  }
-  return pool[pool.length - 1]!; // unreachable: r < total
-}
-
-/** Routing on a divided multi-lane road's outer lane: travel the one-way `dir`; turn
- *  off ONLY where a cross-road meets the outward edge (a true junction); never weave
- *  across to the median/opposite carriageway and never reverse. */
-function freewayStep(
-  map: GameMap,
-  x: number,
-  y: number,
-  lane: { dir: number; outward: number },
-  rng: Rng,
-): number {
-  const ax = x + DIR_DX[lane.dir]!;
-  const ay = y + DIR_DY[lane.dir]!;
-  const aheadRoad = map.inBounds(ax, ay) && isCarRoad(map.built[map.idx(ax, ay)]!);
-  const ox = x + DIR_DX[lane.outward]!;
-  const oy = y + DIR_DY[lane.outward]!;
-  const exitRoad = map.inBounds(ox, oy) && isCarRoad(map.built[map.idx(ox, oy)]!);
-  if (aheadRoad && exitRoad) {
-    // True junction: mostly stay on the freeway, occasionally take the ramp.
-    return rng.nextInt(CAR_STRAIGHT_WEIGHT + 1) === 0 ? lane.outward : lane.dir;
-  }
-  if (aheadRoad) return lane.dir; // open freeway — straight, no turns, no weaving
-  if (exitRoad) return lane.outward; // freeway ended at a ramp — exit
-  return lane.dir; // ran out of road — continue off-network, despawn next step
-}
-
-/** A car may occupy a road (1..3) or a parking lot — cars cut THROUGH parking (the
- *  accumulated concrete of the over-paved city) rather than routing around it. */
-function carTraversable(kind: number): boolean {
-  return isCarRoad(kind) || kind === BuiltKind.ParkingLot || kind === BuiltKind.RoadRamp;
-}
-
-/** A freeway-family tile for LANE GEOMETRY: a highway or a ramp. A ramp is a freeway tile that also
- *  meets the surface, so for run-length classification it counts as freeway (it must not break the
- *  lane runs around it), even though canDrive treats the ramp itself as a free interchange. */
-function isFreewayKind(kind: number): boolean {
-  return kind === BuiltKind.RoadHighway || kind === BuiltKind.RoadRamp;
-}
-
-/** Same lane material for run measurement: identical kinds, or both freeway-family (highway/ramp). */
-function sameLaneKind(a: number, b: number): boolean {
-  return a === b || (isFreewayKind(a) && isFreewayKind(b));
-}
-
-/** Whether neighbour kind `b` belongs to road `a`'s WIDTH BAND for lane classification: the same
- *  lane material, OR a PlantedMedian. A planted median is a no-traffic lane WITHIN the road, so it
- *  must count toward the road's width — otherwise a road-diet median between two carriageways would
- *  make each carriageway read as a 1-wide road and lose its one-way direction. */
-function inLaneBand(a: number, b: number): boolean {
-  return sameLaneKind(a, b) || b === BuiltKind.PlantedMedian;
-}
-
-/** An at-grade rail/tram LINE a car may CROSS at a level crossing (it can never drive ALONG it): a
- *  streetcar or a rail line. Lets a cross street cross a tram median at an intersection without the
- *  transit tile blocking it (Maddy: a streetcar in flanking avenues must not block cross traffic). */
-function isLevelCrossable(kind: number): boolean {
-  return kind === BuiltKind.Streetcar || kind === BuiltKind.Rail;
-}
-
-/** Car traversability for general (non-lane) routing: a road or parking tile that is
- *  NOT a divided road's median. Cars neither spawn on, weave onto, nor turn (at a
- *  junction) onto a median — so the median stays a true no-traffic gap. */
-function carPassable(map: GameMap, x: number, y: number): boolean {
-  if (!carTraversable(map.built[map.idx(x, y)]!)) return false;
-  const lane = freewayLane(map, x, y);
-  return lane === null || lane.role !== 'median';
-}
-
-/** A tile a car may come to REST on: a non-freeway street/avenue/parking surface on dry land.
- *  Freeways carry no parking and a road over water is a bridge, not a kerb — both are excluded, so
- *  a car never freezes on a freeway or over water (Maddy: cars parking on freeways). The single
- *  authoritative parking predicate, shared by the kerb search and the owned-car park fallback. */
-export function isParkable(map: GameMap, x: number, y: number): boolean {
-  if (!map.inBounds(x, y)) return false;
-  const k = map.built[map.idx(x, y)]!;
-  if (!carTraversable(k) || k === BuiltKind.RoadHighway) return false;
-  return map.water[map.idx(x, y)] === 0;
-}
-
-/** Does (x,y) have a SHOULDER — an orthogonal neighbour that is NOT a drivable road (a kerb edge, a
- *  building/grass/water bank, or the map edge) to pull over against? A car curb-parks on a shoulder so
- *  it sits at the kerb, not stranded in the middle of a wide road/avenue lane (Maddy: "cars parking in
- *  the middle of the street"). A tile ringed by drivable road on all four sides (a lane interior) has
- *  no shoulder and is not a valid street park. */
-
-/**
- * The curb-parking STALLS of a road tile — up to 4 discrete kerb slots, an offset (from the tile
- * centre out to a kerb) per slot. Two stalls on each SHOULDER side (a non-drivable orthogonal
- * neighbour / map edge), capped at 4 total. A tile with NO shoulder — a lane interior of a wide road,
- * all four neighbours drivable — offers NONE, so a car can never double-park in the middle of the
- * street (Maddy: "they keep piling into the middle of the street"). Pure geometry; the kerb-pull keeps
- * each offset < 0.5 on its axis, so a parked car still rounds to its road tile (occupancy by tile+slot).
- */
-export function curbStallOffsets(map: GameMap, tx: number, ty: number): Array<{ dir: number; dx: number; dy: number }> {
-  const out: Array<{ dir: number; dx: number; dy: number }> = [];
-  for (let dir = 0; dir < 4 && out.length < 4; dir++) {
-    const nx = tx + DIR_DX[dir]!;
-    const ny = ty + DIR_DY[dir]!;
-    if (map.inBounds(nx, ny) && carTraversable(map.built[map.idx(nx, ny)]!)) continue; // not a kerb side
-    const kx = DIR_DX[dir]! * KERB_PULL;
-    const ky = DIR_DY[dir]! * KERB_PULL;
-    const px = -DIR_DY[dir]! * STALL_ALONG; // perpendicular to the kerb (along it)
-    const py = DIR_DX[dir]! * STALL_ALONG;
-    out.push({ dir, dx: kx + px, dy: ky + py });
-    if (out.length < 4) out.push({ dir, dx: kx - px, dy: ky - py });
-  }
-  return out;
-}
-
-/** The grid direction (0..3) of the step from (fx,fy) to an orthogonally-adjacent (tx,ty). */
-function moveDir(fx: number, fy: number, tx: number, ty: number): number {
-  if (tx > fx) return 1; // East
-  if (tx < fx) return 3; // West
-  if (ty > fy) return 2; // South
-  return 0; // North
-}
-
-/** True iff direction `d` runs along a `through` lane's road axis (so a car may travel it). */
-function alongThrough(lane: { horizontal: boolean }, d: number): boolean {
-  return lane.horizontal ? d === 1 || d === 3 : d === 0 || d === 2;
-}
-
-/**
- * EDGE-aware car passability: may a car move from (fx,fy) to adjacent (tx,ty)? This is what makes a
- * freeway LIMITED-ACCESS (Maddy): you can only move ALONG a freeway (an outer lane in its one-way
- * `dir`, or the two-way `through` middle along the axis), and you can only enter/leave it where it is
- * NOT a clean lane — at a `null` tile, which is exactly a freeway interchange (freeway crosses
- * freeway) or an end. So cross traffic never cuts across a freeway mid-span, but does at interchanges
- * and ends. Off the freeway (at-grade streets/avenues) it is the plain `carPassable` test — those
- * stay permissive (cross traffic / the divided-avenue crossing is handled separately). Direction is
- * only meaningful for adjacent tiles; callers pass 4-neighbours.
- */
-export function canDrive(map: GameMap, fx: number, fy: number, tx: number, ty: number): boolean {
-  if (!map.inBounds(tx, ty)) return false;
-  const toKind = map.built[map.idx(tx, ty)]!;
-  if (!carTraversable(toKind)) {
-    // Level crossing: a car may CROSS an at-grade tram/rail line STRAIGHT through to the drivable
-    // tile beyond (a cross street crossing an avenue's streetcar median), but never drive along it.
-    if (isLevelCrossable(toKind)) {
-      const d = moveDir(fx, fy, tx, ty);
-      const bx = tx + DIR_DX[d]!;
-      const by = ty + DIR_DY[d]!;
-      return map.inBounds(bx, by) && carTraversable(map.built[map.idx(bx, by)]!);
-    }
-    return false;
-  }
-  const fromKind = map.built[map.idx(fx, fy)]!;
-  // NJ-style freeway frontage lot (Maddy): a car may move between a freeway and an adjacent PARKING
-  // LOT in BOTH directions — the lot is a limited-access on/off, bypassing the lane-direction gate
-  // (the kind of freeway-side lot you see in northern NJ). Scoped to lot↔highway so it doesn't
-  // reopen general limited-access crossing.
-  if (
-    (fromKind === BuiltKind.ParkingLot && toKind === BuiltKind.RoadHighway) ||
-    (toKind === BuiltKind.ParkingLot && fromKind === BuiltKind.RoadHighway)
-  ) {
-    return true;
-  }
-  const fromHwy = fromKind === BuiltKind.RoadHighway;
-  const toHwy = map.built[map.idx(tx, ty)] === BuiltKind.RoadHighway;
-  if (!fromHwy && !toHwy) {
-    // At-grade. A divided AVENUE's outer lane is one-way (like a freeway lane) so committed routes
-    // can't drive the wrong way — but UNLIKE a freeway it stays crossable: a cross street may cross
-    // it perpendicular (a road continues straight beyond). Non-lane at-grade tiles are free.
-    const L = freewayLane(map, tx, ty);
-    if (L && L.role === 'outer') {
-      const d = moveDir(fx, fy, tx, ty);
-      if (d === L.dir) return true; // along the one-way lane
-      if (d === opposite(L.dir)) return false; // wrong-way along the avenue
-      const bx = tx + DIR_DX[d]!; // perpendicular → only as a straight crossing to a road beyond
-      const by = ty + DIR_DY[d]!;
-      return map.inBounds(bx, by) && carTraversable(map.built[map.idx(bx, by)]!);
-    }
-    return true;
-  }
-  const d = moveDir(fx, fy, tx, ty);
-  if (fromHwy) {
-    const L = freewayLane(map, fx, fy); // EXIT: leave a freeway only along it (or an outer ramp)
-    if (L && L.role === 'outer' && d !== L.dir && d !== L.outward) return false;
-    if (L && L.role === 'through' && !alongThrough(L, d)) return false;
-  }
-  if (toHwy) {
-    const L = freewayLane(map, tx, ty); // ENTER: join a freeway only along it (never perpendicular)
-    if (L && L.role === 'outer' && d !== L.dir) return false;
-    if (L && L.role === 'through' && !alongThrough(L, d)) return false;
-  }
-  return true; // null freeway tiles (interchange / end) impose no direction → cross/turn freely
-}
-
-/**
- * The car motion seam: from road tile (x, y), the chosen connected isRoadKind
- * neighbour direction (0..3). On a divided multi-lane road's outer lane the choice is
- * the one-way `freewayStep` (independent of `fromDir`, including spawn); otherwise it
- * is the general straight-biased junction pick over `carPassable` neighbours (never a
- * median), excluding the U-turn `fromDir` unless it is the only connected road
- * (dead-end), and avoiding tiles in `recent` (loop avoidance — returns -1 if boxed in
- * by its own path). -1 if (x, y) has no road neighbour at all. Deterministic given `rng`.
- */
-export function nextRoadStep(
-  map: GameMap,
-  x: number,
-  y: number,
-  fromDir: number,
-  rng: Rng,
-  recent?: readonly number[],
-): number {
-  const lane = freewayLane(map, x, y);
-  if (lane && lane.role === 'outer') {
-    return freewayStep(map, x, y, lane, rng); // one-way: cannot loop, no avoidance needed
-  }
-  // Everything else (the two-way `through` middle, an interchange/end, an at-grade junction) is the
-  // straight-biased pick — but over canDrive edges, so a `through` car stays on-axis and a car can
-  // only cross/turn onto a freeway where it's an interchange/end (limited access).
-  return pickStep(map, x, y, fromDir, rng, (nx, ny) => canDrive(map, x, y, nx, ny), CAR_STRAIGHT_WEIGHT, recent);
-}
-
-/** A tile a TRAIN can ride: an at-grade heavy-rail tile (Rail). (Elevated rail / trams are a
- *  follow-up — heavy rail is the train network.) */
-function railTraversable(map: GameMap, x: number, y: number): boolean {
-  return map.inBounds(x, y) && map.built[map.idx(x, y)] === BuiltKind.Rail;
-}
-
-/** The train motion seam: from rail tile (x, y), the chosen connected rail neighbour direction
- *  (0..3). Strongly straight-biased (a train glides through junctions) over rail edges; NO recent
- *  list, so at a dead-end `pickStep` returns the U-turn and the train SHUTTLES back. -1 only if the
- *  tile has no rail neighbour at all (an isolated stub) → the caller despawns. Deterministic. */
-export function nextRailStep(map: GameMap, x: number, y: number, fromDir: number, rng: Rng): number {
-  return pickStep(map, x, y, fromDir, rng, (nx, ny) => railTraversable(map, nx, ny), CAR_STRAIGHT_WEIGHT);
-}
-
-// --- Despawn predicates --------------------------------------------------
-
-/** A car is gone once the tile under it is no longer traversable — a road or parking
- *  lot (e.g. bulldozed/converted, or driven off the far side of the lot it cut through). */
-export function carOffNetwork(map: GameMap, c: Car): boolean {
-  if (c.abandoned) return false; // a derelict legitimately sits off the road on an empty tile
-  const x = Math.round(c.x);
-  const y = Math.round(c.y);
-  if (!map.inBounds(x, y)) return true;
-  const k = map.built[map.idx(x, y)]!;
-  return !carTraversable(k) && !isLevelCrossable(k); // a car mid-crossing a tram/rail line is fine
-}
-
-/** A ped is gone once the tile under it is no longer pedestrian substrate. */
-function pedOffNetwork(map: GameMap, p: Ped): boolean {
-  return !isPedSubstrate(map, Math.round(p.x), Math.round(p.y));
 }
 
 /** A flock's representative tile = its (in-bounds-clamped) centre of mass. */
@@ -1209,523 +475,6 @@ function flockTile(map: GameMap, f: Flock): { x: number; y: number } {
   const x = Math.min(map.width - 1, Math.max(0, Math.floor(cx / n)));
   const y = Math.min(map.height - 1, Math.max(0, Math.floor(cy / n)));
   return { x, y };
-}
-
-// --- Motion --------------------------------------------------------------
-
-/** Advance one grid-following mover by `speed`, recommitting at the target tile.
- *  `map`/`rng` are captured by `pickNext` (the per-kind junction seam); the mover's
- *  bounded `recent` history is updated on arrival and passed to `pickNext` for loop
- *  avoidance. Returns false when the mover is boxed in / isolated (pickNext < 0) so the
- *  caller despawns it instead of leaving it frozen or circling; true otherwise. */
-/** Bucket moving vehicles by the tile their centre sits on, for the O(1)-neighbourhood collision check.
- *  Rebuilt each substep before any vehicle moves (a one-substep-stale read is fine at these speeds). */
-export function buildMoverGrid(movers: readonly Mover[], mapW: number): Map<number, Mover[]> {
-  const g = new Map<number, Mover[]>();
-  for (const m of movers) {
-    const k = Math.round(m.y) * mapW + Math.round(m.x);
-    const arr = g.get(k);
-    if (arr) arr.push(m);
-    else g.set(k, [m]);
-  }
-  return g;
-}
-
-/** A vehicle's yield priority: its id, else the serial the substep assigned it (assignSerials). */
-function priority(m: Mover): number {
-  return m.id ?? m.serial ?? 0;
-}
-
-/** Give every vehicle without one a stable serial, in sim order, from the state's counter — so yield
- *  tie-breaks are deterministic per seed (a module-level counter leaked across runs). */
-function assignSerials(state: AmbientState, movers: readonly Mover[]): void {
-  for (const m of movers) if (m.serial === undefined) m.serial = state.serialNext++;
-}
-
-/** True when another vehicle occupies the bounding-box space just ahead of `m` (at the lane-offset
- *  sprite positions), so `m` must pause rather than overlap it (Maddy: movers can't overlap; pause for
- *  space ahead → queues). STRICT: anything in the claim box stops you, whatever its heading or priority
- *  — the old "cross traffic yields only to higher ids" let a higher-id car turn straight INTO a stopped
- *  queue and stack on it (Maddy 2026-09-30, the ramp at (115,40)). Two vehicles on the very same spot
- *  separate: the lower-priority one waits. ONCOMING traffic (other lane) sits ≈ 2·LANE to the side,
- *  outside `halfWidth`, so it never blocks. Deadlocks this could leave are broken by the stuck re-plan
- *  (STUCK_REPATH) and, failing that, the one-off squeeze (STUCK_ESCAPE) in advanceMover. */
-// `gap` (centre-to-centre) must cover BOTH sprites' length (≈0.58) PLUS the max per-substep step
-// (freeway ≈0.24) so a car STOPS before its front overshoots into the car ahead. `halfWidth` stays below
-// the oncoming-lane separation (2·LANE ≈ 0.32) and at least a car width (CAR_WIDTH).
-export function blockedAhead(grid: Map<number, Mover[]>, mapW: number, m: Mover, gap = 0.85, halfWidth = 0.28): boolean {
-  const fdx = DIR_DX[m.dir]!;
-  const fdy = DIR_DY[m.dir]!;
-  const mlo = laneOffset(m.dir);
-  const mx = m.x + mlo.dx; // rendered (sprite) position
-  const my = m.y + mlo.dy;
-  const ti = Math.round(mx + fdx * gap);
-  const tj = Math.round(my + fdy * gap);
-  const pdx = DIR_DX[(m.dir + 1) & 3]!; // perpendicular unit (lateral)
-  const pdy = DIR_DY[(m.dir + 1) & 3]!;
-  const mprio = priority(m);
-  for (let dj = -2; dj <= 2; dj++) {
-    for (let di = -2; di <= 2; di++) {
-      const cell = grid.get((tj + dj) * mapW + (ti + di));
-      if (!cell) continue;
-      for (const o of cell) {
-        if (o === m) continue;
-        const olo = laneOffset(o.dir);
-        const dx = o.x + olo.dx - mx;
-        const dy = o.y + olo.dy - my;
-        if (Math.abs(dx * pdx + dy * pdy) >= halfWidth) continue; // not in my lane (oncoming / side lanes)
-        const fwd = dx * fdx + dy * fdy; // distance ahead of m
-        if (Math.abs(fwd) <= 0.02) {
-          if (priority(o) > mprio) return true; // fused on one spot → the lower priority waits
-          continue;
-        }
-        if (fwd > 0 && fwd <= gap) return true; // anything in the claim box ahead stops me
-      }
-    }
-  }
-  return false;
-}
-
-/** A junction: a drivable tile with 3+ drivable neighbours. */
-function isJunctionTile(map: GameMap, x: number, y: number): boolean {
-  if (!carPassable(map, x, y)) return false;
-  let n = 0;
-  for (let d = 0; d < 4; d++) if (carPassable(map, x + DIR_DX[d]!, y + DIR_DY[d]!)) n++;
-  return n >= 3;
-}
-
-/** DON'T BLOCK THE BOX (Maddy 2026-10-01: gridlock). A car heading INTO a junction waits outside it until
- *  its exit — the tile after the junction on its path — has room in its lane: a car stopped inside a
- *  junction blocks every crossing direction, and the queues that makes block the next junction. Checked by
- *  standing a virtual car in the junction facing the exit and asking blockedAhead. A car already inside
- *  always clears it; mid-block, or without a committed path, the rule doesn't apply. */
-export function boxBlocked(grid: Map<number, Mover[]>, map: GameMap, m: Mover): boolean {
-  if (!m.path || m.leg === undefined) return false;
-  const cx = Math.round(m.x);
-  const cy = Math.round(m.y);
-  if ((cx === m.tx && cy === m.ty) || isJunctionTile(map, cx, cy) || !isJunctionTile(map, m.tx, m.ty)) return false;
-  const exit = m.path[m.leg];
-  if (exit === undefined) return false;
-  const ex = exit % map.width;
-  const ey = (exit - ex) / map.width;
-  const dir = ex > m.tx ? 1 : ex < m.tx ? 3 : ey > m.ty ? 2 : 0;
-  return blockedAhead(grid, map.width, { x: m.tx, y: m.ty, dir, tx: m.tx, ty: m.ty }, 1.0);
-}
-
-function advanceMover(
-  m: Mover,
-  speed: number,
-  map: GameMap,
-  pickNext: (x: number, y: number, fromDir: number, recent: readonly number[]) => number,
-  blocked?: (m: Mover) => boolean,
-  lateral = LANE,
-): boolean {
-  if (blocked?.(m)) {
-    // space ahead occupied → pause this substep (alive, just waiting) — unless it has waited so long
-    // that this is a true circular deadlock, which one car must break by squeezing through
-    m.stuck = (m.stuck ?? 0) + 1;
-    if (m.stuck < STUCK_ESCAPE) return true;
-  }
-  m.stuck = 0;
-  speed *= legPaceFactor(m, lateral); // a turn leg's drawn arc is shorter/longer than a tile — keep pace
-  const dist = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y);
-  if (dist <= speed) {
-    // Arrive at the target tile centre, record it, and recommit to the next leg.
-    m.x = m.tx;
-    m.y = m.ty;
-    const recent = (m.recent ??= []);
-    recent.push(map.idx(m.tx, m.ty));
-    if (recent.length > RECENT_CAP) recent.shift();
-    const fromDir = opposite(m.dir);
-    const nd = pickNext(m.tx, m.ty, fromDir, recent);
-    if (nd < 0) return false; // isolated, or boxed in by its own path → despawn
-    commitHeading(m, nd);
-    m.tx = m.x + DIR_DX[nd]!;
-    m.ty = m.y + DIR_DY[nd]!;
-  } else {
-    m.x += DIR_DX[m.dir]! * speed;
-    m.y += DIR_DY[m.dir]! * speed;
-  }
-  return true;
-}
-
-/** Ped-walkable: any in-bounds, non-water tile that is NOT an occupied R/C/I/Civic plot and NOT
- *  a FREEWAY (RoadHighway) — local streets, stroads, transit, PARKING, parks, rewilded greens,
- *  empty land all walk; building footprints + freeways block. Routed pedestrians step across
- *  the walkable set (around plots), so they no longer cut diagonally through buildings. */
-function isWalkable(map: GameMap, x: number, y: number): boolean {
-  if (!map.inBounds(x, y)) return false;
-  if (map.water[map.idx(x, y)] !== 0) return false; // Water.None === 0
-  const k = map.built[map.idx(x, y)]!;
-  if (k === BuiltKind.RoadHighway || k === BuiltKind.RoadRamp) return false; // no walking a freeway/ramp
-  // A planted median is a no-traffic green BARRIER dividing a road, not a crossing or a park: cars
-  // never drive on/across it, and peds must not cut through it either (Maddy: travelers path through
-  // dividers/medians). It's an amenity that lifts the corridor, never a foot route or a destination.
-  if (k === BuiltKind.PlantedMedian) return false;
-  return zoneTypeOf(k) === ZoneType.None;
-}
-
-/** Has a ped at (px,py) reached its destination PLOT? Adjacent to the exact target tile, OR — for a
- *  MULTI-TILE footprint — on or adjacent to ANY tile of the same parcel. Maddy: "visiting a multitile
- *  plot should count as entering any of its tiles," so a citizen needn't reach one specific anchor of a
- *  big building/home (it enters whichever tile it gets to). A non-parcel target (a road/bare tile) has
- *  no footprint, so only the exact-tile door counts. */
-export function reachedPlot(map: GameMap, px: number, py: number, tx: number, ty: number): boolean {
-  if (Math.abs(px - tx) + Math.abs(py - ty) <= 1) return true; // at/adjacent the exact target tile
-  const dp = map.parcel[map.idx(tx, ty)]!;
-  if (dp === 0) return false; // not a parcel — only the exact door
-  const onPlot = (x: number, y: number): boolean => map.inBounds(x, y) && map.parcel[map.idx(x, y)] === dp;
-  if (onPlot(px, py)) return true;
-  for (let d = 0; d < 4; d++) if (onPlot(px + DIR_DX[d]!, py + DIR_DY[d]!)) return true;
-  return false;
-}
-
-/** The nearest pedestrian-walkable tile to (x, y) within `maxR` (ring search, the tile itself
- *  first), or null if none is in reach. Rescues a ped that was placed OFF the walkable set — on
- *  water, a freeway, or a plot — back onto solid ground rather than leaving it stranded mid-water
- *  (Maddy: pedestrians crossing water / freeways). The self-heal seam for ped placement. */
-export function nearestWalkable(
-  map: GameMap,
-  x: number,
-  y: number,
-  maxR = 8,
-): { x: number; y: number } | null {
-  for (let r = 0; r <= maxR; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; // ring at Chebyshev distance r
-        if (isWalkable(map, x + dx, y + dy)) return { x: x + dx, y: y + dy };
-      }
-    }
-  }
-  return null;
-}
-
-/** A pedestrian's PREFERENCE cost for a walkable tile (lower = nicer): promenades best, then
- *  calm streets, then a LOCAL street by inverse traffic density, then open ground, with stroads
- *  (avenues) worst. So peds drift onto promenades and shun busy stroads where the route allows.
- *  WILD ground (empty land) is terrain-aware via `wear`: lush is dear, a beaten desire path cheap
- *  (foot traffic self-reinforces paths). */
-export function pedCost(
-  map: GameMap,
-  x: number,
-  y: number,
-  wear?: ReadonlyMap<number, number>,
-  traffic?: ReadonlyMap<number, number>,
-  pollution?: ReadonlyMap<number, number>,
-): number {
-  const i = map.idx(x, y);
-  const k = map.built[i]!;
-  // Smog drifts over every tile — a polluted block is unpleasant on foot whatever its surface.
-  const smog = ((pollution?.get(i) ?? 0) / POLL_MAX) * PED_POLL_WEIGHT;
-  let base: number;
-  if (k === BuiltKind.Promenade) base = 0.3;
-  else if (k === BuiltKind.QuietStreet || k === BuiltKind.BikePath) base = 0.5;
-  else if (k === BuiltKind.RoadStreet || k === BuiltKind.RoadAvenue) {
-    // LIVE agent traffic makes a street worse on foot — but a local street has a sidewalk (+1 at most);
-    // a stroad's traffic weighs double
-    const load = (traffic?.get(i) ?? 0) / TRAFFIC_MAX;
-    base = k === BuiltKind.RoadStreet ? 0.55 + load : 2.0 + load * 2;
-  } else if (k === BuiltKind.None) {
-    // wild ground: lush growth (high flora) is hard going; a beaten path (high wear) is easy.
-    const flora = map.floraVitality[i]! / 255;
-    const worn = (wear?.get(i) ?? 0) / WEAR_MAX;
-    base = Math.max(PED_GROUND_MIN, PED_GROUND_BASE + flora * PED_LUSH - worn * PED_BEATEN);
-  } else if (k === BuiltKind.ParkingLot) base = PED_LOT;
-  else base = 0.9; // transit / built greens (a walk through the park is the point)
-  return base + smog;
-}
-
-/** Which travel modes follow a COMMITTED walkPath (vs the greedy mode-cost step): the GROUND modes
- *  over the walkable set — Walk and Bike. They route around barriers instead of dithering in a local
- *  minimum (Maddy: looping cyclists). Transit (streetcar/elevated) rides a fixed line and Drive uses
- *  the road A* (roadPath), so they keep their own movement. */
-export function usesCommittedPath(mode: TravelMode): boolean {
-  return mode === TravelMode.Walk || mode === TravelMode.Bike;
-}
-
-/** Fuel a citizen spends on one substep at (x,y) — the SPEND side of the fuel economy, twinned with
- *  `pedCost`'s routing: a beaten desire path is cheap, lush wild ground dear, pavement/built nominal.
- *  So citizens go further on worn paths (and the network of paths reinforces itself). */
-function fuelBurn(map: GameMap, wear: ReadonlyMap<number, number>, x: number, y: number): number {
-  const i = map.idx(x, y);
-  if (map.built[i] !== BuiltKind.None || map.water[i] !== 0) return FUEL_BURN_BASE; // paved/built/edge
-  const flora = map.floraVitality[i]! / 255;
-  const worn = (wear.get(i) ?? 0) / WEAR_MAX;
-  return Math.max(FUEL_BURN_MIN, FUEL_BURN_BASE + flora * FUEL_BURN_LUSH - worn * FUEL_BURN_BEATEN);
-}
-
-/** Fuel a successful visit to a plot of `kind` hands back — the REFILL side: scaled by the plot's
- *  status/use (`visitValue`), floored at 0 so a grim industrial visit refuels ~nothing while a
- *  healing commons tops the tank right up. */
-function refuelFor(kind: number): number {
-  return Math.max(0, FUEL_REFUEL_BASE + visitValue(kind) * FUEL_REFUEL_PER_VALUE);
-}
-
-/** Wild-green ground a desire path forms through: ANY empty land (no road/building) that isn't
- *  water. Empty ground IS the wild green — even bare patches wear and litter under foot traffic
- *  (water is impassable and pollutes instead). Pedestrians crossing these trample them brown. */
-export function isWearable(map: GameMap, x: number, y: number): boolean {
-  if (!map.inBounds(x, y)) return false;
-  const i = map.idx(x, y);
-  return map.built[i] === BuiltKind.None && map.water[i] === 0;
-}
-
-/** Can a citizen on `mode` occupy the tile at (x,y)? A driver is PAVEMENT-ONLY (roads + parking,
- *  no median) — it can't cross wild ground or a promenade; every other mode travels over the
- *  pedestrian-walkable set, which already includes transit tiles (a rider boards by walking onto
- *  the line, then rides it fast). */
-function modeCanEnter(mode: TravelMode, map: GameMap, x: number, y: number): boolean {
-  if (!map.inBounds(x, y)) return false;
-  return modeSpec(mode).pavementOnly ? carPassable(map, x, y) : isWalkable(map, x, y);
-}
-
-/** A mode's routing COST for a tile (lower = preferred): cheap ON the mode's network so the mover
- *  hugs the bike path / tram line / rail / road; off-network it pays the pedestrian preference
- *  cost (a driver, being pavement-only, is always on its road network). */
-function modeCost(
-  mode: TravelMode,
-  map: GameMap,
-  x: number,
-  y: number,
-  wear?: ReadonlyMap<number, number>,
-  traffic?: ReadonlyMap<number, number>,
-  pollution?: ReadonlyMap<number, number>,
-): number {
-  const k = map.built[map.idx(x, y)]!;
-  if (modeRidesNetwork(mode, k)) return modeSpec(mode).networkCost;
-  return modeSpec(mode).pavementOnly
-    ? modeSpec(mode).networkCost
-    : pedCost(map, x, y, wear, traffic, pollution);
-}
-
-/** A routed citizen's next grid step toward (tgtx, tgty) for travel `mode` (default Walk): the
- *  mode-enterable, non-recent 4-neighbour that most reduces Manhattan distance, broken by the
- *  mode's routing cost (so a rider hugs its line, a driver its roads). Returns -1 when within one
- *  tile of the target (arrived) OR when boxed in. Axis-aligned → no diagonals. */
-function nextStepToward(
-  map: GameMap,
-  x: number,
-  y: number,
-  tgtx: number,
-  tgty: number,
-  recent?: readonly number[],
-  wear?: ReadonlyMap<number, number>,
-  mode: TravelMode = TravelMode.Walk,
-  traffic?: ReadonlyMap<number, number>,
-  pollution?: ReadonlyMap<number, number>,
-): number {
-  if (Math.abs(x - tgtx) + Math.abs(y - tgty) <= 1) return -1; // at / adjacent to the target
-  let best = -1;
-  let bestScore = 1e9;
-  for (let d = 0; d < 4; d++) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    if (!modeCanEnter(mode, map, nx, ny)) continue;
-    if (recent && recent.includes(map.idx(nx, ny))) continue;
-    // Distance dominates (still reaches the target); the mode cost hugs lines / shuns stroads + jams + smog.
-    const score =
-      Math.abs(nx - tgtx) + Math.abs(ny - tgty) + modeCost(mode, map, nx, ny, wear, traffic, pollution);
-    if (score < bestScore) {
-      bestScore = score;
-      best = d;
-    }
-  }
-  return best;
-}
-
-/** A driving tile's PATHFINDING cost (lower = preferred): freeways are cheap (fast through-routes),
- *  avenues a bit cheaper than streets, and LIVE congestion (the traffic the agents themselves lay)
- *  adds cost so cars route AROUND jams. This is what makes a car-agent prefer the freeway and avoid
- *  a clogged street — the macro traffic pattern emerges from the agents, not an aggregate field. */
-function driveTileCost(map: GameMap, x: number, y: number, traffic?: ReadonlyMap<number, number>): number {
-  const i = map.idx(x, y);
-  const k = map.built[i]!;
-  let c = k === BuiltKind.RoadHighway ? 0.5 : k === BuiltKind.RoadAvenue ? 0.8 : 1; // freeways fast
-  if (traffic) c += ((traffic.get(i) ?? 0) / TRAFFIC_MAX) * CONGESTION_WEIGHT; // shun jams
-  return c;
-}
-
-/** A* over the drivable road network from (sx,sy) to (gx,gy): the committed least-cost route a
- *  car-agent follows (so it never circles), preferring freeways and avoiding congestion via
- *  driveTileCost. Returns tile indices start-first (inclusive of both ends), or null if no route /
- *  the search bound is hit. Pure: array open-list + Maps + abs heuristic (allowlist-safe). */
-export function roadPath(
-  map: GameMap,
-  sx: number,
-  sy: number,
-  gx: number,
-  gy: number,
-  traffic?: ReadonlyMap<number, number>,
-): number[] | null {
-  if (!carPassable(map, sx, sy) || !carPassable(map, gx, gy)) return null;
-  const start = map.idx(sx, sy);
-  const goal = map.idx(gx, gy);
-  if (start === goal) return [start];
-  const gScore = new Map<number, number>([[start, 0]]);
-  const came = new Map<number, number>();
-  const open: Array<{ i: number; x: number; y: number; f: number }> = [
-    { i: start, x: sx, y: sy, f: Math.abs(sx - gx) + Math.abs(sy - gy) },
-  ];
-  let iters = 0;
-  while (open.length > 0 && iters++ < ROAD_PATH_MAX_ITERS) {
-    let bi = 0; // pop lowest f (linear scan — road frontiers stay small)
-    for (let k = 1; k < open.length; k++) if (open[k]!.f < open[bi]!.f) bi = k;
-    const cur = open.splice(bi, 1)[0]!;
-    if (cur.i === goal) {
-      const path = [goal];
-      let p = goal;
-      while (came.has(p)) {
-        p = came.get(p)!;
-        path.push(p);
-      }
-      return path.reverse();
-    }
-    const baseG = gScore.get(cur.i)!;
-    for (let d = 0; d < 4; d++) {
-      const nx = cur.x + DIR_DX[d]!;
-      const ny = cur.y + DIR_DY[d]!;
-      if (!canDrive(map, cur.x, cur.y, nx, ny)) continue; // directed edges: one-way + limited-access
-      const ni = map.idx(nx, ny);
-      const ng = baseG + driveTileCost(map, nx, ny, traffic);
-      if (ng < (gScore.get(ni) ?? Infinity)) {
-        gScore.set(ni, ng);
-        came.set(ni, cur.i);
-        open.push({ i: ni, x: nx, y: ny, f: ng + (Math.abs(nx - gx) + Math.abs(ny - gy)) * 0.5 });
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * A* over the WALKABLE set from (sx,sy) toward (gx,gy), ending at the nearest walkable tile within
- * one of the target (the DOOR — building tiles aren't walkable, peds stop adjacent). The committed
- * least-cost FOOT route — the pedestrian twin of {@link roadPath} — so a citizen routes AROUND
- * buildings and freeways instead of dithering in a greedy local minimum at a wall (the bug Maddy
- * saw: peds piling up + heading home "to nowhere" when a destination sat behind a barrier). Cost via
- * {@link pedCost} (promenades cheap, stroads/smog dear → the route still prefers the calm/green
- * city). Returns tile indices start-first, or null if no foot route / the search bound is hit. Pure
- * (allowlist-safe): array open-list + Maps + abs heuristic, no rng.
- */
-export function walkPath(
-  map: GameMap,
-  sx: number,
-  sy: number,
-  gx: number,
-  gy: number,
-  wear?: ReadonlyMap<number, number>,
-  traffic?: ReadonlyMap<number, number>,
-  pollution?: ReadonlyMap<number, number>,
-): number[] | null {
-  if (!isWalkable(map, sx, sy)) return null;
-  const start = map.idx(sx, sy);
-  const atDoor = (x: number, y: number): boolean => Math.abs(x - gx) + Math.abs(y - gy) <= 1;
-  if (atDoor(sx, sy)) return [start];
-  const gScore = new Map<number, number>([[start, 0]]);
-  const came = new Map<number, number>();
-  const open: Array<{ i: number; x: number; y: number; f: number }> = [
-    { i: start, x: sx, y: sy, f: Math.abs(sx - gx) + Math.abs(sy - gy) },
-  ];
-  let iters = 0;
-  while (open.length > 0 && iters++ < ROAD_PATH_MAX_ITERS) {
-    let bi = 0; // pop lowest f (linear scan — foot frontiers stay small)
-    for (let k = 1; k < open.length; k++) if (open[k]!.f < open[bi]!.f) bi = k;
-    const cur = open.splice(bi, 1)[0]!;
-    if (atDoor(cur.x, cur.y)) {
-      const path = [cur.i];
-      let p = cur.i;
-      while (came.has(p)) {
-        p = came.get(p)!;
-        path.push(p);
-      }
-      return path.reverse();
-    }
-    const baseG = gScore.get(cur.i)!;
-    for (let d = 0; d < 4; d++) {
-      const nx = cur.x + DIR_DX[d]!;
-      const ny = cur.y + DIR_DY[d]!;
-      if (!isWalkable(map, nx, ny)) continue;
-      const ni = map.idx(nx, ny);
-      const ng = baseG + pedCost(map, nx, ny, wear, traffic, pollution);
-      if (ng < (gScore.get(ni) ?? Infinity)) {
-        gScore.set(ni, ng);
-        came.set(ni, cur.i);
-        open.push({ i: ni, x: nx, y: ny, f: ng + (Math.abs(nx - gx) + Math.abs(ny - gy)) * 0.5 });
-      }
-    }
-  }
-  return null;
-}
-
-/** A direction-NEUTRAL spread hash of a tile index, for breaking distance/score TIES without the
- *  upper-left bias a row-major scan + strict `<` produces (adjacent tiles hash far apart). Keeps
- *  destination choice deterministic (no rng) — just unbiased across the map. Integer ops only
- *  (allowlist-safe). */
-function tieHash(i: number): number {
-  return Math.imul(i ^ 0x9e3779b1, 0x85ebca6b) >>> 0;
-}
-
-/** The nearest demand tile (R/C/I/Civic via zoneTypeOf — a place a person walks to/from)
- *  within LASTMILE_RADIUS of (cx, cy), by Manhattan distance; null if none. Ties broken by tieHash
- *  (not scan order) so equidistant choices don't all skew upper-left. */
-function nearestDemandTile(map: GameMap, cx: number, cy: number): { x: number; y: number } | null {
-  let bx = -1;
-  let by = -1;
-  let bestD = 1e9;
-  let bestHash = 0;
-  for (let y = cy - LASTMILE_RADIUS; y <= cy + LASTMILE_RADIUS; y++) {
-    for (let x = cx - LASTMILE_RADIUS; x <= cx + LASTMILE_RADIUS; x++) {
-      if (!map.inBounds(x, y)) continue;
-      if (zoneTypeOf(map.built[map.idx(x, y)]!) === ZoneType.None) continue;
-      const d = Math.abs(x - cx) + Math.abs(y - cy);
-      const h = tieHash(map.idx(x, y));
-      if (d < bestD || (d === bestD && h < bestHash)) {
-        bestD = d;
-        bestHash = h;
-        bx = x;
-        by = y;
-      }
-    }
-  }
-  return bx < 0 ? null : { x: bx, y: by };
-}
-
-/** The nearest plot serving stop `category` (work/shop/lifestyle via stopCategoryOf) within
- *  CITIZEN_TRIP_RADIUS of (cx, cy), by Manhattan distance; null if the district has none. */
-export function nearestOfCategory(
-  map: GameMap,
-  cx: number,
-  cy: number,
-  category: StopCategory,
-  landValue?: ReadonlyMap<number, number>,
-): { x: number; y: number } | null {
-  let bx = -1;
-  let by = -1;
-  let bestScore = 1e9;
-  let bestHash = 0;
-  for (let y = cy - CITIZEN_TRIP_RADIUS; y <= cy + CITIZEN_TRIP_RADIUS; y++) {
-    for (let x = cx - CITIZEN_TRIP_RADIUS; x <= cx + CITIZEN_TRIP_RADIUS; x++) {
-      if (!map.inBounds(x, y)) continue;
-      if (stopCategoryOf(map.built[map.idx(x, y)]!) !== category) continue;
-      // Distance, pulled DOWN by the plot's land value: a prized destination justifies up to LV_PULL
-      // extra tiles of travel over a drab nearer one — citizens flow toward the nice parts of town.
-      const d = Math.abs(x - cx) + Math.abs(y - cy);
-      const lv = landValue ? sampleField(landValue, map.idx(x, y)) : 0;
-      const score = d - (lv / LV_MAX) * LV_PULL;
-      // Ties broken by tieHash, NOT scan order — else every equidistant choice skews upper-left
-      // (row-major + strict `<`), which clustered trips toward the map's top-left (Maddy).
-      const h = tieHash(map.idx(x, y));
-      const better = score < bestScore - 1e-9;
-      if (better || (score < bestScore + 1e-9 && h < bestHash)) {
-        if (better) bestScore = score;
-        bestHash = h;
-        bx = x;
-        by = y;
-      }
-    }
-  }
-  return bx < 0 ? null : { x: bx, y: by };
 }
 
 /**
@@ -1788,66 +537,10 @@ function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boolean {
   return false;
 }
 
-/** Is a tile of `mode`'s network within MODE_INFRA_RADIUS of (cx, cy)? (Is this mode served here?) */
-function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode): boolean {
-  for (let y = cy - MODE_INFRA_RADIUS; y <= cy + MODE_INFRA_RADIUS; y++) {
-    for (let x = cx - MODE_INFRA_RADIUS; x <= cx + MODE_INFRA_RADIUS; x++) {
-      if (!map.inBounds(x, y)) continue;
-      if (modeRidesNetwork(mode, map.built[map.idx(x, y)]!)) return true;
-    }
-  }
-  return false;
-}
-
-/** Choose a citizen's travel MODE for a leg origin→dest, after Maddy's rule — drive only when it
- *  is far AND no transit/bike/ped infrastructure serves it. WALK if close; else the best available
- *  active/transit mode whose network serves BOTH ends — rail, then streetcar, then a BIKE for a
- *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
- *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
- *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkable = false): TravelMode {
-  const d = Math.abs(ox - dx) + Math.abs(oy - dy);
-  // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
-  const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
-  // Walkable Streets (crossings, shade, slower cars): people walk half as far again
-  if (d <= WALK_RANGE * stretch * (walkable ? WALKABLE_STRETCH : 1)) return TravelMode.Walk;
-  for (const mode of MODE_CHOICE_ORDER) {
-    if (mode === TravelMode.Bike) {
-      // A medium leg cycles (you can bike a street); bike-friendly infra just makes it faster/nicer
-      // via the routing cost. So cyclists appear from the start and grow as the player calms streets.
-      if (d <= BIKE_RANGE * stretch) return TravelMode.Bike;
-      continue;
-    }
-    // rail / streetcar / drive: available when their network serves BOTH ends of the leg.
-    if (infraNear(map, ox, oy, mode) && infraNear(map, dx, dy, mode)) return mode;
-  }
-  return TravelMode.Walk;
-}
-
 // ── Traffic evaporation (Maddy 2026-10-01: a freeway came out, the streets gridlocked, people left). When
 // road capacity falls, trips don't all pile onto what's left: some shift to foot and bike (chooseMode's
 // stretch) and a share simply stop happening — combined, moved, forgone (Cairns et al.: ~¼ of the traffic
 // "evaporates" after road-space reductions). The balancing loop a car-only mode choice lacked.
-
-/** The worst congestion within JAM_RADIUS of (x, y), 0..1. */
-export function jamNear(map: GameMap, traffic: ReadonlyMap<number, number>, x: number, y: number): number {
-  let worst = 0;
-  for (let dy = -JAM_RADIUS; dy <= JAM_RADIUS; dy++) {
-    for (let dx = -JAM_RADIUS; dx <= JAM_RADIUS; dx++) {
-      if (Math.abs(dx) + Math.abs(dy) > JAM_RADIUS || !map.inBounds(x + dx, y + dy)) continue;
-      const v = traffic.get(map.idx(x + dx, y + dy)) ?? 0;
-      if (v > worst) worst = v;
-    }
-  }
-  return worst / TRAFFIC_MAX;
-}
-
-/** Does this driving trip evaporate? A deterministic share (EVAPORATION × jam) of trips, picked by hash. */
-export function tripEvaporates(jam: number, hash: number): boolean {
-  if (jam <= 0) return false;
-  const u = (Math.imul((hash ^ 0x2545f491) >>> 0, 0x9e3779b1) >>> 0) % 1000;
-  return u < jam * EVAPORATION * 1000;
-}
 
 /** A citizen's OWNED vehicle: the persistent parked Car it walks to and drives. Returns the existing
  *  one (by carId), or lazily spawns one parked on a road by the citizen's current spot. Null if there
@@ -2072,20 +765,6 @@ export function sendOwnedCarHome(state: AmbientState, map: GameMap, p: Ped, home
   }
 }
 
-/** The nearest EMPTY tile (open land, unbuilt, non-water — {@link isWearable}) to (x, y) within
- *  `maxR`, by Chebyshev ring; null if none in reach. Where a derelict gets dumped. */
-function nearestEmptyTile(map: GameMap, x: number, y: number, maxR = 10): { x: number; y: number } | null {
-  for (let r = 0; r <= maxR; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        if (isWearable(map, x + dx, y + dy)) return { x: x + dx, y: y + dy };
-      }
-    }
-  }
-  return null;
-}
-
 /**
  * ABANDON an arrested citizen's owned car: the citizen is removed from the game, so the car is left a
  * DERELICT on a nearby EMPTY tile (Maddy: "their cars should become abandoned in an empty tile
@@ -2148,29 +827,6 @@ function setDriveLeg(
   p.roadSteps = undefined;
   p.wornSteps = undefined;
   return true;
-}
-
-/** The nearest tile a citizen's car can REST at + drive from near its home (a non-freeway, dry
- *  street/avenue/parking kerb), or null if the home has no such tile in reach. Uses isParkable so an
- *  owned car never spawns parked on the freeway a home happens to sit beside (Maddy: cars on freeways)
- *  — if only a freeway is near, the citizen walks instead. */
-function nearestDriveStart(map: GameMap, hx: number, hy: number): { x: number; y: number } | null {
-  let bx = -1;
-  let by = -1;
-  let bestD = 1e9;
-  for (let y = hy - 4; y <= hy + 4; y++) {
-    for (let x = hx - 4; x <= hx + 4; x++) {
-      if (!map.inBounds(x, y)) continue;
-      if (!isParkable(map, x, y)) continue;
-      const d = Math.abs(x - hx) + Math.abs(y - hy);
-      if (d < bestD) {
-        bestD = d;
-        bx = x;
-        by = y;
-      }
-    }
-  }
-  return bx < 0 ? null : { x: bx, y: by };
 }
 
 /** Advance one flock by one boids substep (cohesion + alignment + separation). */
@@ -2296,24 +952,6 @@ export function ingestTrips(
     });
     moving++;
   }
-}
-
-/** A trip-car's next-leg picker (the `pickNext` for advanceMover): head to the next tile
- *  on the committed path, advancing the leg cursor; -1 when the path is exhausted (the car
- *  has arrived → despawn). Path tiles are adjacent, so the heading is their delta. */
-function pathStep(map: GameMap, car: Mover, x: number, y: number): number {
-  const path = car.path!;
-  const leg = car.leg!;
-  if (leg >= path.length) return -1;
-  const next = path[leg]!;
-  const nx = next % map.width;
-  const ny = (next - nx) / map.width;
-  car.leg = leg + 1;
-  if (nx > x) return 1;
-  if (nx < x) return 3;
-  if (ny > y) return 2;
-  if (ny < y) return 0;
-  return -1; // non-adjacent (shouldn't happen on a committed path) → despawn
 }
 
 /** How many daily-itinerary citizens are out right now — counting both active travellers (peds with
@@ -2844,16 +1482,6 @@ function spawnFlocks(state: AmbientState, map: GameMap, rng: Rng): void {
 
 // --- The substep + the public stepper ------------------------------------
 
-/** A car-passable road tile adjacent to (x, y), or -1. */
-function adjacentRoad(map: GameMap, x: number, y: number): number {
-  for (let d = 0; d < 4; d++) {
-    const nx = x + DIR_DX[d]!;
-    const ny = y + DIR_DY[d]!;
-    if (map.inBounds(nx, ny) && carPassable(map, nx, ny)) return map.idx(nx, ny);
-  }
-  return -1;
-}
-
 /**
  * Spawn police cruisers out of the precincts (≈ one per 2x2 precinct, capped) until the patrol
  * count is met. Each spawns on a road beside a precinct and patrols from there. The precincts sit
@@ -3037,16 +1665,6 @@ export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: 
     layField(state.policeViolence, map.idx(Math.round(taken.x), Math.round(taken.y)), POLICE_VIOLENCE_LAY, POLICE_VIOLENCE_MAX);
     state.peds.splice(victim, 1); // taken off the street, for nothing
   }
-}
-
-/**
- * A pedestrian is despawned when its substrate vanished — UNLESS it's a last-mile walker (a `walkTo`
- * is set; it crosses lots/roads off-grid and self-despawns on arrival) or a hidden DRIVER (`phase
- * 'driving'`; it rides inside its car, off the ped network by design). The driving exemption is
- * EXPLICIT by phase so it can't break if the stale `walkTo` left over from boarding is ever cleared.
- */
-export function pedDespawns(map: GameMap, p: Ped): boolean {
-  return p.phase !== 'driving' && p.walkTo === undefined && pedOffNetwork(map, p);
 }
 
 /** Top the train fleet up toward one per {@link TRAIN_RAIL_PER} rail tiles (capped). When below

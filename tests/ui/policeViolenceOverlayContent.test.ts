@@ -37,7 +37,7 @@ describe('policeViolenceTint', () => {
 
 describe('policeLegendLine', () => {
   it('names the state as the source of the harm', () => {
-    const line = policeLegendLine('violence');
+    const line = policeLegendLine();
     expect(line.toLowerCase()).toContain('police violence');
     expect(line.toLowerCase()).toContain('state does harm');
     expect(line.toLowerCase()).not.toContain('crime map'); // Maddy: drop the parenthetical

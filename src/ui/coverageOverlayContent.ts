@@ -27,7 +27,7 @@ export function coverageTint(served: boolean): RGBA {
 }
 
 /** The dock legend line for the coverage overlay. */
-export function coverageLegendLine(_view: CoverageOverlayView): string {
+export function coverageLegendLine(): string {
   return 'Service coverage — served (green) vs under-served (red)';
 }
 
