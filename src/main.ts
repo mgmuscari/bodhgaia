@@ -77,7 +77,7 @@ import { computeNeighborhoods } from './civic/neighborhoods';
 import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
-import { computePowerGrid, isPowerConsumer, plantPollution } from './growth/power';
+import { isPowerConsumer, plantPollution } from './growth/power';
 import { gameClock } from './ui/lighting';
 import { TRUST_FLOOR } from './civic/dynamics';
 import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
@@ -86,6 +86,7 @@ import { mountSavesPanel } from './ui/savesPanel';
 import { setPixelFavicon, installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { inspectReadout } from './ui/inspectContent';
+import { createPowerController } from './app/power';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
@@ -255,26 +256,13 @@ export function main(save: SaveV1 | null = null): void {
   };
   refreshHouseholds();
 
-  // Power grid: a live DERIVED field (flood-fill from plants over the built layer,
-  // capacity vs demand → which consumers are powered). Recomputed on placement + the
-  // civic cadence; published to the renderer (unpowered consumers get a red pip) and
-  // read by inspect. Derived from the hashed built layer → never hashed itself.
-  let powerGrid = computePowerGrid(world.map, world.parcels, gameClock(performance.now() / 1000));
-  let powerSig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
-  // The grid is solved for the current in-game hour (time-varying demand + rolling blackouts), and
-  // re-solved every in-game hour from the frame loop below.
-  let powerSlot = gameClock(performance.now() / 1000).slot;
-  const recomputePower = (): boolean => {
-    const clock = gameClock(performance.now() / 1000);
-    powerSlot = clock.slot;
-    powerGrid = computePowerGrid(world.map, world.parcels, clock);
-    renderer.setPowerGrid(powerGrid.poweredAnchors);
-    const sig = `${powerGrid.capacity}/${powerGrid.demand}/${powerGrid.poweredAnchors.size}`;
-    const changed = sig !== powerSig;
-    powerSig = sig;
-    return changed;
-  };
-  renderer.setPowerGrid(powerGrid.poweredAnchors);
+  // Power grid (src/app/power.ts): solved now for the current in-game hour and published to the renderer;
+  // re-solved on placement, the civic cadence, and each new in-game hour (frame loop).
+  const power = createPowerController({
+    map: world.map,
+    parcels: world.parcels,
+    publish: (anchors) => renderer.setPowerGrid(anchors),
+  });
 
   // Dirty-plant smog: publish the air-pollution emitters from the built layer (each
   // coal/gas plant smogs its footprint + a 2-tile plume). Recomputed on placement;
@@ -312,7 +300,7 @@ export function main(save: SaveV1 | null = null): void {
       world,
       ambient: ambientState,
       tech,
-      power: () => powerGrid,
+      power: power.grid,
       markDirty,
       gpu: { isOn: () => gpuRenderer !== null, mount: mountGpu, unmount: unmountGpu },
     });
@@ -403,7 +391,7 @@ export function main(save: SaveV1 | null = null): void {
     // harms this hour: the share of powered consumers in blackout, and fresh police violence
     let consumers = 0;
     for (const i of world.parcels.aliveIndices()) if (isPowerConsumer(world.parcels.get(i).kind)) consumers++;
-    const dark = Math.max(0, consumers - powerGrid.poweredAnchors.size);
+    const dark = Math.max(0, consumers - power.grid().poweredAnchors.size);
     const violence = violenceTotal();
     // blackout severity: a city entirely in the dark weighs 2 blackout-hours on trust each hour
     const harms = { blackouts: consumers > 0 ? (dark / consumers) * 2 : 0, policeViolence: Math.max(0, violence - prevViolence) / 50, takings: 0 };
@@ -715,7 +703,7 @@ export function main(save: SaveV1 | null = null): void {
     if (activeOverlay.kind === 'power') {
       // Tint each power-consumer plot green (on the grid) or red (dark), via its parcel anchor;
       // dim the rest so lit/dark buildings read as a layer view, not faint specks on the terrain.
-      const lit = powerGrid.poweredAnchors;
+      const lit = power.grid().poweredAnchors;
       renderer.setOverlay({
         dimBase: true,
         tint: (i) => {
@@ -988,11 +976,11 @@ export function main(save: SaveV1 | null = null): void {
     if (def.id === 'inspect') {
       // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
       // carries, the power status and the redline grade (src/ui/inspectContent.ts).
-      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, powerGrid.poweredAnchors));
+      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, ambientState, power.grid().poweredAnchors));
       return;
     }
     if (r.ok) {
-      recomputePower(); // built layer changed → re-derive the grid (a new plant lights its district)
+      power.recompute(); // built layer changed → re-derive the grid (a new plant lights its district)
       recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
       markDirty(); // mutated the built/parcel layer → rebuild the cached base
       // Effort changed → dock affordability + (if open) tech-panel affordability.
@@ -1103,12 +1091,12 @@ export function main(save: SaveV1 | null = null): void {
       // Re-derive the grid FIRST so revival reads the current power state, then run
       // the seam: a powered home heals/densifies by occupancy; an unpowered one is
       // hard-gated (no growth, slow decay) until the player restores power.
-      const powerChanged = recomputePower();
+      const powerChanged = power.recompute();
       const revived = stepRevival(
         world,
         (tile) => ambientState.occupancy.get(tile),
         revivalRng,
-        (tile) => powerGrid.poweredAnchors.has(tile),
+        (tile) => power.grid().poweredAnchors.has(tile),
       );
       refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
       refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
@@ -1119,7 +1107,7 @@ export function main(save: SaveV1 | null = null): void {
   let lastBaseRefresh = 0;
   const frame = (now: number): void => {
     // a new in-game hour: demand re-draws and the blackout may roll to another block
-    if (gameClock(now / 1000).slot !== powerSlot && recomputePower()) markDirty();
+    if (power.maybeResolveHour(now)) markDirty();
     // the economy steps once per in-game hour (catching up a few if the tab was in the background)
     const hourNow = gameClock(now / 1000).slot;
     for (let k = 0; k < 6 && econSlot < hourNow; k++) {
