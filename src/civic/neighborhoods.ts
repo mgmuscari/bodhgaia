@@ -15,6 +15,9 @@
 // civic, so there is no cycle (the guard asserts the reverse import is absent).
 
 import type { GameMap } from '../engine/map';
+// 4-neighbour offsets, N/E/S/W (orthogonal only — the halo and connectivity are both 4-connected,
+// so every halo tile is guaranteed connected to its seeding parcel).
+import { DIRS4_NESW } from '../engine/dirs';
 import { influenceOf } from '../ecology/influence';
 
 /** One neighborhood: a 4-connected component of the membership set M. */
@@ -36,15 +39,6 @@ export interface NeighborhoodMap {
   /** Components ordered by ascending anchor; `neighborhoods[k].id === k + 1`. */
   neighborhoods: Neighborhood[];
 }
-
-// 4-neighbour offsets (orthogonal only — the halo and connectivity are both
-// 4-connected, so every halo tile is guaranteed connected to its seeding parcel).
-const DIRS: ReadonlyArray<readonly [number, number]> = [
-  [0, -1], // N
-  [1, 0], // E
-  [0, 1], // S
-  [-1, 0], // W
-];
 
 /**
  * Partition `map` into neighborhoods. Membership M: a tile is in M iff it is
@@ -75,7 +69,7 @@ export function computeNeighborhoods(map: GameMap): NeighborhoodMap {
         inM[i] = 1;
         continue;
       }
-      for (const [dx, dy] of DIRS) {
+      for (const [dx, dy] of DIRS4_NESW) {
         const nx = x + dx;
         const ny = y + dy;
         if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
@@ -108,7 +102,7 @@ export function computeNeighborhoods(map: GameMap): NeighborhoodMap {
       if (isParcel(cur)) parcelTiles++;
       const cx = cur % width;
       const cy = (cur - cx) / width;
-      for (const [dx, dy] of DIRS) {
+      for (const [dx, dy] of DIRS4_NESW) {
         const nx = cx + dx;
         const ny = cy + dy;
         if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;

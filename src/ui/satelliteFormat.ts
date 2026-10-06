@@ -14,6 +14,7 @@
 // one place the enum lives.
 import { GameMap, Water } from '../engine/map';
 import { BuiltKind, isTransportKind, transportMask, transportCategory } from '../engine/fabric';
+import { clampByte } from '../engine/clamp';
 
 /**
  * R-channel tile type. A small, stable enum: the shader branches on it for
@@ -135,8 +136,6 @@ export function satTypeAt(map: GameMap, x: number, y: number): SatType {
   if (map.getWater(x, y) !== Water.None) return SatType.Water;
   return SatType.Terrain;
 }
-
-const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
 
 /**
  * Pack one cell's four bytes into `out` at byte offset `off`. See the channel

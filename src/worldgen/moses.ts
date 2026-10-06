@@ -30,6 +30,7 @@ import {
   type ParcelStore,
 } from '../engine/fabric';
 import type { Rng } from '../engine/rng';
+import { DIRS4_EWSN, DIRS4_NESW } from '../engine/dirs';
 import { distanceField, boxDensity, landRun, type Axis } from './fields';
 import { gradeRedline } from './redline';
 import type { WorldgenStage, WorldState } from './pipeline';
@@ -1367,12 +1368,6 @@ export function era4Suburbs(world: WorldState, rng: Rng, p: MosesParams, state: 
   //    reach deep into the open quadrants.
   const net0 = distanceField(map, (i) => i === src, isRoad);
   const spurRng = rng.fork('spurs');
-  const dirs: ReadonlyArray<readonly [number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
   interface SpurBase {
     x: number;
     y: number;
@@ -1387,7 +1382,7 @@ export function era4Suburbs(world: WorldState, rng: Rng, p: MosesParams, state: 
     const y = (i - x) / map.width;
     let best: readonly [number, number] | null = null;
     let bestHd = highwayDist[i]!;
-    for (const [dx, dy] of dirs) {
+    for (const [dx, dy] of DIRS4_EWSN) {
       const nx = x + dx;
       const ny = y + dy;
       if (!map.inBounds(nx, ny)) continue;
@@ -1557,7 +1552,7 @@ function freewayRoute(
     }
     const x = i % W;
     const y = (i - x) / W;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (const [dx, dy] of DIRS4_EWSN) {
       const nx = x + dx;
       const ny = y + dy;
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
@@ -1633,7 +1628,7 @@ export function otherMassEntries(
       }
       const x = i % W;
       const y = (i - x) / W;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dx, dy] of DIRS4_EWSN) {
         const nx = x + dx;
         const ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
@@ -1679,7 +1674,7 @@ export function layBridgeToRoad(
     let best = -1;
     let bx = x;
     let by = y;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (const [dx, dy] of DIRS4_EWSN) {
       const nx = x + dx;
       const ny = y + dy;
       if (!map.inBounds(nx, ny)) continue;
@@ -1781,13 +1776,6 @@ export function eraSatellites(world: WorldState, rng: Rng, p: MosesParams, state
 
 // --- Organic growth: accretion from transport termini --------------------
 
-const ORGANIC_DIRS: ReadonlyArray<readonly [number, number]> = [
-  [0, -1],
-  [1, 0],
-  [0, 1],
-  [-1, 0],
-];
-
 /** Contiguous OPEN (land + unbuilt) tiles beyond (sx,sy) in (dx,dy), up to `max`. */
 function openReach(map: GameMap, sx: number, sy: number, dx: number, dy: number, max: number): number {
   let c = 0;
@@ -1820,7 +1808,7 @@ export function terminusOutward(
   if (k !== BuiltKind.RoadHighway && k !== BuiltKind.RoadAvenue) return null;
   let best: [number, number] | null = null;
   let bestRun = minReach - 1;
-  for (const [dx, dy] of ORGANIC_DIRS) {
+  for (const [dx, dy] of DIRS4_NESW) {
     const bx = x - dx;
     const by = y - dy;
     // The line must continue BEHIND (so this is an end, not a mid-line edge).
