@@ -28,16 +28,11 @@ import { attachInput } from './ui/input';
 import { mountPulseDock } from './ui/pulseDock';
 import { sampleRestoration } from './ui/restorationContent';
 import { sampleUnhoused } from './ui/unhousedContent';
-import { isRepairTool } from './ui/repairTools';
 import { TECH_TREE } from './tech/tree';
 import { createTechState } from './tech/state';
 import { wellbeing } from './tech/effort';
-import { branchColumns, panelSignature } from './ui/techContent';
 import { installKeys } from './app/keys';
-import { availableTools, previewTool, applyTool, toolDef, type ToolId } from './tools/tools';
-import { isLineTool } from './ui/lineTools';
-import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
-import { buildToolMenu, type ToolCategory } from './ui/toolMenuContent';
+import { createToolController } from './app/tools';
 import { mountToolbar } from './ui/toolbar';
 import { metaButtons } from './ui/dockContent';
 import { computeNeighborhoods } from './civic/neighborhoods';
@@ -241,10 +236,8 @@ export function main(save: SaveV1 | null = null): void {
     autosave: () => saves.autosave(),
     ui: {
       practiceGranted: () => {
-        toolbar.refresh();
+        tools.afterEffortChange();
         toolbar.flash();
-        snapshotDock();
-        snapshotPanel();
         panels.get('tech').refresh();
       },
       hourRefreshed: (reliefNow) => {
@@ -256,16 +249,6 @@ export function main(save: SaveV1 | null = null): void {
       pulse: () => pulse.refresh(),
     },
   });
-  const wallet = economy.wallet;
-
-  // Tool state: the selected tool id (null = none). A "line tool" (transport build
-  // 5..9 or transport convert) paints a dragged line; everything else — building
-  // build AND building convert (rezoning greens) — is point-apply. The predicate
-  // lives in src/ui/lineTools.ts (pure, unit-tested); it reads the ToolDef's kind.
-  let selectedToolId: ToolId | null = null;
-  // Which category flyout is open in the dock (null = none). Toggled by clicking a
-  // category tile; the picked tool stays selected with the flyout left open.
-  let openCategory: ToolCategory | null = null;
 
   // The map overlays (src/app/overlays.ts): ONE active overlay, cycled by its key or dock button. Created
   // HERE — before the dock mount — because the dock's getMetaButtons reads it at mount and on every
@@ -291,78 +274,39 @@ export function main(save: SaveV1 | null = null): void {
   // registry reports them all closed — the dock reads its flags at its own mount.
   const panels = createPanelRegistry();
 
-  // Bottom tool dock: always on, derived from tech grants + selection + effort. The
-  // meta row mirrors the keys: getMetaButtons derives the active flags from the live
-  // panel/overlay state; onMeta routes a click to the SAME closures the keys use.
-
-  const toolbar = mountToolbar(document.body, {
-    getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, economy.run().state.funds),
-    onSelect: (id) => {
-      selectedToolId = id as ToolId;
-      renderer.setPreview(null);
-      toolbar.setStatus(null); // a prior inspect readout is stale on tool change
-      markPreviewDirty(); // selection-only: the preview lives in the composite
-      toolbar.refresh();
-      snapshotDock(); // selection moved the signature → keep the sim-gated check a no-op
+  // The tool controller (src/app/tools.ts): the picked tool + open flyout, the bottom dock over them (always on,
+  // derived from tech grants + selection + funds/effort), preview/apply on the map, and the sim-gated dock sync.
+  // The dock's meta row mirrors the keys: its active flags come from the live panel/overlay state, and a click
+  // routes to the SAME closures the keys use.
+  const tools = createToolController({
+    world,
+    tech,
+    wallet: economy.wallet,
+    renderer,
+    markDirty,
+    markPreviewDirty,
+    mount: (d) => mountToolbar(document.body, d),
+    meta: {
+      buttons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
+      onMeta: (id) => {
+        if (id === 'life') setAmbient(!live.on); // same toggle the L key calls
+        else if (isPanelId(id)) panels.toggle(id); // the same registry call its key makes
+        else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
+      },
     },
-    onToggleCategory: (id) => {
-      openCategory = openCategory === id ? null : id;
-      toolbar.refresh();
+    techPanel: () => mounted.tech,
+    // the pure readout NAMES the tile; inspectReadout appends the live samples, power status and redline grade
+    inspect: (info, tx, ty) => inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors),
+    placed: () => {
+      power.recompute(); // built layer changed → re-derive the grid (a new plant lights its district)
+      live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
     },
-    getMetaButtons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
-    onMeta: (id) => {
-      if (id === 'life') setAmbient(!live.on); // same toggle the L key calls
-      else if (isPanelId(id)) panels.toggle(id); // the same registry call its key makes
-      else overlays.cycle(id); // a map overlay — the SAME closure its letter key calls
-      toolbar.refreshMeta();
-    },
-    art: (key) => renderer.artImage(key),
+    // credit the anchor tile's neighborhood from the LIVE partition (id 0 = none: a safe no-op)
+    repaired: (tx, ty) => deps.civic.recordRepair(deps.partition.tileToNeighborhood[world.map.idx(tx, ty)] ?? 0, currentTick),
   });
+  const toolbar = tools.toolbar;
 
-  // Sim-cadence gating (Y5): the heavy availableTools / branchColumns derivations +
-  // signature compares run at most ONCE per frame, and only when a sim tick has
-  // moved state (simChanged) — NOT every rAF frame. Discrete events (select /
-  // hotkey / unlock) refresh directly and snapshot the signature so the immediately
-  // following gated check is a no-op. prevToolIds is SEEDED from the initial rows
-  // (Y7) so the first diff is empty → no spurious unlock flash on load.
-  const initRows = toolbarRows(availableTools(tech), selectedToolId, tech.effort);
-  let lastToolSig = refreshSignature(initRows);
-  let prevToolIds: string[] = initRows.map((r) => r.id);
-  let lastPanelSig = panelSignature(branchColumns(TECH_TREE, tech));
-  let simChanged = false;
-
-  const snapshotDock = (): void => {
-    lastToolSig = refreshSignature(toolbarRows(availableTools(tech), selectedToolId, tech.effort));
-  };
-  const snapshotPanel = (): void => {
-    lastPanelSig = panelSignature(branchColumns(TECH_TREE, tech));
-  };
-
-  // The sim-gated sync (run once per frame when simChanged): re-derive the dock
-  // rows + signature and refresh ONLY on a real change; flash the dock when a new
-  // tool id appears (Y7); while the panel is open, cheaply refresh its header each
-  // tick and fully refresh only when the panel signature flips (a status change).
-  const syncDock = (): void => {
-    const rows = toolbarRows(availableTools(tech), selectedToolId, tech.effort);
-    const sig = refreshSignature(rows);
-    if (sig !== lastToolSig) {
-      toolbar.refresh();
-      lastToolSig = sig;
-    }
-    const ids = rows.map((r) => r.id);
-    if (addedIds(prevToolIds, ids).length > 0) {
-      toolbar.flash();
-      prevToolIds = ids;
-    }
-    if (mounted.tech.isOpen()) {
-      mounted.tech.refreshHeader();
-      const psig = panelSignature(branchColumns(TECH_TREE, tech));
-      if (psig !== lastPanelSig) {
-        mounted.tech.refresh();
-        lastPanelSig = psig;
-      }
-    }
-  };
+  let simChanged = false; // a sim tick moved state since the last frame → syncDock once
 
   // The always-on top bar (src/app/panels.ts): the economy readout · wellbeing · the unhoused — its OWN element
   // (not the shared toolbar status, which inspect/legend clobber). The civic cadence re-samples and trends it
@@ -413,13 +357,8 @@ export function main(save: SaveV1 | null = null): void {
       toolbar.refresh(); // the fabric may be affordable again
       pulse.refresh();
     },
-    onPracticeBegun: () => {
-      // effort dropped (affordability) and an unlock may grant a new tool: refresh the dock and snapshot both
-      // signatures so the next sim-gated check is a no-op
-      toolbar.refresh();
-      snapshotDock();
-      snapshotPanel();
-    },
+    // effort dropped (affordability) and an unlock may grant a new tool: refresh + snapshot both signatures
+    onPracticeBegun: () => tools.afterEffortChange(),
     // fired for the key, the dock button AND any dismiss — the dock's active flags follow from ONE callback
     onToggle: () => toolbar.refreshMeta(),
   });
@@ -468,71 +407,14 @@ export function main(save: SaveV1 | null = null): void {
     togglePanel: (id) => panels.toggle(id),
   });
 
-  const previewAt = (tx: number, ty: number): void => {
-    if (selectedToolId === null) return;
-    const def = toolDef(selectedToolId);
-    if (!def) return;
-    const p = previewTool(world, tech, def, tx, ty, wallet);
-    renderer.setPreview([{ x: tx, y: ty, valid: p.valid }]);
-    markPreviewDirty(); // hover tile-change: preview only, never a base rebuild
-  };
-
-  const applyAt = (tx: number, ty: number): void => {
-    if (selectedToolId === null) return;
-    const def = toolDef(selectedToolId);
-    if (!def) return;
-    const r = applyTool(world, tech, def, tx, ty, wallet);
-    // Inspect is free + non-mutating: surface its readout to the dock status line
-    // (PRD: a minimal console-free line in the dock) without the mutate-path churn.
-    if (def.id === 'inspect') {
-      // The pure readout NAMES the seeded tile; inspectReadout appends the LIVE samples the ambient layer
-      // carries, the power status and the redline grade (src/ui/inspectContent.ts).
-      toolbar.setStatus(inspectReadout(r.info ?? '', tx, ty, world, live.state, power.grid().poweredAnchors));
-      return;
-    }
-    if (r.ok) {
-      power.recompute(); // built layer changed → re-derive the grid (a new plant lights its district)
-      live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
-      markDirty(); // mutated the built/parcel layer → rebuild the cached base
-      // Effort changed → dock affordability + (if open) tech-panel affordability.
-      // Refresh directly and snapshot both signatures so the next sim-gated check
-      // is a no-op (the discrete-event path, per Y5).
-      toolbar.refresh();
-      snapshotDock();
-      if (mounted.tech.isOpen()) {
-        mounted.tech.refresh();
-        snapshotPanel();
-      }
-      previewAt(tx, ty); // re-tint the just-touched tile
-      // Repair forwarding (the sanctioned tools→civic crossing): a successful
-      // repair-classified placement credits the anchor tile's neighborhood from
-      // the LIVE partition. id 0 (no neighborhood) is a safe no-op; bulldoze is
-      // excluded by isRepairTool. Multi-tile builds credit the anchor (tx, ty).
-      if (isRepairTool(def)) {
-        const nid = deps.partition.tileToNeighborhood[world.map.idx(tx, ty)] ?? 0;
-        deps.civic.recordRepair(nid, currentTick);
-      }
-    }
-  };
-
   attachInput(canvas, camera, {
     onChange: markDirty,
-    hasTool: () => selectedToolId !== null,
-    isLineTool: () => selectedToolId !== null && isLineTool(toolDef(selectedToolId)!),
-    applyAt,
-    hover: previewAt,
-    clearHover: () => {
-      renderer.setPreview(null);
-      markPreviewDirty(); // cleared the preview only — no base change
-    },
-    onHotkey: (action) => {
-      selectedToolId = action === 'inspect' ? 'inspect' : action === 'bulldoze' ? 'bulldoze' : null;
-      renderer.setPreview(null);
-      toolbar.setStatus(null);
-      markPreviewDirty(); // selection/preview only — preview is in the composite
-      toolbar.refresh();
-      snapshotDock(); // selection moved the signature → keep the sim-gated check a no-op
-    },
+    hasTool: tools.hasTool,
+    isLineTool: tools.isLineTool,
+    applyAt: tools.applyAt,
+    hover: tools.previewAt,
+    clearHover: tools.clearHover,
+    onHotkey: tools.hotkey,
   });
 
   window.addEventListener('resize', () => {
@@ -637,7 +519,7 @@ export function main(save: SaveV1 | null = null): void {
     // Sim-gated (Y5): re-derive the dock/panel signatures + refresh on change ONLY
     // when a sim tick has run since the last sync — not every rAF frame.
     if (simChanged) {
-      syncDock();
+      tools.syncDock();
       simChanged = false;
     }
     window.requestAnimationFrame(frame);
