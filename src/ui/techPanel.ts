@@ -10,6 +10,7 @@
 
 import { techNodeClass } from './techContent';
 import type { TechLayout, TechLayoutNode } from './techLayout';
+import { panelVisibility, type PanelHandle } from './panelHandle';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // Grid metrics (CSS px).
@@ -43,10 +44,8 @@ export interface TechPanelDeps {
   costLine?(id: string): string;
 }
 
-export interface TechPanelHandle {
-  isOpen(): boolean;
-  refresh(): void;
-  toggle(): void;
+export interface TechPanelHandle extends PanelHandle {
+  /** The cheap per-tick header (just the effort line) — no-op while closed. */
   refreshHeader(): void;
 }
 
@@ -68,7 +67,6 @@ function artCanvas(img: CanvasImageSource | undefined, scale: number): HTMLCanva
 export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): TechPanelHandle {
   const panel = document.createElement('div');
   panel.className = 'tech-panel';
-  panel.hidden = true;
 
   const header = document.createElement('div');
   header.className = 'tech-panel-header';
@@ -81,7 +79,7 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
   closeBtn.className = 'tech-panel-close';
   closeBtn.textContent = '✕';
   closeBtn.setAttribute('aria-label', 'Close the tech tree');
-  closeBtn.addEventListener('click', () => setOpen(false));
+  closeBtn.addEventListener('click', () => handle.close());
   header.append(title, effortText, closeBtn);
 
   const body = document.createElement('div');
@@ -102,7 +100,6 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
   panel.append(header, body);
   container.appendChild(panel);
 
-  let open = false;
   let built = false;
   let selected: string | null = null;
   const cardMap = new Map<string, HTMLElement>();
@@ -248,18 +245,13 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
     applyTree(content.layout);
   }
 
-  function setOpen(next: boolean): void {
-    open = next;
-    panel.hidden = !open;
-    if (open) render();
-    deps.onToggle?.(open);
-  }
+  const handle = panelVisibility(panel, { render, onToggle: deps.onToggle });
 
   function onKey(event: KeyboardEvent): void {
     // T is bound in the one key table (keyMap.ts → main.ts calls toggle()); the panel keeps only Escape.
-    if (event.key === 'Escape' && open) {
+    if (event.key === 'Escape' && handle.isOpen()) {
       event.preventDefault();
-      setOpen(false);
+      handle.close();
     }
   }
 
@@ -280,13 +272,9 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
   window.addEventListener('keydown', onKey);
 
   return {
-    isOpen: () => open,
-    refresh: () => {
-      if (open) render();
-    },
-    toggle: () => setOpen(!open),
+    ...handle,
     refreshHeader: () => {
-      if (open) effortText.textContent = deps.getEffort ? deps.getEffort() : deps.getContent().effort;
+      if (handle.isOpen()) effortText.textContent = deps.getEffort ? deps.getEffort() : deps.getContent().effort;
     },
   };
 }

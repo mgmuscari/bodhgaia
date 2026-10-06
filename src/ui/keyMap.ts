@@ -11,7 +11,7 @@ export type KeyAction =
   | 'budget'
   | 'saves'
   | 'life'
-  | 'restoration'
+  | 'restore'
   | 'settings'
   | 'help'
   | 'tech';
@@ -32,7 +32,7 @@ export const KEY_BINDINGS: readonly KeyBindingEntry[] = [
   { keys: ['b', 'B'], action: 'budget' },
   { keys: ['s', 'S'], action: 'saves' },
   { keys: ['l', 'L'], action: 'life' },
-  { keys: ['g', 'G'], action: 'restoration' },
+  { keys: ['g', 'G'], action: 'restore' },
   { keys: [','], action: 'settings' },
   { keys: ['?', 'h', 'H'], action: 'help' },
   { keys: ['t', 'T'], action: 'tech' },

@@ -13,6 +13,7 @@ import { createRng } from '../../src/engine/rng';
 import { CURRENT, type SlotInfo } from '../../src/save/store';
 import type { SaveV1, GameParts } from '../../src/save/snapshot';
 import type { SavesPanelDeps } from '../../src/ui/savesPanel';
+import { panelVisibility } from '../../src/ui/panelHandle';
 
 // The saves wiring: capture the running game, autosave it into the CURRENT slot (hourly via the economy, and on
 // tab-hide / pagehide), and back the Saves window. Loading a slot or starting a new city blanks autosave first,
@@ -79,7 +80,6 @@ function setup() {
   const doc = Object.assign(new EventTarget(), { hidden: false });
   const win = new EventTarget();
   let actions: SavesPanelDeps | null = null;
-  let open = false;
   let toggles = 0;
   const warnings: unknown[] = [];
   let clock = 1000;
@@ -89,7 +89,7 @@ function setup() {
     lifecycle: { document: doc, window: win },
     mountPanel: (a) => {
       actions = a;
-      return { toggle: () => (open = !open), visible: () => open };
+      return panelVisibility({ hidden: true }, { onToggle: a.onToggle }); // the real state machine every panel uses
     },
     onToggle: () => toggles++,
     now: () => clock,
@@ -179,12 +179,14 @@ describe('createSaves', () => {
     expect(mem.slots.get('slot-2000')?.savedAt).toBe(2000); // a file with no savedAt is stamped now
   });
 
-  it('toggle/visible drive the panel; the panel reports its toggles', () => {
-    const { saves, actions, toggles } = setup();
-    expect(saves.visible()).toBe(false);
+  it('the controller IS the panel handle (toggle/isOpen/open/close/refresh); the panel reports its toggles', () => {
+    const { saves, toggles } = setup();
+    expect(saves.isOpen()).toBe(false);
     expect(saves.toggle()).toBe(true);
-    expect(saves.visible()).toBe(true);
-    actions().onToggle?.(true);
+    expect(saves.isOpen()).toBe(true);
     expect(toggles()).toBe(1);
+    saves.close();
+    expect(saves.isOpen()).toBe(false);
+    expect(toggles()).toBe(2);
   });
 });
