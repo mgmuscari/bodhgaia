@@ -140,9 +140,7 @@ describe('simTick: no deterministic traffic field (traffic is agent-driven)', ()
     drive(a);
     const b = connectedCity();
     drive(b);
-    let total = 0;
-    for (let i = 0; i < a.world.map.traffic.length; i++) total += a.world.map.traffic[i]!;
-    expect(total).toBe(0); // the deterministic O-D generator is retired — traffic is agent-driven (live layer)
+    expect('traffic' in a.world.map).toBe(false); // the deterministic O-D layer is retired — traffic is agent-driven (live layer)
     expect(a.world.map.snapshot()).toBe(b.world.map.snapshot()); // seeded world still byte-identical
   });
 });

@@ -90,6 +90,33 @@ describe('a saved game restores to the same stocks', () => {
   });
 });
 
+describe('save v2: the always-zero traffic layer is retired', () => {
+  it('this build writes v2 and carries no traffic layer', () => {
+    const save = captureGame(parts());
+    expect(SAVE_VERSION).toBe(2);
+    expect(save.version).toBe(2);
+    expect(Object.keys(save.world.layers)).not.toContain('traffic');
+  });
+
+  it('a v1 save (with its traffic layer) migrates to v2 and restores the same world', () => {
+    const p = parts();
+    const v2 = captureGame(p);
+    const n = p.world.map.width * p.world.map.height;
+    const v1 = { ...v2, version: 1, world: { ...v2.world, layers: { ...v2.world.layers, traffic: encodeBytes(new Uint8Array(n)) } } };
+    const save = parseSave(JSON.stringify(v1));
+    expect(save.version).toBe(2);
+    expect(Object.keys(save.world.layers)).not.toContain('traffic');
+    const fresh = gen(save.seed);
+    restoreWorld(fresh, save.world);
+    expect(hashWorld(fresh)).toBe(hashWorld(p.world));
+  });
+
+  it('refuses a v3 save', () => {
+    const v3 = { ...captureGame(parts()), version: 3 };
+    expect(() => parseSave(JSON.stringify(v3))).toThrow(/newer/);
+  });
+});
+
 describe('the format refuses what it cannot read', () => {
   it('rejects a non-save and a save from a newer version', () => {
     expect(() => parseSave('{"hello":1}')).toThrow(/not a Bodhitropolis save/);

@@ -62,10 +62,6 @@ export class GameMap {
   readonly floraVitality: Uint8Array;
   /** Fauna presence per cell, 0..255 (ecology layer; see src/ecology). */
   readonly faunaPresence: Uint8Array;
-  /** Traffic density per cell, 0..255. Legacy layer: the 1989-style origin→destination
-   *  generator that laid it is retired (traffic is agent-driven in the live layer now), so
-   *  nothing writes it and it stays 0 — kept for the world hash and the save format. */
-  readonly traffic: Uint8Array;
   /**
    * Redline grade per cell, 0..255 (0 = greenlined/best .. 255 = redlined/worst).
    * The discriminatory social geography drawn at worldgen (see src/worldgen/redline)
@@ -93,7 +89,6 @@ export class GameMap {
     this.soilHealth = new Uint8Array(n);
     this.floraVitality = new Uint8Array(n);
     this.faunaPresence = new Uint8Array(n);
-    this.traffic = new Uint8Array(n);
     this.redline = new Uint8Array(n);
   }
 
@@ -193,7 +188,6 @@ export class GameMap {
     h = fnv1aBytes(h, bytesOf(this.soilHealth));
     h = fnv1aBytes(h, bytesOf(this.floraVitality));
     h = fnv1aBytes(h, bytesOf(this.faunaPresence));
-    h = fnv1aBytes(h, bytesOf(this.traffic));
     h = fnv1aBytes(h, bytesOf(this.redline));
     return `${this.width}x${this.height}:${(h >>> 0).toString(16).padStart(8, '0')}`;
   }

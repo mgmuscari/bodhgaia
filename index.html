@@ -617,13 +617,18 @@
         white-space: pre;
         line-height: 1.6;
       }
-      /* Credits under the controls: licence notice + GPL §7 terms (required on every conveyance). The panel
-         scrolls once they make it taller than the viewport. */
+      /* Credits under the controls: licence notice + GPL §7 terms (required on every conveyance). Once they make
+         the panel taller than the viewport, only .help-panel__scroll scrolls — the ✕ and title stay pinned. */
       .help-panel {
         max-height: 88vh;
-        overflow-y: auto;
         max-width: min(40rem, 92vw);
         box-sizing: border-box;
+        flex-direction: column;
+      }
+      .help-panel__scroll {
+        overflow-y: auto;
+        min-height: 0;
+        flex: 1 1 auto;
       }
       .help-panel__credits {
         margin-top: 1rem;
