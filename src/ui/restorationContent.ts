@@ -9,7 +9,7 @@
 
 import { Water, type GameMap } from '../engine/map';
 import { richnessOf } from '../ecology/biodiversity';
-import type { AmbientState } from './ambientContent';
+import type { AmbientState } from '../live/types';
 
 /** A snapshot of the city's restoration state — the scalars the readout trends over time. */
 export interface RestorationSample {

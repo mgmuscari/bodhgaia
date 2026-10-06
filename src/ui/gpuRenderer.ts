@@ -11,9 +11,9 @@ import { GlowBatch, GLOW_FLOATS, extractLightPoints } from './glowBatch';
 import type { LightPoint } from './glowBatch';
 import { BEAM_REACH, type Beam } from './headlights';
 import { DAYSPEED, dayNightBrightness } from './lighting';
-import { carPose, ambientAlpha } from './ambientContent';
+import { carPose, ambientAlpha } from '../live/poses';
 import { sharedFramePoses, type Posed } from './framePoses';
-import type { AmbientState, Mover } from './ambientContent';
+import type { AmbientState, Mover } from '../live/types';
 import type { GameMap } from '../engine/map';
 import type { Camera } from './camera';
 

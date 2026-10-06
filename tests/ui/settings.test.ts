@@ -9,7 +9,7 @@ import {
 
 describe('settings defaults reproduce today’s game', () => {
   it('default live caps match the historical module consts (medium preset)', () => {
-    // These ARE the values the game ships today (ambientContent consts). The default
+    // These ARE the values the game ships today (live/caps.ts `liveCaps` defaults). The default
     // settings must reproduce them exactly so a fresh player gets the same game.
     expect(DEFAULT_SETTINGS.live).toEqual({
       carCap: 200,

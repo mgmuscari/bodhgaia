@@ -40,7 +40,7 @@ export const MAP_SIZES: Record<MapSizeKey, number> = {
 };
 
 /** Live-cap presets from a slow machine (low) to a fast one (high). `medium` == today's shipped
- *  consts (ambientContent: CAR_CAP 200, PED_CAP 1200, FLOCK_CAP 32, divisor 3, spawn/substep 4). */
+ *  `liveCaps` defaults (live/caps.ts: carCap 200, pedCap 1200, flockCap 32, divisor 3, spawn/substep 4). */
 export const CAP_PRESETS: Record<PresetTier, LiveCaps> = {
   low: { carCap: 80, pedCap: 400, flockCap: 16, citizenOutDivisor: 5, spawnPerSubstep: 2 },
   medium: { carCap: 200, pedCap: 1200, flockCap: 32, citizenOutDivisor: 3, spawnPerSubstep: 4 },

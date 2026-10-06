@@ -8,7 +8,7 @@ import { computeNeighborhoods } from '../../src/civic/neighborhoods';
 import { createCivicState } from '../../src/civic/state';
 import { createEconomy } from '../../src/economy/model';
 import { DEFAULT_LEVERS } from '../../src/economy/run';
-import { createAmbientState } from '../../src/ui/ambientContent';
+import { createAmbientState } from '../../src/live/types';
 import { createRng } from '../../src/engine/rng';
 import { CURRENT, type SlotInfo } from '../../src/save/store';
 import type { SaveV1, GameParts } from '../../src/save/snapshot';

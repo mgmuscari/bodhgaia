@@ -17,18 +17,37 @@ import { StopCategory } from '../../src/citizens/itinerary';
 import { TravelMode } from '../../src/citizens/modes';
 import {
   createAmbientState,
-  stepAmbient,
-  ingestTrips,
   setParkingLots,
   setHouseholds,
   setPlantEmitters,
+  type Car,
+  type Ped,
+} from '../../src/live/types';
+import { stepAmbient } from '../../src/live/step';
+import {
+  ingestTrips,
+  stopReachable,
+  skipJammedStop,
+  parkOwnedCarSomewhere,
+  routeToParking,
+  sendOwnedCarHome,
+  abandonOwnedCar,
+  degradeAbandonedCar,
+} from '../../src/live/agents';
+import {
   chooseMode,
   tripEvaporates,
   jamNear,
   roadPath,
-  curbParkOffset,
+  walkPath,
+  usesCommittedPath,
+  pedCost,
+  nearestOfCategory,
+  nearestWalkable,
+} from '../../src/live/pathing';
+import { curbParkOffset, laneOffset, CAR_LENGTH, CAR_WIDTH } from '../../src/live/geometry';
+import {
   isWearable,
-  seedDecay,
   carWeightForRoad,
   isCarRoad,
   isPedSubstrate,
@@ -36,28 +55,16 @@ import {
   nextRoadStep,
   nextRailStep,
   reachedPlot,
-  congestionSpeedMult,
-  congestionCount,
-  buildMoverGrid,
-  blockedAhead,
-  boxBlocked,
-  walkPath,
-  stopReachable,
-  usesCommittedPath,
-  laneOffset,
   freewayLane,
+  curbStallOffsets,
+  carOffNetwork,
+  pedDespawns,
+  isParkable,
+  canDrive,
+} from '../../src/live/network';
+import {
+  seedDecay,
   pollutionEmit,
-  pedCost,
-  landValueAt,
-  recomputeLandValue,
-  nearestOfCategory,
-  capacityOf,
-  occupancySignal,
-  occupancyStep,
-  spawnTargetFor,
-  FUEL_TANK,
-  stepOccupancy,
-  OCC_SETTLE_PASSES,
   accumulateWaterRunoff,
   accumulateGroundPollution,
   driftPollution,
@@ -66,43 +73,50 @@ import {
   prevailingWind,
   flowWaterPollution,
   treatWaterPollution,
-  stepRoadDecay,
-  spawnCruisers,
-  stepCruisers,
-  nextPatrolStep,
-  CAR_LENGTH,
-  CAR_WIDTH,
+} from '../../src/live/fields/pollution';
+import {
+  congestionSpeedMult,
+  congestionCount,
+  buildMoverGrid,
+  blockedAhead,
+  boxBlocked,
   rerouteIfStuck,
   spaceClear,
+  uTurnIfStuck,
+} from '../../src/live/motion';
+import {
+  landValueAt,
+  recomputeLandValue,
+  stepRoadDecay,
+  computeCoverage,
+} from '../../src/live/fields/landValue';
+import {
+  capacityOf,
+  occupancySignal,
+  occupancyStep,
+  spawnTargetFor,
+  stepOccupancy,
+} from '../../src/live/fields/occupancy';
+import {
+  FUEL_TANK,
+  OCC_SETTLE_PASSES,
   STUCK_REPATH,
   STUCK_UTURN,
   STUCK_GIVE_UP,
-  uTurnIfStuck,
-  skipJammedStop,
   JAM_SKIP_PENALTY,
+  AMBIENT_MAX_FRAME_MS,
+} from '../../src/live/tuning';
+import {
+  spawnCruisers,
+  stepCruisers,
+  nextPatrolStep,
   huntTarget,
   policePhase,
   stepArrests,
   arrestChance,
   buildSafeZones,
-  computeCoverage,
-  parkOwnedCarSomewhere,
-  curbStallOffsets,
-  routeToParking,
-  sendOwnedCarHome,
-  abandonOwnedCar,
-  degradeAbandonedCar,
-  carOffNetwork,
-  type Car,
-  type Ped,
-  pedDespawns,
-  isParkable,
-  nearestWalkable,
-  canDrive,
-  AMBIENT_MAX_FRAME_MS,
-  liveCaps,
-  applyLiveCaps,
-} from '../../src/ui/ambientContent';
+} from '../../src/live/police';
+import { liveCaps, applyLiveCaps } from '../../src/live/caps';
 import { CAP_PRESETS } from '../../src/ui/settings';
 
 // A small grid of mixed roads so the stepper has somewhere to spawn/move.
@@ -3144,7 +3158,7 @@ describe('walkPath (committed foot routing around barriers — Maddy: peds dithe
 });
 
 describe('owned cars follow their citizen home, never despawn on the spot (Maddy)', () => {
-  function ownedCar(id: number, x: number, y: number): import('../../src/ui/ambientContent').Car {
+  function ownedCar(id: number, x: number, y: number): import('../../src/live/types').Car {
     return { id, x, y, tx: x, ty: y, dir: 0, owned: true, parked: true, tint: 0 } as never;
   }
 
@@ -3156,7 +3170,7 @@ describe('owned cars follow their citizen home, never despawn on the spot (Maddy
     const homeTile = m.idx(5, 19);
     const car = ownedCar(1, 30, 20); // parked far from home (~25 tiles east)
     state.cars.push(car);
-    const p = { x: 30, y: 21, carId: 1, homeTile, phase: 'to-building' } as never as import('../../src/ui/ambientContent').Ped;
+    const p = { x: 30, y: 21, carId: 1, homeTile, phase: 'to-building' } as never as import('../../src/live/types').Ped;
     sendOwnedCarHome(state, m, p, homeTile);
     expect(state.cars.includes(car)).toBe(true); // the car did NOT despawn
     expect(car.owned).toBe(false); // it's a put-away car now (clears on its dwell, like any parked car)
@@ -3170,7 +3184,7 @@ describe('owned cars follow their citizen home, never despawn on the spot (Maddy
     const state = createAmbientState();
     const car = ownedCar(2, 10, 10);
     state.cars.push(car);
-    const p = { x: 10, y: 11, carId: 2, homeTile: m.idx(5, 5) } as never as import('../../src/ui/ambientContent').Ped;
+    const p = { x: 10, y: 11, carId: 2, homeTile: m.idx(5, 5) } as never as import('../../src/live/types').Ped;
     sendOwnedCarHome(state, m, p, m.idx(5, 5));
     expect(state.cars.includes(car)).toBe(false); // nowhere to park → removed, not stranded
   });
@@ -3178,7 +3192,7 @@ describe('owned cars follow their citizen home, never despawn on the spot (Maddy
   it('is a no-op for a ped that owns no car', () => {
     const m = new GameMap(12, 12);
     const state = createAmbientState();
-    const p = { x: 3, y: 3, homeTile: m.idx(2, 2) } as never as import('../../src/ui/ambientContent').Ped;
+    const p = { x: 3, y: 3, homeTile: m.idx(2, 2) } as never as import('../../src/live/types').Ped;
     expect(() => sendOwnedCarHome(state, m, p, m.idx(2, 2))).not.toThrow();
   });
 });
@@ -3404,7 +3418,7 @@ describe('police cruisers obey lane direction (Maddy 2026-09-30: cruisers cut ac
   });
 });
 
-import type { Mover } from "../../src/ui/ambientContent";
+import type { Mover } from '../../src/live/types';
 
 describe('gridlock relief (Maddy 2026-09-30: traffic gridlocked — cars must repath when stopped long)', () => {
   // two parallel E-W streets (rows 2 and 6) joined by N-S connectors at x=2 and x=12: a loop
