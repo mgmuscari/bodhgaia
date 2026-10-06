@@ -19,6 +19,7 @@ import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import { influenceOf } from '../ecology/influence';
 import type { NeighborhoodMap } from './neighborhoods';
 import type { CivicState } from './state';
+import { clampByte } from '../engine/clamp';
 
 /** The participatory capabilities civic dynamics consumes (resolved tech-side). */
 export interface CivicCaps {
@@ -65,8 +66,6 @@ const DIRS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [-1, 0],
 ];
-
-const clampByte = (v: number): number => (v < 0 ? 0 : v > 255 ? 255 : v);
 
 /** Integer belonging-band multiplier: a community speaks louder when held. */
 function voiceBand(belonging: number): number {
