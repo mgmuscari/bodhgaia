@@ -25,7 +25,7 @@ import { visitValue } from '../citizens/plots';
 import { DAILY_ITINERARY } from '../citizens/itinerary';
 import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import type { Household } from '../citizens/census';
-import { layField, decayField, sampleField } from '../citizens/field';
+import { layField, decayField } from '../citizens/field';
 import type { Rng } from '../engine/rng';
 import { liveCaps } from '../live/caps';
 import {
@@ -73,16 +73,6 @@ import {
   RAIN_CADENCE,
   LV_CADENCE,
   OCC_CADENCE,
-  OCC_RATE,
-  OCC_LV_NEUTRAL,
-  OCC_POLL_W,
-  OCC_HEALTH_SCALE,
-  OCC_HEALTH_CAP,
-  OCC_FLOOR,
-  OCC_SETTLE_PASSES,
-  OCC_EXPECT_RATE,
-  OCC_ABSOLUTE,
-  OCC_HEADROOM,
   ROAD_WALK_PENALTY,
   WORN_DEGRADE_MIN,
   WORN_WALK_PENALTY,
@@ -119,6 +109,7 @@ import {
 } from '../live/geometry';
 
 import type { Mover, Car, Ped, Bird, Flock, Train, ParkingLotInfo, AmbientState } from '../live/types';
+import { spawnTargetFor, stepOccupancy } from '../live/fields/occupancy';
 import { computeCoverage, recomputeLandValue, stepRoadDecay } from '../live/fields/landValue';
 import {
   layTraffic,
@@ -272,6 +263,14 @@ export {
 } from '../live/fields/pollution';
 
 export { computeCoverage, landValueAt, recomputeLandValue, stepRoadDecay } from '../live/fields/landValue';
+
+export {
+  capacityOf,
+  occupancySignal,
+  occupancyStep,
+  spawnTargetFor,
+  stepOccupancy,
+} from '../live/fields/occupancy';
 
 /** The set of tiles within SAFE_RADIUS of any community-power building — refuge the cruisers avoid
  *  and never sweep. Built fresh from the map (sparse refuges); the player grows it by building. */
@@ -921,41 +920,6 @@ function citizenCount(state: AmbientState): number {
   return n;
 }
 
-/** A residential building's occupancy CEILING (pure decision seam): its seeded baseline lifted by a
- *  per-kind headroom — a single house barely densifies, an apartment block holds far more. So a
- *  thriving home fills up toward this without the building itself changing (the deterministic stock
- *  is fixed); a derelict (zero baseline) holds nobody. */
-export function capacityOf(kind: number, baseCount: number): number {
-  return baseCount * (OCC_HEADROOM.get(kind) ?? 1.5);
-}
-
-/** The pull on a home's population (pure): land value above OCC_LV_NEUTRAL attracts residents, below
- *  it sheds them; nearby smog repels; the wellbeing its citizens carry home (building health) tips it
- *  either way. Sign drives grow vs shrink, magnitude scales the rate. */
-export function occupancySignal(landValue: number, pollution: number, health: number): number {
-  let s = (landValue - OCC_LV_NEUTRAL) / 255; // land value is the anchor
-  s -= (pollution / POLL_MAX) * OCC_POLL_W; // smog pushes out
-  const h = health / OCC_HEALTH_SCALE; // building health is only a small bounded nudge
-  s += h < -OCC_HEALTH_CAP ? -OCC_HEALTH_CAP : h > OCC_HEALTH_CAP ? OCC_HEALTH_CAP : h;
-  return s;
-}
-
-/** One occupancy drift step (pure): nudge toward the ceiling on a positive signal, toward the floor on
- *  a negative one, clamped to [floor, capacity]. The floor keeps a struggling home populated — a city
- *  thins but never becomes a literal ghost town. */
-export function occupancyStep(occ: number, floor: number, capacity: number, signal: number): number {
-  const next = occ + signal * OCC_RATE;
-  return next < floor ? floor : next > capacity ? capacity : next;
-}
-
-/** How many citizens to keep out on their round, from the live total occupancy: a THIRD of the
- *  residents (Maddy), scaling with the city — no flat ceiling, so a populous city fills the streets
- *  and a declining one visibly empties them. The hard perf ceiling is liveCaps.pedCap, applied where peds
- *  actually spawn (spawnCitizens), not here. */
-export function spawnTargetFor(totalOccupancy: number): number {
-  return Math.round(totalOccupancy / liveCaps.citizenOutDivisor);
-}
-
 /** The LIVE sample values the inspector appends to its readout — each undefined when the tile
  *  carries no such field (a road has traffic/smog but no population; a home the reverse). */
 export interface LiveSamples {
@@ -988,39 +952,6 @@ export function liveInspectLine(s: LiveSamples): string {
   if (s.violence !== undefined) parts.push(`police violence ${Math.round(s.violence)}`);
   if (s.served !== undefined) parts.push(s.served ? 'served' : 'under-served');
   return parts.join(' · ');
-}
-
-/** Re-evaluate every home's occupancy from the live conditions at its tile (land value, smog, the
- *  wellbeing its citizens bring home), drifting it toward capacity or empty. Seeded lazily from the
- *  census baseline; rebuilt fresh over the current homes each pass so a demolished home drops out.
- *  Gated to OCC_CADENCE by the caller. Live layer — reads the other live fields, writes only occupancy. */
-export function stepOccupancy(state: AmbientState, map: GameMap): void {
-  const homes = state.households;
-  if (!homes || homes.length === 0) {
-    state.occupancy.clear();
-    return;
-  }
-  const next = new Map<number, number>();
-  const expect = new Map<number, number>();
-  const settling = state.occPasses < OCC_SETTLE_PASSES;
-  for (const h of homes) {
-    const t = map.idx(h.x, h.y);
-    const cap = capacityOf(map.built[t]!, h.count);
-    const floor = h.count * OCC_FLOOR; // a home never thins below this fraction of its seeded baseline
-    const cur = state.occupancy.get(t) ?? h.count; // seed lazily at the census baseline
-    const raw = occupancySignal(
-      sampleField(state.landValue, t),
-      sampleField(state.pollution, t),
-      state.buildingHealth.get(t) ?? 0,
-    );
-    // a new home (or the opening) takes its conditions as normal
-    const was = settling ? raw : (state.occExpect.get(t) ?? raw);
-    next.set(t, occupancyStep(cur, floor, cap, raw - was + OCC_ABSOLUTE * raw));
-    expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
-  }
-  state.occupancy = next;
-  state.occExpect = expect;
-  state.occPasses += 1;
 }
 
 /** Top the daily-itinerary population up from the LIVE occupancy: the spawn target tracks total
