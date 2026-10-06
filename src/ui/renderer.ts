@@ -26,6 +26,7 @@ import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, 
 import { isPowerConsumer } from '../growth/power';
 import { ambientAlpha, trainPoses } from './ambientContent';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
+import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
@@ -244,6 +245,25 @@ export class Renderer {
     this.skinEmission = ns('@emit/');
     this.sprites = new Map([...ns('@sprite/'), ...ns('@wear/'), ...ns('@wash/'), ...ns('@ui/')]);
     this.lazyImages = skin.lazy ?? null;
+    if (typeof window !== 'undefined') this.warmLitSilhouettes();
+  }
+
+  /** Pre-build every lit silhouette a headlight can need (each lit-body sprite × 8 light directions) in
+   *  idle time after load, so night falling doesn't stall frames on getImageData readbacks; anything not
+   *  yet warm is still built lazily on first use. */
+  private warmLitSilhouettes(): void {
+    const jobs = litBodyKeys(this.sprites.keys()).flatMap((key) => {
+      const img = this.sprites.get(key)!;
+      return [0, 1, 2, 3, 4, 5, 6, 7].map((dir) => (): void => void this.litSilhouette(img, dir));
+    });
+    const ric = window.requestIdleCallback?.bind(window);
+    drainInIdle(jobs, (cb) => {
+      if (ric) ric(cb, { timeout: 1000 });
+      else setTimeout(() => {
+        const end = performance.now() + 4; // no idle callbacks (older Safari): a short slice per timer tick
+        cb({ timeRemaining: (): number => end - performance.now() } satisfies IdleDeadlineLike);
+      }, 50);
+    });
   }
 
   /** Toggle the GPU hybrid path: when on, the Canvas2D base goes transparent (the WebGL layer below
