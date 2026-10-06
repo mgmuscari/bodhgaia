@@ -108,6 +108,19 @@ describe('createToolController: selection', () => {
     expect(h.tools.isLineTool()).toBe(false);
   });
 
+  it('hands the map pointer the same handlers (hover previews, a click applies)', () => {
+    const h = setup();
+    const i = h.tools.input;
+    expect([i.hasTool, i.isLineTool, i.applyAt, i.hover, i.clearHover, i.onHotkey]).toEqual([
+      h.tools.hasTool,
+      h.tools.isLineTool,
+      h.tools.applyAt,
+      h.tools.previewAt,
+      h.tools.clearHover,
+      h.tools.hotkey,
+    ]);
+  });
+
   it('meta clicks route to the shell, then the dock re-derives its meta row', () => {
     const h = setup();
     h.mount().onMeta!('life');
