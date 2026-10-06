@@ -24,7 +24,8 @@ import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { carPose, pedPose, ambientAlpha, trainPoses } from './ambientContent';
+import { ambientAlpha, trainPoses } from './ambientContent';
+import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
@@ -759,6 +760,11 @@ export class Renderer {
       sx > -ts && sx < w + ts && sy > -ts && sy < h + ts;
 
     const mapW = world.map.width;
+    // Each mover near the view is posed ONCE this frame (culled on its raw position first); the GPU glow
+    // pass reuses the same poses (framePoses.ts).
+    const cam = camera.screenToWorld(0, 0);
+    const poses = computeFramePoses(ambient, viewRect(cam.wx, cam.wy, ts, w, h, 1), alpha, onRoadAt);
+    shareFramePoses(ambient, poses);
 
     // (Desire-path WEAR + its JUNK/TENTS are now baked into the cached BASE in drawBase — ground level,
     // under the moving agents — so they no longer draw over pedestrians here.)
@@ -807,8 +813,7 @@ export class Renderer {
       bodyArt.push({ img, x, y });
       bodyMul.push(mul);
     };
-    for (const c of ambient.cars) {
-      const pose = carPose(c, alpha);
+    for (const { m: c, pose } of poses.cars) {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
@@ -838,8 +843,7 @@ export class Renderer {
     // Police cruisers: a black-and-white car whose roof bar flashes red/blue (two sprite phases); the GPU
     // glow pass casts the flashing pool onto the street around it.
     const copPhase = Math.floor(performance.now() / 180) % 2;
-    for (const c of ambient.cruisers) {
-      const pose = carPose(c, alpha);
+    for (const { pose } of poses.cruisers) {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const img = this.sprites.get(`@sprite/cop/${heading8(pose.hx, pose.hy)}/${copPhase}`);
@@ -862,9 +866,7 @@ export class Renderer {
     // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a
     // demand path) it stays centred. The person is FIXED per citizen (a stable hash of its identity —
     // skin tone + shirt), with a two-frame walk while it moves. (Drivers are CARS, drawn above.)
-    for (const p of ambient.peds) {
-      if (p.phase === 'inside' || p.phase === 'driving') continue; // inside a building, or riding its car
-      const pose = pedPose(p, onRoadAt, alpha);
+    for (const { m: p, pose } of poses.peds) { // (not those inside a building, or riding their car)
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
@@ -953,9 +955,8 @@ export class Renderer {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = night;
-      for (const c of ambient.cars) {
+      for (const { m: c, pose } of poses.cars) {
         if (c.parked) continue; // a parked car is OFF
-        const pose = carPose(c, alpha);
         const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
         if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       }
