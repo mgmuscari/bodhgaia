@@ -29,11 +29,11 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | L6 | live split | motion & collision → `live/motion.ts` | done | fb4cccfc |
 | L7 | live split | pathing & mode choice → `live/pathing.ts` | done | b6098ddb |
 | Lg | live split | GOLDEN determinism test (N substeps → digest of agents + field maps) — before L8 | done | d4f91255 |
-| L8a | live split | fields: pollution/wind/rain/water/ground + seedDecay → `live/fields/pollution.ts` | todo | — |
-| L8b | live split | fields: coverage, land value, road decay → `live/fields/landValue.ts` | todo | — |
-| L8c | live split | fields: occupancy → `live/fields/occupancy.ts` | todo | — |
-| L9 | live split | birds + trains → `live/birds.ts`, `live/trains.ts` | todo | — |
-| L10 | live split | police → `live/police.ts` | todo | — |
+| L8a | live split | fields: pollution/wind/rain/water/ground + seedDecay → `live/fields/pollution.ts` | in-progress | refactor/b4-live |
+| L8b | live split | fields: coverage, land value, road decay → `live/fields/landValue.ts` | in-progress | refactor/b4-live |
+| L8c | live split | fields: occupancy → `live/fields/occupancy.ts` | in-progress | refactor/b4-live |
+| L9 | live split | birds + trains → `live/birds.ts`, `live/trains.ts` | in-progress | refactor/b4-live |
+| L10 | live split | police → `live/police.ts` | in-progress | refactor/b4-live |
 | L11 | live split | parking, owned cars, citizens → `live/agents.ts` | todo | — |
 | L12 | live split | `substep`/`stepAmbient` → `live/step.ts`; ambientContent becomes a barrel | todo | — |
 | L13 | live split | migrate importers, delete the barrel, drop it from the allowlist | todo | — |
@@ -45,8 +45,8 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | M4 | main split | power controller → `app/power.ts` | done | 74f0912c |
 | M5 | main split | live-layer setup → `app/live.ts` | todo | — |
 | M6 | main split | overlay controller → `app/overlays.ts` | done | 7e8b1b1e |
-| M7 | main split | economy controller → `app/economy.ts` | todo | — |
-| M8 | main split | saves wiring → `app/saves.ts` | todo | — |
+| M7 | main split | economy controller → `app/economy.ts` | in-progress | refactor/b4-main |
+| M8 | main split | saves wiring → `app/saves.ts` | in-progress | refactor/b4-main |
 | M9 | main split | panels → `app/panels.ts` | todo | — |
 | M10 | main split | one keyboard map → `app/keys.ts` | todo | — |
 | M11 | main split | tool controller → `app/tools.ts` | todo | — |
@@ -73,9 +73,9 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | C7 | consistency | one panel handle shape (`toggle`/`isOpen`/`refresh`, one visibility mechanism) | todo | — |
 | C8 | consistency | settle `reconcile.ts` (wire it in or delete it) | todo | — |
 | P1 | perf | cull before posing; one pose array per frame for both renderers | done | 5f46378d |
-| P2 | perf | `snapPose` stops copying whole agents | todo | — |
+| P2 | perf | `snapPose` stops copying whole agents | in-progress | refactor/b4-perf |
 | P3 | perf | reachability: reuse the found path; component labels for O(1) "can't reach" | todo | — |
-| P4 | perf | A*: binary heap + typed arrays (same tie order) | todo | — |
+| P4 | perf | A*: binary heap + typed arrays (same tie order) | in-progress | refactor/b4-perf |
 | P5a | perf | warm headlight silhouettes in idle time | done | cdf325fd |
 | P5b | perf | dirty-tile base refresh instead of the 2 s full redraw (touches main.ts) | todo | — |
 | C9 | consistency + BUG | keys fire while typing in an input (Settings number box): skip editable targets | done | b1e3edc3 + 1c98f904 (input.ts) |
@@ -87,7 +87,7 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | S9 | release | Help's ✕ scrolls away with the credits — pin the panel header | done | d5179303 |
 
 - **Batch 2** (started 2026-10-05; DONE — integrated on `refactor/batch-2`, 1,802 tests, golden digest unchanged, verified served from a subpath): live split part 1 (Lg, L0–L3) · main.ts part 1 (C9, C10, M1–M3) · save v2 + help polish (D6, S8, S9).
-| N1 | notes | L8a: fold `live/wind.ts` (prevailingWind) into `fields/pollution.ts` | todo | — |
+| N1 | notes | L8a: fold `live/wind.ts` (prevailingWind) into `fields/pollution.ts` | in-progress | refactor/b4-live |
 | N2 | notes | L13: `inspectContent.ts` imports `liveInspectLine` from the ambientContent barrel — migrate with the rest | todo | — |
 | N3 | notes | M5 (live setup in main) lands after L13 or imports only via the barrel; keep restoreLive after seedDecay | todo | — |
 
@@ -97,6 +97,8 @@ Maddy's site (weird art projects) — smaller, clearer, faster, no dev-only scaf
 | D10 | dead code | `compositeKeyFor` (civic), `cycleOverlay`/`shouldCycleOverlay` (eco) are test-only | todo | — |
 | N4 | notes | C7: one `{id → handle}` panel registry collapses onMeta + keydown switches; the restoration toggle's open-time sample runs on the key path only (dock path skips it) | todo | — |
 | N5 | notes | L8: decide whether `layTraffic` moves with the fields; L11: `stopReachable` moves with parking | todo | — |
+
+- **Batch 4** (started 2026-10-05): live split part 3 (L8a–c, L9, L10, N1) · economy + saves out of main (M7, M8) · agent-copy + A* perf (P2, P4).
 
 ## Survey notes (2026-10-05)
 
