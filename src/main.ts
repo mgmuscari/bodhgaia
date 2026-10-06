@@ -43,13 +43,8 @@ import { branchColumns, effortLine, panelSignature } from './ui/techContent';
 import { techLayout } from './ui/techLayout';
 import { mountTechPanel } from './ui/techPanel';
 import { resolveKey, overlayKindOf } from './ui/keyMap';
-import { availableTools, previewTool, applyTool, toolDef, type ToolId, type Wallet } from './tools/tools';
-import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading } from './economy/model';
-import { readCity } from './economy/readings';
-import { economyHour, practiceProject, DEFAULT_LEVERS, type EconomyRun } from './economy/run';
-import { projectProgress } from './economy/projects';
-import { economyLine } from './ui/economyContent';
-import { budgetView } from './ui/budgetContent';
+import { availableTools, previewTool, applyTool, toolDef, type ToolId } from './tools/tools';
+import { practiceProject } from './economy/run';
 import { mountBudgetPanel } from './ui/budgetPanel';
 import { isLineTool } from './ui/lineTools';
 import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
@@ -60,9 +55,7 @@ import { computeNeighborhoods } from './civic/neighborhoods';
 import { createCivicState } from './civic/state';
 import { simTick, type SimDeps } from './civic/compose';
 import { stepRevival } from './growth/revival';
-import { isPowerConsumer, plantPollution } from './growth/power';
-import { gameClock } from './ui/lighting';
-import { TRUST_FLOOR } from './civic/dynamics';
+import { plantPollution } from './growth/power';
 import { captureGame, restoreWorld, restoreTech, restoreCivic, restoreLive, type SaveV1 } from './save/snapshot';
 import { CURRENT, writeSlot, readSlot, deleteSlot, listSlots, loadSlot, newCity, exportFile, importFile } from './save/store';
 import { mountSavesPanel } from './ui/savesPanel';
@@ -71,11 +64,10 @@ import { mountOpeningFor } from './app/opening';
 import { inspectReadout } from './ui/inspectContent';
 import { createPowerController } from './app/power';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
+import { createEconomyController } from './app/economy';
 
 const DEFAULT_SEED = 'bodhitropolis';
 const SIM_TICK_MS = 100;
-/** Autosave every this many in-game hours (and whenever the tab is hidden or closed). */
-const AUTOSAVE_HOURS = 6;
 
 export function main(save: SaveV1 | null = null): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
@@ -301,137 +293,58 @@ export function main(save: SaveV1 | null = null): void {
     });
   }
 
-  // ── The economy (src/economy, docs/design/economy-system-dynamics.md): funds, perishable effort, burnout,
-  // approval and rent, stepped every in-game hour. Goodwill is the city's civic trust (one trust stock): the
-  // economy reads it and applies its hourly shocks back. Practices are projects that take time; the fabric
-  // is bought with funds through the wallet, the commons with effort.
-  const wellbeing01 = (): number =>
-    Math.min(1, wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }) / 200);
-  const readNow = (harms: CityReading['harms']): CityReading =>
-    readCity({
-      map: world.map,
-      parcels: world.parcels,
-      occupancyAt: (t) => ambientState.occupancy.get(t),
-      landValueAt: (t) => ambientState.landValue.get(t),
-      wellbeing: wellbeing01(),
-      extraInfra: (tech.hasCapability('circles') ? 2 : 0) + (tech.hasCapability('participatory-budgeting') ? 2 : 0),
-      harms,
-      repairs: 0, // civic trust already earns repairs itself
-    });
-  let econ: EconomyRun = save?.econ ?? { state: createEconomy(20_000), projects: [], levers: DEFAULT_LEVERS };
-  let econCapacity = 0;
-  let econPrimed = save !== null;
-  // autosave is filled in once the Saves wiring is mounted (below); the economy hour calls it
-  let autosave = (): void => {}; // the opening reserve is set on the first hour with live occupancy to read
-  let econFundsPerHour = 0;
-  let lastCity: CityReading | null = null; // the last hour's reading (the Budget window projects from it)
-  const cityForBudget = (): CityReading => lastCity ?? readNow({ blackouts: 0, policeViolence: 0, takings: 0 });
-  const leversNow = () => ({ ...econ.levers, spendEffort: 0, spendFunds: 0 });
-  // The Budget window: tax sliders, the police line, the hourly ledger, and loans (Maddy 2026-10-01: "we need
-  // taxes and loans, once you go negative you can't dig back out")
-  const budgetPanel = mountBudgetPanel(document.body, {
-    getView: () => budgetView(econ.state, cityForBudget(), leversNow()),
-    onTax: (cls, rate) => {
-      econ = { ...econ, levers: { ...econ.levers, tax: { ...econ.levers.tax, [cls]: rate } } };
-    },
-    onPolice: (perHour) => {
-      econ = { ...econ, levers: { ...econ.levers, police: perHour } };
-    },
-    onBorrow: (amount) => {
-      const next = takeLoan(econ.state, loanOffer(econ.state, cityForBudget(), leversNow()), amount);
-      if (!next) return;
-      econ = { ...econ, state: next };
-      toolbar.refresh(); // the fabric may be affordable again
-      pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
-    },
-    onToggle: () => toolbar.refreshMeta(),
-  });
-  let econSlot = gameClock(performance.now() / 1000).slot;
-  const violenceTotal = (): number => {
-    let sum = 0;
-    for (const v of ambientState.policeViolence.values()) sum += v;
-    return sum;
-  };
-  let prevViolence = violenceTotal();
-  const wallet: Wallet = {
-    get funds() {
-      return econ.state.funds;
-    },
-    set funds(v: number) {
-      econ = { ...econ, state: { ...econ.state, funds: v } };
-    },
-  };
-  const economyReadout = (): string =>
-    economyLine({
-      funds: econ.state.funds,
-      fundsPerHour: econFundsPerHour,
-      effort: tech.effort,
-      capacity: econCapacity,
-      approval: econ.state.approval,
-      goodwill: econ.state.goodwill,
-      burnout: econ.state.burnout,
-    });
-  const runEconomyHour = (): void => {
-    // harms this hour: the share of powered consumers in blackout, and fresh police violence
-    let consumers = 0;
-    for (const i of world.parcels.aliveIndices()) if (isPowerConsumer(world.parcels.get(i).kind)) consumers++;
-    const dark = Math.max(0, consumers - power.grid().poweredAnchors.size);
-    const violence = violenceTotal();
-    // blackout severity: a city entirely in the dark weighs 2 blackout-hours on trust each hour
-    const harms = { blackouts: consumers > 0 ? (dark / consumers) * 2 : 0, policeViolence: Math.max(0, violence - prevViolence) / 50, takings: 0 };
-    prevViolence = violence;
-    const city = readNow(harms);
-    lastCity = city;
-    econCapacity = effortCapacity(city);
-    if (!econPrimed && econCapacity > 0) {
-      econPrimed = true;
-      tech.effort = Math.floor(econCapacity * 0.5); // the city opens half-rested
-    }
-    // goodwill IS civic trust (0..255 → 0..100); effort absorbs what tools spent since the last hour
-    const trust = deps.civicMeans ? (deps.civicMeans.trust / 255) * 100 : econ.state.goodwill;
-    econ = { ...econ, state: { ...econ.state, goodwill: trust, effort: tech.effort } };
-    const before = econ.state.funds;
-    const hadRelief = econ.state.reliefTaken;
-    const r = economyHour(econ, city);
-    econ = r.run;
-    const reliefNow = econ.state.reliefTaken && !hadRelief;
-    // the grant is a one-off, not the hour's flow
-    econFundsPerHour = econ.state.funds - before - (reliefNow ? ECON.reliefDays * 24 * city.upkeep : 0);
-    tech.effort = Math.floor(econ.state.effort);
-    // the hour's goodwill shock lands on every neighbourhood's trust
-    if (econ.state.shock !== 0) {
-      for (let id = 1; id <= civic.count(); id++) {
-        const v = civic.getValues(id); // neighbourhood ids are 1-based
-        civic.setValues(id, { ...v, trust: Math.max(TRUST_FLOOR, Math.min(255, v.trust + econ.state.shock * 2.55)) });
-      }
-    }
-    for (const done of r.completed) {
-      const practice = (done.payload as { practice?: string } | null)?.practice;
-      if (practice && tech.grant(practice)) {
+  // ── The economy (src/app/economy.ts): funds, perishable effort, burnout, approval and rent, stepped every
+  // in-game hour from the frame loop. The hour tells the shell what to refresh through `ui`; autosave is read
+  // at call time (the Saves wiring below fills it in and blanks it on load / new city).
+  let autosave = (): void => {};
+  const economy = createEconomyController({
+    map: world.map,
+    parcels: world.parcels,
+    tech,
+    civic,
+    sim: deps,
+    live: ambientState,
+    powerGrid: power.grid,
+    initial: save?.econ ?? null,
+    autosave: () => autosave(),
+    ui: {
+      practiceGranted: () => {
         toolbar.refresh();
         toolbar.flash();
         snapshotDock();
         snapshotPanel();
         techPanel.refresh();
-      }
-    }
-    toolbar.refresh();
-    techPanel.refresh(); // projects advanced (no-op while the panel is closed)
-    budgetPanel.refresh();
-    if (reliefNow) budgetPanel.open(); // the grant and its strings, shown as they arrive
-    if (econ.state.tick % AUTOSAVE_HOURS === 0) autosave();
-    pulseDock.set(`${economyReadout()}  ·  ${lastPulse}`);
-  };
+      },
+      hourRefreshed: (reliefNow) => {
+        toolbar.refresh();
+        techPanel.refresh(); // projects advanced (no-op while the panel is closed)
+        budgetPanel.refresh();
+        if (reliefNow) budgetPanel.open(); // the grant and its strings, shown as they arrive
+      },
+      pulse: () => pulseDock.set(`${economy.readout()}  ·  ${lastPulse}`),
+    },
+  });
+  const wallet = economy.wallet;
+  // The Budget window: tax sliders, the police line, the hourly ledger, and loans (Maddy 2026-10-01: "we need
+  // taxes and loans, once you go negative you can't dig back out")
+  const budgetPanel = mountBudgetPanel(document.body, {
+    getView: () => economy.budgetView(),
+    onTax: (cls, rate) => economy.setTax(cls, rate),
+    onPolice: (perHour) => economy.setPolice(perHour),
+    onBorrow: (amount) => {
+      if (!economy.borrow(amount)) return;
+      toolbar.refresh(); // the fabric may be affordable again
+      pulseDock.set(`${economy.readout()}  ·  ${lastPulse}`);
+    },
+    onToggle: () => toolbar.refreshMeta(),
+  });
 
   // Tech panel: right-docked, toggled by `T` (via the one key table below). Zero game imports — it
   // receives its content and the unlock action through deps.
   const techPanel = mountTechPanel(document.body, {
     getContent: () => ({ effort: effortLine(tech), layout: techLayout(TECH_TREE, tech) }),
     art: (key) => renderer.artImage(key),
-    progress: (id) => {
-      const p = econ.projects.find((q) => q.id === id);
-      return p ? projectProgress(p) : undefined;
-    },
+    progress: (id) => economy.projectProgress(id),
     costLine: (id) => {
       const node = TECH_TREE.find((n) => n.id === id);
       if (!node) return '';
@@ -442,10 +355,7 @@ export function main(save: SaveV1 | null = null): void {
     getEffort: () => effortLine(tech),
     onUnlock: (id) => {
       // a practice is begun as a project (effort + funds over time); it unlocks when the work is done
-      const r = tech.canUnlock(id);
-      const node = TECH_TREE.find((n) => n.id === id);
-      const ok = !!node && (r.ok || r.reason === 'effort') && !econ.projects.some((p) => p.id === id);
-      if (ok) econ = { ...econ, projects: [...econ.projects, practiceProject(node!)] };
+      const ok = economy.beginPractice(id);
       if (ok) {
         // The panel re-renders itself (its delegated click listener). Refresh the
         // dock too — effort dropped (affordability) and an unlock may grant a new
@@ -500,7 +410,7 @@ export function main(save: SaveV1 | null = null): void {
   const panels: { restore?: PanelHandle; settings?: PanelHandle; help?: PanelHandle; saves?: PanelHandle } = {};
 
   const toolbar = mountToolbar(document.body, {
-    getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, econ.state.funds),
+    getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, economy.run().state.funds),
     onSelect: (id) => {
       selectedToolId = id as ToolId;
       renderer.setPreview(null);
@@ -591,10 +501,10 @@ export function main(save: SaveV1 | null = null): void {
   let lastPulse = '';
   const pulseText = (wb: number): string => {
     // the unhoused: those the city's decline left without a home, plus households rent displaced
-    const unhoused = sampleUnhoused(ambientState, world.map.width).unhoused + Math.round(econ.state.displaced);
+    const unhoused = sampleUnhoused(ambientState, world.map.width).unhoused + Math.round(economy.run().state.displaced);
     lastPulse = `${pulseLine(wb, prevWellbeing)}  ·  ${unhousedSuffix(unhoused, prevUnhoused)}`;
     prevUnhoused = unhoused;
-    return `${economyReadout()}  ·  ${lastPulse}`;
+    return `${economy.readout()}  ·  ${lastPulse}`;
   };
   const wellbeingNow = (): number =>
     wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans });
@@ -668,7 +578,7 @@ export function main(save: SaveV1 | null = null): void {
       world,
       tech,
       civic,
-      econ,
+      econ: economy.run(),
       live: ambientState,
       tick: currentTick,
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
@@ -899,12 +809,7 @@ export function main(save: SaveV1 | null = null): void {
     // a new in-game hour: demand re-draws and the blackout may roll to another block
     if (power.maybeResolveHour(now)) markDirty();
     // the economy steps once per in-game hour (catching up a few if the tab was in the background)
-    const hourNow = gameClock(now / 1000).slot;
-    for (let k = 0; k < 6 && econSlot < hourNow; k++) {
-      econSlot++;
-      runEconomyHour();
-    }
-    if (econSlot < hourNow) econSlot = hourNow;
+    economy.advance(now);
     // Sim path is VERBATIM today's — two independent clocks (YP3): `last` drives the
     // sim (its FixedTickLoop clamp owns catch-up); never fold the ambient dt into it.
     sim.advance(now - last);
