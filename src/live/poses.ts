@@ -101,15 +101,20 @@ export function trainPoses(t: Train, W: number, alpha = 1): Pose[] {
 }
 
 export function moverPose(m: LegState, lateral: number | LateralProfile): Pose {
-  const prof = typeof lateral === 'number' ? { entry: lateral, mid: lateral, exit: lateral } : lateral;
-  const latAt = (p: number): number => (p < 0.5 ? prof.entry + (prof.mid - prof.entry) * p * 2 : prof.mid + (prof.exit - prof.mid) * (p * 2 - 1));
+  // a numeric lateral is the flat profile entry = mid = exit, passed as scalars so the per-frame hot
+  // path (every car/cruiser/train car) allocates no profile object and no closure
+  return typeof lateral === 'number' ? poseAlongLeg(m, lateral, lateral, lateral) : poseAlongLeg(m, lateral.entry, lateral.mid, lateral.exit);
+}
+
+/** {@link moverPose} with the lateral profile unpacked (right-of-heading offset at entry / centre / exit). */
+function poseAlongLeg(m: LegState, entry: number, mid: number, exit: number): Pose {
   const d = m.dir;
   const dx = DIR_DX[d]!;
   const dy = DIR_DY[d]!;
   const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
   if (!onLeg) {
     // idle / off-grid: the plain tile-centre pose
-    return { x: m.x + 0.5 - dy * prof.mid, y: m.y + 0.5 + dx * prof.mid, hx: dx, hy: dy };
+    return { x: m.x + 0.5 - dy * mid, y: m.y + 0.5 + dx * mid, hx: dx, hy: dy };
   }
   const p = Math.min(1, Math.max(0, 1 - (Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y))));
   const pd = m.prevDir ?? d;
@@ -118,7 +123,7 @@ export function moverPose(m: LegState, lateral: number | LateralProfile): Pose {
   const cx = m.tx - dx + 0.5; // centre of the tile being crossed
   const cy = m.ty - dy + 0.5;
   const turn = pdx * dy - pdy * dx; // +1 right (clockwise, y-down), −1 left, 0 straight / U-turn
-  const lat = latAt(p);
+  const lat = p < 0.5 ? entry + (mid - entry) * p * 2 : mid + (exit - mid) * (p * 2 - 1);
   if (turn === 0 && pd === d) {
     // straight through
     const bx = cx + dx * (p - 0.5);
@@ -260,6 +265,6 @@ export function pedLateral(m: LegState, onRoadAt: (x: number, y: number) => bool
  *  destination, walkers still follow grid legs) and interpolated between substeps like {@link carPose}. */
 export function pedPose(p: Ped, onRoadAt: (x: number, y: number) => boolean, alpha = 1): Pose {
   const now = moverPose(p, pedLateral(p, onRoadAt));
-  const before = alpha < 1 ? snapPose(p, (mv) => pedLateral(mv, onRoadAt)) : null;
+  const before = alpha < 1 && p.snap ? moverPose(p.snap, pedLateral(p.snap, onRoadAt)) : null;
   return before ? blendPose(before, now, alpha) : now;
 }

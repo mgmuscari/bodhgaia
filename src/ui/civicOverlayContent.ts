@@ -1,11 +1,9 @@
 // Civic overlay content: pure presentation for the C-cycled neighborhood heatmap
-// — the three views, their value→colour ramps and legends — plus the legacy key
-// gate (compositeKeyFor; keyMap.ts is the live key table). No DOM, no
-// transcendental Math (the architecture guard's pure-ui allowlist scans this
-// file). The single-active-overlay composite and the per-kind dispatch live in
+// — the three views, their value→colour ramps and legends (keyMap.ts is the key
+// table). No DOM, no transcendental Math (the architecture guard's pure-ui
+// allowlist scans this file). The single-active-overlay composite and the per-kind dispatch live in
 // overlayRegistry.ts.
 
-import type { OverlayKind } from './overlayRegistry';
 import type { OverlayLegend } from './overlayLegend';
 import { OVERLAY_ALPHA, lerpU8 } from './overlayTint';
 
@@ -67,20 +65,4 @@ export function civicLegend(view: CivicOverlayView): OverlayLegend {
       { color: hi, label: CIVIC_LEGEND_ENDS[view].hi },
     ],
   };
-}
-
-/**
- * The shared input gate: which overlay dimension a key press targets, suppressed
- * while the opening overlay is up (it owns its own keydown). `e`/`E` → eco,
- * `c`/`C` → civic, `r`/`R` → redline, anything else → null.
- */
-export function compositeKeyFor(key: string, openingActive: boolean): OverlayKind | null {
-  if (openingActive) return null;
-  if (key === 'e' || key === 'E') return 'eco';
-  if (key === 'c' || key === 'C') return 'civic';
-  if (key === 'r' || key === 'R') return 'redline';
-  if (key === 'p' || key === 'P') return 'police';
-  if (key === 'v' || key === 'V') return 'coverage';
-  if (key === 'u' || key === 'U') return 'power';
-  return null;
 }

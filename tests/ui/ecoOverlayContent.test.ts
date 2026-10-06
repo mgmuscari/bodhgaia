@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   OVERLAY_VIEWS,
-  cycleOverlay,
-  shouldCycleOverlay,
   overlayTint,
   legendLine,
   OVERLAY_ALPHA,
@@ -10,7 +8,7 @@ import {
 } from '../../src/ui/ecoOverlayContent';
 
 // ecoOverlayContent is pure presentation (allowlisted, DOM-free, no transcendental
-// Math): the overlay cycle, the E-key gate, the value→colour ramps, and the legend
+// Math): the view order, the value→colour ramps, and the legend
 // strings. The renderer/main wiring is shell glue (the lead's live pass), so only
 // these pure pieces are unit-tested.
 
@@ -25,18 +23,7 @@ const ENDPOINTS: Record<OverlayView, { lo: readonly number[]; hi: readonly numbe
   waterPollution: { lo: [60, 130, 185], hi: [120, 120, 52] },
 };
 
-describe('cycleOverlay', () => {
-  it('walks off → soil → flora → fauna → biodiversity → air → ground → water → off', () => {
-    expect(cycleOverlay(null)).toBe('soil');
-    expect(cycleOverlay('soil')).toBe('flora');
-    expect(cycleOverlay('flora')).toBe('fauna');
-    expect(cycleOverlay('fauna')).toBe('biodiversity');
-    expect(cycleOverlay('biodiversity')).toBe('airPollution');
-    expect(cycleOverlay('airPollution')).toBe('groundPollution');
-    expect(cycleOverlay('groundPollution')).toBe('waterPollution');
-    expect(cycleOverlay('waterPollution')).toBe(null); // off-wrap
-  });
-
+describe('OVERLAY_VIEWS', () => {
   it('OVERLAY_VIEWS is the ecology + pollution views in order', () => {
     expect(OVERLAY_VIEWS).toEqual([
       'soil',
@@ -47,18 +34,6 @@ describe('cycleOverlay', () => {
       'groundPollution',
       'waterPollution',
     ]);
-  });
-});
-
-describe('shouldCycleOverlay (mirrors shouldTogglePanel)', () => {
-  it('fires on e/E only when no opening overlay is active', () => {
-    expect(shouldCycleOverlay('e', false)).toBe(true);
-    expect(shouldCycleOverlay('E', false)).toBe(true);
-    expect(shouldCycleOverlay('e', true)).toBe(false); // suppressed under the opening
-    expect(shouldCycleOverlay('E', true)).toBe(false);
-    expect(shouldCycleOverlay('t', false)).toBe(false);
-    expect(shouldCycleOverlay('x', false)).toBe(false);
-    expect(shouldCycleOverlay('Enter', false)).toBe(false);
   });
 });
 

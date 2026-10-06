@@ -4,7 +4,6 @@ import {
   CIVIC_OVERLAY_ALPHA,
   civicOverlayTint,
   civicLegendLine,
-  compositeKeyFor,
   type CivicOverlayView,
 } from '../../src/ui/civicOverlayContent';
 import { cycleComposite, type CompositeState } from '../../src/ui/overlayRegistry';
@@ -122,26 +121,5 @@ describe('cycleComposite: E/C exclusivity truth table', () => {
     expect(cycleComposite(null, 'power')).toEqual(power('power'));
     expect(cycleComposite(power('power'), 'power')).toBeNull();
     expect(cycleComposite(civic('trust'), 'power')).toEqual(power('power'));
-  });
-});
-
-describe('compositeKeyFor: shared E/C/R gate', () => {
-  it('maps e/E → eco, c/C → civic, r/R → redline, suppressed under the opening overlay', () => {
-    expect(compositeKeyFor('e', false)).toBe('eco');
-    expect(compositeKeyFor('E', false)).toBe('eco');
-    expect(compositeKeyFor('c', false)).toBe('civic');
-    expect(compositeKeyFor('C', false)).toBe('civic');
-    expect(compositeKeyFor('r', false)).toBe('redline');
-    expect(compositeKeyFor('R', false)).toBe('redline');
-    expect(compositeKeyFor('p', false)).toBe('police');
-    expect(compositeKeyFor('P', false)).toBe('police');
-    expect(compositeKeyFor('v', false)).toBe('coverage');
-    expect(compositeKeyFor('V', false)).toBe('coverage');
-    expect(compositeKeyFor('u', false)).toBe('power');
-    expect(compositeKeyFor('U', false)).toBe('power');
-    expect(compositeKeyFor('t', false)).toBeNull();
-    expect(compositeKeyFor('Enter', false)).toBeNull();
-    expect(compositeKeyFor('e', true)).toBeNull(); // opening active suppresses all
-    expect(compositeKeyFor('r', true)).toBeNull();
   });
 });
