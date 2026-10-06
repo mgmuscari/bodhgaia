@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inspectReadout, type InspectFields } from '../../src/ui/inspectContent';
+import { inspectReadout, liveInspectLine, type InspectFields } from '../../src/ui/inspectContent';
 import { GameMap, Water } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
 import { plantOutput } from '../../src/growth/power';
@@ -87,5 +87,45 @@ describe('inspectReadout: the inspect tool status line', () => {
     const road = map.idx(3, 9);
     live.roadDecay.set(road, 50);
     expect(inspectReadout('street', 3, 9, world, live, new Set())).toBe(`street · road 50 crumbling · redline ${gradeLetter(0)}`);
+  });
+});
+
+describe('liveInspectLine (inspect live-sample formatting)', () => {
+  it('formats a home: population, land value, health', () => {
+    expect(liveInspectLine({ occupancy: 12.4, landValue: 64.6, health: 30.2 })).toBe(
+      'pop 12 · land value 65 · health 30',
+    );
+  });
+
+  it('formats a road: traffic and smog only', () => {
+    expect(liveInspectLine({ traffic: 30, pollution: 8 })).toBe('traffic 30 · smog 8');
+  });
+
+  it('formats a contaminated water tile', () => {
+    expect(liveInspectLine({ water: 180 })).toBe('water 180 contaminated');
+  });
+
+  it('formats a crumbling road tile', () => {
+    expect(liveInspectLine({ traffic: 12, road: 140 })).toBe('traffic 12 · road 140 crumbling');
+  });
+
+  it('formats a police-violence tile', () => {
+    expect(liveInspectLine({ violence: 90 })).toBe('police violence 90');
+  });
+
+  it('formats service coverage (served / under-served)', () => {
+    expect(liveInspectLine({ served: true })).toBe('served');
+    expect(liveInspectLine({ served: false })).toBe('under-served');
+  });
+
+  it('omits absent fields and returns empty when nothing is present', () => {
+    expect(liveInspectLine({ landValue: 50 })).toBe('land value 50');
+    expect(liveInspectLine({})).toBe('');
+  });
+
+  it('keeps a fixed field order regardless of object key order', () => {
+    expect(liveInspectLine({ pollution: 1, occupancy: 2, traffic: 3 })).toBe(
+      'pop 2 · traffic 3 · smog 1',
+    );
   });
 });
