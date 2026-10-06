@@ -147,6 +147,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/creditsContent.ts',
   'src/ui/keyMap.ts',
   'src/ui/inspectContent.ts',
+  'src/ui/overlayRegistry.ts',
   'src/ui/budgetContent.ts',
   'src/ui/satelliteFormat.ts',
   'src/ui/gridTextureBridge.ts',

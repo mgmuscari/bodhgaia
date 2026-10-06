@@ -95,13 +95,18 @@ describe('createOverlayController', () => {
     expect(contexts()).toBe(c1 + 1); // rebuilt
   });
 
-  it('civic rebuilds on the civic tick; single-view kinds never re-push', () => {
+  it('civic and power rebuild on the civic tick; static single-view kinds never re-push', () => {
     const { overlays, log, contexts } = setup();
     overlays.cycle('civic');
     const c0 = contexts();
     overlays.onSimTick({ ecoTicked: true, civicTicked: true });
     expect(contexts()).toBe(c0 + 1);
+    // the power map follows the re-solved grid (it used to freeze at the grid it was opened with)
     overlays.cycle('power');
+    const p0 = contexts();
+    overlays.onSimTick({ ecoTicked: true, civicTicked: true });
+    expect(contexts()).toBe(p0 + 1);
+    overlays.cycle('redline');
     const d0 = log.dirty;
     overlays.onSimTick({ ecoTicked: true, civicTicked: true });
     expect(log.dirty).toBe(d0);

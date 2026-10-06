@@ -214,6 +214,10 @@ describe('overlay registry: sim-cadence refresh', () => {
     for (const v of OVERLAYS.eco.views) expect(OVERLAYS.eco.refresh!.rederive(v)).toBe(v === 'biodiversity');
     expect(OVERLAYS.civic.refresh?.on).toBe('civic');
     for (const v of OVERLAYS.civic.views) expect(OVERLAYS.civic.refresh!.rederive(v)).toBe(true);
-    for (const k of ['redline', 'police', 'coverage', 'power'] as const) expect(OVERLAYS[k].refresh).toBeUndefined();
+    for (const k of ['redline', 'police', 'coverage'] as const) expect(OVERLAYS[k].refresh).toBeUndefined();
+    // the power map follows the grid as it is re-solved (placements, the hourly solve) — it used to stay frozen
+    // at the grid it was opened with until toggled again
+    expect(OVERLAYS.power.refresh?.on).toBe('civic');
+    for (const v of OVERLAYS.power.views) expect(OVERLAYS.power.refresh!.rederive(v)).toBe(true);
   });
 });
