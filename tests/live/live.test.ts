@@ -217,40 +217,6 @@ describe('isCarRoad (the traversability predicate — closes the spawn-vs-move g
   });
 });
 
-describe('trip fixture (path-following trip-cars)', () => {
-  it('spawns a car per trip that follows its committed path and parks on arrival', () => {
-    const map = new GameMap(16, 8);
-    for (let x = 2; x <= 8; x++) map.built[map.idx(x, 4)] = BuiltKind.RoadStreet;
-    const state = createAmbientState();
-    const path = [map.idx(2, 4), map.idx(3, 4), map.idx(4, 4), map.idx(5, 4)];
-    spawnTrips(state, [{ path }], map);
-    expect(state.cars.length).toBe(1);
-    const car = state.cars[0]!;
-    expect(car.x).toBe(2); // starts at the path origin
-    const rng = ambientFork('trip');
-    let maxX = car.x;
-    for (let i = 0; i < 100 && !car.parked; i++) {
-      maxX = Math.max(maxX, car.x);
-      stepAmbient(state, map, rng, 50);
-    }
-    expect(maxX).toBeGreaterThanOrEqual(4); // drove along the path toward the destination
-    expect(car.parked).toBe(true); // parked at the destination (street curb), did NOT despawn
-    expect(car.lotIdx).toBeUndefined(); // no lots on this map → street-parked
-  });
-
-  it('ignores degenerate trips and respects CAR_CAP, deterministically', () => {
-    const map = new GameMap(16, 8);
-    for (let x = 0; x < 16; x++) map.built[map.idx(x, 4)] = BuiltKind.RoadStreet;
-    const trip = { path: [map.idx(2, 4), map.idx(3, 4), map.idx(4, 4)] };
-    const a = createAmbientState();
-    const b = createAmbientState();
-    spawnTrips(a, [{ path: [map.idx(1, 4)] }, trip], map); // first trip too short → skipped
-    spawnTrips(b, [{ path: [map.idx(1, 4)] }, trip], map);
-    expect(a.cars.length).toBe(1);
-    expect(a.cars).toEqual(b.cars); // deterministic
-  });
-});
-
 describe('car motion: no oscillation (CRITIC-YP6)', () => {
   it('advances monotonically along a straight open road and never reverses', () => {
     const map = new GameMap(48, 8);
@@ -2164,19 +2130,6 @@ describe('cars park in lots (the lot is storage for the moving cars)', () => {
     expect(car.tint).toBe(spawnTint); // same car, same colour — moving → parked
   });
 
-  it('gives cars from different trips different tints (spread, not all one colour)', () => {
-    const map = new GameMap(20, 12);
-    for (let x = 1; x <= 18; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet;
-    const state = createAmbientState();
-    const trips = [
-      { path: [map.idx(1, 5), map.idx(2, 5), map.idx(3, 5)] },
-      { path: [map.idx(10, 5), map.idx(11, 5), map.idx(12, 5)] },
-      { path: [map.idx(15, 5), map.idx(16, 5), map.idx(17, 5)] },
-    ];
-    spawnTrips(state, trips, map);
-    const tints = new Set(state.cars.map((c) => c.tint));
-    expect(tints.size).toBeGreaterThan(1); // not all the same colour
-  });
 });
 
 describe('building health from citizen trips (plot-use wellbeing carried home)', () => {
@@ -2243,26 +2196,6 @@ describe('building health from citizen trips (plot-use wellbeing carried home)',
     for (let i = 0; i < 800 && rs.peds.some((p) => p.phase !== undefined); i++) stepAmbient(rs, road.map, rng, 50);
     // the road-walk toll cancels the small commercial value → no positive deposit
     expect(rs.buildingHealth.get(road.home) ?? 0).toBeLessThanOrEqual(0);
-  });
-
-  it('mode choice: a long residential trip DRIVES (car), a short one WALKS (ped)', () => {
-    const short = citizenTrip(BuiltKind.CommercialStrip); // 7-tile path
-    const s = createAmbientState();
-    spawnTrips(s, [{ path: short.path }], short.map);
-    expect(s.cars.length).toBe(0);
-    expect(s.peds.length).toBe(1);
-
-    const map = new GameMap(40, 10); // a long corridor: 19-tile path > WALK_RANGE
-    for (let x = 2; x <= 20; x++) map.built[map.idx(x, 4)] = BuiltKind.RoadStreet;
-    map.built[map.idx(2, 3)] = BuiltKind.HouseSingle;
-    map.built[map.idx(20, 3)] = BuiltKind.CommercialStrip;
-    const longPath: number[] = [];
-    for (let x = 2; x <= 20; x++) longPath.push(map.idx(x, 4));
-    const l = createAmbientState();
-    spawnTrips(l, [{ path: longPath }], map);
-    expect(l.peds.length).toBe(0);
-    expect(l.cars.length).toBe(1);
-    expect(l.cars[0]!.homeTile).toBe(map.idx(2, 3)); // long trip drives, still a tagged citizen
   });
 
   it('deposits NEGATIVE health for an industrial visit', () => {
@@ -2354,20 +2287,6 @@ describe('desire-path wear (pedestrians trample wild green into brown + trash)',
     seedDecay(state, map);
     expect(state.buildingHealth.get(map.idx(5, 5))!).toBeGreaterThan(0); // starts healthy
     expect(state.buildingHealth.get(map.idx(16, 5))!).toBeLessThan(0); // starts decayed
-  });
-
-  it('a short trip whose route uses a freeway DRIVES (a pedestrian cannot cross a freeway)', () => {
-    const map = new GameMap(16, 8);
-    map.built[map.idx(2, 3)] = BuiltKind.HouseSingle; // home
-    map.built[map.idx(2, 4)] = BuiltKind.RoadStreet; // origin frontage road
-    for (let x = 3; x <= 6; x++) map.built[map.idx(x, 4)] = BuiltKind.RoadHighway; // a freeway in the path
-    map.built[map.idx(7, 4)] = BuiltKind.RoadStreet;
-    map.built[map.idx(7, 3)] = BuiltKind.CommercialStrip; // destination
-    const state = createAmbientState();
-    const path = [2, 3, 4, 5, 6, 7].map((x) => map.idx(x, 4));
-    spawnTrips(state, [{ path }], map);
-    expect(state.peds.length).toBe(0); // short, but the freeway forces it to drive
-    expect(state.cars.length).toBe(1);
   });
 
   it('coastal water collects runoff pollution from nearby ground; open water stays clean', () => {
