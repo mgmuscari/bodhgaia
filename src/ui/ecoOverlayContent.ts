@@ -1,8 +1,8 @@
 // Ecology overlay content: pure presentation for the E-cycled heatmap overlay —
-// the view cycle, the E-key gate, the value→colour ramps, and the legend copy.
+// the view order, the value→colour ramps, and the legend copy.
 // No DOM, no transcendental Math (the architecture guard's pure-ui allowlist
 // scans this file). The renderer/main shell consumes these; keeping them here
-// lets the cycle/gate/ramps be unit-tested rather than left to manual QA.
+// lets the ramps be unit-tested rather than left to manual QA.
 
 import type { OverlayLegend } from './overlayLegend';
 import { OVERLAY_ALPHA, lerpU8 } from './overlayTint';
@@ -27,30 +27,8 @@ export const OVERLAY_VIEWS: readonly OverlayView[] = [
   'waterPollution',
 ];
 
-/** Overlay state: an active view, or null (overlay off). */
-export type OverlayState = OverlayView | null;
-
 /** Fixed translucency for every overlay tint (the tint sits under the preview). */
 export { OVERLAY_ALPHA };
-
-/**
- * Cycle the overlay: off → soil → flora → fauna → biodiversity → off. Pure; the
- * shell calls this on each E press and re-points the renderer overlay source.
- */
-export function cycleOverlay(current: OverlayState): OverlayState {
-  if (current === null) return OVERLAY_VIEWS[0]!;
-  const i = OVERLAY_VIEWS.indexOf(current);
-  return i === OVERLAY_VIEWS.length - 1 ? null : OVERLAY_VIEWS[i + 1]!;
-}
-
-/**
- * Pure input gate for the overlay's `E` cycle — true iff `key` is `e`/`E` AND no
- * opening overlay is active (which owns its own keydown). Mirrors
- * shouldTogglePanel so the suppression-under-opening rule is unit-tested.
- */
-export function shouldCycleOverlay(key: string, openingActive: boolean): boolean {
-  return (key === 'e' || key === 'E') && !openingActive;
-}
 
 type RGB = readonly [number, number, number];
 
