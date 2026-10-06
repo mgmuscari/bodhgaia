@@ -33,7 +33,7 @@ import { TECH_TREE } from './tech/tree';
 import { createTechState } from './tech/state';
 import { wellbeing } from './tech/effort';
 import { branchColumns, panelSignature } from './ui/techContent';
-import { resolveKey, overlayKindOf } from './ui/keyMap';
+import { installKeys } from './app/keys';
 import { availableTools, previewTool, applyTool, toolDef, type ToolId } from './tools/tools';
 import { isLineTool } from './ui/lineTools';
 import { toolbarRows, refreshSignature, addedIds } from './ui/toolbarContent';
@@ -458,21 +458,14 @@ export function main(save: SaveV1 | null = null): void {
   panels.attach({ ...mounted, saves });
   toolbar.refreshMeta();
 
-  // ONE keydown listener for every game toggle, resolved through the pure key table (src/ui/keyMap.ts): it
-  // never fires with Cmd/Ctrl/Alt held (browser shortcuts — Cmd+L, Cmd+R, Cmd+, … — pass through) nor under
-  // the opening overlay, nor while typing in a text field (resolveKey reads `event.target`). Each action calls
-  // the same closure its dock button does. preventDefault only on a match.
-  window.addEventListener('keydown', (event) => {
-    const action = resolveKey(event, overlayActive); // `event` carries its target → editable fields are skipped
-    if (action === null) return;
-    event.preventDefault();
-    const overlay = overlayKindOf(action);
-    if (overlay !== null) {
-      overlays.cycle(overlay); // the same body the dock's overlay buttons call
-      return;
-    }
-    if (action === 'life') setAmbient(!live.on);
-    else if (isPanelId(action)) panels.toggle(action); // the same registry call its dock button makes
+  // The key dispatch (src/app/keys.ts): one keydown listener, gated by the pure key table; each key calls
+  // the same closure its dock button does.
+  installKeys({
+    target: window,
+    openingUp: () => overlayActive,
+    cycleOverlay: (kind) => overlays.cycle(kind),
+    toggleLife: () => setAmbient(!live.on),
+    togglePanel: (id) => panels.toggle(id),
   });
 
   const previewAt = (tx: number, ty: number): void => {
