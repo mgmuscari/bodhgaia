@@ -1,5 +1,5 @@
 // NOTE: the model itself now lives in src/live/ (stepper: live/step.ts). This file is a re-export
-// barrel plus the inspector's LiveSamples/liveInspectLine; importers migrate off it at L13.
+// barrel (LiveSamples/liveInspectLine now live in ui/inspectContent.ts); importers migrate off it at L13.
 //
 // Pure ambient-life model: the deterministic stepper behind the cars, pedestrians,
 // and bird flocks that animate over a built city. It READS the world (road class,
@@ -148,36 +148,4 @@ export {
 
 export { stepAmbient } from '../live/step';
 
-/** The LIVE sample values the inspector appends to its readout — each undefined when the tile
- *  carries no such field (a road has traffic/smog but no population; a home the reverse). */
-export interface LiveSamples {
-  occupancy?: number;
-  landValue?: number;
-  health?: number;
-  traffic?: number;
-  pollution?: number;
-  water?: number;
-  road?: number;
-  violence?: number;
-  /** Fire/health service: true = covered, false = under-served. Omitted when not applicable. */
-  served?: boolean;
-}
-
-/**
- * Format the live-layer samples for the inspect readout — `pop 12 · land value 64 · traffic 30 ·
- * smog 8`, in a fixed order, omitting any field the tile doesn't carry. Returns '' when nothing is
- * present (so the host appends nothing). Pure: rounds for display, reads only its argument.
- */
-export function liveInspectLine(s: LiveSamples): string {
-  const parts: string[] = [];
-  if (s.occupancy !== undefined) parts.push(`pop ${Math.round(s.occupancy)}`);
-  if (s.landValue !== undefined) parts.push(`land value ${Math.round(s.landValue)}`);
-  if (s.health !== undefined) parts.push(`health ${Math.round(s.health)}`);
-  if (s.traffic !== undefined) parts.push(`traffic ${Math.round(s.traffic)}`);
-  if (s.pollution !== undefined) parts.push(`smog ${Math.round(s.pollution)}`);
-  if (s.water !== undefined) parts.push(`water ${Math.round(s.water)} contaminated`);
-  if (s.road !== undefined) parts.push(`road ${Math.round(s.road)} crumbling`);
-  if (s.violence !== undefined) parts.push(`police violence ${Math.round(s.violence)}`);
-  if (s.served !== undefined) parts.push(s.served ? 'served' : 'under-served');
-  return parts.join(' · ');
-}
+export { liveInspectLine, type LiveSamples } from './inspectContent';

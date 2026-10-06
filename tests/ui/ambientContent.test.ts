@@ -58,7 +58,6 @@ import {
   FUEL_TANK,
   stepOccupancy,
   OCC_SETTLE_PASSES,
-  liveInspectLine,
   accumulateWaterRunoff,
   accumulateGroundPollution,
   driftPollution,
@@ -2959,46 +2958,6 @@ describe('roadPath (A* agent road routing — committed least-cost paths, no gre
     const path = roadPath(map, 1, 3, 7, 3, jam)!;
     const usedTop = path.some((i) => { const x = i % 9; const y = (i - x) / 9; return y === 2 && x >= 2 && x <= 6; });
     expect(usedTop).toBe(false); // avoided the jam, took the clear bottom corridor
-  });
-});
-
-describe('liveInspectLine (inspect live-sample formatting)', () => {
-  it('formats a home: population, land value, health', () => {
-    expect(liveInspectLine({ occupancy: 12.4, landValue: 64.6, health: 30.2 })).toBe(
-      'pop 12 · land value 65 · health 30',
-    );
-  });
-
-  it('formats a road: traffic and smog only', () => {
-    expect(liveInspectLine({ traffic: 30, pollution: 8 })).toBe('traffic 30 · smog 8');
-  });
-
-  it('formats a contaminated water tile', () => {
-    expect(liveInspectLine({ water: 180 })).toBe('water 180 contaminated');
-  });
-
-  it('formats a crumbling road tile', () => {
-    expect(liveInspectLine({ traffic: 12, road: 140 })).toBe('traffic 12 · road 140 crumbling');
-  });
-
-  it('formats a police-violence tile', () => {
-    expect(liveInspectLine({ violence: 90 })).toBe('police violence 90');
-  });
-
-  it('formats service coverage (served / under-served)', () => {
-    expect(liveInspectLine({ served: true })).toBe('served');
-    expect(liveInspectLine({ served: false })).toBe('under-served');
-  });
-
-  it('omits absent fields and returns empty when nothing is present', () => {
-    expect(liveInspectLine({ landValue: 50 })).toBe('land value 50');
-    expect(liveInspectLine({})).toBe('');
-  });
-
-  it('keeps a fixed field order regardless of object key order', () => {
-    expect(liveInspectLine({ pollution: 1, occupancy: 2, traffic: 3 })).toBe(
-      'pop 2 · traffic 3 · smog 1',
-    );
   });
 });
 
