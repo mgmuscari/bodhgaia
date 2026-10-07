@@ -3,6 +3,7 @@
 // (the CC public-domain dedication) or Creative Commons BY-SA, never assumed. BY-SA requires attribution: the
 // credits (src/ui/creditsContent.ts) name the typesetter and licence of each. The files are shipped as separate data
 // alongside the GPL program, each under its own licence (an aggregate, not a derived work).
+import { METTA_SUTTA, recite, TISARANA, type ChantText } from './chant';
 import type { Mood, PlayableTrack } from './player';
 
 export const LICENCES = {
@@ -189,5 +190,27 @@ export const CLASSICAL_TRACKS: MusicTrack[] = [
   ),
 ];
 
+/** The reference the transcriptions follow (rules only — no notation was copied). */
+export const CHANT_REFERENCE = {
+  label: 'Tone Rules for Pāḷi Chanting in the Thai Tradition (Metta Forest Monastery, dhammatalks.org)',
+  href: 'https://www.dhammatalks.org/Archive/Writings/ChantingToneGuide151003.pdf',
+};
+
+function recitation(text: ChantText): MusicTrack {
+  return {
+    id: text.id,
+    title: text.title,
+    composer: 'Traditional Theravāda recitation, in Pali',
+    moods: ['calm'],
+    sacred: true,
+    piece: () => recite(text).piece,
+    voices: { 0: 'chant', 1: 'pad' },
+    credit: { typesetter: 'the Bodhitropolis project', source: CHANT_REFERENCE.href, licence: 'gpl-3.0-or-later' },
+  };
+}
+
+/** The Pali recitations — transcriptions, not recordings (see chant.ts). Sacred: calm only. */
+export const CHANT_TRACKS: MusicTrack[] = [recitation(TISARANA), recitation(METTA_SUTTA)];
+
 /** Everything the player can play. */
-export const MUSIC_TRACKS: MusicTrack[] = [...CLASSICAL_TRACKS];
+export const MUSIC_TRACKS: MusicTrack[] = [...CLASSICAL_TRACKS, ...CHANT_TRACKS];
