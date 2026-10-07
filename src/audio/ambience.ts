@@ -50,6 +50,8 @@ export type AmbienceTargets = Record<BedId, BedTarget> & {
 };
 
 export const AMBIENCE = {
+  /** Seconds a bed glides to a new level/pitch (engines that support Voice.glide). */
+  glide: 1.0,
   maxBedLevel: 0.45,
   /** Smoothing time constant for bed levels/pitches, seconds. */
   tau: 2,
@@ -148,6 +150,13 @@ export function createAmbience(engine: AudioEngine, opts: AmbienceOptions = {}):
     }
     const drifted = Math.abs(b.level - b.voiceLevel) >= AMBIENCE.levelStep || Math.abs(b.pitch - b.voicePitch) >= AMBIENCE.pitchStep;
     if (b.voice !== null && !drifted) return;
+    // a voice that can glide is struck once and moved smoothly after — a re-strike is heard as a stray note
+    if (b.voice?.glide) {
+      b.voice.glide({ velocity: b.level, pitch: b.pitch }, AMBIENCE.glide);
+      b.voiceLevel = b.level;
+      b.voicePitch = b.pitch;
+      return;
+    }
     if (now - b.lastRevoice < AMBIENCE.minRevoice) return;
     const v = engine.play({ instrument: BED_INSTRUMENT[id], pitch: b.pitch, velocity: b.level, bus: 'ambience', pan: BED_PAN[id] });
     if (v === null) return; // locked/budget: keep whatever is sounding and try again next update

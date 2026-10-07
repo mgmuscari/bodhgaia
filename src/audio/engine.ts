@@ -10,7 +10,7 @@ import type { AudioEngine, Bus, InstrumentId, NoteSpec, Voice } from './contract
 import { ECHO_FIR, SAMPLE_RATE, echoDelaySeconds, resampleFir, softClipCurve } from './synth/dsp';
 import { releaseEnd, releaseSchedule, type EnvEvent } from './synth/envelope';
 import { bakeInstrument, type InstrumentSample } from './synth/instruments';
-import { levelAt, planVoice } from './synth/plan';
+import { levelAt, planVoice, glideTargets } from './synth/plan';
 import { MAX_VOICES, VoicePool } from './synth/voices';
 
 /** The S-DSP echo registers: EDL (× 16 ms), feedback, and how much of the music/ambience is sent. */
@@ -127,8 +127,10 @@ export function createSynthEngine(ctx: BaseAudioContext, opts: SynthOptions = {}
     }
     src.playbackRate.value = plan.rate;
     const nodes: AudioNode[] = [src];
+    let filter: BiquadFilterNode | null = null;
     if (plan.filterHz !== null && s.noise) {
       const f = ctx.createBiquadFilter();
+      filter = f;
       f.type = s.noise.type;
       f.frequency.value = plan.filterHz;
       f.Q.value = s.noise.q;
@@ -136,9 +138,10 @@ export function createSynthEngine(ctx: BaseAudioContext, opts: SynthOptions = {}
     }
     const env = gain(0);
     apply(env.gain, plan.events);
+    const level = gain(1); // Voice.glide moves this, never the envelope
     const pan = ctx.createStereoPanner();
     pan.pan.value = plan.pan;
-    nodes.push(env, pan);
+    nodes.push(env, level, pan);
     for (let i = 1; i < nodes.length; i++) nodes[i - 1]!.connect(nodes[i]!);
     pan.connect(buses[note.bus]);
 
@@ -161,6 +164,15 @@ export function createSynthEngine(ctx: BaseAudioContext, opts: SynthOptions = {}
       },
     });
     return {
+      glide: (to, seconds) => {
+        if (!live.has(id)) return;
+        const g = glideTargets(s, note.velocity, to);
+        const t = ctx.currentTime;
+        const tc = Math.max(0.01, seconds / 3); // setTargetAtTime reaches ~95% in 3 time constants
+        if (g.gain !== undefined) level.gain.setTargetAtTime(g.gain, t, tc);
+        if (g.rate !== undefined) src.playbackRate.setTargetAtTime(g.rate, t, tc);
+        if (g.filterHz !== undefined && filter) filter.frequency.setTargetAtTime(g.filterHz, t, tc);
+      },
       stop: (at) => {
         if (!live.has(id)) return;
         const t = Math.max(plan.start, Number.isFinite(at) ? at! : ctx.currentTime);
