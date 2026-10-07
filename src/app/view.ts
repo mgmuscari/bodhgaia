@@ -13,7 +13,7 @@ import { Camera } from '../ui/camera';
 import { Renderer } from '../ui/renderer';
 import { GpuRenderer } from '../ui/gpuRenderer';
 import { SmogOverlay } from '../ui/smogOverlay';
-import { SIDEBAR_W } from '../ui/toolbar';
+import { mapPane, layoutVars } from '../ui/layout';
 import { materializeSkin } from '../ui/tilesetLoader';
 import { paintSnesSkin } from '../ui/snesTileset';
 import { footprintCellKey } from '../ui/renderKey';
@@ -55,9 +55,10 @@ export function createView(deps: ViewDeps): View {
   const { canvas, map } = deps;
   const dpr = (): number => window.devicePixelRatio || 1;
   // the map pane sits right of the docked tool palette, never under it
-  document.documentElement.style.setProperty('--sidebar-w', `${SIDEBAR_W}px`);
-  let cssWidth = window.innerWidth - SIDEBAR_W;
-  let cssHeight = window.innerHeight;
+  // the map pane sits inside the chrome (top bar, palette, status line) — never under it
+  for (const [k, v] of Object.entries(layoutVars())) document.documentElement.style.setProperty(k, v);
+  let cssWidth = mapPane(window.innerWidth, window.innerHeight).width;
+  let cssHeight = mapPane(window.innerWidth, window.innerHeight).height;
   const camera = new Camera({
     mapWidth: map.width,
     mapHeight: map.height,
@@ -76,7 +77,7 @@ export function createView(deps: ViewDeps): View {
   renderer.resize(cssWidth, cssHeight, dpr());
   canvas.style.position = 'fixed'; // the map pane, ABOVE the GPU canvas (z-index 0)
   canvas.style.left = 'var(--sidebar-w)';
-  canvas.style.top = '0';
+  canvas.style.top = 'var(--topbar-h)';
   canvas.style.zIndex = '1';
 
   // GPU hybrid path: a WebGL2 canvas under the Canvas2D sprite/UI layer, driven by the live camera.
@@ -145,8 +146,8 @@ export function createView(deps: ViewDeps): View {
       markDirty();
     },
     resize: () => {
-      cssWidth = window.innerWidth - SIDEBAR_W;
-      cssHeight = window.innerHeight;
+      cssWidth = mapPane(window.innerWidth, window.innerHeight).width;
+      cssHeight = mapPane(window.innerWidth, window.innerHeight).height;
       camera.setViewport(cssWidth, cssHeight);
       renderer.resize(cssWidth, cssHeight, dpr());
       gpuRenderer?.resize(cssWidth, cssHeight, dpr());
