@@ -25,7 +25,10 @@ export function soften(velocity: number): number {
 /** A voice budget: admit a note only while fewer than `max` admitted notes still sound at its onset. */
 export class Polyphony {
   private ends: number[] = [];
-  constructor(readonly max: number) {}
+  readonly max: number;
+  constructor(max: number) {
+    this.max = max;
+  }
   admit(at: number, end: number): boolean {
     this.ends = this.ends.filter((e) => e > at);
     if (this.ends.length >= this.max) return false;

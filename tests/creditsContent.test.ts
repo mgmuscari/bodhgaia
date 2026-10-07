@@ -12,6 +12,7 @@ import {
   creditsText,
   openingCreditLine,
 } from '../src/ui/creditsContent';
+import { LICENCES, MUSIC_TRACKS } from '../src/audio/music/tracks';
 
 /** The upstream §7 block, unwrapped from its C comment, one string per paragraph. */
 function upstreamSection7(): string[] {
@@ -85,5 +86,22 @@ describe('credits content', () => {
     expect(line).toContain('GPL-3.0-or-later');
     expect(line).toContain('the old simulator');
     expect(line).toContain('the original publisher');
+  });
+
+  it('credits every piece of music: title, composer, typesetter, licence, and links to source + licence', () => {
+    const music = creditsBlocks().filter((b) => /music/i.test(b.heading));
+    expect(music.length).toBeGreaterThan(0);
+    const body = music.flatMap((b) => b.paragraphs).join('\n');
+    const hrefs = music.flatMap((b) => (b.links ?? []).map((l) => l.href));
+    for (const t of MUSIC_TRACKS) {
+      expect(body, t.id).toContain(t.title);
+      expect(body, t.id).toContain(t.composer);
+      expect(body, t.id).toContain(t.credit.typesetter);
+      expect(body, t.id).toContain(LICENCES[t.credit.licence].name);
+      expect(hrefs, t.id).toContain(t.credit.source);
+    }
+    for (const id of new Set(MUSIC_TRACKS.map((t) => t.credit.licence)))
+      if (id !== 'public-domain') expect(hrefs).toContain(LICENCES[id].url);
+    expect(body).toContain('Mutopia Project');
   });
 });

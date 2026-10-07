@@ -4,6 +4,8 @@
 // claim EA affiliation, and must mark itself as a modified version. Read by the help panel and the opening.
 // No DOM / no transcendental Math.
 
+import { LICENCES, MUSIC_TRACKS, type MusicTrack } from '../audio/music/tracks';
+
 export interface CreditLink {
   label: string;
   href: string;
@@ -75,7 +77,33 @@ export function creditsBlocks(): CreditsBlock[] {
     },
     { heading: 'the old simulator', paragraphs: [EA_NOTICE] },
     { heading: 'Additional terms per GNU GPL Section 7', paragraphs: [...GPL7_TERMS] },
+    musicCredits(),
   ];
+}
+
+function trackLine(t: MusicTrack): string {
+  const lic = LICENCES[t.credit.licence].name;
+  return t.file
+    ? `${t.title} — ${t.composer}. MIDI typeset by ${t.credit.typesetter} for the Mutopia Project; ${lic}.`
+    : `${t.title} — ${t.composer}. Transcribed by ${t.credit.typesetter}; ${lic}.`;
+}
+
+/** The music: each piece with its composer, its typesetter and its licence (BY-SA requires the attribution), plus
+ *  links to the page where each licence was verified and to the licence deeds. */
+function musicCredits(): CreditsBlock {
+  const deeds = [...new Set(MUSIC_TRACKS.map((t) => t.credit.licence))]
+    .filter((id) => id !== 'public-domain')
+    .map((id) => ({ label: `Licence: ${LICENCES[id].name}`, href: LICENCES[id].url }));
+  return {
+    heading: 'Music',
+    paragraphs: [
+      `${GAME_NAME} plays its music on its own small synthesizer, from MIDI scores. The classical pieces come ` +
+        'from the Mutopia Project (mutopiaproject.org), volunteers typesetting public-domain music under open ' +
+        'licences; each is shipped unmodified alongside the game under its own licence.',
+      ...MUSIC_TRACKS.map(trackLine),
+    ],
+    links: [...MUSIC_TRACKS.map((t) => ({ label: `${t.title} (source)`, href: t.credit.source })), ...deeds],
+  };
 }
 
 /** Every heading, paragraph and link label/href as one plain string (tests, plain-text renderers). */
