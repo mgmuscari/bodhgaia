@@ -16,7 +16,7 @@ import type { ToolMenuView, ToolCategory } from './toolMenuContent';
 import type { MetaButton } from './dockContent';
 
 /** The sidebar's width (CSS px) — the map pane starts right of it. */
-export const SIDEBAR_W = 112;
+export { SIDEBAR_W } from './layout';
 
 export interface ToolbarDeps {
   /** Re-derive the current dock view (assembled in main.ts from pure modules). */
@@ -70,8 +70,7 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
   flyout.hidden = true;
 
   const status = document.createElement('div');
-  status.className = 'toolbar-status';
-  status.hidden = true;
+  status.className = 'toolbar-status'; // always shown: the map pane is sized around it
 
   const tip = document.createElement('div');
   tip.className = 'ui-tip';
@@ -151,8 +150,8 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
   }
 
   function setStatus(text: string | null): void {
+    // the status line is permanent chrome (the map pane is sized around it): an empty message just blanks it
     status.textContent = text ?? '';
-    status.hidden = text === null;
   }
 
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
