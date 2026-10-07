@@ -20,7 +20,7 @@ export type EnvEvent =
   | { kind: 'target'; t: number; v: number; tau: number };
 
 /** Shortest attack/release — a hard edge on a looped sample clicks. */
-const MIN_EDGE = 0.003;
+const MIN_EDGE = 0.0015;
 const edge = (s: number): number => Math.max(MIN_EDGE, s);
 
 /** The level `t` seconds after note-on, for a note of `peak` gain, gated off at `off` (seconds after note-on). */
