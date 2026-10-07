@@ -35,3 +35,25 @@ describe('the music follows the day', () => {
     expect(moodFor(12, true)).toBe('day'); // the chants are for the quiet hours
   });
 });
+
+// Maddy 2026-10-07: "police could make a siren noise". A siren wails while a cruiser IN VIEW is chasing —
+// panned toward the cruisers, louder with more of them; nothing while they patrol or are out of sight.
+import { sirenFor } from '../../src/app/sound';
+describe('the siren', () => {
+  const view = { x0: 0, y0: 0, x1: 20, y1: 10 };
+  const cruiser = (x: number, y: number) => ({ x, y, dir: 0, tx: x, ty: y }) as never;
+  it('is silent while patrolling, or with no cruiser in view', () => {
+    expect(sirenFor([cruiser(5, 5)], 'scatter', view).on).toBe(false);
+    expect(sirenFor([cruiser(50, 50)], 'chase', view).on).toBe(false);
+    expect(sirenFor([], 'chase', view).on).toBe(false);
+  });
+  it('wails during a chase in view, panned toward the cruisers, louder with more of them', () => {
+    const one = sirenFor([cruiser(18, 5)], 'chase', view);
+    expect(one.on).toBe(true);
+    expect(one.pan).toBeGreaterThan(0.5); // far right of the view
+    const three = sirenFor([cruiser(2, 5), cruiser(3, 5), cruiser(4, 4)], 'chase', view);
+    expect(three.pan).toBeLessThan(-0.5);
+    expect(three.level).toBeGreaterThan(one.level);
+    expect(three.level).toBeLessThanOrEqual(0.25); // distant, never piercing
+  });
+});
