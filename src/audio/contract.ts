@@ -50,9 +50,13 @@ export interface NoteSpec {
   pan?: number;
 }
 
-/** A sounding note; stop() releases it through its envelope. */
+/** A sounding note; stop() releases it through its envelope. glide() (optional — engines that can) moves a
+ *  long-running voice's level and pitch (for noise: its filter centre) smoothly over `seconds`, so a bed that
+ *  follows the city never has to be re-struck (a re-strike is heard as a stray note — Maddy 2026-10-07: "something
+ *  atonal going on in the bass notes here and there"). */
 export interface Voice {
   stop(at?: number): void;
+  glide?(to: { velocity?: number; pitch?: number }, seconds: number): void;
 }
 
 export interface AudioEngine {

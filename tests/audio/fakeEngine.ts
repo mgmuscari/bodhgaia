@@ -5,6 +5,7 @@ import type { AudioEngine, Bus, NoteSpec, Voice } from '../../src/audio/contract
 export interface FakeVoice extends Voice {
   note: NoteSpec;
   stoppedAt: number | null;
+  glides: Array<{ velocity?: number; pitch?: number; seconds: number }>;
 }
 
 export interface FakeEngine extends AudioEngine {
@@ -15,7 +16,8 @@ export interface FakeEngine extends AudioEngine {
   volumes: Partial<Record<Bus | 'master', number>>;
 }
 
-export function fakeEngine(): FakeEngine {
+/** `glide: false` models an engine without Voice.glide (the beds' crossfade fallback). */
+export function fakeEngine(opts: { glide?: boolean } = {}): FakeEngine {
   const e: FakeEngine = {
     t: 0,
     live: true,
@@ -33,9 +35,17 @@ export function fakeEngine(): FakeEngine {
       const v: FakeVoice = {
         note,
         stoppedAt: null,
+        glides: [],
         stop(at?: number) {
           v.stoppedAt = at ?? e.t;
         },
+        ...(opts.glide === false
+          ? {}
+          : {
+              glide(to: { velocity?: number; pitch?: number }, seconds: number) {
+                v.glides.push({ ...to, seconds });
+              },
+            }),
       };
       e.played.push(v);
       return v;

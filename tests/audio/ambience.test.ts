@@ -108,8 +108,8 @@ describe('createAmbience (scheduling)', () => {
     expect(e.played.filter((v) => v.note.duration === undefined).length).toBe(before);
   });
 
-  it('a traffic surge ramps — successive bed levels step gently, never jump (no zipper/click)', () => {
-    const e = fakeEngine();
+  it('without glide: a traffic surge ramps — successive bed levels step gently, never jump (no zipper/click)', () => {
+    const e = fakeEngine({ glide: false });
     const amb = createAmbience(e, { seed: 3 });
     run(e, amb, snap({ traffic01: 0.05 }), 15);
     run(e, amb, snap({ traffic01: 1 }), 15);
@@ -119,8 +119,8 @@ describe('createAmbience (scheduling)', () => {
     expect(levels[levels.length - 1]!).toBeCloseTo(ambienceTargets(snap({ traffic01: 1 })).traffic.level, 1);
   });
 
-  it('crossfades: each replacement bed voice releases the one before it, so one rumble sounds at a time', () => {
-    const e = fakeEngine();
+  it('without glide: crossfades — each replacement bed voice releases the one before it, so one rumble sounds at a time', () => {
+    const e = fakeEngine({ glide: false });
     const amb = createAmbience(e, { seed: 4 });
     run(e, amb, snap({ traffic01: 0.1 }), 10);
     run(e, amb, snap({ traffic01: 0.9 }), 10);
@@ -194,5 +194,40 @@ describe('createAmbience (scheduling)', () => {
     e.live = true;
     run(e, amb, snap({ traffic01: 0.5 }), 2);
     expect(e.played.some((v) => v.note.instrument === 'rumble')).toBe(true);
+  });
+});
+
+// Maddy 2026-10-07: "something atonal going on in the bass notes here and there". Re-striking a bed to change its
+// level is heard as a stray low note; with a voice that can glide, a bed is struck ONCE and glided after.
+describe('beds glide instead of re-striking', () => {
+  it('a traffic surge glides the one traffic voice — no new voices', () => {
+    const e = fakeEngine();
+    const amb = createAmbience(e);
+    const snap = (traffic01: number) => ({ traffic01, peds01: 0, birds01: 0, rain: false, night: false });
+    for (let i = 0; i < 400; i++) {
+      e.t = i * 0.25;
+      amb.update(snap(i < 100 ? 0.2 : 0.9)); // a quiet street, then rush hour
+    }
+    const traffic = e.played.filter((v) => v.note.instrument === 'rumble');
+    expect(traffic.length).toBe(1);
+    expect(traffic[0]!.stoppedAt).toBeNull();
+    expect(traffic[0]!.glides.length).toBeGreaterThan(0);
+    const lastGlide = traffic[0]!.glides.at(-1)!;
+    expect(lastGlide.velocity!).toBeGreaterThan(traffic[0]!.note.velocity);
+  });
+});
+
+describe('with glide, the surge still steps gently', () => {
+  it('successive glide targets never jump more than 0.1 and end at the target', () => {
+    const e = fakeEngine();
+    const amb = createAmbience(e, { seed: 3 });
+    const snap = (traffic01: number) => ({ traffic01, peds01: 0, birds01: 0, rain: false, night: false });
+    for (let i = 0; i < 15; i++) { e.t = i * 0.25; amb.update(snap(0.05)); }
+    for (let i = 15; i < 60; i++) { e.t = i * 0.25; amb.update(snap(1)); }
+    const bed = e.played.filter((v) => v.note.instrument === 'rumble');
+    expect(bed.length).toBe(1);
+    const levels = [bed[0]!.note.velocity, ...bed[0]!.glides.map((g) => g.velocity!)];
+    for (let i = 1; i < levels.length; i++) expect(Math.abs(levels[i]! - levels[i - 1]!)).toBeLessThanOrEqual(0.1);
+    expect(levels.at(-1)!).toBeCloseTo(ambienceTargets(snap(1)).traffic.level, 1);
   });
 });

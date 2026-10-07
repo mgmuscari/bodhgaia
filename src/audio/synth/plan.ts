@@ -53,3 +53,19 @@ export function planVoice(s: InstrumentSample, note: NoteSpec, now: number): Voi
 export function levelAt(p: VoicePlan, t: number, off = p.stopAt): number {
   return envelopeAt(p.envelope, t - p.start, p.peak, off === undefined ? undefined : off - p.start);
 }
+
+/** Where a Voice.glide moves a sounding voice: a gain RATIO against the note as struck (applied on a level stage
+ *  after the envelope, so the envelope stays untouched), and a new playback rate (tonal) or filter centre (noise). */
+export function glideTargets(
+  s: InstrumentSample,
+  struckVelocity: number,
+  to: { velocity?: number; pitch?: number },
+): { gain?: number; rate?: number; filterHz?: number } {
+  const out: { gain?: number; rate?: number; filterHz?: number } = {};
+  if (to.velocity !== undefined) out.gain = struckVelocity > 0 ? Math.max(0, to.velocity) / struckVelocity : 0;
+  if (to.pitch !== undefined) {
+    if (s.noise) out.filterHz = noiseFilterHz(s, to.pitch);
+    else out.rate = Math.min(16, Math.max(1 / 64, pitchToRate(to.pitch, s.rootHz)));
+  }
+  return out;
+}

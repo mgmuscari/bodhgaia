@@ -62,3 +62,21 @@ describe('planVoice', () => {
     expect(levelAt(p, 0.5)).toBe(0);
   });
 });
+
+// Voice.glide (Maddy 2026-10-07: re-struck beds were heard as stray bass notes): what a glide moves to.
+import { glideTargets } from '../../src/audio/synth/plan';
+describe('glide targets', () => {
+  it('a level change is a gain RATIO against the note as struck (so the envelope stays untouched)', () => {
+    const s = bakeInstrument('strings');
+    expect(glideTargets(s, 0.4, { velocity: 0.8 }).gain).toBeCloseTo(2, 9);
+    expect(glideTargets(s, 0.4, { velocity: 0 }).gain).toBe(0);
+  });
+  it('a pitch change moves a tonal voice\'s playback rate, a noise voice\'s filter centre', () => {
+    const tonal = glideTargets(bakeInstrument('strings'), 0.5, { pitch: 69 });
+    expect(tonal.rate).toBeGreaterThan(0);
+    expect(tonal.filterHz).toBeUndefined();
+    const noise = glideTargets(bakeInstrument('rumble'), 0.5, { pitch: 40 });
+    expect(noise.rate).toBeUndefined();
+    expect(noise.filterHz).toBeGreaterThan(0);
+  });
+});
