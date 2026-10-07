@@ -737,6 +737,24 @@
       #desktop-note-dismiss:checked + .desktop-note {
         display: none;
       }
+      /* Overlay colour key: bottom-left of the map pane, right of the docked palette and above the status line
+         (it used to sit 12px from the window edge, on top of the palette; top-left it would clip the top bar
+         and collide with the Budget window) */
+      .overlay-legend {
+        border: 12px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        position: fixed;
+        left: calc(var(--sidebar-w) + 0.5rem);
+        bottom: 3.2rem;
+        z-index: 7; /* map chrome: above the map, under every window (panels sit at 8+) */
+        padding: 0.2rem 0.5rem;
+        font-family: var(--ui-font);
+        font-size: 1.0rem;
+        line-height: 1.4;
+        color: var(--ui-text);
+        pointer-events: none;
+      }
+      .overlay-legend__title { color: var(--ui-accent); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.2rem; }
       /* The palette's Help icon replaces the floating controls hint */
       .controls-hint {
         display: none;
