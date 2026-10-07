@@ -6,7 +6,7 @@ import type { GameMap } from '../../engine/map';
 import { sampleField } from '../../citizens/field';
 import { liveCaps } from '../caps';
 import {
-  OCC_ABSOLUTE,
+  INHERITED_VACANCY,
   OCC_EXPECT_RATE,
   OCC_FLOOR,
   OCC_HEADROOM,
@@ -80,10 +80,22 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     );
     // a new home (or the opening) takes its conditions as normal
     const was = settling ? raw : (state.occExpect.get(t) ?? raw);
-    next.set(t, occupancyStep(cur, floor, cap, raw - was + OCC_ABSOLUTE * raw));
+    next.set(t, occupancyStep(cur, floor, cap, raw - was));
     expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
   }
   state.occupancy = next;
   state.occExpect = expect;
   state.occPasses += 1;
+}
+
+/** The inherited housing crisis: open each home emptied by INHERITED_VACANCY × its redline grade, floored at
+ *  OCC_FLOOR — the displaced are the city's opening unhoused population. Called by seedDecay (the city starts
+ *  decayed); a resumed game's saved occupancy overwrites it. */
+export function seedInheritedOccupancy(state: AmbientState, map: GameMap): void {
+  for (const h of state.households ?? []) {
+    const t = map.idx(h.x, h.y);
+    const grade = map.redline[t]! / 255;
+    const left = h.count * (1 - INHERITED_VACANCY * grade);
+    state.occupancy.set(t, left < h.count * OCC_FLOOR ? h.count * OCC_FLOOR : left);
+  }
 }
