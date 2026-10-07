@@ -66,3 +66,19 @@ export function lineTiles(x0: number, y0: number, x1: number, y1: number): Tile[
   }
   return out;
 }
+
+/** Wheel movement that changes the zoom by one level (Maddy 2026-10-07: "scrolling is too sensitive" — a trackpad
+ *  sends dozens of small events per gesture, and each used to zoom a whole level). A mouse notch is ~100px. */
+export const WHEEL_STEP_PX = 100;
+const LINE_PX = 40; // deltaMode 1 (lines, e.g. Firefox)
+const PAGE_PX = 800; // deltaMode 2 (pages)
+
+/** Accumulate a wheel event; returns the zoom levels to apply (+1 = in) and the remainder to carry. Reversing
+ *  direction drops whatever had built up the other way. */
+export function wheelZoom(acc: number, deltaY: number, deltaMode: number): { steps: number; acc: number } {
+  const px = deltaMode === 1 ? deltaY * LINE_PX : deltaMode === 2 ? deltaY * PAGE_PX : deltaY;
+  let a = (acc > 0 && px < 0) || (acc < 0 && px > 0) ? 0 : acc;
+  a += px;
+  const k = Math.trunc(a / WHEEL_STEP_PX);
+  return { steps: k === 0 ? 0 : -k, acc: a - k * WHEEL_STEP_PX };
+}
