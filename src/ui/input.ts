@@ -12,9 +12,11 @@
 
 import { Camera } from './camera';
 import { isEditableTarget } from './keyMap';
-import { classifyPointer, lineTiles } from '../tools/inputGeometry';
+import { classifyPointer, lineTiles, wheelZoom } from '../tools/inputGeometry';
 
 const ARROW_PAN_PX = 48;
+/** A wheel pause longer than this starts a fresh zoom gesture. */
+const WHEEL_IDLE_MS = 250;
 const MIDDLE_BUTTON = 1;
 
 export interface InputHandlers {
@@ -163,11 +165,20 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     handlers.clearHover();
   });
 
+  // Wheel/pinch movement accumulates; a zoom level changes per notch's worth (wheelZoom), and a pause starts the
+  // next gesture fresh.
+  let wheelAcc = 0;
+  let wheelAt = 0;
   canvas.addEventListener(
     'wheel',
     (e) => {
       e.preventDefault();
-      camera.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? +1 : -1);
+      if (e.timeStamp - wheelAt > WHEEL_IDLE_MS) wheelAcc = 0;
+      wheelAt = e.timeStamp;
+      const r = wheelZoom(wheelAcc, e.deltaY, e.deltaMode);
+      wheelAcc = r.acc;
+      if (r.steps === 0) return;
+      for (let i = 0; i < Math.abs(r.steps); i++) camera.zoomAt(e.offsetX, e.offsetY, r.steps);
       handlers.onChange();
     },
     { passive: false },
