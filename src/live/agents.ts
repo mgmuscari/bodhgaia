@@ -28,7 +28,6 @@ import {
   PARK_RADIUS,
   RETIRED_CAR_LINGER,
 } from './tuning';
-import { DIR_DX, DIR_DY } from './geometry';
 import type { AmbientState, Car, ParkingLotInfo, Ped } from './types';
 import { spawnTargetFor } from './fields/occupancy';
 import { commitHeading } from './motion';
@@ -40,11 +39,12 @@ import {
   nearestEmptyTile,
   nearestOfCategory,
   nearestWalkable,
+  plotDoor,
   roadPath,
   tripEvaporates,
   walkPath,
 } from './pathing';
-import { curbStallOffsets, isCarRoad, isParkable, isWalkable } from './network';
+import { curbStallOffsets, isCarRoad, isParkable } from './network';
 
 /**
  * Put a citizen in its owned car and commit the car to a least-cost route to a free parking spot near
@@ -548,18 +548,10 @@ export function spawnCitizens(state: AmbientState, map: GameMap, rng: Rng): void
         break;
       }
     }
-    // Stand the citizen on a walkable tile beside its home plot (the plot itself isn't walkable).
-    let sx = -1;
-    let sy = -1;
-    for (let d = 0; d < 4; d++) {
-      const nx = home.x + DIR_DX[d]!;
-      const ny = home.y + DIR_DY[d]!;
-      if (isWalkable(map, nx, ny)) {
-        sx = nx;
-        sy = ny;
-        break;
-      }
-    }
+    // Stand the citizen at its home's street DOOR (the plot itself isn't walkable).
+    const door = plotDoor(map, home.x, home.y);
+    const sx = door ? door.x : -1;
+    const sy = door ? door.y : -1;
     if (sx < 0) continue; // a hemmed-in home, nowhere to step out
     const ped: Ped = {
       x: sx,
@@ -742,29 +734,12 @@ export function respawnAtHome(state: AmbientState, p: Ped, map: GameMap): boolea
   depositHealth(state, p.homeTile, -FAILED_TRIP_PENALTY);
   const hx = p.homeTile % map.width;
   const hy = (p.homeTile - hx) / map.width;
-  // Stand just outside the home plot — on an orthogonally adjacent walkable tile (the plot itself
-  // isn't walkable). A coastal/boxed home may have no walkable orthogonal neighbour, so fall back to
-  // the nearest walkable tile (a wider search) rather than landing the ped on the plot or on water.
-  let sx = hx;
-  let sy = hy;
-  let found = false;
-  for (let d = 0; d < 4; d++) {
-    const nx = hx + DIR_DX[d]!;
-    const ny = hy + DIR_DY[d]!;
-    if (isWalkable(map, nx, ny)) {
-      sx = nx;
-      sy = ny;
-      found = true;
-      break;
-    }
-  }
-  if (!found) {
-    const w = nearestWalkable(map, hx, hy);
-    if (w) {
-      sx = w.x;
-      sy = w.y;
-    }
-  }
+  // Stand just outside the home plot at its street DOOR (the plot itself isn't walkable). A coastal/
+  // boxed home may have no walkable neighbour at all, so fall back to the nearest walkable tile (a
+  // wider search) rather than landing the ped on the plot or on water.
+  const door = plotDoor(map, hx, hy) ?? nearestWalkable(map, hx, hy);
+  const sx = door ? door.x : hx;
+  const sy = door ? door.y : hy;
   p.x = sx;
   p.y = sy;
   p.tx = sx;
