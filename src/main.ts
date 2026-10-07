@@ -32,6 +32,8 @@ import { createSaves } from './app/saves';
 import { installKeys } from './app/keys';
 import { createSimTick, createFrame, runFrames } from './app/loop';
 import { createSound } from './app/sound';
+import { createNews } from './app/news';
+import { isPowerConsumer } from './growth/power';
 import { placeCategoryOf } from './audio/sfx';
 import { gameClock } from './ui/lighting';
 import { BuiltKind } from './engine/fabric';
@@ -115,6 +117,7 @@ export function main(save: SaveV1 | null = null): void {
     ui: {
       practiceGranted: () => {
         sound.sfx.unlock();
+        news.push('A new practice takes root in the city');
         tools.afterEffortChange();
         toolbar.flash();
         panels.get('tech').refresh();
@@ -126,6 +129,7 @@ export function main(save: SaveV1 | null = null): void {
         if (reliefNow) {
           panels.get('budget').open(); // the grant and its strings, shown as they arrive
           sound.sfx.relief();
+          news.push('A relief grant arrives — with outside oversight');
         }
       },
       pulse: () => pulse.refresh(),
@@ -212,6 +216,7 @@ export function main(save: SaveV1 | null = null): void {
     settings: settings.panel,
     onBorrowed: () => {
       sound.sfx.loanTaken();
+      news.push('The city takes out a loan');
       toolbar.refresh(); // the fabric may be affordable again
       pulse.refresh();
     },
@@ -222,6 +227,33 @@ export function main(save: SaveV1 | null = null): void {
     },
   });
   const showLegend = mountOverlayLegend(document.body);
+
+  // The news ticker along the status bar: the city's changes as headlines (arrests, homes lost and found, gridlock,
+  // outages), plus the economy's moments pushed above.
+  const news = createNews({
+    width: world.map.width,
+    height: world.map.height,
+    policeViolence: () => live.state.policeViolence,
+    traffic: () => live.state.traffic,
+    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
+    dark: () => {
+      const lit = power.grid().poweredAnchors;
+      let dark = 0;
+      let darkAt: { x: number; y: number } | undefined;
+      for (const i of world.parcels.aliveIndices()) {
+        const p = world.parcels.get(i);
+        if (!isPowerConsumer(p.kind) || p.density <= 0 || lit.has(world.map.idx(p.x, p.y))) continue;
+        dark++;
+        darkAt ??= { x: p.x, y: p.y };
+      }
+      return { dark, darkAt };
+    },
+    show: (items) => toolbar.setNews(items),
+  });
+  {
+    const u = sampleUnhoused(live.state, world.map.width).unhoused;
+    if (u > 0) news.push(`${u} residents are without a home`); // the inherited crisis, from the first frame
+  }
 
   const cityTitle = save?.name ?? cityName(createRng(seed).fork('city-name'));
   const saves = createSaves({

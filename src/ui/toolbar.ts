@@ -36,8 +36,10 @@ export interface ToolbarDeps {
 export interface ToolbarHandle {
   /** Re-derive and re-render the palette from getMenu(). */
   refresh(): void;
-  /** Show (or clear with null) the status line — e.g. the inspect readout. */
+  /** Show (or clear with null) the status line — e.g. the inspect readout. A message takes the bar over the news. */
   setStatus(text: string | null): void;
+  /** The news ticker's headlines (newest last), scrolled along the bar whenever no message is showing. */
+  setNews(items: readonly string[]): void;
   /** Re-derive and re-apply the map/panel buttons. */
   refreshMeta(): void;
   /** Pulse the palette to announce a freshly-unlocked tool. */
@@ -71,6 +73,14 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
 
   const status = document.createElement('div');
   status.className = 'toolbar-status'; // always shown: the map pane is sized around it
+  const message = document.createElement('span');
+  message.className = 'toolbar-status__message';
+  const news = document.createElement('div');
+  news.className = 'toolbar-status__news';
+  const newsTrack = document.createElement('span');
+  newsTrack.className = 'toolbar-status__news-track';
+  news.appendChild(newsTrack);
+  status.append(message, news);
 
   const tip = document.createElement('div');
   tip.className = 'ui-tip';
@@ -150,8 +160,32 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
   }
 
   function setStatus(text: string | null): void {
-    // the status line is permanent chrome (the map pane is sized around it): an empty message just blanks it
-    status.textContent = text ?? '';
+    // the status line is permanent chrome (the map pane is sized around it): an empty message lets the news show
+    message.textContent = text ?? '';
+    status.classList.toggle('has-message', !!text);
+  }
+
+  // An update never interrupts a pass (Maddy 2026-10-07: "an updated ticker should wait for the next opportunity
+  // to scroll"): the new feed waits as PENDING and is swapped in when the current pass ends — at an animation
+  // iteration, where the track is back at its start — or at once if nothing is showing yet.
+  let shown = '';
+  let pending: { text: string; latest: string } | null = null;
+  const show = (text: string, latest: string): void => {
+    shown = text;
+    newsTrack.textContent = text;
+    newsTrack.dataset['latest'] = latest;
+    newsTrack.style.animationDuration = `${Math.max(14, text.length / 9)}s`; // ~9 characters a second
+  };
+  newsTrack.addEventListener('animationiteration', () => {
+    if (pending === null) return;
+    show(pending.text, pending.latest);
+    pending = null;
+  });
+  function setNews(items: readonly string[]): void {
+    const text = items.join('     ·     ');
+    const latest = items[items.length - 1] ?? '';
+    if (shown === '') show(text, latest);
+    else if (text !== shown) pending = { text, latest };
   }
 
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
@@ -203,5 +237,5 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
 
   render();
   refreshMeta();
-  return { refresh: render, setStatus, refreshMeta, flash };
+  return { refresh: render, setStatus, setNews, refreshMeta, flash };
 }
