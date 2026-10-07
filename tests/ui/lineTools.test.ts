@@ -24,8 +24,13 @@ describe('isLineTool', () => {
     expect(isLineTool(toolDef('build-49')!), 'build-49').toBe(false); // Community Garden 2x2
   });
 
-  it('classifies inspect and bulldoze as point tools (no kind)', () => {
+  it('classifies inspect as a point tool (no kind)', () => {
     expect(isLineTool(toolDef('inspect')!), 'inspect').toBe(false);
-    expect(isLineTool(toolDef('bulldoze')!), 'bulldoze').toBe(false);
+  });
+
+  // Maddy 2026-10-07 (reversing the earlier point-only decision): "click to drag to bulldoze should work, but only
+  // in a straight line, not a box" — bulldoze drag-paints a straight run (lineTiles snaps to the major axis).
+  it('classifies bulldoze as a line tool: a drag clears a straight run', () => {
+    expect(isLineTool(toolDef('bulldoze')!), 'bulldoze').toBe(true);
   });
 });
