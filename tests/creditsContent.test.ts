@@ -13,6 +13,7 @@ import {
   openingCreditLine,
 } from '../src/ui/creditsContent';
 import { LICENCES, MUSIC_TRACKS } from '../src/audio/music/tracks';
+import { CHANT_TEXTS } from '../src/audio/music/chant';
 
 /** The upstream §7 block, unwrapped from its C comment, one string per paragraph. */
 function upstreamSection7(): string[] {
@@ -103,5 +104,20 @@ describe('credits content', () => {
     for (const id of new Set(MUSIC_TRACKS.map((t) => t.credit.licence)))
       if (id !== 'public-domain') expect(hrefs).toContain(LICENCES[id].url);
     expect(body).toContain('Mutopia Project');
+  });
+
+  it('credits the Pali chant as a transcription of traditional recitation, with the text and its meaning', () => {
+    const block = creditsBlocks().find((b) => /pali/i.test(b.heading));
+    expect(block).toBeDefined();
+    const body = block!.paragraphs.join('\n');
+    expect(body).toMatch(/transcription/i);
+    expect(body).toMatch(/not a recording/i);
+    for (const text of CHANT_TEXTS) {
+      expect(body).toContain(text.title);
+      for (const v of text.verses) {
+        for (const line of v.pali) expect(body).toContain(line);
+        expect(body).toContain(v.meaning);
+      }
+    }
   });
 });

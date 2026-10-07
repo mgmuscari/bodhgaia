@@ -57,4 +57,18 @@ describe('music manifest', () => {
       expect(MUSIC_TRACKS.some((t) => t.moods.includes(mood)), mood).toBe(true);
     for (const t of MUSIC_TRACKS.filter((x) => x.sacred)) expect(t.moods).toEqual(['calm']);
   });
+
+  it('ships the Pali recitations as sacred, calm-only transcriptions voiced by the chant instrument', () => {
+    const sacred = MUSIC_TRACKS.filter((t) => t.sacred);
+    expect(sacred.map((t) => t.id).sort()).toEqual(['pali-metta-sutta', 'pali-tisarana']);
+    for (const t of sacred) {
+      expect(t.file).toBeUndefined();
+      expect(t.voices?.[0]).toBe('chant');
+      const piece = t.piece!();
+      expect(piece.notes.length).toBeGreaterThan(50);
+    }
+    // the chant voice is reserved for recitation
+    for (const t of MUSIC_TRACKS.filter((x) => !x.sacred))
+      expect(Object.values(t.voices ?? {})).not.toContain('chant');
+  });
 });
