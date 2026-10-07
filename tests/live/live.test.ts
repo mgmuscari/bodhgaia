@@ -1755,32 +1755,26 @@ describe('traveler fuel budget (Maddy: extend it 250% so travelers reach farther
   });
 });
 
-describe('population: occupancy evolves with conditions (agent-emergent)', () => {
-  it('grows above baseline for a home in a prized, healthy spot', () => {
-    const map = new GameMap(8, 8);
-    map.built[map.idx(3, 3)] = BuiltKind.Apartments;
-    const t = map.idx(3, 3);
-    const state = createAmbientState();
-    setHouseholds(state, [{ x: 3, y: 3, count: 9 }]);
-    state.landValue.set(t, 255);
-    state.buildingHealth.set(t, 60);
-    for (let i = 0; i < 80; i++) stepOccupancy(state, map);
-    expect(state.occupancy.get(t)!).toBeGreaterThan(9);
-    expect(state.occupancy.get(t)!).toBeLessThanOrEqual(capacityOf(BuiltKind.Apartments, 9));
-  });
-
-  it('shrinks below baseline for a home in a decayed, smoggy spot', () => {
-    const map = new GameMap(8, 8);
-    map.built[map.idx(3, 3)] = BuiltKind.HouseSingle;
-    const t = map.idx(3, 3);
-    const state = createAmbientState();
-    setHouseholds(state, [{ x: 3, y: 3, count: 9 }]);
-    state.landValue.set(t, 10);
-    state.pollution.set(t, 255);
-    for (let i = 0; i < 80; i++) stepOccupancy(state, map);
-    expect(state.occupancy.get(t)!).toBeLessThan(9);
-    expect(state.occupancy.get(t)!).toBeGreaterThan(0); // floored — a decayed home thins but never empties
-  });
+describe('population: no drift without a cause (Maddy 2026-10-06: homelessness is inherited, then responsive)', () => {
+  // A home whose conditions never change keeps its people — prized or decayed. People move on CHANGE (see
+  // below); a constant absolute pull made the unhoused count climb forever whatever the player did.
+  for (const [label, lv, smog, health] of [
+    ['a prized, healthy spot', 255, 0, 60],
+    ['a decayed, smoggy spot', 10, 255, -60],
+  ] as const) {
+    it(`a home in ${label} holds its occupancy when nothing changes`, () => {
+      const map = new GameMap(8, 8);
+      map.built[map.idx(3, 3)] = BuiltKind.Apartments;
+      const t = map.idx(3, 3);
+      const state = createAmbientState();
+      setHouseholds(state, [{ x: 3, y: 3, count: 9 }]);
+      state.landValue.set(t, lv);
+      state.pollution.set(t, smog);
+      state.buildingHealth.set(t, health);
+      for (let i = 0; i < OCC_SETTLE_PASSES + 600; i++) stepOccupancy(state, map);
+      expect(state.occupancy.get(t)).toBe(9);
+    });
+  }
 });
 
 describe('population: residents move on the gap from what they expect (Maddy 2026-10-01: the inherited city emptied before you could act)', () => {
@@ -1800,12 +1794,12 @@ describe('population: residents move on the gap from what they expect (Maddy 202
     }
   };
 
-  it('the inherited city is the residents’ normal: it holds through the opening and only leaks slowly after', () => {
+  it('the inherited city is the residents’ normal: it holds through the opening and after', () => {
     const h = home();
     settle(h);
-    expect(h.state.occupancy.get(h.t)!).toBeGreaterThan(9 * 0.95);
+    expect(h.state.occupancy.get(h.t)).toBe(9);
     for (let i = 0; i < 300; i++) stepOccupancy(h.state, h.map);
-    expect(h.state.occupancy.get(h.t)!).toBeGreaterThan(9 * 0.9);
+    expect(h.state.occupancy.get(h.t)).toBe(9);
   });
 
   it('a repair after the opening draws people in; a new harm drives them out', () => {

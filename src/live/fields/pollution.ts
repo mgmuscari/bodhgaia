@@ -42,6 +42,7 @@ import {
   WIND_FRACTION,
 } from '../tuning';
 import { DIR_DX, DIR_DY } from '../geometry';
+import { seedInheritedOccupancy } from './occupancy';
 import type { AmbientState } from '../types';
 
 /** The world's prevailing wind as an integer unit vector, drawn from the (seeded) ambient rng so it
@@ -409,4 +410,6 @@ export function seedDecay(state: AmbientState, map: GameMap): void {
   }
   // A century of runoff already in the water — saturate the urban shorelines.
   for (let n = 0; n < 60; n++) accumulateWaterRunoff(state, map);
+  // …and a century of disinvestment already emptied the redlined homes: the inherited unhoused.
+  seedInheritedOccupancy(state, map);
 }
