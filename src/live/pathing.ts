@@ -40,7 +40,7 @@ import {
   WEAR_MAX,
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
-import { carPassable, isParkable, isWalkable, isWearable, networkMasks } from './network';
+import { carPassable, isParkable, isWalkable, isWearable, networkMasks, reachedPlot } from './network';
 
 /** The nearest pedestrian-walkable tile to (x, y) within `maxR` (ring search, the tile itself
  *  first), or null if none is in reach. Rescues a ped that was placed OFF the walkable set — on
@@ -301,8 +301,8 @@ function tracePath(end: number): number[] {
 
 /**
  * The shared A*: from (sx,sy) toward (gx,gy) over the road network (`walk` false: canDrive edges,
- * driveTileCost, arrive ON the goal) or the walkable set (`walk` true: isWalkable, pedCost, arrive
- * within one of the goal — the door). f = g + Manhattan·0.5; at most ROAD_PATH_MAX_ITERS pops.
+ * driveTileCost, arrive ON the goal) or the walkable set (`walk` true: isWalkable, pedCost, arrive at
+ * the goal PLOT — beside the target tile or any tile of its parcel, i.e. whichever door is cheapest). f = g + Manhattan·0.5; at most ROAD_PATH_MAX_ITERS pops.
  */
 function searchPath(
   map: GameMap,
@@ -331,7 +331,7 @@ function searchPath(
     const ci = nodeTile[popNode()]!;
     const cx = ci % W;
     const cy = (ci - cx) / W;
-    if (walk ? Math.abs(cx - gx) + Math.abs(cy - gy) <= 1 : ci === goal) return tracePath(ci);
+    if (walk ? reachedPlot(map, cx, cy, gx, gy) : ci === goal) return tracePath(ci);
     const baseG = gScore[ci]!;
     const edges = drive[ci]!;
     for (let d = 0; d < 4; d++) {
@@ -372,8 +372,10 @@ export function roadPath(
 }
 
 /**
- * A* over the WALKABLE set from (sx,sy) toward (gx,gy), ending at the nearest walkable tile within
- * one of the target (the DOOR — building tiles aren't walkable, peds stop adjacent). The committed
+ * A* over the WALKABLE set from (sx,sy) toward (gx,gy), ending at the cheapest DOOR of the target's
+ * plot: a walkable tile beside the target or beside any tile of its parcel (`reachedPlot` — the same
+ * test a walker's arrival uses), so a citizen walks up to a big plot's street side rather than round
+ * to whichever yard touches its anchor tile. The committed
  * least-cost FOOT route — the pedestrian twin of {@link roadPath} — so a citizen routes AROUND
  * buildings and freeways instead of dithering in a greedy local minimum at a wall (the bug Maddy
  * saw: peds piling up + heading home "to nowhere" when a destination sat behind a barrier). Cost via
@@ -392,7 +394,7 @@ export function walkPath(
   pollution?: ReadonlyMap<number, number>,
 ): number[] | null {
   if (!isWalkable(map, sx, sy)) return null;
-  if (Math.abs(sx - gx) + Math.abs(sy - gy) <= 1) return [map.idx(sx, sy)];
+  if (reachedPlot(map, sx, sy, gx, gy)) return [map.idx(sx, sy)];
   return searchPath(map, sx, sy, gx, gy, true, wear, traffic, pollution);
 }
 
@@ -402,6 +404,41 @@ export function walkPath(
  *  (allowlist-safe). */
 export function tieHash(i: number): number {
   return Math.imul(i ^ 0x9e3779b1, 0x85ebca6b) >>> 0;
+}
+
+/** How far from a plot's anchor tile its parcel footprint is scanned for doors. */
+const PLOT_DOOR_SCAN = 6;
+
+/** The DOOR a person steps out of (or into) the plot at (x,y) by: among the walkable tiles beside its
+ *  footprint (the whole parcel, or the lone tile), a PAVED one — the street side — before bare yard
+ *  ground; then the nearest to the anchor; ties by tieHash (direction-neutral). Null when hemmed in.
+ *  (Maddy 2026-10-06: citizens stepped out of their homes' back yards and walked round the lot.) */
+export function plotDoor(map: GameMap, x: number, y: number): { x: number; y: number } | null {
+  const pid = map.parcel[map.idx(x, y)]!;
+  const r = pid === 0 ? 0 : PLOT_DOOR_SCAN;
+  let best: { x: number; y: number } | null = null;
+  let bestRank = Infinity;
+  let bestHash = 0;
+  for (let fy = y - r; fy <= y + r; fy++) {
+    for (let fx = x - r; fx <= x + r; fx++) {
+      if (!map.inBounds(fx, fy)) continue;
+      if (pid === 0 ? fx !== x || fy !== y : map.parcel[map.idx(fx, fy)] !== pid) continue;
+      for (let d = 0; d < 4; d++) {
+        const nx = fx + DIR_DX[d]!;
+        const ny = fy + DIR_DY[d]!;
+        if (!isWalkable(map, nx, ny)) continue;
+        const i = map.idx(nx, ny);
+        const rank = (map.built[i] === BuiltKind.None ? 1000 : 0) + Math.abs(nx - x) + Math.abs(ny - y);
+        const h = tieHash(i);
+        if (rank < bestRank || (rank === bestRank && h < bestHash)) {
+          bestRank = rank;
+          bestHash = h;
+          best = { x: nx, y: ny };
+        }
+      }
+    }
+  }
+  return best;
 }
 
 /** The nearest demand tile (R/C/I/Civic via zoneTypeOf — a place a person walks to/from)

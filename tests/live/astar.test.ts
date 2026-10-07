@@ -9,7 +9,7 @@ import { terrainStage } from '../../src/worldgen/terrain';
 import { mosesCenturyStage } from '../../src/worldgen/moses';
 import { ecoSeedStage } from '../../src/worldgen/ecoseed';
 import { roadPath, walkPath, driveTileCost, pedCost } from '../../src/live/pathing';
-import { canDrive, carPassable, isWalkable } from '../../src/live/network';
+import { canDrive, carPassable, isWalkable, reachedPlot } from '../../src/live/network';
 import { DIR_DX, DIR_DY } from '../../src/live/geometry';
 import { ROAD_PATH_MAX_ITERS } from '../../src/live/tuning';
 
@@ -68,7 +68,8 @@ function oracleWalkPath(
 ): number[] | null {
   if (!isWalkable(map, sx, sy)) return null;
   const start = map.idx(sx, sy);
-  const atDoor = (x: number, y: number): boolean => Math.abs(x - gx) + Math.abs(y - gy) <= 1;
+  // arrival at the target PLOT: beside the target tile or any tile of its parcel (2026-10-06, sidewalks)
+  const atDoor = (x: number, y: number): boolean => reachedPlot(map, x, y, gx, gy);
   if (atDoor(sx, sy)) return [start];
   const gScore = new Map<number, number>([[start, 0]]);
   const came = new Map<number, number>();

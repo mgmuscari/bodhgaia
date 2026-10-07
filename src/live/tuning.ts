@@ -284,16 +284,19 @@ export const ROAD_WALK_PENALTY = 0.04;
 
 /** Terrain-aware foot routing over WILD ground (empty land): lush growth is hard to push through
  *  (higher cost), a beaten desire path is easy going (lower cost) — so foot traffic self-reinforces
- *  desire paths over time. PED_GROUND_MIN floors the beaten cost just ABOVE a promenade (0.3) and a
- *  quiet street (0.5), so a promenade the player lays still wins the route and lures peds off the
- *  wild. Flora term adds with lushness; wear term subtracts with beaten-ness (both 0..1). */
+ *  desire paths over time. PED_GROUND_MIN floors the beaten cost well ABOVE every sidewalk (even a
+ *  jammed stroad), so any street link — and a promenade the player lays — wins the route and keeps
+ *  peds off the wild. Flora term adds with lushness; wear term subtracts with beaten-ness (both 0..1). */
 // People keep to the sidewalk unless the street network fails them (Maddy 2026-10-02: walkers were cutting
-// through every lot): even a fully beaten path costs more than a jammed local street, so desire paths form
-// where no street connects, not because a street is busy.
-export const PED_GROUND_BASE = 2.0; // a bare empty tile (no flora, no wear)
-export const PED_LUSH = 0.8; // added to ground cost at full floraVitality
-export const PED_BEATEN = 0.7; // subtracted from ground cost at full wear
-export const PED_GROUND_MIN = 1.6; // floor: a fully-beaten path, still dearer than a jammed local street (1.55)
+// through every lot; 2026-10-06: "demand pathing is still way too strong" — ~1 in 5 walkers stood on bare
+// ground): bare ground is no-sidewalk going — ~2× a JAMMED STROAD sidewalk (2.0 + 2·1 = 4.0), ~15× a calm
+// street — and even a fully beaten path stays well above the jammed stroad, so a street detour wins unless
+// it is several times longer. Desire paths form where no street connects, not because a street is busy or
+// a corner can be shaved. (Wear still lowers the cost, so where paths must form they self-reinforce.)
+export const PED_GROUND_BASE = 8.0; // a bare empty tile (no flora, no wear)
+export const PED_LUSH = 3.0; // added to ground cost at full floraVitality
+export const PED_BEATEN = 1.5; // subtracted from ground cost at full wear
+export const PED_GROUND_MIN = 6.5; // floor: a fully-beaten path, still well above a jammed stroad (4.0)
 /** Crossing a parking lot on foot: no sidewalk, cars backing out. */
 export const PED_LOT = 1.5;
 
