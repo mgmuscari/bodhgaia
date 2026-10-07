@@ -64,3 +64,26 @@ describe('createSettingsController', () => {
     expect(h.log).toEqual(['renderer:cpu']);
   });
 });
+
+describe('createSettingsController — audio', () => {
+  it('applies an audio change at once, clamped, and persists it', () => {
+    const storage = memStorage();
+    const applied: unknown[] = [];
+    const s = createSettingsController({
+      storage,
+      applyLive: () => {},
+      setRenderer: () => {},
+      applyAudio: (a) => applied.push(a),
+    });
+    s.panel.onAudioChange({ ...DEFAULT_SETTINGS.audio, music: 3, muted: true });
+    expect(s.current().audio.music).toBe(1);
+    expect(applied).toEqual([s.current().audio]);
+    expect(JSON.parse(storage.getItem(SETTINGS_KEY)!).audio).toEqual(s.current().audio);
+  });
+
+  it('works without an audio sink (applyAudio is optional)', () => {
+    const s = createSettingsController({ storage: memStorage(), applyLive: () => {}, setRenderer: () => {} });
+    expect(() => s.panel.onAudioChange({ ...DEFAULT_SETTINGS.audio, muted: true })).not.toThrow();
+    expect(s.current().audio.muted).toBe(true);
+  });
+});
