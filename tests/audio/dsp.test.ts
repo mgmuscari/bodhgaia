@@ -12,6 +12,7 @@ import {
   resampleFir,
   echoDelaySeconds,
   mulberry32,
+  softClipCurve,
 } from '../../src/audio/synth/dsp';
 
 // The S-DSP's pure arithmetic: pitch → playback rate, the Gaussian interpolation's low-pass, the 4-bit BRR
@@ -139,6 +140,20 @@ describe('the echo (S-DSP feedback delay with an 8-tap FIR in the loop)', () => 
     expect(echoDelaySeconds(7)).toBeCloseTo(0.112, 9);
     expect(echoDelaySeconds(0)).toBeCloseTo(0.016, 9);
     expect(echoDelaySeconds(99)).toBeCloseTo(0.24, 9);
+  });
+});
+
+describe('softClipCurve (the output safety net after the limiter)', () => {
+  it('is the identity in the body, odd, monotonic, and never reaches full scale', () => {
+    const c = softClipCurve(1025);
+    expect(c).toHaveLength(1025);
+    const x = (i: number) => (i / 1024) * 2 - 1;
+    for (let i = 0; i < c.length; i++) {
+      expect(Math.abs(c[i]!)).toBeLessThan(1);
+      expect(c[i]!).toBeCloseTo(-c[c.length - 1 - i]!, 6);
+      if (i) expect(c[i]!).toBeGreaterThanOrEqual(c[i - 1]!);
+      if (Math.abs(x(i)) <= 0.5) expect(c[i]!).toBeCloseTo(x(i), 6);
+    }
   });
 });
 

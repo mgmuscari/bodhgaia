@@ -305,7 +305,7 @@ const SPECS: Record<InstrumentId, () => Spec> = {
   click: () => {
     const rnd = mulberry32(151);
     return {
-      body: oneShot(640, (i) => Math.sin((2 * Math.PI * 1800 * i) / SAMPLE_RATE) * Math.exp(-i / 70) + (rnd() * 2 - 1) * 0.5 * Math.exp(-i / 25)),
+      body: oneShot(1600, (i) => Math.sin((2 * Math.PI * 1800 * i) / SAMPLE_RATE) * Math.exp(-i / 220) + (rnd() * 2 - 1) * 0.6 * Math.exp(-i / 60)),
       loop: false,
       rootHz: midiToHz(72),
       envelope: { attack: 0.001, decay: 1, sustain: 1, release: 0.01 },

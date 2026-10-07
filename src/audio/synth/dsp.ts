@@ -137,6 +137,21 @@ export function echoDelaySeconds(edl: number): number {
   return Math.max(1, Math.min(15, Math.round(edl))) * 0.016;
 }
 
+// — Output —
+
+/** A WaveShaper curve over −1..1: the identity up to ±0.5, then a tanh knee that never reaches full scale — the
+ *  last guard against a pile-up clipping the DAC (the limiter before it is not a brick wall). */
+export function softClipCurve(n = 2049): Float32Array<ArrayBuffer> {
+  const c = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const a = Math.abs(x);
+    const y = a <= 0.5 ? a : 0.5 + 0.49 * Math.tanh((a - 0.5) / 0.49);
+    c[i] = Math.sign(x) * y;
+  }
+  return c;
+}
+
 // — Determinism —
 
 /** A tiny seeded PRNG (for noise, phases) — the same sample bytes on every machine. */
