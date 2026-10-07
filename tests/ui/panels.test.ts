@@ -137,6 +137,7 @@ const PANELS: Record<string, { cls: string; mount: (c: FakeEl, onToggle: (o: boo
         onLiveChange: () => {},
         onWorldChange: () => {},
         onRendererChange: () => {},
+        onAudioChange: () => {},
         onToggle,
       });
       return { handle, reads: () => n };
@@ -220,6 +221,7 @@ describe('every panel returns the one handle shape', () => {
       onLiveChange: () => {},
       onWorldChange: () => {},
       onRendererChange: () => {},
+      onAudioChange: () => {},
       onToggle: (o) => toggles.push(o),
     });
     settings.open();
