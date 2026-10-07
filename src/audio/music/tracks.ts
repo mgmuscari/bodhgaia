@@ -1,17 +1,13 @@
 // The music manifest (PURE data). Every sourced piece is a Standard MIDI File from the Mutopia Project, shipped
 // under public/music/; each licence was read at the piece's Mutopia page (`source`) on 2026-10-06 — public domain
-// (the CC public-domain dedication) or Creative Commons BY-SA, never assumed. BY-SA requires attribution: the
-// credits (src/ui/creditsContent.ts) name the typesetter and licence of each. The files are shipped as separate data
-// alongside the GPL program, each under its own licence (an aggregate, not a derived work).
+// (the CC public-domain dedication) or Creative Commons BY / BY-SA 4.0 (GPLv3-compatible; no 3.0 or older), never
+// assumed. BY-SA requires attribution: the credits (src/ui/creditsContent.ts) name the typesetter and licence of
+// each. The files are shipped as separate data alongside the GPL program, each under its own licence.
 import { METTA_SUTTA, recite, TISARANA, type ChantText } from './chant';
 import type { Mood, PlayableTrack } from './player';
 
 export const LICENCES = {
   'public-domain': { name: 'Public Domain', url: 'https://creativecommons.org/licenses/publicdomain/' },
-  'cc-by-sa-3.0': {
-    name: 'Creative Commons Attribution-ShareAlike 3.0',
-    url: 'https://creativecommons.org/licenses/by-sa/3.0/',
-  },
   'cc-by-sa-4.0': {
     name: 'Creative Commons Attribution-ShareAlike 4.0',
     url: 'https://creativecommons.org/licenses/by-sa/4.0/',
@@ -156,15 +152,15 @@ export const CLASSICAL_TRACKS: MusicTrack[] = [
     'public-domain',
   ),
   mutopia(
-    'chopin-nocturne-op9-no2',
-    'chopin-nocturne-op9-no2.mid',
-    'Nocturne in E-flat major, Op. 9 No. 2',
+    'chopin-nocturne-op9-no3',
+    'chopin-nocturne-op9-no3.mid',
+    'Nocturne in B major, Op. 9 No. 3',
     'Frédéric Chopin',
     ['night'],
-    1590,
-    'ChopinFF/O9/chopin_nocturne_op9_n2/chopin_nocturne_op9_n2.mid',
-    'Renato Biolcati Rinaldi',
-    'cc-by-sa-3.0',
+    1955,
+    'ChopinFF/O9/chopin_nocturne_op9_n3/chopin_nocturne_op9_n3.mid',
+    'Glen Larsen',
+    'cc-by-sa-4.0',
   ),
   mutopia(
     'chopin-nocturne-op72-no1',
