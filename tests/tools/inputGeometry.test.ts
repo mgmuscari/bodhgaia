@@ -107,3 +107,34 @@ describe('lineTiles (axis-major straight line)', () => {
     }
   });
 });
+
+// Maddy 2026-10-07: "scrolling is too sensitive". A trackpad sends dozens of small wheel events per gesture and
+// each used to zoom a whole level; now the movement accumulates and a level changes per notch's worth.
+import { wheelZoom, WHEEL_STEP_PX } from '../../src/tools/inputGeometry';
+
+describe('wheel zoom accumulates', () => {
+  it('a mouse notch (one 100–120px event) zooms one level', () => {
+    expect(wheelZoom(0, -WHEEL_STEP_PX, 0).steps).toBe(+1);
+    expect(wheelZoom(0, WHEEL_STEP_PX, 0).steps).toBe(-1);
+  });
+
+  it('a trackpad swipe of many tiny deltas zooms once per notch-worth, not once per event', () => {
+    let acc = 0;
+    let steps = 0;
+    for (let i = 0; i < 40; i++) {
+      const r = wheelZoom(acc, -4, 0); // 40 × 4px = 160px of pinch/scroll
+      acc = r.acc;
+      steps += r.steps;
+    }
+    expect(steps).toBe(1);
+  });
+
+  it('line-mode deltas (Firefox) count as notches', () => {
+    expect(wheelZoom(0, -3, 1).steps).toBe(+1);
+  });
+
+  it('reversing direction drops what was accumulated the other way', () => {
+    const half = wheelZoom(0, -WHEEL_STEP_PX / 2, 0);
+    expect(wheelZoom(half.acc, WHEEL_STEP_PX / 2, 0).steps).toBe(0);
+  });
+});
