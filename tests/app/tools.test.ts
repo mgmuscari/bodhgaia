@@ -25,6 +25,7 @@ function setup(opts: { funds?: number; effort?: number } = {}) {
   const toolbar: ToolbarHandle = {
     refresh: () => log.push('refresh'),
     setStatus: (t) => log.push(`status:${t}`),
+    setNews: () => log.push('news'),
     refreshMeta: () => log.push('refreshMeta'),
     flash: () => log.push('flash'),
   };

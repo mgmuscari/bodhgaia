@@ -44,6 +44,8 @@ export interface ToolsDeps {
   placed: () => void;
   /** A repair-classified placement succeeded at its anchor tile (the tools→civic crossing). */
   repaired: (tx: number, ty: number) => void;
+  /** Feedback (sound): a tool was picked, a use succeeded, or one was refused. Optional. */
+  feedback?: { selected(): void; applied(def: ToolDef): void; denied(): void };
 }
 
 export interface ToolController {
@@ -85,6 +87,7 @@ export function createToolController(deps: ToolsDeps): ToolController {
   // a selection change: the prior preview and inspect readout are stale; preview-only repaint
   const select = (id: ToolId | null): void => {
     selectedToolId = id;
+    if (id !== null) deps.feedback?.selected();
     renderer.setPreview(null);
     toolbar.setStatus(null);
     deps.markPreviewDirty();
@@ -126,7 +129,11 @@ export function createToolController(deps: ToolsDeps): ToolController {
       toolbar.setStatus(deps.inspect(r.info ?? '', tx, ty));
       return;
     }
-    if (!r.ok) return;
+    if (!r.ok) {
+      deps.feedback?.denied();
+      return;
+    }
+    deps.feedback?.applied(def);
     deps.placed();
     deps.markDirty(); // mutated the built/parcel layer → rebuild the cached base
     // Effort changed → dock affordability + (if open) tech-panel affordability, snapshotted (the discrete path)
