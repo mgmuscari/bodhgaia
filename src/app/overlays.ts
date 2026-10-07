@@ -67,14 +67,12 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   };
 }
 
-/** The visible colour KEY (a swatch + label per ramp endpoint / band), top-left over the map. */
+/** The visible colour KEY (a swatch + label per ramp endpoint / band), bottom-left of the MAP pane — right of the
+ *  docked palette, never over it (styled in index.html with the pixel UI kit). */
 export function mountOverlayLegend(parent: HTMLElement): (legend: OverlayLegend | null) => void {
   const el = document.createElement('div');
   el.className = 'overlay-legend';
   el.hidden = true;
-  el.style.cssText =
-    'position:fixed;left:12px;top:12px;z-index:50;background:rgba(20,22,30,0.82);color:#e8e6e0;' +
-    'font:12px monospace;padding:6px 9px;border-radius:6px;pointer-events:none;line-height:1.5;';
   parent.appendChild(el);
   return (legend) => {
     el.textContent = '';
@@ -85,7 +83,7 @@ export function mountOverlayLegend(parent: HTMLElement): (legend: OverlayLegend 
     el.hidden = false;
     const title = document.createElement('div');
     title.textContent = legend.title;
-    title.style.cssText = 'font-weight:bold;margin-bottom:3px;';
+    title.className = 'overlay-legend__title';
     el.appendChild(title);
     for (const stop of legend.stops) {
       const row = document.createElement('div');
