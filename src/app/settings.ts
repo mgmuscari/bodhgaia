@@ -1,10 +1,10 @@
 // App shell: the settings controller — the persisted settings blob (loaded once at boot; defaults reproduce the
 // 128² medium-preset game byte-for-byte) and the Settings window's callbacks. Live caps apply at once (the perf
 // ceilings the agent layer reads); the world size persists for the next load (a different size is a different
-// seeded world — apply-on-restart); the renderer switches at once. Every change clamps the merged blob so
+// seeded world — apply-on-restart); the renderer and the audio levels switch at once. Every change clamps the merged blob so
 // applied == persisted == shown (an input could be out of range), and re-persists the whole blob.
 
-import { clampSettings, type LiveCaps, type RendererMode, type Settings } from '../ui/settings';
+import { clampSettings, type AudioSettings, type LiveCaps, type RendererMode, type Settings } from '../ui/settings';
 import { loadSettings, saveSettings } from '../ui/settingsStore';
 import type { SettingsPanelCallbacks } from '../ui/settingsPanel';
 
@@ -13,6 +13,8 @@ export interface SettingsDeps {
   storage?: Storage;
   applyLive: (caps: LiveCaps) => void;
   setRenderer: (mode: RendererMode) => void;
+  /** Push audio levels to the engine (the host passes `(a) => applyAudioSettings(audio, a)`). */
+  applyAudio?: (audio: AudioSettings) => void;
 }
 
 export interface SettingsController {
@@ -39,6 +41,10 @@ export function createSettingsController(deps: SettingsDeps): SettingsController
       onRendererChange: (mode) => {
         update({ renderer: mode });
         deps.setRenderer(mode);
+      },
+      onAudioChange: (audio) => {
+        update({ audio: { ...audio } });
+        deps.applyAudio?.(settings.audio);
       },
     },
   };

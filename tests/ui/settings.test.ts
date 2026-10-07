@@ -84,3 +84,20 @@ describe('clampSettings (tolerates partial / corrupt persisted data)', () => {
     expect(Number.isInteger(s.live.pedCap)).toBe(true);
   });
 });
+
+describe('audio settings (master / music / effects / ambience + mute)', () => {
+  it('defaults: master 0.7, music 0.5, effects 0.7, ambience 0.4, not muted', () => {
+    expect(DEFAULT_SETTINGS.audio).toEqual({ master: 0.7, music: 0.5, effects: 0.7, ambience: 0.4, muted: false });
+  });
+
+  it('a stored blob from before audio existed gets the audio defaults', () => {
+    expect(clampSettings({ renderer: 'cpu' }).audio).toEqual(DEFAULT_SETTINGS.audio);
+  });
+
+  it('clamps volumes to 0..1 (to the percent), tolerates garbage, keeps a boolean mute', () => {
+    const s = clampSettings({ audio: { master: 7, music: -1, effects: 0.333333, muted: true } });
+    expect(s.audio).toEqual({ master: 1, music: 0, effects: 0.33, ambience: 0.4, muted: true });
+    const bad = clampSettings({ audio: { master: NaN, ambience: 'loud', muted: 'yes' } } as unknown as Partial<Settings>);
+    expect(bad.audio).toEqual(DEFAULT_SETTINGS.audio);
+  });
+});

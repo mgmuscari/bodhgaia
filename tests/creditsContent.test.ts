@@ -12,6 +12,8 @@ import {
   creditsText,
   openingCreditLine,
 } from '../src/ui/creditsContent';
+import { LICENCES, MUSIC_TRACKS } from '../src/audio/music/tracks';
+import { CHANT_TEXTS } from '../src/audio/music/chant';
 
 /** The upstream §7 block, unwrapped from its C comment, one string per paragraph. */
 function upstreamSection7(): string[] {
@@ -85,5 +87,40 @@ describe('credits content', () => {
     expect(line).toContain('GPL-3.0-or-later');
     expect(line).toContain('the old simulator');
     expect(line).toContain('the original publisher');
+  });
+
+  it('credits every piece of music: title, composer, typesetter, licence, and links to source + licence', () => {
+    const music = creditsBlocks().filter((b) => /music/i.test(b.heading));
+    expect(music.length).toBeGreaterThan(0);
+    const body = music.flatMap((b) => b.paragraphs).join('\n');
+    const hrefs = music.flatMap((b) => (b.links ?? []).map((l) => l.href));
+    for (const t of MUSIC_TRACKS) {
+      expect(body, t.id).toContain(t.title);
+      expect(body, t.id).toContain(t.composer);
+      expect(body, t.id).toContain(t.credit.typesetter);
+      expect(body, t.id).toContain(LICENCES[t.credit.licence].name);
+      expect(hrefs, t.id).toContain(t.credit.source);
+    }
+    for (const id of new Set(MUSIC_TRACKS.map((t) => t.credit.licence)))
+      if (id !== 'public-domain') expect(hrefs).toContain(LICENCES[id].url);
+    expect(body).toContain('Mutopia Project');
+    expect(body).toContain('Nocturne in B major, Op. 9 No. 3');
+    expect(body).toContain('Glen Larsen');
+    expect(body).not.toMatch(/ShareAlike [0-3]\.\d/); // only 4.0 licences ship
+  });
+
+  it('credits the Pali chant as a transcription of traditional recitation, with the text and its meaning', () => {
+    const block = creditsBlocks().find((b) => /pali/i.test(b.heading));
+    expect(block).toBeDefined();
+    const body = block!.paragraphs.join('\n');
+    expect(body).toMatch(/transcription/i);
+    expect(body).toMatch(/not a recording/i);
+    for (const text of CHANT_TEXTS) {
+      expect(body).toContain(text.title);
+      for (const v of text.verses) {
+        for (const line of v.pali) expect(body).toContain(line);
+        expect(body).toContain(v.meaning);
+      }
+    }
   });
 });

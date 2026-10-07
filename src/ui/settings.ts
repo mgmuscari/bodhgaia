@@ -23,9 +23,20 @@ export interface Settings {
   /** Render path: `gpu` = the WebGL2 hybrid (shader jeuje's the CPU base — water/shadows/day-night/
    *  clouds); `cpu` = the Canvas2D path (the no-WebGL fallback). GPU falls back to CPU if unavailable. */
   renderer: RendererMode;
+  /** Sound levels (0..1), applied instantly to the audio engine's buses. */
+  audio: AudioSettings;
 }
 
 export type RendererMode = 'cpu' | 'gpu';
+
+/** The mixer as the player sees it: a master level, one per bus (effects = the engine's `sfx`), and a mute. */
+export interface AudioSettings {
+  master: number;
+  music: number;
+  effects: number;
+  ambience: number;
+  muted: boolean;
+}
 
 export type PresetTier = 'low' | 'medium' | 'high';
 export type MapSizeKey = 'small' | 'medium' | 'large' | 'huge';
@@ -51,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   live: { ...CAP_PRESETS.medium },
   world: { mapWidth: MAP_SIZES.medium, mapHeight: MAP_SIZES.medium },
   renderer: 'gpu',
+  audio: { master: 0.7, music: 0.5, effects: 0.7, ambience: 0.4, muted: false },
 };
 
 // Safe bands. Caps are perf ceilings (the floor keeps the game from emptying; the ceiling is a memory
@@ -70,6 +82,12 @@ function clampInt(v: unknown, lo: number, hi: number, dflt: number): number {
   return Math.min(hi, Math.max(lo, Math.round(v)));
 }
 
+/** A 0..1 level, rounded to the percent; non-finite / wrong-type → `dflt`. */
+function clampLevel(v: unknown, dflt: number): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return dflt;
+  return Math.min(1, Math.max(0, Math.round(v * 100) / 100));
+}
+
 type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
 /** Merge a (possibly partial / corrupt) settings blob over the defaults and clamp every field — the
@@ -78,6 +96,7 @@ export function clampSettings(partial?: DeepPartial<Settings>): Settings {
   const p = partial ?? {};
   const live = { ...DEFAULT_SETTINGS.live, ...(p.live ?? {}) };
   const world = { ...DEFAULT_SETTINGS.world, ...(p.world ?? {}) };
+  const audio = { ...DEFAULT_SETTINGS.audio, ...(p.audio ?? {}) };
   const d = DEFAULT_SETTINGS;
   return {
     live: {
@@ -92,5 +111,12 @@ export function clampSettings(partial?: DeepPartial<Settings>): Settings {
       mapHeight: clampInt(world.mapHeight, MAP_BOUNDS[0], MAP_BOUNDS[1], d.world.mapHeight),
     },
     renderer: p.renderer === 'cpu' || p.renderer === 'gpu' ? p.renderer : d.renderer,
+    audio: {
+      master: clampLevel(audio.master, d.audio.master),
+      music: clampLevel(audio.music, d.audio.music),
+      effects: clampLevel(audio.effects, d.audio.effects),
+      ambience: clampLevel(audio.ambience, d.audio.ambience),
+      muted: typeof audio.muted === 'boolean' ? audio.muted : d.audio.muted,
+    },
   };
 }

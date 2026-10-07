@@ -31,6 +31,12 @@ import { createToolController } from './app/tools';
 import { createSaves } from './app/saves';
 import { installKeys } from './app/keys';
 import { createSimTick, createFrame, runFrames } from './app/loop';
+import { createSound } from './app/sound';
+import { createNews } from './app/news';
+import { isPowerConsumer } from './growth/power';
+import { placeCategoryOf } from './audio/sfx';
+import { gameClock } from './ui/lighting';
+import { BuiltKind } from './engine/fabric';
 
 const DEFAULT_SEED = 'bodhitropolis';
 
@@ -41,7 +47,11 @@ export function main(save: SaveV1 | null = null): void {
   const params = new URLSearchParams(window.location.search);
 
   // Settings (persisted; the world size feeds worldgen, so it applies on the next load), then the city.
-  const settings = createSettingsController({ applyLive: (caps) => live.applyCaps(caps), setRenderer: (m) => view.setMode(m) });
+  const settings = createSettingsController({
+    applyLive: (caps) => live.applyCaps(caps),
+    setRenderer: (m) => view.setMode(m),
+    applyAudio: (a) => sound.applySettings(a), // only on a user change, after `sound` exists
+  });
   const { world: size } = settings.current();
   const city = createCity({ seed: params.get('seed') ?? DEFAULT_SEED, size: { width: size.mapWidth, height: size.mapHeight }, save });
   const { seed, world, tech, civic, sim: deps } = city;
@@ -60,6 +70,21 @@ export function main(save: SaveV1 | null = null): void {
     walkable: () => tech.hasCapability('walkability'), // Walkable Streets: people walk farther
   });
   const power = createPowerController({ map: world.map, parcels: world.parcels, publish: (a) => renderer.setPowerGrid(a) });
+
+  // Sound: silent until the first click or key unlocks it; listens to the city through the camera.
+  const sound = createSound({
+    live: live.state,
+    view: () => {
+      const a = camera.screenToWorld(0, 0);
+      const b = camera.screenToWorld(view.width(), view.height());
+      return { x0: Math.floor(a.wx), y0: Math.floor(a.wy), x1: Math.ceil(b.wx), y1: Math.ceil(b.wy) };
+    },
+    hour: () => gameClock(performance.now() / 1000).hour,
+    hasHealing: () => world.parcels.aliveIndices().some((i) => world.parcels.kindAt(i) === BuiltKind.HealingCommons),
+    hidden: () => document.hidden,
+  });
+  sound.applySettings(settings.current().audio);
+  let deniedAt = 0; // a refused drag would repeat per tile — one 'no' per gesture is enough
 
   if (import.meta.env.DEV) {
     installDevHandle({
@@ -91,6 +116,8 @@ export function main(save: SaveV1 | null = null): void {
     autosave: () => saves.autosave(), // read at call time (loading a slot blanks autosave first)
     ui: {
       practiceGranted: () => {
+        sound.sfx.unlock();
+        news.push('A new practice takes root in the city');
         tools.afterEffortChange();
         toolbar.flash();
         panels.get('tech').refresh();
@@ -99,7 +126,11 @@ export function main(save: SaveV1 | null = null): void {
         toolbar.refresh();
         panels.get('tech').refresh(); // projects advanced (no-op while the panel is closed)
         panels.get('budget').refresh();
-        if (reliefNow) panels.get('budget').open(); // the grant and its strings, shown as they arrive
+        if (reliefNow) {
+          panels.get('budget').open(); // the grant and its strings, shown as they arrive
+          sound.sfx.relief();
+          news.push('A relief grant arrives — with outside oversight');
+        }
       },
       pulse: () => pulse.refresh(),
     },
@@ -155,6 +186,15 @@ export function main(save: SaveV1 | null = null): void {
     },
     // credit the anchor tile's neighborhood from the LIVE partition (id 0 = none: a safe no-op)
     repaired: (tx, ty) => deps.civic.recordRepair(deps.partition.tileToNeighborhood[world.map.idx(tx, ty)] ?? 0, sim.tick()),
+    feedback: {
+      selected: () => sound.sfx.toolSelect(),
+      applied: (def) => (def.id === 'bulldoze' ? sound.sfx.bulldoze() : sound.sfx.place(placeCategoryOf(def.kind))),
+      denied: () => {
+        const t = performance.now();
+        if (t - deniedAt > 400) sound.sfx.denied();
+        deniedAt = t;
+      },
+    },
   });
   const toolbar = tools.toolbar;
 
@@ -175,13 +215,45 @@ export function main(save: SaveV1 | null = null): void {
     sampleRestoration: () => sampleRestoration(live.state, world.map),
     settings: settings.panel,
     onBorrowed: () => {
+      sound.sfx.loanTaken();
+      news.push('The city takes out a loan');
       toolbar.refresh(); // the fabric may be affordable again
       pulse.refresh();
     },
     onPracticeBegun: () => tools.afterEffortChange(),
-    onToggle: () => toolbar.refreshMeta(), // the key, the dock button AND any dismiss
+    onToggle: () => {
+      toolbar.refreshMeta(); // the key, the dock button AND any dismiss
+      sound.sfx.uiClick();
+    },
   });
   const showLegend = mountOverlayLegend(document.body);
+
+  // The news ticker along the status bar: the city's changes as headlines (arrests, homes lost and found, gridlock,
+  // outages), plus the economy's moments pushed above.
+  const news = createNews({
+    width: world.map.width,
+    height: world.map.height,
+    policeViolence: () => live.state.policeViolence,
+    traffic: () => live.state.traffic,
+    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
+    dark: () => {
+      const lit = power.grid().poweredAnchors;
+      let dark = 0;
+      let darkAt: { x: number; y: number } | undefined;
+      for (const i of world.parcels.aliveIndices()) {
+        const p = world.parcels.get(i);
+        if (!isPowerConsumer(p.kind) || p.density <= 0 || lit.has(world.map.idx(p.x, p.y))) continue;
+        dark++;
+        darkAt ??= { x: p.x, y: p.y };
+      }
+      return { dark, darkAt };
+    },
+    show: (items) => toolbar.setNews(items),
+  });
+  {
+    const u = sampleUnhoused(live.state, world.map.width).unhoused;
+    if (u > 0) news.push(`${u} residents are without a home`); // the inherited crisis, from the first frame
+  }
 
   const cityTitle = save?.name ?? cityName(createRng(seed).fork('city-name'));
   const saves = createSaves({
