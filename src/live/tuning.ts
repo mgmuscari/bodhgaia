@@ -257,11 +257,15 @@ export const OCC_FLOOR = 0.4;
 // opening free-fell to the floor in ~3 min. For the opening OCC_SETTLE_PASSES the live fields are only
 // materialising the inherited state (wear, road decay, smog ramp up from zero), so expectation simply IS the
 // current signal; after that it adapts at OCC_EXPECT_RATE a pass (~10 min of play). Occupancy is the stock,
-// so a gain is kept once expectations catch up. OCC_ABSOLUTE keeps a small pull from the absolute signal: a
-// terrible place still leaks, slowly.
+// so a gain is kept once expectations catch up. There is NO constant pull from the absolute signal (Maddy
+// 2026-10-06): it made the unhoused count climb forever whatever the player did — people move on change only.
 export const OCC_SETTLE_PASSES = 180;
 export const OCC_EXPECT_RATE = 1 / 600;
-export const OCC_ABSOLUTE = 0.05;
+// The INHERITED housing crisis (Maddy 2026-10-06: "we do expect high homeless population in distressed cities"):
+// the city opens with each home emptied by this fraction × its redline grade (0..1) — disinvestment's displaced,
+// there before the player arrives (~20% unhoused on lotus/harbor/oak, whose homes average grade ≈ 0.4) — floored
+// at OCC_FLOOR. Repairs and housing then win people back; harms push more out.
+export const INHERITED_VACANCY = 0.5;
 /** Per-kind growth HEADROOM: how far above its seeded baseline a home's occupancy can climb when it
  *  thrives. A single house barely densifies; apartments / projects / co-ops / communes hold far more. */
 export const OCC_HEADROOM: ReadonlyMap<number, number> = new Map([
