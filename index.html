@@ -485,7 +485,7 @@
         box-shadow: none;
         position: fixed;
         left: 50%;
-        top: 50%;
+        top: calc(var(--topbar-h) + (100vh - var(--topbar-h) - var(--status-h)) / 2); /* centred in the map pane's band */
         transform: translate(-50%, -50%);
         z-index: 11;
         min-width: 18rem;
@@ -594,7 +594,7 @@
         box-shadow: none;
         position: fixed;
         left: 50%;
-        top: 50%;
+        top: calc(var(--topbar-h) + (100vh - var(--topbar-h) - var(--status-h)) / 2); /* centred in the map pane's band */
         transform: translate(-50%, -50%);
         z-index: 11;
         min-width: 16rem;
