@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createAmbientState } from '../../src/live/types';
-import { soundSnapshot, moodFor, arrestsSince } from '../../src/app/sound';
+import { soundSnapshot, moodFor } from '../../src/app/sound';
 
 // The sound controller reads the live city cheaply a few times a second: what's in VIEW feeds the ambience (the
-// camera is the listener), the hour picks the music's mood, and a rise in police violence is an arrest cue.
+// camera is the listener) and the hour picks the music's mood.
 describe('the ambience hears what the camera sees', () => {
   it('counts moving cars, walkers and flocks inside the view, normalised 0..1', () => {
     const s = createAmbientState();
@@ -33,13 +33,5 @@ describe('the music follows the day', () => {
     expect(moodFor(3, false)).toBe('night');
     expect(moodFor(22, true)).toBe('calm');
     expect(moodFor(12, true)).toBe('day'); // the chants are for the quiet hours
-  });
-});
-
-describe('arrests are heard once per rise in police violence', () => {
-  it('fires on a rise, not on a fall or a steady city', () => {
-    expect(arrestsSince(10, 12)).toBe(true);
-    expect(arrestsSince(12, 12)).toBe(false);
-    expect(arrestsSince(12, 9)).toBe(false); // the stain fading is not an arrest
   });
 });

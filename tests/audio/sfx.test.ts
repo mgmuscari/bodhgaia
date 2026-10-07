@@ -17,7 +17,7 @@ import { fakeEngine } from './fakeEngine';
 describe('sfx cues as data', () => {
   it('defines every named cue, one per place category', () => {
     for (const c of PLACE_CATEGORIES) expect(CUE_NAMES).toContain(`place-${c}`);
-    for (const n of ['uiClick', 'uiOpen', 'uiClose', 'toolSelect', 'bulldoze', 'denied', 'unlock', 'relief', 'loanTaken', 'arrest'])
+    for (const n of ['uiClick', 'uiOpen', 'uiClose', 'toolSelect', 'bulldoze', 'denied', 'unlock', 'relief', 'loanTaken'])
       expect(CUE_NAMES).toContain(n);
   });
 
@@ -46,15 +46,10 @@ describe('sfx cues as data', () => {
     expect(SFX_LIMITS.maxCue).toBeLessThan(1);
   });
 
-  it('arrest is sober: low, no bright/bird/bell timbres, no rising jingle', () => {
-    const cue = CUES.arrest;
-    for (const n of cue) {
-      expect(['chime', 'bell', 'chirp', 'marimba', 'harp']).not.toContain(n.instrument);
-      expect(n.pitch).toBeLessThan(60);
-      expect(n.velocity).toBeLessThanOrEqual(0.35);
-    }
-    const pitched = [...cue].sort((a, b) => a.offset - b.offset).map((n) => n.pitch);
-    expect(pitched[pitched.length - 1]!).toBeLessThanOrEqual(pitched[0]!); // never resolves upward
+  // Maddy 2026-10-07: "i don't want the tone on arrests. no horn" — no arrest cue at all.
+  it('arrests make no sound: there is no arrest cue', () => {
+    expect(CUE_NAMES as readonly string[]).not.toContain('arrest');
+    expect('arrest' in CUES).toBe(false);
   });
 
   it('relief is ambivalent: it carries both a major and a minor third over its root', () => {
@@ -95,7 +90,6 @@ describe('createSfx player', () => {
       [sfx.unlock, 'unlock'],
       [sfx.relief, 'relief'],
       [sfx.loanTaken, 'loanTaken'],
-      [sfx.arrest, 'arrest'],
       [() => sfx.place('commons'), 'place-commons'],
     ];
     for (const [fn, name] of calls) {
@@ -135,16 +129,16 @@ describe('createSfx player', () => {
     for (const p of first) expect(Math.abs(p - base)).toBeLessThanOrEqual(1); // slight, not a melody
   });
 
-  it('rate-limits sober and loud cues too (an arrest sweep is one tone, not a burst)', () => {
+  it('rate-limits the long cues too (a repeated relief is one phrase, not a burst)', () => {
     const e = fakeEngine();
     const sfx = createSfx(e);
-    sfx.arrest();
+    sfx.relief();
     const n = e.played.length;
     e.t = 0.2;
-    sfx.arrest();
+    sfx.relief();
     expect(e.played.length).toBe(n);
     e.t = 5;
-    sfx.arrest();
+    sfx.relief();
     expect(e.played.length).toBe(2 * n);
   });
 
