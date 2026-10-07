@@ -14,10 +14,13 @@ import { isTransportKind } from '../engine/fabric';
 
 /**
  * True iff applying `tool` is a "line" (drag-paint) action rather than a point
- * plop: the tool produces a transport kind (`tool.kind` set and transport).
- * Inspect/bulldoze (no kind), every building build, and the building converts
- * (rezoning greens) are all point tools — false.
+ * plop: the tool produces a transport kind (`tool.kind` set and transport) — or
+ * it is BULLDOZE (Maddy 2026-10-07: "click to drag to bulldoze should work, but
+ * only in a straight line, not a box"; lineTiles snaps the stroke straight).
+ * Inspect, every building build, and the building converts (rezoning greens)
+ * are point tools — false.
  */
 export function isLineTool(tool: ToolDef): boolean {
+  if (tool.id === 'bulldoze') return true;
   return tool.kind !== undefined && isTransportKind(tool.kind);
 }
