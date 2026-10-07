@@ -104,6 +104,9 @@ describe('credits content', () => {
     for (const id of new Set(MUSIC_TRACKS.map((t) => t.credit.licence)))
       if (id !== 'public-domain') expect(hrefs).toContain(LICENCES[id].url);
     expect(body).toContain('Mutopia Project');
+    expect(body).toContain('Nocturne in B major, Op. 9 No. 3');
+    expect(body).toContain('Glen Larsen');
+    expect(body).not.toMatch(/ShareAlike [0-3]\.\d/); // only 4.0 licences ship
   });
 
   it('credits the Pali chant as a transcription of traditional recitation, with the text and its meaning', () => {

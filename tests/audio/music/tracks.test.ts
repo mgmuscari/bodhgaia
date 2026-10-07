@@ -25,8 +25,8 @@ describe('music manifest', () => {
       expect(lic, t.id).toBeDefined();
       if (t.file) {
         // sourced files: only an open licence verified at the source — never anything else
-        expect(t.credit.licence).toMatch(/^(public-domain|cc-by-[0-9.]+|cc-by-sa-[0-9.]+)$/);
-        expect(lic.url).toMatch(/^https:\/\/creativecommons\.org\//);
+        expect(t.credit.licence).toMatch(/^(public-domain|cc-by-4\.0|cc-by-sa-4\.0)$/); // 4.0 only: GPLv3-compatible
+        expect(lic.url).toMatch(/^https:\/\/creativecommons\.org\/(licenses\/publicdomain|licenses\/by(-sa)?\/4\.0)\/$/);
         expect(t.credit.source).toMatch(/^https:\/\/www\.mutopiaproject\.org\/cgibin\/piece-info\.cgi\?id=\d+$/);
         expect(t.credit.download).toMatch(/^https:\/\/www\.mutopiaproject\.org\/ftp\/.+\.mid$/);
         expect(t.credit.typesetter.length).toBeGreaterThan(0);
@@ -35,6 +35,13 @@ describe('music manifest', () => {
         expect(t.credit.licence).toBe('gpl-3.0-or-later');
       }
     }
+  });
+
+  it('carries Chopin Op. 9 No. 3 (BY-SA 4.0) in place of Op. 9 No. 2 (BY-SA 3.0)', () => {
+    const ids = MUSIC_TRACKS.map((t) => t.id);
+    expect(ids).toContain('chopin-nocturne-op9-no3');
+    expect(ids).not.toContain('chopin-nocturne-op9-no2');
+    expect(Object.keys(LICENCES)).not.toContain('cc-by-sa-3.0');
   });
 
   it('every file exists in public/music, is small, and parses to notes', () => {
