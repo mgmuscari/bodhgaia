@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createAudio, installAudioUnlock } from '../../src/app/audio';
+import { applyAudioSettings, createAudio, installAudioUnlock } from '../../src/app/audio';
 import type { AudioEngine } from '../../src/audio/contract';
 
 // The app's audio handle. The AudioContext is created lazily inside the first user gesture (browsers block sound
@@ -53,5 +53,17 @@ describe('installAudioUnlock', () => {
     off();
     t.dispatchEvent(new Event('pointerdown'));
     expect(e.count()).toBe(0);
+  });
+});
+
+describe('applyAudioSettings', () => {
+  it('maps the settings onto the engine buses (effects → sfx) and the mute', () => {
+    const calls: string[] = [];
+    const engine = {
+      setVolume: (bus: string, v: number) => calls.push(`${bus}=${v}`),
+      setMuted: (m: boolean) => calls.push(`muted=${m}`),
+    } as unknown as AudioEngine;
+    applyAudioSettings(engine, { master: 0.7, music: 0.5, effects: 0.6, ambience: 0.4, muted: true });
+    expect(calls).toEqual(['master=0.7', 'music=0.5', 'sfx=0.6', 'ambience=0.4', 'muted=true']);
   });
 });

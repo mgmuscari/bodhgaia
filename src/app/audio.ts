@@ -5,6 +5,7 @@
 
 import type { AudioEngine, Bus } from '../audio/contract';
 import { createSynthEngine, type SynthEngine } from '../audio/engine';
+import type { AudioSettings } from '../ui/settings';
 
 export type GameAudio = AudioEngine & { dispose(): void };
 
@@ -49,6 +50,15 @@ export function createAudio(): GameAudio {
       engine = null;
     },
   };
+}
+
+/** Apply the player's mixer settings to the engine (Settings' "effects" is the engine's `sfx` bus). */
+export function applyAudioSettings(engine: AudioEngine, a: AudioSettings): void {
+  engine.setVolume('master', a.master);
+  engine.setVolume('music', a.music);
+  engine.setVolume('sfx', a.effects);
+  engine.setVolume('ambience', a.ambience);
+  engine.setMuted(a.muted);
 }
 
 /** Unlock audio on the first pointerdown/keydown (once). Returns an uninstaller. */

@@ -4,8 +4,10 @@
 //   • Performance (live caps) — applied INSTANTLY via onLiveChange (no regen);
 //   • World (map size) — persisted via onWorldChange and applied on the NEXT load (regenerate), behind
 //     an explicit confirm because reloading discards the in-progress city (there is no save).
+//   • Audio (master / music / effects / ambience + mute) — applied INSTANTLY via onAudioChange while dragging.
 
 import {
+  type AudioSettings,
   CAP_PRESETS,
   MAP_SIZES,
   type LiveCaps,
@@ -26,6 +28,8 @@ export interface SettingsPanelCallbacks {
   onWorldChange(world: WorldSettings): void;
   /** A render-path change (cpu ⇄ gpu) to apply IMMEDIATELY (mount/unmount the WebGL layer) and persist. */
   onRendererChange(renderer: RendererMode): void;
+  /** A sound-level change to apply IMMEDIATELY (engine buses) and persist. */
+  onAudioChange(audio: AudioSettings): void;
   /** Fired on every open/close, so the dock's button can follow. */
   onToggle?(open: boolean): void;
 }
@@ -52,6 +56,9 @@ export function mountSettingsPanel(
 ): PanelHandle {
   const panel = document.createElement('div');
   panel.className = 'settings-panel';
+  // four sections no longer fit a short viewport centred — scroll inside the frame rather than off-screen
+  panel.style.maxHeight = '92vh';
+  panel.style.overflowY = 'auto';
 
   // Rebuilt from the current settings each open, so the controls always reflect live state.
   const render = (): void => {
@@ -73,6 +80,65 @@ export function mountSettingsPanel(
     panel.appendChild(performanceSection(s));
     panel.appendChild(worldSection(s));
     panel.appendChild(rendererSection(s));
+    panel.appendChild(audioSection(s));
+  };
+
+  // — Audio (levels + mute, instant) —
+  const LEVELS: [string, 'master' | 'music' | 'effects' | 'ambience'][] = [
+    ['Master', 'master'],
+    ['Music', 'music'],
+    ['Effects', 'effects'],
+    ['Ambience', 'ambience'],
+  ];
+  const audioSection = (s: Settings): HTMLElement => {
+    const sec = section('Sound — applies instantly');
+    for (const [label, key] of LEVELS) {
+      const r = row(label);
+      const wrap = document.createElement('span');
+      wrap.style.display = 'flex';
+      wrap.style.alignItems = 'center';
+      wrap.style.gap = '0.4rem';
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '100';
+      slider.step = '1';
+      slider.value = String(Math.round(s.audio[key] * 100));
+      // a range track, not a framed field: drop the button frame the other inputs wear
+      slider.style.border = 'none';
+      slider.style.borderImage = 'none';
+      slider.style.padding = '0';
+      slider.style.width = '8rem';
+      slider.style.accentColor = 'var(--ui-accent)';
+      const pct = document.createElement('span');
+      pct.style.minWidth = '2.6rem';
+      pct.style.textAlign = 'right';
+      pct.textContent = `${slider.value}%`;
+      slider.addEventListener('input', () => {
+        pct.textContent = `${slider.value}%`;
+        cb.onAudioChange({ ...cb.getSettings().audio, [key]: Number(slider.value) / 100 });
+      });
+      wrap.append(slider, pct);
+      r.appendChild(wrap);
+      sec.appendChild(r);
+    }
+    const r = row('Mute all');
+    const mute = document.createElement('input');
+    mute.type = 'checkbox';
+    mute.checked = s.audio.muted;
+    mute.style.border = 'none';
+    mute.style.borderImage = 'none';
+    mute.style.width = '1.1rem';
+    mute.style.height = '1.1rem';
+    mute.style.accentColor = 'var(--ui-accent)';
+    mute.addEventListener('change', () => cb.onAudioChange({ ...cb.getSettings().audio, muted: mute.checked }));
+    r.appendChild(mute);
+    sec.appendChild(r);
+    const note = document.createElement('div');
+    note.className = 'settings-panel__note';
+    note.textContent = 'Sound starts after your first click or key press (the browser asks for that).';
+    sec.appendChild(note);
+    return sec;
   };
 
   // — Renderer (GPU hybrid shader ⇄ CPU), instant —
