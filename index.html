@@ -120,8 +120,8 @@
          connectors on the left, the chosen practice's detail pane on the right. */
       .tech-panel {
         position: fixed;
-        top: 3vh;
-        bottom: 3vh;
+        top: calc(var(--topbar-h) + 2vh);
+        bottom: calc(var(--status-h) + 2vh);
         left: calc(var(--sidebar-w) + 2vw);
         right: 2vw;
         z-index: 9;
@@ -312,13 +312,13 @@
         filter: grayscale(0.8) brightness(0.85);
       }
 
-      /* Tool palette: docked down the left edge, SNES SimCity style; the map pane starts right of it
-         (main.ts sizes the canvases to the remaining width). Icon buttons in a 2-column grid. */
+      /* Tool palette: docked down the left edge between the top bar and the status line, SNES SimCity style;
+         the map pane is the rectangle right of it (src/ui/layout.ts). Icon buttons in a 2-column grid. */
       .toolbar {
         position: fixed;
         left: 0;
-        top: 0;
-        bottom: 0;
+        top: var(--topbar-h);
+        bottom: var(--status-h);
         width: var(--sidebar-w);
         box-sizing: border-box;
         z-index: 8;
@@ -382,21 +382,24 @@
       .toolbar-flyout[hidden] {
         display: none;
       }
-      /* Status line (inspect readouts, legend captions): along the bottom of the map pane */
+      /* Status line (inspect readouts, legend captions): full width along the bottom, always present — the map
+         pane ends above it, so a message never covers the map */
       .toolbar-status {
         position: fixed;
-        left: var(--sidebar-w);
+        left: 0;
         right: 0;
         bottom: 0;
+        height: var(--status-h);
+        box-sizing: border-box;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
         z-index: 8;
         padding: 2px 8px;
         color: var(--ui-text);
         font-size: 1rem;
         border: 8px solid transparent;
         border-image: var(--ui-frame-panel) 4 fill / 8px stretch;
-      }
-      .toolbar-status[hidden] {
-        display: none;
       }
       .ui-tip {
         position: fixed;
@@ -421,21 +424,25 @@
         animation: toolbar-flash 1s steps(6);
       }
 
-      /* Wellbeing pulse: a thin always-on readout, top-center over the live map.
-         Its own dedicated dock (never the toolbar status), refreshed on the civic
-         cadence so it never flickers. Palette matches the docks. */
+      /* The top bar: the city's always-on readout, full width above the palette and the map (never over the map).
+         Its own dedicated dock (never the toolbar status), refreshed on the civic cadence so it never flickers. */
       .pulse-dock {
-        border: 12px solid transparent;
-        border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
+        border: 10px solid transparent;
+        border-image: var(--ui-frame-panel) 4 fill / 10px stretch;
         background: none;
         box-shadow: none;
         position: fixed;
-        left: calc(var(--sidebar-w) + (100vw - var(--sidebar-w)) / 2); /* centred over the map pane */
+        left: 0;
+        right: 0;
         top: 0;
-        transform: translateX(-50%);
+        height: var(--topbar-h);
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
         z-index: 8;
-        padding: 0.35rem 0.9rem;
-        border-top: none;
+        padding: 0 0.9rem;
         font-family: var(--ui-font);
         font-size: 1.0rem;
         letter-spacing: 0.03em;
@@ -449,7 +456,7 @@
         box-shadow: none;
         position: fixed;
         right: 0;
-        top: 0;
+        top: var(--topbar-h); /* below the top bar */
         z-index: 8;
         padding: 0.4rem 0.8rem 0.55rem;
         border-top: none;
@@ -658,10 +665,10 @@
         border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
         position: fixed;
         left: calc(var(--sidebar-w) + 0.5rem);
-        top: 3.2rem;
+        top: calc(var(--topbar-h) + 0.5rem);
         z-index: 10;
         width: 22rem;
-        max-height: calc(100vh - 4rem);
+        max-height: calc(100vh - var(--topbar-h) - var(--status-h) - 1rem);
         overflow-y: auto;
         padding: 0.5rem 0.8rem 0.7rem;
         font-family: var(--ui-font);
@@ -745,7 +752,7 @@
         border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
         position: fixed;
         left: calc(var(--sidebar-w) + 0.5rem);
-        bottom: 3.2rem;
+        bottom: calc(var(--status-h) + 0.5rem);
         z-index: 7; /* map chrome: above the map, under every window (panels sit at 8+) */
         padding: 0.2rem 0.5rem;
         font-family: var(--ui-font);
