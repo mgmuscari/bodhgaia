@@ -41,10 +41,12 @@ interface TickNote {
 
 class Reader {
   pos = 0;
-  constructor(
-    readonly bytes: Uint8Array,
-    readonly end = bytes.length,
-  ) {}
+  readonly bytes: Uint8Array;
+  readonly end: number;
+  constructor(bytes: Uint8Array, end = bytes.length) {
+    this.bytes = bytes;
+    this.end = end;
+  }
   u8(): number {
     if (this.pos >= this.end) throw new Error('MIDI: unexpected end of data');
     return this.bytes[this.pos++]!;
