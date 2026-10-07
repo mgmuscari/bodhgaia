@@ -2,8 +2,8 @@
 // until the first gesture unlocks it), the cues (src/audio/sfx.ts), the city's soundscape (src/audio/ambience.ts)
 // and the music (src/audio/music — Mutopia classical by day and night, the transcribed Pali recitation on quiet
 // nights in a city that has made room for healing). A few times a second it listens to the live city through the
-// camera: what's in VIEW feeds the ambience, the hour picks the music's mood, and a rise in police violence is
-// heard as an arrest. The pure parts are exported and tested; the rest is a thin timer.
+// camera: what's in VIEW feeds the ambience and the hour picks the music's mood. Arrests make no sound (Maddy
+// 2026-10-07). The pure parts are exported and tested; the rest is a thin timer.
 
 import { createAudio, installAudioUnlock, applyAudioSettings } from './audio';
 import { createSfx, type Sfx } from '../audio/sfx';
@@ -46,10 +46,6 @@ export function moodFor(hour: number, hasHealing: boolean): Mood {
   return night ? (hasHealing ? 'calm' : 'night') : 'day';
 }
 
-/** True when police violence rose since the last listen — an arrest happened (the stain fading is not one). */
-export function arrestsSince(prev: number, now: number): boolean {
-  return now > prev + 1e-9;
-}
 
 export interface SoundDeps {
   live: AmbientState;
@@ -78,12 +74,6 @@ export function createSound(deps: SoundDeps): Sound {
   let mood = moodFor(deps.hour(), deps.hasHealing());
   const music = createMusicPlayer(engine, MUSIC_TRACKS, { mood });
   void music.next().catch(() => {}); // waits for the unlock, then the first piece of the mood
-  const violence = (): number => {
-    let t = 0;
-    for (const v of deps.live.policeViolence.values()) t += v;
-    return t;
-  };
-  let lastViolence = violence();
   let resting = false;
   setInterval(() => {
     if (deps.hidden()) {
@@ -99,9 +89,6 @@ export function createSound(deps: SoundDeps): Sound {
     }
     const night = m !== 'day';
     ambience.update(soundSnapshot(deps.live, deps.view(), night));
-    const v = violence();
-    if (arrestsSince(lastViolence, v)) sfx.arrest();
-    lastViolence = v;
   }, LISTEN_MS);
   return { sfx, applySettings: (a) => applyAudioSettings(engine, a) };
 }

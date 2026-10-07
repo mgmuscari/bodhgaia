@@ -1,7 +1,7 @@
 // SOUND DESIGN — the UI/build cues. Each cue is a tiny SNES-style phrase written as DATA (a list of notes on the
 // contract's instruments), played on the 'sfx' bus. Tone: a contemplative game about repair — warm, small,
-// never shrill. The harms are sober: an arrest is a low muted tone, never a siren jingle; the relief grant is
-// ambivalent (a major colour that sinks to minor — it comes with strings).
+// never shrill. Arrests make NO sound (Maddy 2026-10-07: "i don't want the tone on arrests" — police violence is
+// shown on the map, not scored); the relief grant is ambivalent (a major colour that sinks to minor — it comes with strings).
 //
 // Built against src/audio/contract.ts only. PURE apart from the player, whose only clock is engine.now().
 
@@ -33,7 +33,6 @@ export const CUE_NAMES = [
   'unlock',
   'relief',
   'loanTaken',
-  'arrest',
 ] as const;
 export type CueName = (typeof CUE_NAMES)[number];
 
@@ -93,8 +92,6 @@ export const CUES: Readonly<Record<CueName, Cue>> = {
   ],
   // A loan: a coin set down, then a step down — weight taken on.
   loanTaken: [n('marimba', 60, 0.24, 0, 0.14), n('pluck', 55, 0.2, 0.1, 0.25)],
-  // An arrest: police violence. Low, muted, falling; no brightness, no "gotcha".
-  arrest: [n('strings', 43, 0.2, 0, 0.85), n('thud', 33, 0.22, 0, 0.25), n('horn', 41, 0.12, 0.15, 0.7)],
 };
 
 /** Seconds from a cue's start to its last note's end. */
@@ -109,7 +106,6 @@ const RATE: Readonly<Record<string, number>> = {
   unlock: 0.5,
   relief: 2,
   loanTaken: 0.3,
-  arrest: 1.5,
 };
 const groupOf = (name: CueName): string => {
   if (name.startsWith('place-')) return 'place';
@@ -153,7 +149,6 @@ export interface Sfx {
   unlock(): void;
   relief(): void;
   loanTaken(): void;
-  arrest(): void;
   /** Any cue by name. */
   play(name: CueName): void;
 }
@@ -206,7 +201,6 @@ export function createSfx(engine: AudioEngine): Sfx {
     unlock: () => play('unlock'),
     relief: () => play('relief'),
     loanTaken: () => play('loanTaken'),
-    arrest: () => play('arrest'),
     play,
   };
 }
