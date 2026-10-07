@@ -4,30 +4,20 @@
 
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
-import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import { decayField, layField } from '../citizens/field';
 import type { Rng } from '../engine/rng';
 import {
   AMBIENT_MAX_FRAME_MS,
   ARREST_CADENCE,
-  CAR_SPEED,
-  FUEL_LIMP_HOME,
-  FUEL_TANK,
-  GIVE_UP_PENALTY,
   GROUND_RUNOFF_CADENCE,
   HEALTH_DECAY,
-  INSIDE_DWELL_MIN,
-  INSIDE_DWELL_SPAN,
   LV_CADENCE,
   OCC_CADENCE,
-  PED_SPEED,
   POLICE_VIOLENCE_DECAY,
   POLL_DECAY,
   POLL_MAX,
   RAIN_CADENCE,
   ROAD_CADENCE,
-  ROAD_WALK_PENALTY,
-  STUCK_GIVE_UP,
   SUBSTEP_MS,
   TRAFFIC_DECAY,
   WATER_RUNOFF_CADENCE,
@@ -36,26 +26,11 @@ import {
   WEAR_RATE,
   WIND_CADENCE,
   WORN_DEGRADE_MIN,
-  WORN_WALK_PENALTY,
 } from './tuning';
-import type { AmbientState, Mover } from './types';
-import {
-  advanceItinerary,
-  boardOwnedCar,
-  degradeAbandonedCar,
-  depositHealth,
-  depositVisit,
-  findCar,
-  headHome,
-  parkOwnedCarSomewhere,
-  respawnAtHome,
-  retireOwnedCar,
-  routeToParking,
-  skipJammedStop,
-  spawnCitizens,
-  tryPark,
-  walkLegInstead,
-} from './agents';
+import type { AmbientState } from './types';
+import { spawnCitizens } from './agents';
+import { buildVehicleCtx, stepCar } from './cars';
+import { stepPed } from './peds';
 import { buildSafeZones, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
 import { spawnTrains, stepTrain } from './trains';
 import { advanceFlock, flockTile, spawnFlocks } from './birds';
@@ -68,35 +43,10 @@ import {
   diffusePollution,
   driftPollution,
   flowWaterPollution,
-  layPollution,
-  layTraffic,
   treatWaterPollution,
 } from './fields/pollution';
-import {
-  advanceMover,
-  assignSerials,
-  blockedAhead,
-  boxBlocked,
-  buildMoverGrid,
-  commitHeading,
-  congestionCount,
-  congestionSpeedMult,
-  pathStep,
-  rerouteIfStuck,
-  spaceClear,
-  uTurnIfStuck,
-} from './motion';
-import { fuelBurn, nearestWalkable, nextStepToward, refuelFor, usesCommittedPath, walkPath } from './pathing';
-import {
-  birdSpawnAt,
-  carOffNetwork,
-  isWalkable,
-  isWearable,
-  nextRoadStep,
-  pedDespawns,
-  reachedPlot,
-} from './network';
-import { pedLegLateral, snapshotMovers } from './poses';
+import { birdSpawnAt, carOffNetwork, isWearable, pedDespawns } from './network';
+import { snapshotMovers } from './poses';
 
 // --- The substep + the public stepper ------------------------------------
 
@@ -123,66 +73,12 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // Advance the trains along their rails; a train whose line vanished underneath despawns.
   state.trains = state.trains.filter((t) => stepTrain(map, t, rng));
 
-  // Per-tile, per-DIRECTION histogram of MOVING cars (a snapshot at substep start), for the pileup
-  // slowdown: a car on a crowded tile creeps (congestion made physical). Counts free + owned-being-
-  // driven cars; parked and abandoned cars sit off to the side and don't jam. Direction-aware so a car
-  // is only slowed by same-direction / orthogonal traffic — oncoming (opposite) cars are just passing
-  // (Maddy). Both car movers below read this, passing the moving car's heading.
-  const carDirHist = new Map<number, [number, number, number, number]>();
-  for (const c of state.cars) {
-    if (c.parked || c.abandoned) continue;
-    const i = map.idx(Math.round(c.x), Math.round(c.y));
-    let h = carDirHist.get(i);
-    if (!h) carDirHist.set(i, (h = [0, 0, 0, 0]));
-    const d = c.dir & 3; // 0..3
-    h[d] = h[d]! + 1;
-  }
-  const speedAt = (base: number, x: number, y: number, dir: number): number => {
-    const h = carDirHist.get(map.idx(x, y));
-    return h ? base * congestionSpeedMult(congestionCount(h, dir)) : base;
-  };
+  // The substep's vehicle context (congestion histogram + collision grid), snapshotted at substep
+  // start; cars, citizen-driven cars and cruisers all read it (see cars.ts).
+  const ctx = buildVehicleCtx(state, map);
 
-  // Collision/following: vehicles can't overlap — a car PAUSES if a same-direction vehicle sits in the
-  //    bounding-box space just ahead (Maddy: queues form, trips take longer). Grid built from the moving
-  //    cars + cruisers at substep start; cruisers share it (stepCruisers below).
-  const gridMovers = [...state.cars.filter((c) => !c.parked && !c.abandoned), ...state.cruisers]; // PARKED cars don't count (Maddy)
-  assignSerials(state, gridMovers);
-  const moverGrid = buildMoverGrid(gridMovers, map.width);
-  const blocked = (mm: Mover): boolean => blockedAhead(moverGrid, map.width, mm) || boxBlocked(moverGrid, map, mm);
-
-  // 3. Move the cars. A PARKED car waits for its pedestrian (its bound ped zeroes `dwell` on
-  //    return; the countdown is just a safety release). A moving trip-car follows its path
-  //    and, on arrival, PARKS (a lot stall, or a street curb if none) — it no longer vanishes
-  //    at the destination. A path-less car (a test fixture) falls back to the grid wander.
-  state.cars = state.cars.filter((c) => {
-    // An ABANDONED derelict (its citizen was arrested) sits on its empty tile rusting into ground
-    // pollution, then despawns — the toxic legacy left behind, not driven anywhere.
-    if (c.abandoned) return degradeAbandonedCar(state, map, c);
-    // An OWNED citizen-car is managed entirely by its owner ped (it walks to it, drives it, parks
-    // it, retires it). The filter never moves, dwells, or despawns it — so it never vanishes while
-    // its owner is away on foot. (Demoted to a plain parked car when the owner's round ends.)
-    if (c.owned) return true;
-    if (c.parked) {
-      c.dwell! -= 1;
-      return c.dwell! > 0;
-    }
-    // A freeway moves traffic twice as fast as a surface street; a crowded tile slows every car on it.
-    const cx = Math.round(c.x);
-    const cy = Math.round(c.y);
-    const onFreeway = map.built[map.idx(cx, cy)] === BuiltKind.RoadHighway;
-    const sp = speedAt(onFreeway ? CAR_SPEED * 2 : CAR_SPEED, cx, cy, c.dir) * (c.speedMul ?? 1);
-    if (c.path !== undefined) {
-      // jam ladder: re-plan round it, then turn back; a trip still jammed after that just ends
-      rerouteIfStuck(map, c, state.traffic);
-      uTurnIfStuck(map, c, state.traffic);
-      if ((c.stuck ?? 0) >= STUCK_GIVE_UP) return false;
-      const alive = advanceMover(c, sp, map, (x, y) => pathStep(map, c, x, y), blocked);
-      return alive ? true : tryPark(state, c, map);
-    }
-    return advanceMover(c, sp, map, (x, y, fromDir, recent) =>
-      nextRoadStep(map, x, y, fromDir, rng, recent), blocked,
-    );
-  });
+  // 3. Move the cars (cars.ts: abandoned / owned / parked / moving).
+  state.cars = state.cars.filter((c) => stepCar(state, map, rng, ctx, c));
 
   // 3a. Police: advance the scatter/chase clock, move the cruisers (hunt in chase, patrol in
   //     scatter), and run the arrest sweep ONLY during a chase — the streets pulse between calm
@@ -190,281 +86,15 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   state.policeTick += 1;
   // Community safe-zones the cruisers avoid + never sweep (built fresh only when there ARE cruisers).
   const safe = state.cruisers.length > 0 ? buildSafeZones(map) : undefined;
-  stepCruisers(state, map, rng, safe, moverGrid);
+  stepCruisers(state, map, rng, safe, ctx.moverGrid);
   state.arrestTick += 1;
   if (state.arrestTick % ARREST_CADENCE === 0 && policePhase(state.policeTick) === 'chase') {
     stepArrests(state, map, rng, safe);
   }
 
-  // 3b. Move the pedestrians. A walk target (walkTo) is reached by a MANHATTAN walk — an
-  //     axis-aligned, tile-by-tile route over walkable tiles (never diagonally, never through
-  //     a plot). A BOUND ped (carId) runs its car→building→inside→car machine, releasing its
-  //     car on return. Others wander on ped substrate.
-  state.peds = state.peds.filter((p) => {
-    // Self-heal the substrate invariant: a visible ped must stand on the walkable set. If it was
-    // placed off it (open water, a freeway, a plot — a degenerate spawn/park), snap it back onto
-    // the nearest solid tile, or respawn home if it's truly stranded. Riders ('driving') and peds
-    // 'inside' a building are hidden and exempt. (Maddy: pedestrians crossing water / freeways.)
-    if (
-      p.phase !== 'driving' &&
-      p.phase !== 'inside' &&
-      !isWalkable(map, Math.round(p.x), Math.round(p.y))
-    ) {
-      const w = nearestWalkable(map, Math.round(p.x), Math.round(p.y));
-      if (w === null) return respawnAtHome(state, p, map);
-      p.x = w.x;
-      p.y = w.y;
-      p.tx = w.x;
-      p.ty = w.y;
-      p.recent = undefined;
-    }
-    if (p.phase === 'inside') {
-      p.dwellInside! -= 1;
-      if (p.dwellInside! > 0) return true;
-      if (p.itinerary !== undefined) {
-        // A CITIZEN on a daily round: go to the next stop (each leg picks its own mode), or head home.
-        if (!advanceItinerary(state, p, map)) headHome(state, p, map); // round done → drive/walk home
-      } else if (p.carId !== undefined) {
-        // A sim/freight last-mile ped: walk back to its parked car and release it.
-        const car = findCar(state, p.carId);
-        if (!car) return false; // its car already left → the ped vanishes too
-        p.phase = 'to-car';
-        p.walkTo = { x: car.x, y: car.y };
-      } else {
-        // A single-stop sim walk citizen: head home, carrying the visit's wellbeing.
-        const hx = p.homeTile! % map.width;
-        const hy = (p.homeTile! - hx) / map.width;
-        p.phase = 'to-home';
-        p.walkTo = { x: hx, y: hy };
-      }
-      p.tx = Math.round(p.x); // recommit the Manhattan route from here toward the destination
-      p.ty = Math.round(p.y);
-      p.recent = undefined;
-      return true;
-    }
-
-    if (p.phase === 'driving') {
-      // The citizen rides its owned car along a COMMITTED least-cost route (set at boarding — no
-      // greedy circling), fast on freeways, laying live traffic as it goes (which other cars route
-      // around). On arrival it PARKS in a free, non-freeway spot and the citizen walks the last mile.
-      const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-      if (!car || car.path === undefined) {
-        p.phase = p.homeDest ? 'to-home' : 'to-building'; // lost the car / no route → finish on foot
-        p.walkTo = p.homeDest ?? p.building ?? { x: Math.round(p.x), y: Math.round(p.y) };
-        p.mode = TravelMode.Walk;
-        p.tx = Math.round(p.x);
-        p.ty = Math.round(p.y);
-        p.recent = undefined;
-        return true;
-      }
-      const carx = Math.round(car.x);
-      const cary = Math.round(car.y);
-      const onFreeway = map.built[map.idx(carx, cary)] === BuiltKind.RoadHighway;
-      // Freeways move traffic 2×; a crowded tile slows it (the same pileup field the car filter uses).
-      const sp = speedAt(onFreeway ? CAR_SPEED * 2 : CAR_SPEED, carx, cary, car.dir) * (car.speedMul ?? 1);
-      // an owned car obeys the same space-ahead rule as every other vehicle (it used to drive through queues)
-      // jam ladder: re-plan round it, then turn back, then give up on this stop (small wellbeing hit)
-      rerouteIfStuck(map, car, state.traffic);
-      uTurnIfStuck(map, car, state.traffic);
-      if ((car.stuck ?? 0) >= STUCK_GIVE_UP) {
-        skipJammedStop(state, p, map);
-        return true;
-      }
-      const moving = advanceMover(car, sp, map, (x, y) => pathStep(map, car, x, y), blocked);
-      layTraffic(state, map, Math.round(car.x), Math.round(car.y)); // the car IS the traffic
-      layPollution(state, map, Math.round(car.x), Math.round(car.y), onFreeway); // ...and the smog
-      p.x = car.x; // ride along (hidden)
-      p.y = car.y;
-      if (moving) return true;
-      // route done → if the lots at hand are full, DRIVE to the nearest one with a free stall and
-      // re-check on arrival (circling for parking), rather than curb-dumping a pile here.
-      if (routeToParking(state, map, car)) {
-        p.x = car.x; // keep riding (hidden) while it seeks a spot
-        p.y = car.y;
-        return true;
-      }
-      // a free stall is at hand (or it circled enough / no lot) → park, then walk the last mile.
-      parkOwnedCarSomewhere(state, map, car);
-      car.parkSeeks = undefined;
-      car.path = undefined;
-      car.leg = undefined;
-      p.x = car.x;
-      p.y = car.y;
-      p.phase = p.homeDest ? 'to-home' : 'to-building';
-      p.walkTo = p.homeDest ?? p.building ?? { x: Math.round(p.x), y: Math.round(p.y) };
-      p.mode = TravelMode.Walk;
-      p.tx = Math.round(p.x);
-      p.ty = Math.round(p.y);
-      p.recent = undefined;
-      p.fuel = undefined; // fresh walking leg
-      return true;
-    }
-    if (p.walkTo !== undefined) {
-      const tgtx = Math.round(p.walkTo.x);
-      const tgty = Math.round(p.walkTo.y);
-      // FUEL: a persistent tank, spent per substep by the terrain underfoot (beaten paths cheap,
-      //   lush ground dear) and refilled at plots. A citizen chasing an UNREACHABLE destination loops
-      //   without closing the distance and burns out — catching limit cycles longer than `recent`.
-      //   On burnout it turns back home on a limp-home reserve (losing some wellbeing); if it's
-      //   ALREADY heading home (or has no home), it respawns at home / despawns.
-      p.fuel ??= FUEL_TANK;
-      p.fuel -= fuelBurn(map, state.wear, Math.round(p.x), Math.round(p.y));
-      if (p.fuel <= 0) {
-        if (p.carId === undefined && p.phase === 'to-building' && p.homeTile !== undefined) {
-          const hx = p.homeTile % map.width;
-          const hy = (p.homeTile - hx) / map.width;
-          p.phase = 'to-home';
-          p.walkTo = { x: hx, y: hy };
-          p.building = undefined; // never visited the plot → carries no visit value, just the give-up cost
-          p.tx = Math.round(p.x); // recommit the route home from here
-          p.ty = Math.round(p.y);
-          p.recent = undefined;
-          p.fuel = FUEL_LIMP_HOME; // a reserve to drag itself home (not a full tank)
-          p.mode = TravelMode.Walk; // exhausted → limp home on foot
-          depositHealth(state, p.homeTile, -GIVE_UP_PENALTY);
-          return true;
-        }
-        return respawnAtHome(state, p, map); // couldn't even get home → respawn there (or despawn if homeless)
-      }
-      // The travel MODE sets the route (which tiles, which it hugs) and the speed (fast on its
-      // network — a tram on its line, a driver on roads — slower walking to/from a stop).
-      const mode = p.mode ?? TravelMode.Walk;
-      const hereKind = map.built[map.idx(Math.round(p.x), Math.round(p.y))]!;
-      const speed = PED_SPEED * modeSpeedMult(mode, hereKind);
-      let moving: boolean;
-      if (usesCommittedPath(mode)) {
-        // Walking AND cycling legs follow a COMMITTED least-cost route (walkPath), so the agent routes
-        // AROUND buildings/freeways instead of dithering in a greedy local minimum at a wall (Maddy:
-        // peds piling up / drifting "to nowhere", and looping cyclists). Recompute only when the
-        // destination (walkTo) changes; reuse otherwise.
-        const goalIdx = map.idx(tgtx, tgty);
-        if (p.path === undefined || p.pathGoal !== goalIdx) {
-          const route = walkPath(
-            map, Math.round(p.x), Math.round(p.y), tgtx, tgty, state.wear, state.traffic, state.pollution,
-          );
-          if (route && route.length >= 2) {
-            const p0x = route[0]! % map.width;
-            const p0y = (route[0]! - p0x) / map.width;
-            const p1x = route[1]! % map.width;
-            const p1y = (route[1]! - p1x) / map.width;
-            p.x = p0x; // snap onto the route start (the rounded tile it already stands on)
-            p.y = p0y;
-            p.tx = p1x;
-            p.ty = p1y;
-            commitHeading(p, p1x > p0x ? 1 : p1x < p0x ? 3 : p1y > p0y ? 2 : 0); // a fresh route: turn onto it from the way it faced (arc / U-turn sweep)
-            p.path = route;
-            p.leg = 2; // route[0]=start, route[1]=committed next; pathStep targets route[2] onward
-            p.pathGoal = goalIdx;
-          } else {
-            p.path = undefined; // already at the door (len 1) or no foot route → arrival/give-up below
-            p.pathGoal = undefined;
-          }
-        }
-        moving = p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y), undefined, pedLegLateral(map, p));
-      } else {
-        // Transit legs (streetcar/elevated) hug their OWN line via the greedy mode-cost step (walkPath
-        // doesn't know a tram network; a rider must prefer its rails). Dithering is rare on open lines.
-        moving = advanceMover(p, speed, map, (x, y, _fromDir, recent) =>
-          nextStepToward(map, x, y, tgtx, tgty, recent, state.wear, mode, state.traffic, state.pollution),
-          undefined,
-          pedLegLateral(map, p),
-        );
-      }
-      if (moving) return true; // still walking this leg
-      // The leg ended (arrived within a tile, or no route) — drop the committed path so the NEXT leg
-      // (a new stop / heading home) recomputes a fresh route.
-      p.path = undefined;
-      p.leg = undefined;
-      p.pathGoal = undefined;
-      // advanceMover stopped: arrived (reached the destination plot — adjacent to the target, or any
-      // tile of a multi-tile footprint) or boxed in.
-      const arrived = reachedPlot(map, Math.round(p.x), Math.round(p.y), tgtx, tgty);
-      if (!arrived) {
-        // A citizen that DROVE to its destination but can't complete the last-mile on FOOT — the
-        // building is walled off by other non-walkable kinds (a job hemmed in by industry/buildings,
-        // like (79,106) on the default seed: walkPath never reaches it) — has still ARRIVED: it reached
-        // the place by car and ENTERS (Maddy: a building is walkable when you're visiting it). Without
-        // this it gives up + respawns home, and a fresh commuter repeats it forever → rapid spawn/
-        // despawn (the (75,106) churn). Falls through to the 'to-building' handler → goes inside. Only
-        // a DRIVEN (carId) to-building leg; a homeless/boxed walker with no car still gives up below.
-        if (!(p.carId !== undefined && p.phase === 'to-building' && p.building)) {
-          // pathing went nowhere (boxed in, dead-ended at a freeway) — the citizen gives up. A homed
-          // citizen respawns at home (the household persists) and home loses wellbeing; a bound/homeless
-          // ped despawns (a bound car releases on its safety timeout).
-          return respawnAtHome(state, p, map);
-        }
-      }
-      if (p.phase === 'to-vehicle') {
-        // Reached its OWNED car → plan a COMMITTED least-cost route to a free parking spot near the
-        // destination, then drive it. (The car was parked, waiting; it never vanished.) If no road
-        // route exists, finish the leg on foot.
-        const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-        // wait in the stall until the way out is clear — cars leaving a lot at once all materialised on
-        // the lot tile's centre, stacked on top of each other
-        if (car && car.parked && !spaceClear(moverGrid, map.width, Math.round(car.x), Math.round(car.y))) return true;
-        if (!car || !boardOwnedCar(state, p, map, car)) walkLegInstead(p);
-        return true;
-      }
-      if (p.phase === 'to-building') {
-        p.phase = 'inside';
-        p.dwellInside = INSIDE_DWELL_MIN + rng.nextInt(INSIDE_DWELL_SPAN);
-        if (p.building) {
-          const kind = map.built[map.idx(p.building.x, p.building.y)]!;
-          // A successful visit refuels the citizen by the plot's status/use (a good plot restores more).
-          p.fuel = Math.min(FUEL_TANK, (p.fuel ?? 0) + refuelFor(kind));
-          // A citizen on a daily round BANKS each stop's wellbeing at home as it visits (less the
-          // leg's walk tolls), so its home health tracks where its people actually go. A single-stop
-          // walk citizen instead deposits once on getting home (below).
-          if (p.itinerary !== undefined && p.homeTile !== undefined) {
-            const penalty = Math.floor(
-              (p.roadSteps ?? 0) * ROAD_WALK_PENALTY + (p.wornSteps ?? 0) * WORN_WALK_PENALTY,
-            );
-            depositVisit(state, p.homeTile, p.building, map, penalty);
-          }
-        }
-        return true;
-      }
-      if (p.phase === 'to-car') {
-        // A sim/freight last-mile ped got back in → release its car to leave.
-        const car = findCar(state, p.carId!);
-        if (car) car.dwell = 0;
-        return false;
-      }
-      if (p.phase === 'to-home') {
-        // Walked home → deposit any single-stop visit (sim walk citizens), less the road/worn tolls.
-        if (p.homeTile !== undefined && p.building) {
-          const penalty = Math.floor(
-            (p.roadSteps ?? 0) * ROAD_WALK_PENALTY + (p.wornSteps ?? 0) * WORN_WALK_PENALTY,
-          );
-          depositVisit(state, p.homeTile, p.building, map, penalty);
-        }
-        retireOwnedCar(state, p, map); // the citizen is home → its car is put away (lingers, then leaves)
-        return false;
-      }
-      return false; // unbound routed ped → despawn on arrival
-    }
-    // An IDLE ped that HAS a home — a citizen repositioned beside home after a failed/boxed/exhausted
-    // trip (respawnAtHome cleared its round) — heads HOME and goes inside, instead of aimlessly
-    // wandering the green substrate forever (Maddy: "citizens not commuting home; peds roam parks/
-    // rewilded, may never go home"). At the door it goes inside (despawns into the household).
-    if (p.homeTile !== undefined) {
-      const hx = p.homeTile % map.width;
-      const hy = (p.homeTile - hx) / map.width;
-      if (Math.abs(Math.round(p.x) - hx) + Math.abs(Math.round(p.y) - hy) <= 1) return false; // home → inside
-      p.phase = 'to-home';
-      p.walkTo = { x: hx, y: hy };
-      p.mode = TravelMode.Walk;
-      p.tx = Math.round(p.x);
-      p.ty = Math.round(p.y);
-      p.recent = undefined;
-      return true;
-    }
-    // A ped with NO home AND no destination is the retired ambient-stroller pool — it despawns
-    // (Maddy 2026-06-20: "there should be no ambient stroller pool anymore. everyone needs to path
-    // to somewhere"). Purposeful agents are citizens (an itinerary + home, with green/leisure stops),
-    // last-mile walkers (a car + walkTo), and cruisers — never destination-less wanderers.
-    return false;
-  });
+  // 3b. Move the pedestrians (peds.ts: the citizen state machine — hidden phases, walking a leg
+  //     and arriving, idle → home).
+  state.peds = state.peds.filter((p) => stepPed(state, map, rng, ctx, p));
   for (const f of state.birds) advanceFlock(f);
 
   // 4. Building health eases toward neutral so it tracks RECENT citizen visits, not all-time.
