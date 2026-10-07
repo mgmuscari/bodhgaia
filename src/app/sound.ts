@@ -10,7 +10,9 @@ import { createSfx, type Sfx } from '../audio/sfx';
 import { createAmbience, type AmbienceSnapshot } from '../audio/ambience';
 import { createMusicPlayer, type Mood } from '../audio/music/player';
 import { MUSIC_TRACKS } from '../audio/music/tracks';
-import type { AmbientState } from '../live/types';
+import type { AmbientState, Mover } from '../live/types';
+import { policePhase } from '../live/police';
+import type { Voice } from '../audio/contract';
 import type { AudioSettings } from '../ui/settings';
 
 /** The tile rectangle the camera shows (inclusive-exclusive). */
@@ -47,6 +49,32 @@ export function moodFor(hour: number, hasHealing: boolean): Mood {
 }
 
 
+/** The siren (Maddy 2026-10-07: "police could make a siren noise"): a soft, distant two-tone wail — one voice that
+ *  GLIDES between two pitches, never re-struck. */
+export const SIREN = { lo: 74, hi: 79, swapEvery: 2, base: 0.08, per: 0.05, max: 0.22 } as const;
+
+/** Does a siren wail now, where, and how loud? Only while a cruiser IN VIEW is chasing (not on patrol, not out of
+ *  sight); panned toward the cruisers; louder with more of them, but always distant. */
+export function sirenFor(
+  cruisers: readonly Mover[],
+  phase: 'scatter' | 'chase',
+  view: ViewRect,
+): { on: boolean; pan: number; level: number } {
+  if (phase !== 'chase') return { on: false, pan: 0, level: 0 };
+  let n = 0;
+  let sx = 0;
+  for (const c of cruisers) {
+    if (!inView(view, c.x, c.y)) continue;
+    n++;
+    sx += c.x;
+  }
+  if (n === 0) return { on: false, pan: 0, level: 0 };
+  const mid = (view.x0 + view.x1) / 2;
+  const half = Math.max(1, (view.x1 - view.x0) / 2);
+  const pan = Math.max(-1, Math.min(1, (sx / n - mid) / half));
+  return { on: true, pan, level: Math.min(SIREN.max, SIREN.base + SIREN.per * (n - 1)) };
+}
+
 export interface SoundDeps {
   live: AmbientState;
   /** The camera's tile rectangle now. */
@@ -75,9 +103,18 @@ export function createSound(deps: SoundDeps): Sound {
   const music = createMusicPlayer(engine, MUSIC_TRACKS, { mood });
   void music.next().catch(() => {}); // waits for the unlock, then the first piece of the mood
   let resting = false;
+  let siren: Voice | null = null;
+  let sirenTick = 0;
+  const sirenOff = (): void => {
+    siren?.stop();
+    siren = null;
+  };
   setInterval(() => {
     if (deps.hidden()) {
-      if (!resting) ambience.stop();
+      if (!resting) {
+        ambience.stop();
+        sirenOff();
+      }
       resting = true;
       return;
     }
@@ -88,7 +125,18 @@ export function createSound(deps: SoundDeps): Sound {
       music.setMood(m); // the next piece follows the hour; the current one finishes
     }
     const night = m !== 'day';
-    ambience.update(soundSnapshot(deps.live, deps.view(), night));
+    const view = deps.view();
+    ambience.update(soundSnapshot(deps.live, view, night));
+    const s = sirenFor(deps.live.cruisers, policePhase(deps.live.policeTick), view);
+    if (!s.on) sirenOff();
+    else if (siren === null) {
+      siren = engine.play({ instrument: 'flute', pitch: SIREN.lo, velocity: s.level, bus: 'ambience', pan: s.pan });
+      sirenTick = 0;
+    } else {
+      sirenTick++;
+      const high = Math.floor(sirenTick / SIREN.swapEvery) % 2 === 1;
+      siren.glide?.({ pitch: high ? SIREN.hi : SIREN.lo, velocity: s.level }, 0.4);
+    }
   }, LISTEN_MS);
   return { sfx, applySettings: (a) => applyAudioSettings(engine, a) };
 }
