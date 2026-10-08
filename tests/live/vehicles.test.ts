@@ -8,6 +8,7 @@ import { createAmbientState } from '../../src/live/types';
 import { spawnTransit, stepTrain, vehicleSpeed } from '../../src/live/trains';
 import { transitFor, DWELL } from '../../src/live/transit';
 import { syncTrainLegs } from '../../src/live/poses';
+import { buildVehicleCtx } from '../../src/live/cars';
 
 
 function city() {
@@ -96,5 +97,30 @@ describe('transit vehicles', () => {
     });
     expect(held.size).toBeGreaterThan(0);
     for (const [, n] of held) expect(n).toBeGreaterThanOrEqual(DWELL);
+  });
+});
+
+describe('level crossings: cars wait for the train (Maddy 2026-09-30: right-of-way at at-grade crossings)', () => {
+  function crossing() {
+    const map = new GameMap(30, 12);
+    for (let x = 0; x < 30; x++) map.setBuilt(x, 5, BuiltKind.Rail);
+    for (let y = 0; y < 12; y++) if (y !== 5) placeTransport(map, 12, y, BuiltKind.RoadStreet); // a street across
+    return { map, state: createAmbientState() };
+  }
+  const car = { x: 12, y: 3, dir: 2, tx: 12, ty: 4, serial: 1 } as unknown as import('../../src/live/types').Car;
+  const nearing = { x: 12, y: 4, dir: 2, tx: 12, ty: 5, serial: 1 } as unknown as import('../../src/live/types').Car;
+
+  it('holds a car at the crossing while a train is on it or coming up to it', () => {
+    const c = crossing();
+    c.state.trains.push({ cells: [c.map.idx(10, 5), c.map.idx(9, 5)], hx: 10, hy: 5, tx: 11, ty: 5, dir: 1, family: 'rail' });
+    expect(buildVehicleCtx(c.state, c.map).blocked(nearing)).toBe(true);
+  });
+
+  it('lets it cross once the train has gone by, or when none is near', () => {
+    const c = crossing();
+    expect(buildVehicleCtx(c.state, c.map).blocked(nearing)).toBe(false);
+    c.state.trains.push({ cells: [c.map.idx(20, 5), c.map.idx(19, 5)], hx: 20, hy: 5, tx: 21, ty: 5, dir: 1, family: 'rail' });
+    expect(buildVehicleCtx(c.state, c.map).blocked(nearing)).toBe(false);
+    expect(buildVehicleCtx(c.state, c.map).blocked(car)).toBe(false);
   });
 });

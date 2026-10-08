@@ -9,6 +9,9 @@ import { BuiltKind } from '../engine/fabric';
 import type { Rng } from '../engine/rng';
 import { CAR_SPEED, STUCK_GIVE_UP } from './tuning';
 import type { AmbientState, Car, Mover } from './types';
+import { DIR_DX, DIR_DY } from './geometry';
+import { familyOf } from './transit';
+
 import { degradeAbandonedCar, tryPark } from './agents';
 import {
   advanceMover,
@@ -56,14 +59,48 @@ export function buildVehicleCtx(state: AmbientState, map: GameMap): VehicleCtx {
   const gridMovers = [...state.cars.filter((c) => !c.parked && !c.abandoned), ...state.cruisers]; // PARKED cars don't count (Maddy)
   assignSerials(state, gridMovers);
   const moverGrid = buildMoverGrid(gridMovers, map.width);
+  const gated = trainGates(state, map);
   return {
     moverGrid,
     speedAt(base, x, y, dir) {
       const h = carDirHist.get(map.idx(x, y));
       return h ? base * congestionSpeedMult(congestionCount(h, dir)) : base;
     },
-    blocked: (mm) => blockedAhead(moverGrid, map.width, mm) || boxBlocked(moverGrid, map, mm),
+    blocked: (mm) => blockedAhead(moverGrid, map.width, mm) || boxBlocked(moverGrid, map, mm) || crossingHeld(map, gated, mm),
   };
+}
+
+/** Tiles ahead of a train's / tram's head that a level crossing closes for (a train runs fast). */
+const CROSSING_LOOKAHEAD_RAIL = 4;
+const CROSSING_LOOKAHEAD_TRAM = 2;
+
+/** Track a vehicle is on or about to reach: its cars' tiles and the next few ahead of its head. */
+function trainGates(state: AmbientState, map: GameMap): Set<number> {
+  const gated = new Set<number>();
+  for (const t of state.trains) {
+    for (const i of t.cells) gated.add(i);
+    let x = Math.round(t.hx);
+    let y = Math.round(t.hy);
+    for (let k = 0; k < (t.family === 'tram' ? CROSSING_LOOKAHEAD_TRAM : CROSSING_LOOKAHEAD_RAIL); k++) {
+      x += DIR_DX[t.dir]!;
+      y += DIR_DY[t.dir]!;
+      if (!map.inBounds(x, y) || familyOf(map.built[map.idx(x, y)]!) === null) break;
+      gated.add(map.idx(x, y));
+    }
+  }
+  return gated;
+}
+
+/** A car waits at a level crossing while a train or tram is on it or coming (Maddy 2026-09-30) — entering track
+ *  from off it; one already on the track (crossing, or driving a tram street) carries on. */
+function crossingHeld(map: GameMap, gated: ReadonlySet<number>, m: Mover): boolean {
+  if (gated.size === 0 || !map.inBounds(m.tx, m.ty)) return false;
+  const to = map.idx(m.tx, m.ty);
+  if (!gated.has(to)) return false;
+  if (Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) < 0.5) return false; // already half onto it: clear it, don't stop on it
+  const fx = m.tx - DIR_DX[m.dir]!;
+  const fy = m.ty - DIR_DY[m.dir]!;
+  return !map.inBounds(fx, fy) || familyOf(map.built[map.idx(fx, fy)]!) === null;
 }
 
 /** A car's speed this substep: 2× on a freeway, slowed by the pileup on its tile, times its own mul. */

@@ -32,7 +32,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   car's off-grid spot (up to 0.6, once). Smooth these.
 - ✅ **The toxic cloud glows at night** (Maddy 2026-10-08) — the smog overlay now darkens with the night.
 - ✅ **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — real bicycles now.
-- **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
+- ✅ **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
   - ✅ rail running beside a road is drawn with at-grade crossings though there's road on one side only;
   - ✅ pedestrians walk on train tracks — rail is crossed only where a road crosses it; a streetcar line is a
     street: walkers on its kerbs, cars in its outer lanes;
@@ -76,22 +76,25 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   doesn't yet empty specific homes (occupancy). Next: evict from the most rent-burdened unprotected homes.
 - ✅ **Freeway end cap draws oddly** — a wide road's stub past a junction is now an end cap: plain asphalt,
   hazard chevrons, a striped barrier across the dead end (decoration.endCapMask).
-- 🔴 **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
+- ✅ **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
   trains which we should support") — a road and a railway can't share a tile today. Needs a level-crossing
   tile both `canDrive` and `railTraversable` accept (built by dragging a road across track, or vice
   versa), the crossing art (road band over the rails + stop lines, already painted as `@road/xband`), and
-  right-of-way: cars hold at the stop line while a train occupies or approaches the crossing.
-- 🔴 **Trains: smooth turns + whole-consist motion** (Maddy 2026-09-30) — "rail passenger cars don't animate
+  right-of-way: cars hold at the stop line while a train occupies or approaches the crossing. — Done: the
+  crossing tile, its art, cars crossing (canDrive), and (2026-10-08) cars wait while a train or tram is on it or coming.
+- ✅ **Trains: smooth turns + whole-consist motion** (Maddy 2026-09-30) — "rail passenger cars don't animate
   correctly, and we should have natural turns for rails that trains go around like other sprite movers."
   Make the consist one path-follower (cars at fixed arc-length spacing behind the loco along the rail
   polyline) using the moverPose quarter-arc turns, so every car interpolates and banks through bends.
-- 🔴 **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
+- ✅ **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
   smoothly but the white consist cars "tick along locked to the tiles behind it" (snap per-tile, no lerp).
-  The loco is interpolated; give the trailing cars the same smooth interpolation along the track.
-- 🔴 **Peds path into NON-destination plots** (Maddy 2026-06-20) — pedestrians should only be able to
+  The loco is interpolated; give the trailing cars the same smooth interpolation along the track. — Done: every
+  car is a mover on the shared quarter-arc path (trainPoses), pinned by the never-jump test.
+- ✅ **Peds path into NON-destination plots** (Maddy 2026-06-20) — pedestrians should only be able to
   walk INTO a plot that is their own trip destination; right now they cut across/into arbitrary plots.
   Gate `isWalkable` (or the walkPath neighbour test) so a built plot tile is walkable for an agent ONLY
-  if it's that agent's destination parcel (roads/paths/green always walkable; other plots blocked).
+  if it's that agent's destination parcel (roads/paths/green always walkable; other plots blocked). — Done:
+  built plots aren't walkable (isWalkable); yards are, deliberately, at PED_YARD cost; walkers stop at a door.
 - ✅ **Coal plant emission not visible** — STALE SESSION, not a bug: the running session predated the
   baked asset + render code; a reload loads the emission map and the beacons show. (Confirmed working.)
 - ✅ **Travelers path THROUGH dividers/medians — blocked** (`9e0e7946`). Cars were already blocked
