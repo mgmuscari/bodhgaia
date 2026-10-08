@@ -13,6 +13,7 @@ import type { TechNode } from '../tech/tree';
 import { LOCAL_GRID_RADIUS, ROOF_SOLAR_FROM, ROOF_SOLAR_TO, plantOutput, plantPollution } from '../growth/power';
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
+import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
 import { LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
@@ -85,6 +86,10 @@ function practiceLine(e: Effect): string {
       return `Hydro, wind and solar plants make ${pct((e.value as number) - 1)} more power`;
     case 'localGrids':
       return `In a blackout, homes within ${LOCAL_GRID_RADIUS} tiles of an energy node are kept lit first`;
+    case 'soilRecovery':
+      return `Open soil recovers ${num(SOIL_RECOVERY * (e.value as number))} a tick (was ${SOIL_RECOVERY})`;
+    case 'pavedSoilCap':
+      return `Soil under pavement can heal to ${e.value} (was ${PAVED_CAP})`;
   }
 }
 
