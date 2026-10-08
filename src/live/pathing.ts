@@ -11,8 +11,6 @@ import { type StopCategory, stopCategoryOf } from '../citizens/itinerary';
 import { MODE_CHOICE_ORDER, TravelMode, modeRidesNetwork, modeSpec } from '../citizens/modes';
 import { sampleField } from '../citizens/field';
 import {
-  AI_EVAPORATION_BOOST,
-  AI_NODE_RADIUS,
   PARKLET_RADIUS,
   PARKLET_SHIFT,
   BIKE_RANGE,
@@ -583,12 +581,6 @@ export function homeDrives(map: GameMap, homeTile: number, hash: number): boolea
   if (!nearKind(map, x, y, BuiltKind.Parklet, PARKLET_RADIUS)) return true;
   const u = (Math.imul((hash ^ 0x27d4eb2f) >>> 0, 0x9e3779b1) >>> 0) % 1000;
   return u >= PARKLET_SHIFT * 1000;
-}
-
-/** How much more readily a car trip starting at (x, y) evaporates in a jam: AI_EVAPORATION_BOOST near a
- *  Community AI Node, else 1. */
-export function evaporationBoost(map: GameMap, x: number, y: number): number {
-  return nearKind(map, x, y, BuiltKind.AINode, AI_NODE_RADIUS) ? AI_EVAPORATION_BOOST : 1;
 }
 
 /** Is this driven shopping trip delivered instead (Drone Deliveries)? A deterministic `share` of trips, by hash. */

@@ -458,10 +458,6 @@ export const GROUND_GREEN_HEAL = 0.6; // extra decay multiplier on ground pollut
 /** Parklets take parking: homes within PARKLET_RADIUS of one drive PARKLET_SHIFT fewer of their trips (they walk). */
 export const PARKLET_RADIUS = 3;
 export const PARKLET_SHIFT = 0.25;
-/** Community AI Nodes schedule trips: a car trip starting within AI_NODE_RADIUS evaporates AI_EVAPORATION_BOOST×
- *  as readily in a jam (errands combined, shared, moved off the peak). */
-export const AI_NODE_RADIUS = 8;
-export const AI_EVAPORATION_BOOST = 2;
 /** Vertical farms: fresh food within FRESH_FOOD_RADIUS adds FRESH_FOOD_PULL to a home's occupancy signal. */
 export const FRESH_FOOD_RADIUS = 6;
 export const FRESH_FOOD_PULL = 0.05;

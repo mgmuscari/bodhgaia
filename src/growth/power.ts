@@ -191,6 +191,30 @@ export function windFactor(clock: GridClock): number {
   return f < 0.4 ? 0.4 : f > 1.6 ? 1.6 : f;
 }
 
+// ── The smart grid (Community AI Node) ───────────────────────────────────────────────────────────────
+/** Homes within SMART_GRID_RADIUS (Chebyshev) of a Community AI Node shift flexible load (laundry, charging,
+ *  water heating) off the evening peak: they draw SMART_GRID_CUT less from SMART_GRID_FROM to SMART_GRID_TO. */
+export const SMART_GRID_RADIUS = 8;
+export const SMART_GRID_CUT = 0.2;
+export const SMART_GRID_FROM = 17;
+export const SMART_GRID_TO = 21;
+
+/** The share of its demand a consumer at `anchor` draws at `clock` under the smart grid (1 = untouched). */
+export function smartGridFactor(map: GameMap, anchor: number, clock: GridClock): number {
+  const h = ((clock.hour % 24) + 24) % 24;
+  if (h < SMART_GRID_FROM || h >= SMART_GRID_TO) return 1;
+  if (zoneTypeOf(map.built[anchor]!) !== ZoneType.Residential) return 1;
+  const x = anchor % map.width;
+  const y = (anchor - x) / map.width;
+  const r = SMART_GRID_RADIUS;
+  for (let yy = Math.max(0, y - r); yy <= Math.min(map.height - 1, y + r); yy++) {
+    for (let xx = Math.max(0, x - r); xx <= Math.min(map.width - 1, x + r); xx++) {
+      if (map.built[yy * map.width + xx] === BuiltKind.AINode) return 1 - SMART_GRID_CUT;
+    }
+  }
+  return 1;
+}
+
 function weatherFactor(kind: number, clock: GridClock | undefined): number {
   if (!clock) return 1;
   if (kind === BuiltKind.SolarPlant) return solarFactor(clock.hour);
@@ -275,6 +299,8 @@ export function computePowerGrid(
 
   // 2. Bucket plant capacity + consumer demand by component; collect plant footprint tiles as the
   //    BFS sources for the distance-from-source ordering below.
+  let hasAiNode = false;
+  for (const i of parcels.aliveIndices()) if (parcels.kindAt(i) === BuiltKind.AINode) hasAiNode = true;
   const capByComp = new Float64Array(nComp);
   const consumersByComp: ConsumerRef[][] = Array.from({ length: nComp }, () => []);
   const plantTiles: number[] = [];
@@ -298,6 +324,7 @@ export function computePowerGrid(
     // rooftop solar: homes draw less while the sun is up
     const day = !!clock && clock.hour >= ROOF_SOLAR_FROM && clock.hour < ROOF_SOLAR_TO;
     if (day && practices.homeDayDemand !== 1 && zoneTypeOf(p.kind) === ZoneType.Residential) d *= practices.homeDayDemand;
+    if (clock && hasAiNode) d *= smartGridFactor(map, anchor, clock);
     if (d > 0) {
       consumersByComp[c]!.push({ anchor, demand: d });
       demand += d;

@@ -3,10 +3,10 @@ import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind } from '../../src/engine/fabric';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
-import { homeDrives, evaporationBoost, nearKind } from '../../src/live/pathing';
+import { homeDrives, nearKind } from '../../src/live/pathing';
 import { stepOccupancy, homeCapacity } from '../../src/live/fields/occupancy';
 import { landValueAt } from '../../src/live/fields/landValue';
-import { STATION_RADIUS, LV_STATION, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, AI_NODE_RADIUS, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
+import { STATION_RADIUS, LV_STATION, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
 
 describe('nearKind', () => {
   it('finds a kind within a Chebyshev radius', () => {
@@ -38,15 +38,6 @@ describe('Parklets and Communes: who drives', () => {
     expect(far).toBe(2000);
     expect(near / 2000).toBeGreaterThan(1 - PARKLET_SHIFT - 0.05);
     expect(near / 2000).toBeLessThan(1 - PARKLET_SHIFT + 0.05);
-  });
-});
-
-describe('Community AI Nodes: scheduling', () => {
-  it(`car trips starting within ${AI_NODE_RADIUS} tiles evaporate twice as readily in a jam`, () => {
-    const map = new GameMap(30, 30);
-    map.built[map.idx(10, 10)] = BuiltKind.AINode;
-    expect(evaporationBoost(map, 15, 15)).toBe(2);
-    expect(evaporationBoost(map, 25, 25)).toBe(1);
   });
 });
 
