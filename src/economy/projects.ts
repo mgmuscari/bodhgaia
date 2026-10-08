@@ -1,6 +1,6 @@
-// Projects: works that take time (Maddy 2026-09-30, "projects take time"). A practice from the Commons or a
-// commons build (a garden, a parklet…) is not bought in one go: its effort and funds are drawn an hourly
-// share over its duration. In an hour the share can't be met, the work STALLS whole (it waits rather than
+// Projects: works that take time (Maddy 2026-09-30, "projects take time"). A practice from the Commons is not
+// bought in one go: its money is paid to begin (run.ts practiceTerms) and its effort drawn an hourly share over
+// its duration. (Commons builds — gardens, parklets — are placed at once, paid in effort: tools.ts toolPrice.) In an hour the share can't be met, the work STALLS whole (it waits rather than
 // half-starting) and resumes where it stopped. Projects are staffed in queue order, so what you start first
 // gets the people first. Pure: no DOM, no rng, no transcendental Math.
 

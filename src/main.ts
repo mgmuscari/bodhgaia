@@ -146,6 +146,7 @@ export function main(save: SaveV1 | null = null): void {
     ui: {
       practiceGranted: (id) => {
         lessons.offer(id); // its mechanic's lesson, the first time (plays when the screen is free)
+        if (power.recompute()) markDirty(); // a power practice (Sun and Wire, Renewables, Local Grids) acts now, not next hour
         sound.sfx.unlock();
         news.push('A new practice takes root in the city');
         tools.afterEffortChange();
