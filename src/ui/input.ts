@@ -125,8 +125,10 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
   canvas.addEventListener('pointermove', (e) => {
     if (dragging) {
       // If a move arrives with NO button held, the pointerup was missed (capture failed + released
-      // off-canvas) — stop the drag instead of panning forever with the cursor (Maddy playtest bug).
-      if (e.buttons === 0) {
+      // off-canvas) — stop the drag instead of panning forever with the cursor (Maddy playtest bug). Only
+      // when the pointer isn't captured: a captured pointer's pointerup still comes, and ending the drag
+      // here would swallow it — a build click placing nothing.
+      if (e.buttons === 0 && !canvas.hasPointerCapture(e.pointerId)) {
         dragging = false;
         suppressPan = false;
         return;
