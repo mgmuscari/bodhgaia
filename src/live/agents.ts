@@ -561,6 +561,9 @@ export function setDriveLeg(
 
 // --- Spawning ------------------------------------------------------------
 
+/** While fewer than this share of the street target are out, new citizens join their day part-way through. */
+const FILL_SHARE = 0.8;
+
 /** How many daily-itinerary citizens are out right now — counting both active travellers (peds with
  *  an itinerary) and DRIVERS (citizen-cars with an itinerary), so the population cap covers both. */
 export function citizenCount(state: AmbientState): number {
@@ -597,20 +600,29 @@ export function spawnCitizens(state: AmbientState, map: GameMap, rng: Rng): void
     }
     // Stand the citizen at its home's street DOOR (the plot itself isn't walkable).
     const door = plotDoor(map, home.x, home.y);
-    const sx = door ? door.x : -1;
-    const sy = door ? door.y : -1;
+    let sx = door ? door.x : -1;
+    let sy = door ? door.y : -1;
     if (sx < 0) continue; // a hemmed-in home, nowhere to step out
-    const ped: Ped = {
-      x: sx,
-      y: sy,
-      dir: 0,
-      tx: sx,
-      ty: sy,
-      homeTile: map.idx(home.x, home.y),
-      itinerary: itineraryFor(map.built[map.idx(home.x, home.y)]!),
-      itinStep: -1, // advanceItinerary sets the first stop (step 0 = Work)
-    };
-    if (advanceItinerary(state, ped, map)) state.peds.push(ped); // dropped if the district has no stops
+    const itinerary = itineraryFor(map.built[map.idx(home.x, home.y)]!);
+    let itinStep = -1; // advanceItinerary sets the first stop (step 0 = Work)
+    // While the streets fill (a fresh load), a citizen joins their day somewhere along it — just leaving the stop
+    // before — not everyone leaving home for work at once (Maddy 2026-10-08: swarms pathing together).
+    if (citizenCount(state) < target * FILL_SHARE) {
+      const k = rng.nextInt(itinerary.length + 1); // 0: leaving home; k: just left stop k − 1
+      const prev = k > 0 ? nearestOfCategory(map, home.x, home.y, itinerary[k - 1]!, state.landValue) : null;
+      const out = prev ? plotDoor(map, prev.x, prev.y) : null;
+      if (out) {
+        sx = out.x;
+        sy = out.y;
+        itinStep = k - 1;
+      }
+    }
+    const ped: Ped = { x: sx, y: sy, dir: 0, tx: sx, ty: sy, homeTile: map.idx(home.x, home.y), itinerary, itinStep };
+    if (advanceItinerary(state, ped, map)) state.peds.push(ped);
+    else if (itinStep >= 0) {
+      headHome(state, ped, map); // the day's last stop done: on their way home
+      state.peds.push(ped);
+    } // (leaving home with no stops in reach: dropped)
   }
 }
 
