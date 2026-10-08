@@ -202,3 +202,17 @@ describe('the tiny-home village shelters only the unhoused', () => {
     expect(homeProtection(BuiltKind.TinyHomes, false, 0)).toBe(1);
   });
 });
+
+describe('co-ops and communes make room for the unhoused (Maddy 2026-10-07)', () => {
+  for (const kind of [BuiltKind.CoopHousing, BuiltKind.Commune]) {
+    it(`a ${kind === BuiltKind.CoopHousing ? 'co-op' : 'commune'} with room re-homes people even where nobody has organised`, () => {
+      const c = street([{ x: 2, count: 10 }]);
+      c.map.built[c.t(2)] = kind;
+      c.state.occupancy.set(c.t(2), 5);
+      c.state.unhoused = 5;
+      settle(c);
+      for (let i = 0; i < 300; i++) stepOccupancy(c.state, c.map);
+      expect(c.state.unhoused).toBeLessThan(1);
+    });
+  }
+});
