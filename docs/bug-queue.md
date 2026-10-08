@@ -33,7 +33,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - ✅ **The toxic cloud glows at night** (Maddy 2026-10-08) — the smog overlay now darkens with the night.
 - ✅ **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — real bicycles now.
 - **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
-  - rail running beside a road is drawn with at-grade crossings though there's road on one side only;
+  - ✅ rail running beside a road is drawn with at-grade crossings though there's road on one side only;
   - pedestrians walk on train tracks (and streetcar tracks);
   - pedestrians don't walk to the line to wait for a train or streetcar to pick them up;
   - there are no animated streetcars.
