@@ -124,3 +124,14 @@ describe('credits content', () => {
     }
   });
 });
+
+describe('the opening’s words are credited (Maddy 2026-10-08)', () => {
+  it('names the Berkeley Zen Center chant book for the epigraphs and vows', () => {
+    const block = creditsBlocks().find((b) => /opening/i.test(b.heading))!;
+    expect(block).toBeDefined();
+    expect(block.paragraphs.join(' ')).toMatch(/Berkeley Zen Center/);
+    expect(block.paragraphs.join(' ')).toMatch(/Heart Sutra/);
+    expect(block.paragraphs.join(' ')).toMatch(/Dōgen/);
+    expect((block.links ?? []).some((l) => /berkeleyzencenter\.org/.test(l.href))).toBe(true);
+  });
+});
