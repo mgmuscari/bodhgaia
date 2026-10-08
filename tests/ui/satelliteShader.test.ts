@@ -33,6 +33,12 @@ describe('satelliteShader: fragment contract', () => {
     expect(f).toContain('fragColor');
   });
 
+  it('water laps like the flood: per tile in a checker, the art alternates with itself shifted, water onto water only', () => {
+    expect(f).toMatch(/if \(type == SAT_WATER\)/);
+    expect(f).toMatch(/mod\(floor\(u_time \/ WATER_LAP_S\) \+ wc\.x \+ wc\.y, 2\.0\)/);
+    expect(f).toMatch(/== SAT_WATER\) col = texture\(u_base, v_uv \+ lap \/ u_view\)\.rgb;/);
+  });
+
   it('maps screen UV through a camera region (origin + view), not the full grid', () => {
     // u_grid stays the texture size; u_origin/u_view are the visible window so the
     // shader can render a panned/zoomed slice of the live world (phase 5).
