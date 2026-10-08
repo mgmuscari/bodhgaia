@@ -27,6 +27,7 @@ import {
   placeBridge,
   demolishParcel,
   demolishTransportAt,
+  layYardFor,
   type ParcelStore,
 } from '../engine/fabric';
 import type { Rng } from '../engine/rng';
@@ -2015,6 +2016,19 @@ export function era5Disinvestment(world: WorldState, rng: Rng, p: MosesParams, s
  * forking each era's rng stream by name. On an all-water map era 1 logs "no
  * viable site" and every later era no-ops on the empty state.
  */
+/** Lay a back yard behind every standing house that can have one; chronicles `back yards: +N lots behind houses`. */
+export function eraBackYards(world: WorldState): number {
+  const { map, parcels } = world;
+  const houses = parcels.aliveIndices().filter((i) => parcels.kindAt(i) === BuiltKind.HouseSingle);
+  let yards = 0;
+  for (const i of houses) {
+    const h = parcels.get(i);
+    if (layYardFor(map, parcels, h.x, h.y)) yards++;
+  }
+  world.log.push(`back yards: +${yards} lots behind houses`);
+  return yards;
+}
+
 export function mosesCenturyStage(params: Partial<MosesParams> = {}): WorldgenStage {
   const p: MosesParams = { ...DEFAULT_MOSES_PARAMS, ...params };
   return {
@@ -2033,6 +2047,9 @@ export function mosesCenturyStage(params: Partial<MosesParams> = {}): WorldgenSt
       // only OUTWARD into the fringe. It joins the world as its own chronicle term (the report's
       // store<->chronicle identity accounts for it) and leaves era-5's abandonment gradient intact.
       eraOrganicGrowth(world, rng.fork('organic'), p, state);
+      // Back yards (Maddy 2026-10-07): the lot behind every standing house that faces one street, laid last so
+      // they belong to the houses that survived the century. Its own chronicle term (the report's identity).
+      eraBackYards(world);
     },
   };
 }
