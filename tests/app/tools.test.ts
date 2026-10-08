@@ -106,7 +106,7 @@ describe('createToolController: selection', () => {
     expect(h.tools.selected()).toBe('inspect');
     h.tools.hotkey('bulldoze');
     expect(h.tools.selected()).toBe('bulldoze');
-    expect(h.tools.isLineTool()).toBe(false);
+    expect(h.tools.isLineTool()).toBe(true); // a bulldoze drag clears a straight run (Maddy 2026-10-07)
   });
 
   it('hands the map pointer the same handlers (hover previews, a click applies)', () => {

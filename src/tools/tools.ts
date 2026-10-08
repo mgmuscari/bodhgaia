@@ -97,6 +97,28 @@ export const VOLUNTEER_DOLLARS_PER_EFFORT = 20;
  *  build-and-salvage loop; the lasting win is the upkeep that stops. */
 export const FREEWAY_SALVAGE = 60;
 
+/** Effort per tile to demolish a building that has no build tool of its own (apartments, projects, offices…). */
+const DEMOLITION_PER_TILE: Readonly<Partial<Record<ZoneType, number>>> = {
+  [ZoneType.Residential]: 4,
+  [ZoneType.Commercial]: 6,
+  [ZoneType.Civic]: 12,
+  [ZoneType.Industrial]: 6,
+};
+
+/** The community effort it takes to tear a building down (Maddy 2026-10-07: "it should cost effort to bulldoze
+ *  housing, civic services and commercial. half cost of effort for industrial"): the building's own build price,
+ *  in effort — or, with no build tool, a per-zone price × its footprint — and half that for industry. 0 for
+ *  anything outside those zones (roads, lots, the precinct), which keep their ordinary price. */
+function demolitionEffort(world: ToolWorld, x: number, y: number, kind: number): number {
+  const zone = zoneTypeOf(kind);
+  const perTile = DEMOLITION_PER_TILE[zone];
+  if (perTile === undefined) return 0;
+  const pid = world.map.parcel[world.map.idx(x, y)]!;
+  const area = pid !== 0 ? world.parcels.get(pid - 1).width * world.parcels.get(pid - 1).height : 1;
+  const base = toolDef(`build-${kind}`)?.cost ?? perTile * area;
+  return zone === ZoneType.Industrial ? Math.ceil(base / 2) : base;
+}
+
 /** The kind a bulldoze at (x, y) would remove (an overpass deck first, then a parcel, then the tile). */
 function bulldozeTarget(world: ToolWorld, x: number, y: number): number {
   const { map, parcels } = world;
@@ -115,6 +137,8 @@ export function chargeFor(world: ToolWorld, tool: ToolDef, x: number, y: number,
   if (tool.id === 'bulldoze') {
     const target = bulldozeTarget(world, x, y);
     if (target === BuiltKind.RoadHighway || target === BuiltKind.RoadRamp) return { effort: 0, funds: -FREEWAY_SALVAGE };
+    const effort = demolitionEffort(world, x, y, target);
+    if (effort > 0) return { effort, funds: 0 };
     volunteer = true; // demolition is work a neighbourhood can do
   }
   if (!volunteer || sticker.funds <= wallet.funds) return sticker;

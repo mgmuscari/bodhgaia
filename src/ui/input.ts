@@ -6,7 +6,7 @@
 //
 // Pan-vs-tool precedence (resolves the "drag still pans" vs "transport drag
 // paints" tension): with no tool — or a non-line tool — selected, a drag PANS and
-// a click applies at the tile; with a LINE tool (transport build / convert)
+// a click applies at the tile; with a LINE tool (transport build / convert, bulldoze)
 // selected, a drag PAINTS lineTiles (pan suppressed) and a click applies one tile.
 // To pan with a line tool held, deselect (Escape) or hold the middle button.
 
