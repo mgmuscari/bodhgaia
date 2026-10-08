@@ -424,3 +424,13 @@ describe('energy node batteries (Maddy 2026-10-07: the solar problem)', () => {
     expect(computePowerGrid(map, parcels, undefined, NEUTRAL_POWER_PRACTICES, new Map([[node, 100]])).storage.get(node)).toBe(100);
   });
 });
+
+describe('a source is not a consumer (Maddy 2026-10-08: the power-out indicator on energy nodes)', () => {
+  it('an energy node feeds the grid; it never reads as unpowered', async () => {
+    const { isPowerConsumer } = await import('../../src/growth/power');
+    const { BuiltKind } = await import('../../src/engine/fabric');
+    expect(isPowerConsumer(BuiltKind.EnergyNode)).toBe(false);
+    expect(isPowerConsumer(BuiltKind.Civic)).toBe(true);
+    expect(isPowerConsumer(BuiltKind.AINode)).toBe(true); // a civic consumer that isn't a source
+  });
+});
