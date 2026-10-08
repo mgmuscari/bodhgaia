@@ -57,6 +57,7 @@ import { neighborhoodBelonging } from './civic/voice';
 import { NIGHT_FROM, NIGHT_TO } from './live/tuning';
 import { createWeather } from './app/weather';
 import { createFloodController } from './app/flood';
+import { createCommunity } from './app/community';
 import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
@@ -445,6 +446,18 @@ export function main(save: SaveV1 | null = null): void {
   // Floods: heavy rain lifts the water over the low land by it; homes under water are evacuated until it goes.
   const flood = createFloodController({ world, live: live.state, hour: () => gameClock(gameSec()).hour, disastersOn, markDirty, news: (t) => news.push(t) });
 
+  // Community events (community-events.md): from conditions, never called — block parties first.
+  const community = createCommunity({
+    world,
+    live: live.state,
+    civic,
+    partition: () => deps.partition,
+    rng: createRng(seed).fork('community'),
+    hour: () => gameClock(gameSec()).hour,
+    on: () => !night?.active() && !tutorial?.active(),
+    news: (t) => news.push(t),
+  });
+
   // Fire (disasters.md): ignition from conditions once a game hour, trucks from the stations, burnt-out ruins. Nothing
   // new ignites while Disasters is off, or during the opening's night and tutorial.
   const fire = createFireController({
@@ -469,12 +482,17 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
           ignite: (i) => fire.ignite(i),
           storm: (heavy) => weather.storm(heavy),
+          party: () => {
+            if (!community.hold('block-party')) return null;
+            const g = live.state.gatherings![live.state.gatherings!.length - 1]!;
+            return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
+          },
           view: (x, y) => {
             camera.centerOn(x, y, 3);
             markDirty();
@@ -517,6 +535,7 @@ export function main(save: SaveV1 | null = null): void {
       if (!night?.active() && !tutorial?.active()) weather.frame(now);
       demo?.frame(now);
       flood.frame(now);
+      community.frame(now);
       fire.frame(now);
       drawSpillsNow();
       drawCrashesNow();

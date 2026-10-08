@@ -9,6 +9,7 @@ import { BuiltKind, isBuildingKind, isTransportKind, transportMask, isRoadKind, 
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import { C } from './snesPalette';
+import { FLAG_COLOURS, FLAG_STRING, prayerFlagPixels } from './prayerFlags';
 import { DIR_DX, DIR_DY } from '../live/geometry';
 import {
   builtRenderKey,
@@ -74,6 +75,9 @@ function dirVector8(d: number): [number, number] {
   const D = Math.SQRT1_2;
   return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
 }
+
+/** The gatherings that hang prayer flags. */
+const FESTIVE: ReadonlySet<string> = new Set(['block-party', 'craft-fair', 'festival', 'parade']);
 
 /** The palette's foam, for the flood's waterline. */
 const FOAM_CSS = `rgb(${C.foam[0]}, ${C.foam[1]}, ${C.foam[2]})`;
@@ -1224,6 +1228,35 @@ export class Renderer {
         if (img) this.drawArt(ctx, img, b.x + 0.5, b.y + 0.5, camera);
       });
     });
+
+    // Prayer flags over festive gatherings (community-events.md): single art pixels from the palette — strings along
+    // both kerbs of the place and one across it, a pole at each end, fluttering. Overhead, so above the people.
+    if (ambient.gatherings?.length) {
+      const ap = camera.tileSize / BASE_TILE;
+      const frame = Math.floor(performance.now() / 500) % 2;
+      const dot = (x: number, y: number, c: readonly number[]): void => {
+        const { sx, sy } = camera.worldToScreen(x / BASE_TILE, y / BASE_TILE);
+        if (sx < -ap || sy < -ap || sx > w || sy > h) return;
+        ctx.fillStyle = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+        ctx.fillRect(Math.round(sx), Math.round(sy), Math.ceil(ap), Math.ceil(ap));
+      };
+      for (const g of ambient.gatherings) {
+        if (!FESTIVE.has(g.kind)) continue;
+        const X0 = g.site.x * BASE_TILE;
+        const Y0 = g.site.y * BASE_TILE;
+        const X1 = (g.site.x + g.site.w) * BASE_TILE - 1;
+        const Y1 = (g.site.y + g.site.h) * BASE_TILE - 1;
+        // strings run along the place's long axis; for a run down a street, across it at each tile
+        const strings: [number, number, number, number][] =
+          g.site.w >= g.site.h
+            ? [[X0, Y0 + 1, X1, Y0 + 1], [X0, Y1 - 4, X1, Y1 - 4], [X0, Y0 + 1, X1, Y1 - 4]]
+            : Array.from({ length: g.site.h }, (_, k) => [X0 - 2, Y0 + k * BASE_TILE + 3, X1 + 2, Y0 + k * BASE_TILE + 3] as [number, number, number, number]);
+        for (const [ax, ay, bx, by] of strings) {
+          for (const [px, py] of [[ax, ay], [bx, by]]) for (let k = 0; k < 4; k++) dot(px!, py! - k, FLAG_STRING); // poles
+          for (const p of prayerFlagPixels(ax, ay, bx, by, frame)) dot(p.x, p.y, p.kind === 'flag' ? FLAG_COLOURS[p.colour]! : FLAG_STRING);
+        }
+      }
+    }
 
     // Smog plumes — TOP layer (above cars/peds, Maddy): translucent puffs over polluted tiles, streaming
     // downwind along the prevailing wind (loop + triangle fade so they don't pop), billowing as they go.

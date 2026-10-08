@@ -65,3 +65,14 @@ describe('gatherings', () => {
     expect(s.state.gatherings ?? []).toHaveLength(0);
   });
 });
+
+describe('gatherers are routed walkers', () => {
+  it('the off-network cull leaves them be (they walk committed routes, like a walker with a destination)', async () => {
+    const { pedDespawns } = await import('../../src/live/network');
+    const s = street();
+    const map = new GameMap(30, 12);
+    const g = startGathering(s.state, s.map, createRng('s').fork('s'), { kind: 'block-party', site: { x: 12, y: 5, w: 3, h: 1 }, hood: 1, life: 2000, homes: s.homes, crowd: 6 })!;
+    expect(g).not.toBeNull();
+    for (const p of s.state.peds) expect(pedDespawns(map, p)).toBe(false); // even on a map where nothing is walkable
+  });
+});

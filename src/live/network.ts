@@ -527,11 +527,13 @@ export function adjacentRoad(map: GameMap, x: number, y: number): number {
 /**
  * A pedestrian is despawned when its substrate vanished — UNLESS it's a last-mile walker (a `walkTo`
  * is set; it crosses lots/roads off-grid and self-despawns on arrival) or a hidden DRIVER (`phase
- * 'driving'`; it rides inside its car, off the ped network by design). The driving exemption is
+ * 'driving'`; it rides inside its car, off the ped network by design) or a gatherer (`phase 'gathering'`, on a
+ * committed route to its gathering and home). The driving exemption is
  * EXPLICIT by phase so it can't break if the stale `walkTo` left over from boarding is ever cleared.
  */
 export function pedDespawns(map: GameMap, p: Ped): boolean {
-  return p.phase !== 'driving' && p.walkTo === undefined && pedOffNetwork(map, p);
+  // a gatherer walks a committed route to its gathering and home (live/gatherings.ts) — a routed walker too
+  return p.phase !== 'driving' && p.phase !== 'gathering' && p.walkTo === undefined && pedOffNetwork(map, p);
 }
 
 // --- Precomputed network masks (the A* hot loop) ---------------------------
