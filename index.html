@@ -808,6 +808,36 @@
         font-size: 1.0rem;
         padding: 0.1rem 0.3rem;
       }
+      /* the music picker: a scrolling list of pieces in a sunken well, the playing one in the accent */
+      .settings-panel__tracks {
+        list-style: none;
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-inset) 4 fill / 8px stretch;
+        max-height: 15rem;
+        overflow-y: auto;
+        margin: 0.3rem 0 0;
+        padding: 0.1rem 0.2rem;
+      }
+      .settings-panel__track {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        padding: 0.1rem 0.3rem;
+        color: var(--ui-text);
+        cursor: pointer;
+      }
+      .settings-panel__track:hover,
+      .settings-panel__track:focus {
+        background: rgba(255, 255, 255, 0.08);
+        outline: none;
+      }
+      .settings-panel__track--playing {
+        color: var(--ui-accent);
+      }
+      .settings-panel__track-when {
+        color: var(--ui-muted);
+        white-space: nowrap;
+      }
       .settings-panel__note {
         color: var(--ui-muted);
         font-size: 1.0rem;
