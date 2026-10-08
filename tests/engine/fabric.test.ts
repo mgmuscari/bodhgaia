@@ -28,7 +28,7 @@ import {
   parcelTouchesRoad,
   demolishParcel,
   demolishTransportAt,
-  TRANSPORT_CONVERSIONS,
+  TRANSPORT_CONVERT_TARGETS,
   canConvertTransport,
   convertTransport,
   isOverpassKind,
@@ -493,7 +493,7 @@ describe('transport merge-hazard guard (the predicate stays isRoadKind, not cate
   }
 });
 
-describe('TRANSPORT_CONVERSIONS table + canConvertTransport / convertTransport', () => {
+describe('transport conversions: canConvertTransport / convertTransport', () => {
   // Every designed (from -> to) entry. `from` kinds are all classic 1..4 OR
   // empty-land-placeable transit kinds, so each fixture can be placed directly.
   const CONVERSION_CASES: ReadonlyArray<readonly [number, number]> = [
@@ -505,23 +505,21 @@ describe('TRANSPORT_CONVERSIONS table + canConvertTransport / convertTransport',
     [BuiltKind.RoadHighway, BuiltKind.RoadAvenue],
     [BuiltKind.RoadHighway, BuiltKind.PlantedMedian],
     [BuiltKind.Rail, BuiltKind.Streetcar],
+    // any transit tile converts to any target (Maddy 2026-10-08)
+    [BuiltKind.RoadStreet, BuiltKind.RoadAvenue],
+    [BuiltKind.RoadHighway, BuiltKind.RoadStreet],
+    [BuiltKind.QuietStreet, BuiltKind.RoadStreet],
+    [BuiltKind.Streetcar, BuiltKind.RoadStreet],
+    [BuiltKind.Rail, BuiltKind.BikePath],
+    [BuiltKind.BikePath, BuiltKind.Streetcar],
+    [BuiltKind.Promenade, BuiltKind.RoadAvenue],
+    [BuiltKind.ElevatedRail, BuiltKind.Promenade],
   ];
 
-  it('exposes the designed conversion entries in order', () => {
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.RoadStreet)!]).toEqual([
-      BuiltKind.QuietStreet,
-      BuiltKind.Promenade,
-      BuiltKind.BikePath,
-    ]);
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.RoadAvenue)!]).toEqual([
-      BuiltKind.RoadStreet,
-      BuiltKind.QuietStreet,
-    ]);
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.RoadHighway)!]).toEqual([
-      BuiltKind.RoadAvenue,
-      BuiltKind.PlantedMedian, // the road-diet planted median (tool-gated to interior lanes)
-    ]);
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.Rail)!]).toEqual([BuiltKind.Streetcar]);
+  it('converts to a street, avenue, bike path, streetcar, quiet street or promenade', () => {
+    expect([...TRANSPORT_CONVERT_TARGETS].sort((x, y) => x - y)).toEqual(
+      [BuiltKind.RoadStreet, BuiltKind.RoadAvenue, BuiltKind.BikePath, BuiltKind.Streetcar, BuiltKind.QuietStreet, BuiltKind.Promenade].sort((x, y) => x - y),
+    );
   });
 
   it('a planted median converts BACK to highway (the road diet is reversible)', () => {
@@ -551,14 +549,13 @@ describe('TRANSPORT_CONVERSIONS table + canConvertTransport / convertTransport',
   // tiles. Each rejected by BOTH canConvertTransport and convertTransport, with no
   // mutation.
   const REJECT_CASES: ReadonlyArray<readonly [number, number]> = [
-    [BuiltKind.RoadStreet, BuiltKind.RoadAvenue], // Street has no avenue entry
-    [BuiltKind.RoadStreet, BuiltKind.RoadHighway],
+    [BuiltKind.RoadStreet, BuiltKind.RoadStreet], // already that
+    [BuiltKind.RoadStreet, BuiltKind.RoadHighway], // not a conversion target (only a median reverts to it)
     [BuiltKind.RoadStreet, BuiltKind.Rail],
     [BuiltKind.RoadAvenue, BuiltKind.RoadHighway],
-    [BuiltKind.RoadHighway, BuiltKind.RoadStreet],
-    [BuiltKind.QuietStreet, BuiltKind.RoadStreet], // reverse of a real entry
-    [BuiltKind.Streetcar, BuiltKind.Rail], // reverse of Rail -> Streetcar
-    [BuiltKind.Rail, BuiltKind.ElevatedRail], // Rail only converts to Streetcar
+    [BuiltKind.Streetcar, BuiltKind.Rail],
+    [BuiltKind.Rail, BuiltKind.ElevatedRail],
+    [BuiltKind.RoadStreet, BuiltKind.PlantedMedian], // a median is planted in a highway's lane only
   ];
 
   for (const [from, to] of REJECT_CASES) {

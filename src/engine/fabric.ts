@@ -15,7 +15,7 @@
 //
 // The transit codes 5..9 are granted by the tech tree and, since build-tools,
 // placeable on EMPTY land only (they never merge or cross — see canPlaceTransport)
-// or reachable as the target of a conversion (see TRANSPORT_CONVERSIONS). The
+// or reachable as the target of a conversion (see TRANSPORT_CONVERT_TARGETS). The
 // tech-tree building codes 48..60 are granted but reach the map only through a
 // build tool (see the tools layer). See the tech-tree + build-tools PRPs.
 
@@ -401,28 +401,22 @@ const MIN_FOOTPRINT = 1;
 const MAX_FOOTPRINT = 4; // the largest plant footprint (Nuclear/Fusion are 4x4)
 
 /**
- * Transport conversions: the explicit "road diet" transformation table. A tile
- * holding a `from` kind may be converted in place to any kind in its entry list.
- * These are deliberate transformations — a street narrows to a quiet street, a
- * promenade, or a bike path; an avenue steps down to a street; a highway reverses
- * to a boulevard-grade avenue; a rail line becomes a streetcar — NOT placements
- * and NOT junction merges. Conversion is the ONLY way a kind reaches an
- * already-occupied tile: placement stays empty-land-only, and the junction merge
- * (max() over same-category classic kinds) is untouched. Joining the single-writer
- * block keeps every built-layer write in this module (PRD risk #1).
+ * Transport conversions: the kinds any transport tile may be converted to in place — a street, avenue, bike path,
+ * streetcar, quiet street or promenade, whatever the tile holds now (Maddy 2026-10-08: "convert to X" should work
+ * regardless of the underlying transit tile). The road diet's planted median is its own pair: a highway's interior
+ * lane plants as a median (the tool fences it to interior lanes) and a median reverts to highway. These are
+ * deliberate transformations — NOT placements and NOT junction merges. Conversion is the ONLY way a kind reaches
+ * an already-occupied tile: placement stays empty-land-only, and the junction merge (max() over same-category
+ * classic kinds) is untouched. Joining the single-writer block keeps every built-layer write in this module
+ * (PRD risk #1).
  */
-export const TRANSPORT_CONVERSIONS: ReadonlyMap<BuiltKind, readonly BuiltKind[]> = new Map<
-  BuiltKind,
-  readonly BuiltKind[]
->([
-  [BuiltKind.RoadStreet, [BuiltKind.QuietStreet, BuiltKind.Promenade, BuiltKind.BikePath]],
-  [BuiltKind.RoadAvenue, [BuiltKind.RoadStreet, BuiltKind.QuietStreet]],
-  // A highway reverses to a boulevard-grade avenue, OR — once road diets are unlocked — its interior
-  // through-lane is planted as a no-traffic median (the tool fences PlantedMedian to interior lanes).
-  [BuiltKind.RoadHighway, [BuiltKind.RoadAvenue, BuiltKind.PlantedMedian]],
-  // The road diet is reversible: a planted median converts back to highway.
-  [BuiltKind.PlantedMedian, [BuiltKind.RoadHighway]],
-  [BuiltKind.Rail, [BuiltKind.Streetcar]],
+export const TRANSPORT_CONVERT_TARGETS: ReadonlySet<BuiltKind> = new Set([
+  BuiltKind.RoadStreet,
+  BuiltKind.RoadAvenue,
+  BuiltKind.BikePath,
+  BuiltKind.Streetcar,
+  BuiltKind.QuietStreet,
+  BuiltKind.Promenade,
 ]);
 
 /**
@@ -533,15 +527,17 @@ export function placeBridge(map: GameMap, x: number, y: number, kind: number): b
 }
 
 /**
- * True iff the transport tile at (x, y) can be converted to `to`: the tile must
- * hold a `from` kind whose {@link TRANSPORT_CONVERSIONS} entry contains `to`.
- * Empty tiles, building tiles, and off-table (from, to) pairs all return false.
+ * True iff the transport tile at (x, y) can be converted to `to`: any transport tile to any of
+ * {@link TRANSPORT_CONVERT_TARGETS} but its own kind; a highway to a planted median, and back.
+ * Empty tiles and building tiles return false.
  */
 export function canConvertTransport(map: GameMap, x: number, y: number, to: number): boolean {
   if (!map.inBounds(x, y)) return false;
-  const from = map.built[map.idx(x, y)]! as BuiltKind;
-  const targets = TRANSPORT_CONVERSIONS.get(from);
-  return targets !== undefined && targets.includes(to as BuiltKind);
+  const from = map.built[map.idx(x, y)]!;
+  if (from === to || !isTransportKind(from)) return false;
+  if (to === BuiltKind.PlantedMedian) return from === BuiltKind.RoadHighway;
+  if (to === BuiltKind.RoadHighway) return from === BuiltKind.PlantedMedian;
+  return TRANSPORT_CONVERT_TARGETS.has(to as BuiltKind);
 }
 
 /**
@@ -592,7 +588,7 @@ export function isInteriorRoadLane(map: GameMap, x: number, y: number): boolean 
 /**
  * Rezoning targets: the building kinds an existing alive building parcel may be
  * converted *in place* into. A fixed set (the building analogue of the per-from
- * {@link TRANSPORT_CONVERSIONS} table) — *any* alive building parcel rezones to
+ * {@link TRANSPORT_CONVERT_TARGETS}) — *any* alive building parcel rezones to
  * either of these depaved greens.
  */
 export const REZONE_TARGETS: ReadonlySet<BuiltKind> = new Set<BuiltKind>([

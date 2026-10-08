@@ -238,9 +238,9 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.TinyHomes]: { label: 'Tiny-Home Village', cost: 16, footprint: { w: 2, h: 2 } },
 };
 
-// Conversion tools keyed by TARGET kind. The transport targets are the union of
-// TRANSPORT_CONVERSIONS' entry lists: {Street, Avenue, BikePath, Streetcar,
-// QuietStreet, Promenade}, costs 2..4/tile (cheaper than fresh build — a road diet
+// Conversion tools keyed by TARGET kind. The transport targets are TRANSPORT_CONVERT_TARGETS
+// ({Street, Avenue, BikePath, Streetcar, QuietStreet, Promenade}, from any transport tile) plus the
+// planted median, costs 2..4/tile (cheaper than fresh build — a road diet
 // reuses the roadbed). The building targets are the rezoning greens (Park,
 // RewildedLand): an in-place depave of any alive building parcel (see convertParcel).
 interface ConvertEntry {
