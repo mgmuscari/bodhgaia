@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { pedPose } from '../../src/live/poses';
 import { PED_SPEED } from '../../src/live/tuning';
+import { DIR_DX, DIR_DY } from '../../src/live/geometry';
 import { isRoadKind } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { BuiltKind, placeTransport } from '../../src/engine/fabric';
@@ -94,10 +95,15 @@ function probe(): { jumps: number; worstSide: number; worstAlong: number; fastes
         worstAlong = Math.max(worstAlong, along);
         const d = side;
         // how far a walker on foot actually moved this substep (their pace, not the drawing)
-        // walkers on the street grid (one coordinate whole); stepping back onto it from a parked car's off-grid
-        // spot is a separate, one-off hop (backlog)
-        const onGrid = Number.isInteger(prev.px) || Number.isInteger(prev.py);
-        if (p.mode === 0 && prev.mode === 0 && onGrid) {
+        // walking along a leg: they were on the line of the leg they're on now (a corner turn starts at the tile
+        // centre — on it). A re-planned leg, or stepping back onto the grid from a parked car, starts off it: a
+        // one-off hop, left as it is (backlog, Maddy: no more walker changes)
+        const horizontal = p.dir === 1 || p.dir === 3;
+        const mx = p.x - prev.px;
+        const my = p.y - prev.py;
+        const forward = mx * DIR_DX[p.dir]! + my * DIR_DY[p.dir]!; // moving the leg's own way, not hopping back
+        const onLeg = (horizontal ? Math.abs(prev.py - p.ty) < 1e-9 : Math.abs(prev.px - p.tx) < 1e-9) && forward >= 0;
+        if (p.mode === 0 && prev.mode === 0 && onLeg) {
           const v = Math.abs(p.x - prev.px) + Math.abs(p.y - prev.py);
           if (v > fastest) fastCase = `v=${v.toFixed(3)} was ${prev.st} | now x${p.x.toFixed(2)} y${p.y.toFixed(2)} t(${p.tx},${p.ty}) dir${p.dir} prev${p.prevDir} ph:${p.phase ?? '-'} walkTo:${p.walkTo ? p.walkTo.x + ',' + p.walkTo.y : '-'} path:${p.path ? p.path.length : '-'} leg:${p.leg}`;
           fastest = Math.max(fastest, v);
@@ -121,7 +127,6 @@ describe('walkers glide (Maddy 2026-10-08: residents warped across the avenue at
 
   it('nobody on foot ever moves faster than a walk — not even round a corner (Maddy: they shot round kerbs)', () => {
     const r = probe();
-    // a re-planned leg can hop up to 4 walks once (backlog); the corner pacing moved walkers 5–13 walks a step
-    expect(r.fastest, `fastest walker ${r.fastest.toFixed(3)} tiles a substep: ${r.report.split('\n')[0]}`).toBeLessThanOrEqual(PED_SPEED * 4.01);
+    expect(r.fastest, `fastest walker ${r.fastest.toFixed(3)} tiles a substep: ${r.report.split('\n')[0]}`).toBeLessThanOrEqual(PED_SPEED * 1.001);
   });
 });
