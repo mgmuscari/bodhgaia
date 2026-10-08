@@ -27,7 +27,7 @@ export const PLANT_OUTPUT: ReadonlyMap<number, number> = new Map<number, number>
   [BuiltKind.WindTurbine, 56],
   [BuiltKind.SolarPlant, 210],
   [BuiltKind.FusionPlant, 3500],
-  [BuiltKind.EnergyNode, 168], // distributed community microgrid
+  [BuiltKind.EnergyNode, 168], // a solar canopy over its battery: this at noon, nothing at night (Maddy 2026-10-08)
 ]);
 
 /** The practices' power effects (resolved tech-side, tech/effects.ts — passed as plain values). */
@@ -218,15 +218,16 @@ export function smartGridFactor(map: GameMap, anchor: number, clock: GridClock):
 
 function weatherFactor(kind: number, clock: GridClock | undefined): number {
   if (!clock) return 1;
-  if (kind === BuiltKind.SolarPlant) return solarFactor(clock.hour);
+  if (kind === BuiltKind.SolarPlant || kind === BuiltKind.EnergyNode) return solarFactor(clock.hour); // panels follow the sun
   if (kind === BuiltKind.WindTurbine) return windFactor(clock);
   return 1;
 }
 
 // ── Batteries (Maddy 2026-10-07: the solar problem) ─────────────────────────────────────────────────────
-/** Every energy node carries a battery: it stores up to BATTERY_CAPACITY power-hours (4 h of its own output),
- *  charging from its grid's surplus and discharging into its grid's shortfall at up to BATTERY_RATE an hour —
- *  so the noon sun can light the evening. Only clocked (live) solves move the charge. */
+/** Every energy node is a solar canopy over a battery (Maddy 2026-10-08): the canopy makes power by day (its output
+ *  follows the sun), and the battery stores up to BATTERY_CAPACITY power-hours, charging from its grid's surplus (its
+ *  own and the grid's) and discharging into its grid's shortfall at up to BATTERY_RATE an hour — so the noon sun
+ *  lights the evening. Only clocked (live) solves move the charge. */
 export const BATTERY_RATE = 168;
 export const BATTERY_CAPACITY = 4 * BATTERY_RATE;
 
@@ -334,6 +335,7 @@ export function computePowerGrid(
       }
       continue;
     }
+    if (plantOutput(p.kind) > 0) continue; // a source in the dark (a canopy at night) still draws nothing
     let d = clock ? demandAt(p.kind, p.density, anchor, clock) : powerDemand(p.kind, p.density);
     // rooftop solar: homes draw less while the sun is up
     const day = !!clock && clock.hour >= ROOF_SOLAR_FROM && clock.hour < ROOF_SOLAR_TO;
@@ -383,8 +385,7 @@ export function computePowerGrid(
     const local = practices.localGrids ? localGridAnchors(map, parcels) : null;
     for (let c = 0; c < nComp; c++) {
       let budget = capByComp[c]!;
-      if (budget <= 0) continue;
-      // batteries: bank the surplus, or cover the shortfall from the bank
+      // batteries: bank the surplus, or cover the shortfall from the bank — a grid with no sun left runs on them
       let load = 0;
       for (const cons of consumersByComp[c]!) load += cons.demand;
       let gap = budget - load;
@@ -401,6 +402,7 @@ export function computePowerGrid(
           gap += take;
         }
       }
+      if (budget <= 0) continue;
       const feeders = new Map<number, ConsumerRef[]>();
       for (const cons of consumersByComp[c]!) {
         // Local Grids: the homes an energy node holds are served before any feeder takes its turn

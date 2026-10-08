@@ -52,7 +52,7 @@ export const LESSONS: readonly Lesson[] = [
     steps: [
       point('[data-meta-id="power"]', 'The Power overlay. Demand rises and falls through the day — homes peak in the evening. When there isn’t enough, whole blocks go dark in turn.'),
       say('Solar makes power at noon and nothing at night; wind blows hardest after dark. A clean grid needs both — and somewhere to keep the noon.'),
-      say(`Energy nodes carry batteries: each banks up to ${BATTERY_CAPACITY} of the surplus and gives it back when power runs short. With Local Grids, homes within ${LOCAL_GRID_RADIUS} tiles of a node stay lit first.`),
+      say(`Energy nodes are a solar canopy over a battery: by day each makes power and banks up to ${BATTERY_CAPACITY} of the surplus, and at night gives it back. With Local Grids, homes within ${LOCAL_GRID_RADIUS} tiles of a node stay lit first.`),
       say(`A Community AI Node shifts flexible load off the evening peak: homes near it draw ${pct(SMART_GRID_CUT)} less from 17:00 to 21:00.`),
     ],
   },
