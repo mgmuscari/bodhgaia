@@ -492,3 +492,24 @@ export const LV_RUIN = 12;
 export const TRUCK_SPEED = 0.16;
 /** Substeps a truck sprays before the fire is out (~3 s). */
 export const SPRAY_SUBSTEPS = 60;
+
+// ── Industrial spills (docs/design/disasters.md) ───────────────────────────────────────────────────────────
+/** Spill chance per industrial works per in-game hour at full condition on clean ground (no practices). Rare in
+ *  real play (a game day is ~2.6 min); see spillChance for the multipliers. */
+export const SPILL_BASE = 1 / 9000;
+/** Ground pollution laid on the works and SPILL_GROUND_RING tiles round it. */
+export const SPILL_GROUND = 200;
+export const SPILL_GROUND_RING = 2;
+/** Water pollution laid on every water tile within SPILL_WATER_RADIUS (Chebyshev) of the works; halved where a
+ *  wastewater works is within WATER_TREAT_RADIUS of that water. It then flows downstream like any runoff. */
+export const SPILL_WATER = 200;
+export const SPILL_WATER_RADIUS = 4;
+/** The toxic cloud: its radius (tiles), its drift along the wind per substep, its life (substeps, ~30 s). */
+export const CLOUD_RADIUS = 2.5;
+export const CLOUD_SPEED = 0.03;
+export const CLOUD_SUBSTEPS = 600;
+/** Smog the cloud lays on each tile under it, per substep. */
+export const CLOUD_SMOG = 3;
+/** Each person outdoors the cloud passes over dies with this chance (one roll each); at most CLOUD_DEATH_MAX. */
+export const CLOUD_DEATH_CHANCE = 0.08;
+export const CLOUD_DEATH_MAX = 3;

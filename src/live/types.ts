@@ -194,9 +194,19 @@ export interface Truck {
   home: { x: number; y: number };
 }
 
+/** A toxic cloud from an industrial spill: its centre (tiles), age (substeps), the people it has already passed
+ *  over (each rolls once) and how many it has killed. */
+export interface ToxicCloud {
+  x: number;
+  y: number;
+  age: number;
+  touched: WeakSet<object>;
+  deaths: number;
+}
+
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest' | 'fire';
+  kind: 'death' | 'arrest' | 'fire' | 'spill';
   x: number;
   y: number;
   w: number;
@@ -218,6 +228,8 @@ export interface LivePractices {
   occFloor: number;
   /** The wellbeing a citizen brings home from a day at industry (Collective Ownership). */
   industryVisit: number;
+  /** Multiplier on how often a works spills (Collective Ownership: the workers who live downwind run it). */
+  spillRate: number;
 }
 
 /** No practices: the coefficients the live layer runs on before any tech. */
@@ -228,6 +240,7 @@ export const NEUTRAL_PRACTICES: Readonly<LivePractices> = Object.freeze({
   droneShopDrop: 0,
   occFloor: OCC_FLOOR,
   industryVisit: visitValue(BuiltKind.Industrial),
+  spillRate: 1,
 });
 
 export interface AmbientState {
@@ -337,6 +350,10 @@ export interface AmbientState {
   wanderer?: { x: number; y: number; path: number[]; i: number; age: number; life: number; seed: number };
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
+  /** Toxic clouds drifting downwind from a spill (live/spills.ts). */
+  clouds?: ToxicCloud[];
+  /** The in-game hour spills were last drawn for. */
+  spillHour?: number;
   /** Fires the trucks have put out (parcel store indices) — the host hands them to the fire step and clears it. */
   quenched?: Set<number>;
   /** Footprints burning now (published by the host from the fire step) — the renderer draws the flames. */
