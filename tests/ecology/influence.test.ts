@@ -113,10 +113,11 @@ describe('isUnsealed / UNSEALED_KINDS (depave exemption)', () => {
     expect(isUnsealed(BuiltKind.None)).toBe(false);
   });
 
-  it('UNSEALED_KINDS is exactly the two rezoning greens', () => {
+  it('UNSEALED_KINDS is exactly the two rezoning greens and the back yard', () => {
     expect(UNSEALED_KINDS.has(BuiltKind.Park)).toBe(true);
     expect(UNSEALED_KINDS.has(BuiltKind.RewildedLand)).toBe(true);
-    expect(UNSEALED_KINDS.size).toBe(2);
+    expect(UNSEALED_KINDS.has(BuiltKind.Yard)).toBe(true);
+    expect(UNSEALED_KINDS.size).toBe(3);
   });
 });
 
