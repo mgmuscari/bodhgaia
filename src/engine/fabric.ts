@@ -108,6 +108,8 @@ export const BuiltKind = {
   // A house's back yard (Maddy 2026-10-07): the lot behind it, away from the street — open ground, and where an
   // accessory dwelling goes.
   Yard: 64,
+  // A ruin (Maddy 2026-10-08): a home lost to disinvestment, left standing as a shell — no one lives here.
+  Ruin: 65,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 

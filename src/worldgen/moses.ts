@@ -2064,6 +2064,40 @@ export function eraBackYards(world: WorldState): number {
   return yards;
 }
 
+/** A redline grade at/above which an empty street front is a ruin (the D-graded districts). */
+export const RUIN_GRADE = 160;
+
+/** Leave a ruin on every empty street-front tile of a redlined district inside the built city — the homes era 5
+ *  abandoned and the gaps never rebuilt. Chronicles `ruins: +N standing where homes were lost`. */
+export function eraRuins(world: WorldState): number {
+  const { map, parcels } = world;
+  let ruins = 0;
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const i = map.idx(x, y);
+      if (map.redline[i]! < RUIN_GRADE || !canPlaceParcel(map, x, y, 1, 1)) continue;
+      let street = false;
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+        if (map.inBounds(x + dx, y + dy) && isRoadKind(map.built[map.idx(x + dx, y + dy)]!)) street = true;
+      }
+      if (!street || !builtNear(map, x, y, 2)) continue; // a street front inside the city, not open country
+      if (placeParcel(map, parcels, { x, y, width: 1, height: 1, kind: BuiltKind.Ruin, density: 1, condition: 0 }) !== -1) ruins++;
+    }
+  }
+  world.log.push(`ruins: +${ruins} standing where homes were lost`);
+  return ruins;
+}
+
+/** Is there a building (a parcel) within Chebyshev `r` of (x, y)? */
+function builtNear(map: GameMap, x: number, y: number, r: number): boolean {
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if ((dx || dy) && map.inBounds(x + dx, y + dy) && map.parcel[map.idx(x + dx, y + dy)] !== 0) return true;
+    }
+  }
+  return false;
+}
+
 export function mosesCenturyStage(params: Partial<MosesParams> = {}): WorldgenStage {
   const p: MosesParams = { ...DEFAULT_MOSES_PARAMS, ...params };
   return {
@@ -2085,6 +2119,9 @@ export function mosesCenturyStage(params: Partial<MosesParams> = {}): WorldgenSt
       // Back yards (Maddy 2026-10-07): the lot behind every standing house that faces one street, laid last so
       // they belong to the houses that survived the century. Its own chronicle term (the report's identity).
       eraBackYards(world);
+      // Ruins (Maddy 2026-10-08): every empty street front in a redlined district is a home lost — left standing as
+      // a shell. Laid last of all, its own chronicle term.
+      eraRuins(world);
     },
   };
 }

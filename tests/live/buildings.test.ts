@@ -6,7 +6,8 @@ import { createAmbientState, setHouseholds } from '../../src/live/types';
 import { DAILY_ITINERARY, StopCategory, itineraryFor, stopCategoryOf } from '../../src/citizens/itinerary';
 import { homeDrives, nearKind } from '../../src/live/pathing';
 import { stepOccupancy, homeCapacity } from '../../src/live/fields/occupancy';
-import { RAIL_NOISE_RADIUS, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
+import { landValueAt } from '../../src/live/fields/landValue';
+import { LV_RUIN, RAIL_NOISE_RADIUS, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
 
 describe('nearKind', () => {
   it('finds a kind within a Chebyshev radius', () => {
@@ -109,5 +110,16 @@ describe('Communes vs co-ops (Maddy 2026-10-07)', () => {
     map.built[map.idx(6, 6)] = BuiltKind.Commune;
     expect(homeDrives(map, map.idx(2, 2), 1)).toBe(true);
     expect(homeDrives(map, map.idx(6, 6), 1)).toBe(false);
+  });
+});
+
+describe('ruins drag the land around them (2026-10-08)', () => {
+  it('a home beside a ruin is worth less than one beside open ground', () => {
+    const map = new GameMap(20, 20);
+    map.built[map.idx(10, 10)] = BuiltKind.HouseSingle;
+    const bare = landValueAt(map, 10, 10);
+    map.built[map.idx(11, 10)] = BuiltKind.Ruin;
+    expect(landValueAt(map, 10, 10)).toBeLessThan(bare);
+    expect(bare - landValueAt(map, 10, 10)).toBeLessThanOrEqual(LV_RUIN);
   });
 });

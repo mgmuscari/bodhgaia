@@ -484,3 +484,5 @@ export const SHELTER_RADIUS = 6;
 /** Grief: homes within GRIEF_RADIUS (Chebyshev) of a death lose GRIEF_HEALTH of their wellbeing (building health). */
 export const GRIEF_RADIUS = 3;
 export const GRIEF_HEALTH = 20;
+/** Ruins: each one near a plot takes up to LV_RUIN off its land value (linear falloff over LV_RADIUS). */
+export const LV_RUIN = 12;

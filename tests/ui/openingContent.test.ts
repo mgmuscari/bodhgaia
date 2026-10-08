@@ -17,6 +17,7 @@ const FOUNDED_REPORT: BlightReport = {
   craters: 9,
   organicAdded: 24,
   yardsAdded: 300,
+  ruinsAdded: 40,
   conditionMean: 137.4,
   conditionMedian: 150,
   shareDerelict: 0.2,
@@ -38,6 +39,7 @@ const SPARSE_REPORT: BlightReport = {
   craters: null,
   organicAdded: null,
   yardsAdded: null,
+  ruinsAdded: null,
   railLost: null,
 };
 
@@ -61,6 +63,7 @@ const ALL_WATER_REPORT: BlightReport = {
   craters: null,
   organicAdded: null,
   yardsAdded: null,
+  ruinsAdded: null,
   conditionMean: 0,
   conditionMedian: 0,
   shareDerelict: 0,

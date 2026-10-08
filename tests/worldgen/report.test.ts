@@ -204,8 +204,9 @@ describe('buildReport: real pipeline (terrain + moses)', () => {
       // layer added after era 5, so it joins the identity as its own term.
       // Back yards are laid last, behind the houses still standing (Maddy 2026-10-07): their own term too.
       expect(r.yardsAdded).not.toBeNull();
+      expect(r.ruinsAdded).not.toBeNull(); // ruins: the last pass, empty redlined street fronts (2026-10-08)
       expect(r.parcelsAlive).toBe(
-        r.preEra5Standing! - r.abandoned! + r.craters! + r.organicAdded! + r.yardsAdded!,
+        r.preEra5Standing! - r.abandoned! + r.craters! + r.organicAdded! + r.yardsAdded! + r.ruinsAdded!,
       );
     });
 
