@@ -12,12 +12,17 @@ import type { AmbientState } from '../live/types';
 import { createFireState, stepFire } from '../growth/fire';
 import { dispatchTruck, roadNear } from '../live/trucks';
 import { residentDies } from '../live/death';
+import { layField } from '../citizens/field';
+import { POLL_MAX } from '../live/tuning';
 
 /** Wall ms between fire steps (BURN_STEPS of them burn a building out: ~45 s). */
 export const FIRE_STEP_MS = 1000;
 /** A home that burns out loses this share of its people (at least one if anyone was home), at most FIRE_DEATH_MAX. */
 export const FIRE_DEATH_SHARE = 0.15;
 export const FIRE_DEATH_MAX = 3;
+/** Smoke a burning tile lays into the air-pollution field each fire step: the smog overlay draws it, drifting
+ *  downwind, and people breathe it like any smog. */
+export const FIRE_SMOKE = 60;
 
 /** Each home's vacancy (parcel → 0..1): the share of its baseline people no longer there. A derelict (no baseline)
  *  or unpeopled home is fully abandoned. growth/fire reads it: an abandoned building burns more readily. */
@@ -115,6 +120,9 @@ export function createFireController(deps: FireDeps): FireController {
       if (ev.burntOut.length > 0) deps.refreshHouseholds();
       if (ev.burntOut.length > 0 || ev.quenched.length > 0) deps.markDirty();
       live.burning = [...fires.burning.keys()].filter((i) => parcels.isAlive(i)).map(footprint);
+      for (const b of live.burning) {
+        for (let dy = 0; dy < b.h; dy++) for (let dx = 0; dx < b.w; dx++) layField(live.pollution, map.idx(b.x + dx, b.y + dy), FIRE_SMOKE, POLL_MAX);
+      }
     },
   };
 }

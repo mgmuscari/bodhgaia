@@ -38,6 +38,42 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     }
   });
 
+  it('fire trucks are car-sized, in 8 headings, with a light bar flashing two phases', () => {
+    for (let d = 0; d < 8; d++) {
+      for (const ph of [0, 1]) {
+        const p = tiles.get(`@sprite/firetruck/${d}/${ph}`)!;
+        expect(p, `firetruck ${d}/${ph}`).toBeDefined();
+        const cop = tiles.get(`@sprite/cop/${d}/${ph}`)!;
+        expect([p.w, p.h]).toEqual([cop.w, cop.h]);
+      }
+      expect(tiles.get(`@sprite/firetruck/${d}/0`)!.data).not.toEqual(tiles.get(`@sprite/firetruck/${d}/1`)!.data);
+    }
+  });
+
+  it('flames are a few flickering frames within a tile, and spray is single droplets', () => {
+    const frames = [0, 1, 2, 3].map((f) => tiles.get(`@sprite/fire/${f}`)!);
+    for (const p of frames) {
+      expect(p).toBeDefined();
+      expect(Math.max(p.w, p.h)).toBeLessThanOrEqual(16);
+      expect(opaque(p)).toBeGreaterThan(20);
+    }
+    expect(new Set(frames.map((p) => p.data.join())).size).toBe(4);
+    expect(opaque(tiles.get('@sprite/drop')!)).toBeGreaterThan(0);
+  });
+
+  it('toxic smog billows like smog, in a sickly yellow-green', () => {
+    for (let s = 0; s < SMOG_SIZES; s++) {
+      for (const v of [0, 1]) {
+        const p = tiles.get(`@sprite/toxic/${s}/${v}`)!;
+        const smog = tiles.get(`@sprite/smog/${s}/${v}`)!;
+        expect([p.w, p.h]).toEqual([smog.w, smog.h]);
+        let yellowGreen = 0;
+        for (let i = 0; i < p.data.length; i += 4) if (p.data[i + 3] && p.data[i + 1]! > p.data[i + 2]! + 40) yellowGreen++;
+        expect(yellowGreen / opaque(p)).toBeGreaterThan(0.9);
+      }
+    }
+  });
+
   it('pedestrians and cyclists are tiny two-frame figures', () => {
     for (const kind of ['ped', 'bike']) {
       for (let f = 0; f < 2; f++) {

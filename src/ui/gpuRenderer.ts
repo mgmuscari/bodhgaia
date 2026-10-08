@@ -159,7 +159,12 @@ export class GpuRenderer {
       const fl = 0.8 + 0.2 * Math.sin(timeSec * 11 + b.x * 1.7 + b.y);
       radial(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) * 0.9 + 1.2, 1.0, 0.5, 0.15, 0.45 * fl);
     }
-    for (const tr of ambient.trucks ?? []) if (blue) radial(tr.x + 0.5, tr.y + 0.5, 0.75, 1.0, 0.2, 0.15, 0.55);
+    // Fire trucks: taillights, and a red/white flashing pool in step with the cruisers', day and night.
+    for (const { pose } of posed(ambient.trucks ?? [])) {
+      tail(pose.x, pose.y, pose.hx, pose.hy, Math.max(night, 0.5));
+      if (blue) radial(pose.x, pose.y, 0.75, 1.0, 0.25, 0.2, 0.5);
+      else radial(pose.x, pose.y, 0.75, 1.0, 0.95, 0.9, 0.35);
+    }
     // Buildings: RADIAL glow from the light map's actual lit pixels (windows / beacons), not the center.
     for (const bld of buildings) {
       const span = Math.max(bld.w, bld.h);

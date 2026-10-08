@@ -177,23 +177,19 @@ export interface ParkingLotInfo {
 
 /** The full ambient sprite state — renderer-side only, never part of the world. */
 /** A fire truck: where it is, the road route it follows, and what it's doing. */
-export interface Truck {
-  x: number;
-  y: number;
-  /** Heading (dx, dy) for the sprite. */
-  hx: number;
-  hy: number;
-  path: number[];
-  i: number;
-  phase: 'to-fire' | 'spraying' | 'home';
+/** A fire truck: a mover on a committed road route (the shared vehicle mover — lanes, turns, interpolation), out
+ *  to a fire, spraying it, or driving home. */
+export interface Truck extends Mover {
+  /** Where it is in the call. */
+  call: 'to-fire' | 'spraying' | 'home';
   /** The burning parcel (store index) it was sent to. */
   target: number;
   /** Substeps left spraying. */
   spray: number;
-  /** Substeps left before it leaves the station (the crew turning out). */
-  turnout?: number;
   /** The road tile by its station, to drive home to. */
   home: { x: number; y: number };
+  /** Substeps left before it leaves the station (the crew turning out). */
+  turnout?: number;
 }
 
 /** A toxic cloud from an industrial spill: its centre (tiles), age (substeps), the people it has already passed
