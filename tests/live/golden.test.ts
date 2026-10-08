@@ -138,8 +138,8 @@ describe('live layer golden determinism', () => {
   });
 
   it('matches the pinned digest (a pure refactor must leave this byte-identical)', () => {
-    // 2026-10-08: while the streets fill, citizens join their day part-way (a random step) — new rng draws
-    expect(first).toBe('cars=5 peds=125 cruisers=4 trains=4 flocks=4 #e3ddabcd');
+    // 2026-10-08: the hand-laid rail rows now cross the streets they meet (track laid across a way) — a new world
+    expect(first).toBe('cars=8 peds=125 cruisers=4 trains=5 flocks=1 #c34f337f');
   });
 });
 
