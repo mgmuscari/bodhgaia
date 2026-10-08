@@ -130,9 +130,6 @@ describe('the instrument set', () => {
 
   it('timbres sit where their names say', () => {
     const c = (id: InstrumentId) => centroid(get(id).data, get(id).loopStart, get(id).loopEnd);
-    // the chant is a soft vowel — darker than the reedy oboe and the bowed strings
-    expect(c('chant')).toBeLessThan(c('oboe'));
-    expect(c('chant')).toBeLessThan(c('strings'));
     // the flute is purer than the strings; the bass is low
     expect(c('flute')).toBeLessThan(c('strings'));
     expect(get('bass').rootHz).toBeLessThan(get('piano').rootHz / 2);
@@ -143,7 +140,7 @@ describe('the instrument set', () => {
     for (const id of ['piano', 'harp', 'pluck', 'bell', 'marimba', 'chime'] as const) {
       expect(get(id).envelope.sustain, id).toBeLessThanOrEqual(0.2);
     }
-    for (const id of ['strings', 'organ', 'flute', 'choir', 'pad', 'chant'] as const) {
+    for (const id of ['strings', 'organ', 'flute', 'choir', 'pad'] as const) {
       expect(get(id).envelope.sustain, id).toBeGreaterThanOrEqual(0.7);
     }
     expect(get('pad').envelope.attack).toBeGreaterThan(get('piano').envelope.attack);

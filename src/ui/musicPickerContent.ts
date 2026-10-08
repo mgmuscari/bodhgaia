@@ -7,7 +7,6 @@ export interface PickerTrack {
   title: string;
   composer: string;
   moods: readonly string[];
-  sacred?: boolean;
 }
 
 /** What the picker drives (the sound system's music player). */
@@ -28,12 +27,9 @@ export interface PickerRow {
 
 const label = (t: PickerTrack): string => `${t.title} — ${t.composer}`;
 
-/** Every ensemble piece, in the manifest's order. The sacred recitations aren't offered (Maddy 2026-10-08) — they
- *  keep to their calm moments in the rotation. */
+/** Every piece, in the manifest's order. */
 export function pickerRows(tracks: readonly PickerTrack[], current: string | null): PickerRow[] {
-  return tracks
-    .filter((t) => !t.sacred)
-    .map((t) => ({ id: t.id, label: label(t), when: t.moods.join(' · '), playing: t.id === current }));
+  return tracks.map((t) => ({ id: t.id, label: label(t), when: t.moods.join(' · '), playing: t.id === current }));
 }
 
 /** The line over the list. */

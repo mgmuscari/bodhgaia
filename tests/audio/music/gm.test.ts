@@ -41,9 +41,6 @@ describe('instrumentForProgram', () => {
     }
   });
 
-  it('never voices music through the chant instrument (reserved for recitation)', () => {
-    for (let p = 0; p < 128; p++) expect(instrumentForProgram(p)).not.toBe('chant');
-  });
 });
 
 describe('percussionFor (channel 10, used sparingly)', () => {

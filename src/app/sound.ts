@@ -1,7 +1,7 @@
 // App shell: SOUND (Maddy 2026-10-07: "we need audio … SNES style"). Owns the engine (src/app/audio.ts — silent
 // until the first gesture unlocks it), the cues (src/audio/sfx.ts), the city's soundscape (src/audio/ambience.ts)
-// and the music (src/audio/music — Mutopia classical by day and night, the transcribed Pali recitation on quiet
-// nights in a city that has made room for healing). A few times a second it listens to the live city through the
+// and the music (src/audio/music — Mutopia classical and the game's own arrangements by day and night, the
+// gentlest pieces on quiet nights in a city that has made room for healing). A few times a second it listens to the live city through the
 // camera: what's in VIEW feeds the ambience and the hour picks the music's mood. Arrests make no sound (Maddy
 // 2026-10-07). The pure parts are exported and tested; the rest is a thin timer.
 
@@ -43,8 +43,8 @@ export function soundSnapshot(s: AmbientState, view: ViewRect, night: boolean): 
   return { traffic01: clamp01(cars / FULL.cars), peds01: clamp01(peds / FULL.peds), birds01: clamp01(flocks / FULL.flocks), rain: s.rain !== undefined, night };
 }
 
-/** The music's mood from the hour: day, night — and calm (the Pali recitation) on a night in a city that has a
- *  healing commons. The chants are for the quiet hours only, never under the day's bustle. */
+/** The music's mood from the hour: day, night — and calm (the gentlest classical pieces) on a night in a city that
+ *  has a healing commons. */
 export function moodFor(hour: number, hasHealing: boolean): Mood {
   const night = hour >= 20 || hour < 6;
   return night ? (hasHealing ? 'calm' : 'night') : 'day';

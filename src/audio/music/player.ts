@@ -16,16 +16,12 @@ export interface PlayableTrack {
   moods: readonly Mood[];
   /** A Standard MIDI File under public/music/. */
   file?: string;
-  /** Or note data authored in code (the chant transcriptions). */
-  piece?: () => MidiPiece;
-  /** Channel → instrument, overriding the General MIDI program (e.g. the chant voice over a pad drone). */
-  voices?: Partial<Record<number, InstrumentId>>;
   /** Playback-rate multiplier (< 1 slower). Default 1. */
   rate?: number;
 }
 
 export interface MusicPlayerOptions {
-  /** Fetch + parse a track. Default: fetch `${BASE_URL}music/${file}` (or the inline piece). */
+  /** Fetch + parse a track. Default: fetch `${BASE_URL}music/${file}` . */
   load?: (track: PlayableTrack) => Promise<MidiPiece>;
   /** Run `fn` every `ms`; returns a canceller. Default setInterval. */
   every?: (ms: number, fn: () => void) => () => void;
@@ -62,7 +58,7 @@ export interface MusicPlayer {
 const LEAD = 0.1;
 /** Long notes (held pedal, drones) are trimmed so voices free up. */
 const MAX_NOTE = 8;
-/** The melody's channel (an arrangement's lead, the right hand of a score, the chant): admitted first among notes
+/** The melody's channel (an arrangement's lead, the right hand of a score): admitted first among notes
  *  due together; its highest note at each onset (the melody note) may take LEAD_HEADROOM voices past the cap — a held
  *  pad or a comp chord never crowds the tune out. */
 const LEAD_CHANNEL = 0;
@@ -75,8 +71,7 @@ const PERCUSSION_GAIN = 0.4;
 const pan = (pitch: number) => Math.max(-0.35, Math.min(0.35, (pitch - 64) / 60));
 
 function defaultLoad(track: PlayableTrack): Promise<MidiPiece> {
-  if (track.piece) return Promise.resolve(track.piece());
-  if (!track.file) return Promise.reject(new Error(`music: track ${track.id} has neither file nor piece`));
+  if (!track.file) return Promise.reject(new Error(`music: track ${track.id} has no file`));
   const base = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
   return fetch(`${base}music/${track.file}`)
     .then((r) => {
@@ -135,8 +130,6 @@ export function createMusicPlayer(
   }
 
   function instrumentFor(n: MidiNote): InstrumentId | null {
-    const voiced = track?.voices?.[n.channel];
-    if (voiced) return voiced;
     return n.percussion ? percussionFor(n.pitch) : instrumentForProgram(n.program);
   }
 
