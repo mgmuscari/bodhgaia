@@ -6,11 +6,25 @@ import { parseMidi } from '../../../src/audio/music/midi';
 import { LICENCES, MUSIC_TRACKS } from '../../../src/audio/music/tracks';
 
 const midiTracks = MUSIC_TRACKS.filter((t) => t.file);
+/** Mutopia's typeset pieces, and the arrangements made for the game (Maddy 2026-10-08). */
+const sourced = midiTracks.filter((t) => !t.credit.arranged);
+const arranged = midiTracks.filter((t) => t.credit.arranged);
 
 describe('music manifest', () => {
   it('ships 6–12 sourced pieces', () => {
-    expect(midiTracks.length).toBeGreaterThanOrEqual(6);
-    expect(midiTracks.length).toBeLessThanOrEqual(12);
+    expect(sourced.length).toBeGreaterThanOrEqual(6);
+    expect(sourced.length).toBeLessThanOrEqual(12);
+  });
+
+  it("ships Madeleine Muscari's arrangements for the game — GPL with the game, city music (not sacred)", () => {
+    expect(arranged.map((t) => t.id).sort()).toEqual(['after-youve-gone', 'kyabdro-night', 'motherless-night', 'namo-bossa', 'om-mani-town', 'st-louis-blues']);
+    for (const t of arranged) {
+      expect(t.credit.typesetter).toBe('Madeleine Muscari');
+      expect(t.credit.licence).toBe('gpl-3.0-or-later');
+      expect(t.credit.source).toBe('https://github.com/mgmuscari/bodhgaia');
+      expect(t.sacred).toBeFalsy();
+      expect(t.moods.some((m) => m === 'day' || m === 'night')).toBe(true);
+    }
   });
 
   it('has unique, slug-shaped ids', () => {
@@ -23,7 +37,10 @@ describe('music manifest', () => {
     for (const t of MUSIC_TRACKS) {
       const lic = LICENCES[t.credit.licence];
       expect(lic, t.id).toBeDefined();
-      if (t.file) {
+      if (t.file && t.credit.arranged) {
+        // arranged for the game: part of it, under its licence
+        expect(t.credit.licence).toBe('gpl-3.0-or-later');
+      } else if (t.file) {
         // sourced files: only an open licence verified at the source — never anything else
         expect(t.credit.licence).toMatch(/^(public-domain|cc-by-4\.0|cc-by-sa-4\.0)$/); // 4.0 only: GPLv3-compatible
         expect(lic.url).toMatch(/^https:\/\/creativecommons\.org\/(licenses\/publicdomain|licenses\/by(-sa)?\/4\.0)\/$/);
