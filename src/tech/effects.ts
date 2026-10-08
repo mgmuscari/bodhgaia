@@ -20,6 +20,16 @@ export interface TechEffects {
   socialInfra: number;
   /** The classic road conversions — avenue ↔ street, planted median (Road Diets). */
   roadConversions: boolean;
+  /** Homes near a co-op, commune or healing commons are rent-protected (Community Land Trust). */
+  landTrust: boolean;
+  /** Multiplier on the commons' tending effort (Gift Circles). */
+  tendingMul: number;
+  /** Social infrastructure each maker space and bazaar adds (Craft Fairs). */
+  craftInfra: number;
+  /** Multiplier on how much taxes weigh on approval (Participatory Budgeting). */
+  taxPainMul: number;
+  /** Multiplier on burnout's recovery (Shared Table). */
+  burnoutHealMul: number;
 }
 
 export type EffectKey = keyof TechEffects;
@@ -34,6 +44,11 @@ export const NEUTRAL_EFFECTS: Readonly<TechEffects> = Object.freeze({
   voicePerTick: 0,
   socialInfra: 0,
   roadConversions: false,
+  landTrust: false,
+  tendingMul: 1,
+  craftInfra: 0,
+  taxPainMul: 1,
+  burnoutHealMul: 1,
 });
 
 /** Each practice's effects, by node id. */
@@ -45,10 +60,17 @@ export const NODE_EFFECTS: Readonly<Record<string, readonly Effect[]>> = {
     { key: 'socialInfra', op: 'add', value: 2 },
   ],
   'participatory-budgeting': [
+    { key: 'taxPainMul', op: 'mul', value: 0.5 },
     { key: 'voicePerTick', op: 'add', value: 2 },
     { key: 'socialInfra', op: 'add', value: 2 },
   ],
-  'gift-circles': [{ key: 'voicePerTick', op: 'add', value: 1 }],
+  'gift-circles': [
+    { key: 'tendingMul', op: 'mul', value: 0.75 },
+    { key: 'voicePerTick', op: 'add', value: 1 },
+  ],
+  'community-land-trust': [{ key: 'landTrust', op: 'set', value: true }],
+  'shared-table': [{ key: 'burnoutHealMul', op: 'mul', value: 2 }],
+  'craft-fairs': [{ key: 'craftInfra', op: 'add', value: 2 }],
 };
 
 function apply(out: Record<string, number | boolean>, e: Effect): void {

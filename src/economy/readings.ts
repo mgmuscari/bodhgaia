@@ -83,6 +83,36 @@ export const BASE_PER_UNIT = { r: 10.2, c: 24.5, i: 1.9 } as const;
 /** Jobs a shop or works holds per density level, at full condition (occupancy counts households only). */
 const JOBS_PER_DENSITY = 6;
 
+/** The practices' economy effects (resolved tech-side, tech/effects.ts — passed as plain values, so the
+ *  economy never imports tech). */
+export interface EconomyPractices {
+  /** Community Land Trust: homes within LAND_TRUST_RADIUS of a co-op, commune or healing commons are protected. */
+  landTrust: boolean;
+  /** Multiplier on the commons' tending effort (Gift Circles). */
+  tendingMul: number;
+  /** Social infrastructure each maker space and bazaar adds (Craft Fairs). */
+  craftInfra: number;
+  /** Multiplier on how much taxes weigh on approval (Participatory Budgeting). */
+  taxPainMul: number;
+  /** Multiplier on burnout's recovery (Shared Table). */
+  burnoutHealMul: number;
+}
+
+export const NEUTRAL_ECONOMY_PRACTICES: Readonly<EconomyPractices> = Object.freeze({
+  landTrust: false,
+  tendingMul: 1,
+  craftInfra: 0,
+  taxPainMul: 1,
+  burnoutHealMul: 1,
+});
+
+/** How far (Chebyshev, from the anchor's footprint) a Land Trust's protection reaches. */
+export const LAND_TRUST_RADIUS = 4;
+/** The places a Land Trust holds land around. */
+export const LAND_TRUST_ANCHORS: ReadonlySet<number> = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune, BuiltKind.HealingCommons]);
+/** The kinds Craft Fairs counts. */
+export const CRAFT_KINDS: ReadonlySet<number> = new Set<number>([BuiltKind.Bazaar, BuiltKind.MakerSpace]);
+
 export interface CityInputs {
   map: GameMap;
   parcels: ParcelStore;
@@ -96,10 +126,25 @@ export interface CityInputs {
   extraInfra: number;
   harms: CityReading['harms'];
   repairs: number;
+  /** The practices in force (absent ⇒ none). */
+  practices?: EconomyPractices;
 }
 
 export function readCity(inp: CityInputs): CityReading {
   const { map, parcels } = inp;
+  const pr = inp.practices ?? NEUTRAL_ECONOMY_PRACTICES;
+  // the trust's land: footprints of its anchors grown by the radius
+  const trustBoxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  if (pr.landTrust) {
+    for (const i of parcels.aliveIndices()) {
+      const a = parcels.get(i);
+      if (!LAND_TRUST_ANCHORS.has(a.kind)) continue;
+      const r = LAND_TRUST_RADIUS;
+      trustBoxes.push({ x0: a.x - r, y0: a.y - r, x1: a.x + a.width - 1 + r, y1: a.y + a.height - 1 + r });
+    }
+  }
+  const inTrust = (x: number, y: number): boolean => trustBoxes.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
+  let crafts = 0;
   let households = 0;
   let protectedHouseholds = 0;
   const base = { r: 0, c: 0, i: 0 };
@@ -113,7 +158,7 @@ export function readCity(inp: CityInputs): CityReading {
     const lv = (inp.landValueAt(anchor) ?? 0) / 255;
     if (RESIDENTIAL.has(p.kind)) {
       households += occ;
-      if (PROTECTED.has(p.kind)) protectedHouseholds += occ;
+      if (PROTECTED.has(p.kind) || inTrust(p.x, p.y)) protectedHouseholds += occ;
       base.r += occ * lv * BASE_PER_UNIT.r;
     } else if (COMMERCIAL.has(p.kind) || INDUSTRIAL.has(p.kind)) {
       // a workplace's tax base is its jobs: density, scaled by how well the building is kept
@@ -124,6 +169,7 @@ export function readCity(inp: CityInputs): CityReading {
     upkeep += UPKEEP.get(p.kind) ?? 0;
     tending += TENDING.get(p.kind) ?? 0;
     if (GATHERING.has(p.kind)) gathering++;
+    if (CRAFT_KINDS.has(p.kind)) crafts++;
   }
   // transport upkeep is per tile (a road is paid for by its length)
   for (let t = 0; t < map.built.length; t++) {
@@ -137,10 +183,12 @@ export function readCity(inp: CityInputs): CityReading {
     protectedShare: households > 0 ? protectedHouseholds / households : 0,
     base,
     upkeep,
-    tending,
-    socialInfra: gathering + inp.extraInfra,
+    tending: tending * pr.tendingMul,
+    socialInfra: gathering + inp.extraInfra + crafts * pr.craftInfra,
     harms: inp.harms,
     repairs: inp.repairs,
+    taxPainMul: pr.taxPainMul,
+    burnoutHealMul: pr.burnoutHealMul,
   };
 }
 
