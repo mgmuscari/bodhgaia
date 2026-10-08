@@ -24,16 +24,16 @@ import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { ambientAlpha, trainPoses } from '../live/poses';
+import { ambientAlpha, movingPose, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
-import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
+import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
-import { CAR_LENGTH, CAR_WIDTH } from '../live/geometry';
-import { CLOUD_RADIUS, CLOUD_SUBSTEPS, ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
+import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
+import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
 import { gameSec } from './gameTime';
-import type { AmbientState, ToxicCloud, Truck } from '../live/types';
+import type { AmbientState } from '../live/types';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 
@@ -71,6 +71,22 @@ const W = 8;
 function dirVector8(d: number): [number, number] {
   const D = Math.SQRT1_2;
   return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
+}
+
+/** The centre of the burning footprint nearest (x, y) — where a spraying truck aims. */
+function nearestBurning(burning: readonly { x: number; y: number; w: number; h: number }[], x: number, y: number): { x: number; y: number } | null {
+  let goal: { x: number; y: number } | null = null;
+  let best = Infinity;
+  for (const b of burning) {
+    const gx = b.x + b.w / 2;
+    const gy = b.y + b.h / 2;
+    const d = (gx - x) ** 2 + (gy - y) ** 2;
+    if (d < best) {
+      best = d;
+      goal = { x: gx, y: gy };
+    }
+  }
+  return goal;
 }
 
 /** Water pollution smoothed over a tile's 3×3 WATER neighbourhood, so murk shades across a bay or a pond
@@ -319,127 +335,6 @@ export class Renderer {
 
   /** Draw a native pixel-art sprite centred on world point (wx, wy), at exactly one art pixel per tile
    *  pixel, its top-left snapped to the same art-pixel grid the tiles are drawn on (no half-pixel smear). */
-  /** Toxic clouds (disasters.md): a churning green-grey mass of overlapping puffs, thinning as it ages. */
-  private drawClouds(ctx: CanvasRenderingContext2D, camera: Camera, clouds: readonly ToxicCloud[]): void {
-    if (clouds.length === 0) return;
-    const ts = camera.tileSize;
-    const t = performance.now() / 1000;
-    for (const c of clouds) {
-      const life = 1 - c.age / CLOUD_SUBSTEPS;
-      const { sx, sy } = camera.worldToScreen(c.x, c.y);
-      for (let k = 0; k < 9; k++) {
-        const a = (k / 9) * Math.PI * 2 + t * 0.25;
-        const d = k === 0 ? 0 : CLOUD_RADIUS * 0.55 * ts;
-        const r = ts * (0.9 + 0.25 * Math.sin(t * 1.3 + k * 1.7)) * (k === 0 ? 1.3 : 1);
-        ctx.globalAlpha = 0.5 * Math.min(1, life * 3);
-        ctx.fillStyle = k % 3 === 0 ? '#a9b23c' : k % 3 === 1 ? '#c6c85c' : '#7c8a2a';
-        ctx.beginPath();
-        ctx.arc(sx + Math.cos(a) * d, sy + Math.sin(a) * d * 0.8, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  private drawFire(
-    ctx: CanvasRenderingContext2D,
-    camera: Camera,
-    burning: readonly { x: number; y: number; w: number; h: number }[],
-    trucks: readonly Truck[],
-    onScreen: (sx: number, sy: number) => boolean,
-  ): void {
-    const ts = camera.tileSize;
-    const t = performance.now() / 1000;
-    for (const b of burning) {
-      for (let dy = 0; dy < b.h; dy++) {
-        for (let dx = 0; dx < b.w; dx++) {
-          const { sx, sy } = camera.worldToScreen(b.x + dx, b.y + dy);
-          if (!onScreen(sx, sy)) continue;
-          const seed = ((b.x + dx) * 73856093) ^ ((b.y + dy) * 19349663);
-          for (let k = 0; k < 3; k++) {
-            const ph = ((seed >>> (k * 5)) & 31) / 5;
-            const fl = 0.55 + 0.45 * Math.abs(Math.sin(t * (7 + k * 2) + ph));
-            const cx = sx + ts * (0.25 + 0.25 * k);
-            const base = sy + ts * 0.85;
-            const tip = base - ts * 0.75 * fl;
-            const half = ts * 0.16;
-            ctx.fillStyle = '#d8401a';
-            ctx.beginPath();
-            ctx.moveTo(cx - half, base);
-            ctx.quadraticCurveTo(cx - half * 0.6, base - ts * 0.3, cx + half * 0.3 * Math.sin(t * 9 + ph), tip);
-            ctx.quadraticCurveTo(cx + half * 0.6, base - ts * 0.3, cx + half, base);
-            ctx.fill();
-            ctx.fillStyle = '#ffc23a';
-            ctx.beginPath();
-            ctx.moveTo(cx - half * 0.5, base);
-            ctx.quadraticCurveTo(cx, base - ts * 0.2, cx, base - (base - tip) * 0.55);
-            ctx.quadraticCurveTo(cx, base - ts * 0.2, cx + half * 0.5, base);
-            ctx.fill();
-          }
-        }
-      }
-      // smoke: puffs rising from the building, growing and fading as they drift
-      const c = camera.worldToScreen(b.x + b.w / 2, b.y + b.h / 2);
-      for (let k = 0; k < 5; k++) {
-        const life = (t * 0.35 + k / 5) % 1;
-        const r = ts * (0.25 + 0.55 * life) * Math.max(1, (b.w + b.h) / 3);
-        ctx.globalAlpha = 0.7 * (1 - life);
-        ctx.fillStyle = '#2e2a27';
-        ctx.beginPath();
-        ctx.arc(c.sx + ts * 0.6 * life + ts * 0.15 * Math.sin(t + k), c.sy - ts * 2.2 * life, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-    const flash = Math.floor(t * 1000 / 200) % 2 === 0;
-    for (const tr of trucks) {
-      const { sx, sy } = camera.worldToScreen(tr.x + 0.5, tr.y + 0.5);
-      if (!onScreen(sx, sy)) continue;
-      if (tr.phase === 'spraying') {
-        // aim at the nearest burning footprint's centre
-        let goal: { x: number; y: number } | null = null;
-        let best = Infinity;
-        for (const b of burning) {
-          const gx = b.x + b.w / 2;
-          const gy = b.y + b.h / 2;
-          const d = (gx - tr.x - 0.5) ** 2 + (gy - tr.y - 0.5) ** 2;
-          if (d < best) {
-            best = d;
-            goal = { x: gx, y: gy };
-          }
-        }
-        if (goal) {
-          const g = camera.worldToScreen(goal.x, goal.y);
-          ctx.strokeStyle = 'rgba(170, 215, 255, 0.85)';
-          ctx.lineWidth = Math.max(1.5, ts * 0.08);
-          ctx.setLineDash([ts * 0.18, ts * 0.1]);
-          ctx.lineDashOffset = -t * ts * 2;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          // bow the jet sideways off the straight line, so it reads as an arc whatever the truck's side
-          const len = Math.hypot(g.sx - sx, g.sy - sy) || 1;
-          ctx.quadraticCurveTo((sx + g.sx) / 2 + ((g.sy - sy) / len) * ts * 0.7, (sy + g.sy) / 2 - ((g.sx - sx) / len) * ts * 0.7 - ts * 0.4, g.sx, g.sy);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-      }
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(Math.atan2(tr.hy, tr.hx));
-      const L = ts * 0.78;
-      const W = ts * 0.36;
-      ctx.fillStyle = '#b3121b';
-      ctx.fillRect(-L / 2, -W / 2, L, W);
-      ctx.fillStyle = '#e8e2d0'; // the ladder along its back
-      ctx.fillRect(-L / 2 + L * 0.08, -W * 0.12, L * 0.55, W * 0.24);
-      ctx.fillStyle = '#5a1a1a'; // cab windscreen
-      ctx.fillRect(L / 2 - L * 0.16, -W / 2 + W * 0.15, L * 0.08, W * 0.7);
-      ctx.fillStyle = flash ? '#ff3030' : '#ffffff'; // light bar
-      ctx.fillRect(L / 2 - L * 0.28, -W / 2, L * 0.08, W);
-      ctx.restore();
-    }
-  }
-
   private drawArt(ctx: CanvasRenderingContext2D, img: AtlasImage, wx: number, wy: number, camera: Camera): void {
     const w = (img as HTMLCanvasElement).width;
     const h = (img as HTMLCanvasElement).height;
@@ -1174,10 +1069,28 @@ export class Renderer {
       addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
     }
 
-    // Fire (disasters.md): flickering tongues of flame on every tile of a burning building, smoke rising off it;
-    // fire trucks — red, a flashing light bar — and, while one sprays, an arc of water onto the fire.
-    this.drawFire(ctx, camera, ambient.burning ?? [], ambient.trucks ?? [], onScreen);
-    this.drawClouds(ctx, camera, ambient.clouds ?? []);
+    // Fire trucks (disasters.md): movers like any vehicle — posed in their lane, interpolated, in the 8-way frame
+    // nearest their heading — red with a light bar flashing red/white in step with the cruisers', their lamps a
+    // body headlights can stop at. Spraying, a jet of droplets arcs from the truck onto the fire.
+    const trucks = (ambient.trucks ?? []).map((m) => ({ m, pose: movingPose(m, LANE, alpha) }));
+    for (const { m: tr, pose } of trucks) {
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/firetruck/${heading8(pose.hx, pose.hy)}/${copPhase}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
+      if (tr.call !== 'spraying') continue;
+      const goal = nearestBurning(ambient.burning ?? [], pose.x, pose.y);
+      const drop = this.sprites.get('@sprite/drop');
+      if (!goal || !drop) continue;
+      const flow = (performance.now() / 600) % 1;
+      for (let k = 0; k < 10; k++) {
+        const u = (k / 10 + flow) % 1; // droplets stream along the jet
+        const wx = pose.x + (goal.x - pose.x) * u;
+        const wy = pose.y + (goal.y - pose.y) * u - 0.9 * 4 * u * (1 - u); // a parabola, peaking a tile up
+        this.drawArt(ctx, drop, wx, wy, camera);
+      }
+    }
 
     // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
     // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
@@ -1326,6 +1239,24 @@ export class Renderer {
       if (img) this.drawArt(ctx, img, w.x + 0.5, w.y + 0.5, camera);
     }
 
+    // Flames (disasters.md): pixel flame frames on every tile of a burning building, drawn AFTER the lighting pass
+    // like the other light sources — fire isn't dimmed by night (the GPU glow casts its light on the ground). Each
+    // tile flickers on its own phase. Its smoke is smog: the fire lays it into the field the overlay draws.
+    if (ambient.burning?.length) {
+      const tick = Math.floor(performance.now() / 110);
+      for (const b of ambient.burning) {
+        for (let dy = 0; dy < b.h; dy++) {
+          for (let dx = 0; dx < b.w; dx++) {
+            const { sx, sy } = camera.worldToScreen(b.x + dx + 0.5, b.y + dy + 0.5);
+            if (!onScreen(sx, sy)) continue;
+            const f = (tick + (((b.x + dx) * 7 + (b.y + dy) * 13) & 3)) % FIRE_FRAMES;
+            const img = this.sprites.get(`@sprite/fire/${f}`);
+            if (img) this.drawArt(ctx, img, b.x + dx + 0.5, b.y + dy + 0.4, camera);
+          }
+        }
+      }
+    }
+
     // Vehicle headlights/taillights — NIGHT-GATED (off at midday, ramping on at dusk) and evading shading
     // (drawn here, after the sprite lighting pass), on the art grid with the car body.
     // What a headlight hits is lit on the side facing the lamp — additive, after the lighting pass so it
@@ -1349,6 +1280,10 @@ export class Renderer {
       ctx.globalAlpha = night;
       for (const { m: c, pose } of poses.cars) {
         if (c.parked) continue; // a parked car is OFF
+        const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
+        if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      }
+      for (const { pose } of trucks) {
         const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
         if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       }

@@ -198,7 +198,7 @@ export function snapPose(m: Mover, lateral: number | ((leg: LegState) => Lateral
  * on a 60–120 Hz display). Cosmetic state only; the world hash never sees it.
  */
 export function snapshotMovers(state: AmbientState): void {
-  for (const list of [state.cars, state.cruisers, state.peds, state.trains.flatMap((t) => t.cars ?? [])]) {
+  for (const list of [state.cars, state.cruisers, state.peds, state.trains.flatMap((t) => t.cars ?? []), state.trucks ?? []]) {
     for (const m of list) {
       const sn = (m.snap ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 });
       sn.x = m.x;

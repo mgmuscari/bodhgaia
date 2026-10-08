@@ -3,7 +3,7 @@ import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel, placeTransport } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
-import { createFireController, homeVacancy, FIRE_STEP_MS, FIRE_DEATH_MAX } from '../../src/app/fire';
+import { createFireController, homeVacancy, FIRE_STEP_MS, FIRE_DEATH_MAX, FIRE_SMOKE } from '../../src/app/fire';
 import { BURN_STEPS } from '../../src/growth/fire';
 
 function town(withStation = true) {
@@ -49,6 +49,14 @@ describe('the fire controller', () => {
     expect(h.live.events).toEqual([{ kind: 'fire', x: 30, y: 6, w: 1, h: 1 }]);
     expect(h.log).toContain('news Fire!');
     expect(h.live.burning).toEqual([{ x: 30, y: 6, w: 1, h: 1 }]);
+  });
+
+  it('a burning building smokes: it lays smog where it stands, which drifts like any smog', () => {
+    const h = town();
+    h.fire.ignite(h.home);
+    h.fire.frame(FIRE_STEP_MS);
+    h.fire.frame(2 * FIRE_STEP_MS);
+    expect(h.live.pollution.get(h.map.idx(30, 6)) ?? 0).toBeGreaterThanOrEqual(2 * FIRE_SMOKE);
   });
 
   it('with no fire station, it burns out: a ruin, a few dead, the rest unhoused', () => {

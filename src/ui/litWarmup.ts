@@ -6,7 +6,7 @@
 // Pure: no DOM (the caller supplies the idle scheduler), no transcendental Math.
 
 /** Sprite families a headlight can light, in warm-up order (cars are the commonest lit body). */
-const LIT_BODY_PREFIXES = ['@sprite/car/', '@sprite/cop/', '@sprite/train/', '@sprite/ped/', '@sprite/bike/'] as const;
+const LIT_BODY_PREFIXES = ['@sprite/car/', '@sprite/cop/', '@sprite/firetruck/', '@sprite/train/', '@sprite/ped/', '@sprite/bike/'] as const;
 
 /** The sprite keys among `keys` that can be a lit body, grouped in {@link LIT_BODY_PREFIXES} order. */
 export function litBodyKeys(keys: Iterable<string>): string[] {
