@@ -51,6 +51,8 @@ import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
 import { createFireController } from './app/fire';
 import { drawSpills } from './live/spills';
+import { createWeather } from './app/weather';
+import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
 
@@ -416,6 +418,9 @@ export function main(save: SaveV1 | null = null): void {
     for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
   };
 
+  // Weather: storms on their own seeded schedule — rain seen and heard, the air washed; heavy ones flood.
+  const weather = createWeather({ live: live.state, map: world.map, rng: createRng(seed).fork('weather'), wash: () => applyRain(live.state, world.map) });
+
   // Fire (disasters.md): ignition from conditions once a game hour, trucks from the stations, burnt-out ruins. Nothing
   // new ignites while Disasters is off, or during the opening's night and tutorial.
   const fire = createFireController({
@@ -430,7 +435,10 @@ export function main(save: SaveV1 | null = null): void {
   });
   if (import.meta.env.DEV) {
     const handle = (window as unknown as { bodhgaia?: Record<string, unknown> }).bodhgaia;
-    if (handle) handle.fire = fire; // live checks: light a building (and live/spills.ts startSpill for a spill)
+    if (handle) {
+      handle.fire = fire; // live checks: light a building (and live/spills.ts startSpill for a spill)
+      handle.weather = weather; // live checks: weather.storm(heavy)
+    }
   }
 
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
@@ -480,6 +488,7 @@ export function main(save: SaveV1 | null = null): void {
       night?.frame(now);
       tutorial?.frame(now);
       lessons.frame(now);
+      if (!night?.active() && !tutorial?.active()) weather.frame(now);
       demo?.frame(now);
       fire.frame(now);
       drawSpillsNow();

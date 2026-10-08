@@ -8,7 +8,8 @@
 // Keys: @sprite/car/{tint}/{dir8}, @sprite/car-light/{dir8} (headlights + taillights, additive at night),
 // @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame},
 // @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant},
-// @sprite/firetruck/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant}.
+// @sprite/firetruck/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant},
+// @sprite/rain/{0 light|1 heavy}.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
@@ -229,6 +230,9 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   }
   for (let f = 0; f < FIRE_FRAMES; f++) out.set(`@sprite/fire/${f}`, flame(f));
   out.set('@sprite/drop', glyph(['w'], { w: C.foam }));
+  // rain: a streak one art pixel wide, a pale head over a glassier tail; a heavy storm's is longer
+  out.set('@sprite/rain/0', glyph(['h', 'g', 'g'], { h: C.glassHi, g: C.glass }));
+  out.set('@sprite/rain/1', glyph(['h', 'h', 'g', 'g', 'g'], { h: C.glassHi, g: C.glass }));
   const carCols = { k: C.slateLo, b: C.paveHi, w: C.glassLo };
   const locoCols = { k: C.roofRedLo, r: C.roofRed, m: C.slate, g: C.glass };
   for (const [part, rows, cols] of [['car', TRAIN_CAR_E, carCols], ['loco', TRAIN_LOCO_E, locoCols]] as const) {

@@ -348,6 +348,8 @@ export interface AmbientState {
   wanderer?: { x: number; y: number; path: number[]; i: number; age: number; life: number; seed: number };
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
+  /** A storm, while one lasts (app/weather.ts): rain on screen and in the ears; a heavy one floods the low land. */
+  rain?: { heavy: boolean };
   /** Toxic clouds drifting downwind from a spill (live/spills.ts). */
   clouds?: ToxicCloud[];
   /** The toxic smog the clouds lay: drifts and spreads like smog, drawn greenish-yellow by the smog overlay.
