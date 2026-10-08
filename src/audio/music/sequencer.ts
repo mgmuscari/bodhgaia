@@ -29,9 +29,11 @@ export class Polyphony {
   constructor(max: number) {
     this.max = max;
   }
-  admit(at: number, end: number): boolean {
+  /** Admit a note sounding [at, end) if a voice is free; `headroom` extra voices are allowed past the cap (the
+   *  melody's — it must never be the note refused). */
+  admit(at: number, end: number, headroom = 0): boolean {
     this.ends = this.ends.filter((e) => e > at);
-    if (this.ends.length >= this.max) return false;
+    if (this.ends.length >= this.max + headroom) return false;
     this.ends.push(end);
     return true;
   }

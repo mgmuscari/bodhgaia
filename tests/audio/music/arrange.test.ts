@@ -71,6 +71,14 @@ describe('an arrangement', () => {
     expect(vel(9)).toBeLessThan(vel(0)); // soft drums
   });
 
+  it('leaves the melody room: the pad and the comp each hold at most three notes at once', () => {
+    for (const ch of [2, 3]) {
+      const at = new Map<string, number>();
+      for (const n of on(ch)) at.set(n.time.toFixed(3), (at.get(n.time.toFixed(3)) ?? 0) + 1);
+      expect(Math.max(...at.values()), `ch${ch}`).toBeLessThanOrEqual(3);
+    }
+  });
+
   it('grooves through every bar, and lasts as long as the score', () => {
     const src0 = parseMidi(src); // the score the arrangement came from
     expect(piece.duration).toBeGreaterThan(src0.duration * 0.97);
