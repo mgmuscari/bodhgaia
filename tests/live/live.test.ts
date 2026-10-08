@@ -17,6 +17,7 @@ import { StopCategory } from '../../src/citizens/itinerary';
 import { TravelMode } from '../../src/citizens/modes';
 import {
   createAmbientState,
+  NEUTRAL_PRACTICES,
   setParkingLots,
   setHouseholds,
   setPlantEmitters,
@@ -3503,7 +3504,7 @@ describe('Walkable Streets does something (Maddy 2026-10-01: "will walkable stre
   });
 
   it('the ambient state carries the practices, neutral until the host sets them from the tech tree', () => {
-    expect(createAmbientState().practices).toEqual({ walkStretch: 1 });
+    expect(createAmbientState().practices).toEqual(NEUTRAL_PRACTICES);
   });
 });
 

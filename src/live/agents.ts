@@ -5,8 +5,9 @@
 // citizens are mutually recursive, so they share one module. Cut verbatim from ui/ambientContent.ts.
 
 import type { GameMap } from '../engine/map';
+import { BuiltKind } from '../engine/fabric';
 import { visitValue } from '../citizens/plots';
-import { DAILY_ITINERARY } from '../citizens/itinerary';
+import { DAILY_ITINERARY, StopCategory } from '../citizens/itinerary';
 import { TravelMode } from '../citizens/modes';
 import type { Household } from '../citizens/census';
 import { layField } from '../citizens/field';
@@ -42,6 +43,7 @@ import {
   plotDoor,
   roadPath,
   tripEvaporates,
+  tripDelivered,
   walkPath,
 } from './pathing';
 import { curbStallOffsets, isCarRoad, isParkable } from './network';
@@ -196,9 +198,13 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
     const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue);
     if (plot && stopReachable(state, map, cx, cy, plot)) {
       const jam = p.carId !== undefined ? 0 : Math.max(jamNear(map, state.traffic, cx, cy), jamNear(map, state.traffic, plot.x, plot.y));
-      const chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, state.practices.walkStretch);
+      const pr = state.practices;
+      const chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, pr.walkStretch, pr.bikeStretch);
+      const tripHash = Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0);
       // a drive into gridlock may simply not happen — the errand is forgone or folded into another
-      if (chosen === TravelMode.Drive && tripEvaporates(jam, Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0))) continue;
+      if (chosen === TravelMode.Drive && tripEvaporates(jam, tripHash)) continue;
+      // Drone Deliveries: a driven shopping errand is delivered instead
+      if (chosen === TravelMode.Drive && itin[step] === StopCategory.Shop && tripDelivered(pr.droneShopDrop, tripHash)) continue;
       p.itinStep = step;
       // If the citizen took its CAR out (carId set), it RETURNS TO THE CAR and drives to the next stop
       // — it doesn't abandon the car and walk off (Maddy: "if they've driven to a location, they should
@@ -716,7 +722,10 @@ export function depositVisit(
   map: GameMap,
   penalty = 0,
 ): void {
-  depositHealth(state, homeTile, visitValue(map.built[map.idx(plot.x, plot.y)]!) - penalty);
+  const kind = map.built[map.idx(plot.x, plot.y)]!;
+  // Collective Ownership: a day at a worker-owned plant costs less than the neutral industrial harm
+  const value = kind === BuiltKind.Industrial ? state.practices.industryVisit : visitValue(kind);
+  depositHealth(state, homeTile, value - penalty);
 }
 
 /** A walk citizen whose trip can't complete (its destination is unreachable, OR the way home is
