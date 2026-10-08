@@ -40,3 +40,18 @@ describe('glide: an eased move between two points', () => {
     expect(glide({ x: 0, y: 0 }, { x: 10, y: 0 }, 2)).toEqual({ x: 10, y: 0 }); // clamps
   });
 });
+
+describe('cityFocus (backlog: the opening camera framed empty wilderness, the city clipped at the edge)', () => {
+  it('is the middle of the built city, not the map corner', async () => {
+    const { cityFocus } = await import('../../src/ui/tourContent');
+    const { GameMap } = await import('../../src/engine/map');
+    const { BuiltKind, ParcelStore, placeParcel } = await import('../../src/engine/fabric');
+    const map = new GameMap(60, 40);
+    const parcels = new ParcelStore();
+    for (let x = 40; x <= 50; x += 2) for (let y = 20; y <= 30; y += 2) placeParcel(map, parcels, { x, y, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    const f = cityFocus(map, parcels);
+    expect(f.x).toBeCloseTo(45.5, 5);
+    expect(f.y).toBeCloseTo(25.5, 5);
+    expect(cityFocus(new GameMap(60, 40), new ParcelStore())).toEqual({ x: 30, y: 20 }); // no city: the map's middle
+  });
+});

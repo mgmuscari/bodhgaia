@@ -61,7 +61,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   cut off the top; the dock also runs off the bottom edge.
 - ✅ **Tech tree cards overlap** — rebuilt as branch lanes of fixed-size cards with a detail pane.
 - ✅ **Settings typo** — the renderer note now describes what the GPU path does.
-- 🟢 **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
+- ✅ **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
 - ✅ **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — trains (8-way loco + carriages),
   birds (flapping gulls), water pollution + redlined asphalt (clumped pixel patches), level crossings (road
   band over the rails), overpass shadow (half-tone, whole-art-pixel offsets) are all pixel art now.
