@@ -322,7 +322,7 @@ function searchPath(
   const goal = map.idx(gx, gy);
   // the edge tests read precomputed masks (isWalkable / canDrive, tabulated per map — network.ts)
   const { walk: walkable, drive } = networkMasks(map);
-  const closed = closedTiles(map); // under flood water: no route through
+  const closed = closedTiles(map, walk); // under flood water (or, for cars, a street given over to people)
   beginSearch(W * H);
   stamp[start] = gen;
   gScore[start] = 0;

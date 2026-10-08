@@ -75,7 +75,7 @@ export function createFloodController(deps: FloodDeps): FloodController {
         live.events?.push({ kind: 'flood', x: x0, y: y0, w: Math.min(16, x1 - x0 + 1), h: Math.min(10, y1 - y0 + 1) });
         deps.news(evacuated.size > 0 ? `Flooding by the water — ${evacuated.size} homes evacuated` : 'Flooding by the water');
       }
-      if (ev.rose.length > 0 || ev.fell.length > 0) closeTiles(map, f.flooded); // routes go round the water
+      if (ev.rose.length > 0 || ev.fell.length > 0) closeTiles(map, 'flood', f.flooded); // routes go round the water
       if (ev.underWater.length > 0 || ev.rose.length > 0 || ev.fell.length > 0) deps.markDirty();
     },
   };
