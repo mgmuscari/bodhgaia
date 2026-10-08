@@ -12,7 +12,7 @@ import { floodPlain } from '../growth/flood';
 import { crash as crashCar } from '../live/accidents';
 import { createRng } from '../engine/rng';
 
-export type DemoKind = 'fire' | 'spill' | 'flood' | 'crash' | 'party' | 'fair' | 'festival' | 'disasters';
+export type DemoKind = 'fire' | 'spill' | 'flood' | 'crash' | 'party' | 'fair' | 'festival' | 'protest' | 'uprising' | 'disasters';
 
 type World = { map: GameMap; parcels: ParcelStore };
 
@@ -63,7 +63,7 @@ export interface DemoDeps {
   /** Start a storm now (app/weather.ts). */
   storm?(heavy: boolean): void;
   /** Hold a community gathering now, and say where (app/community.ts). */
-  party?(kind?: 'block-party' | 'craft-fair' | 'festival'): { x: number; y: number } | null;
+  party?(kind?: 'block-party' | 'craft-fair' | 'festival' | 'protest' | 'uprising'): { x: number; y: number } | null;
 }
 
 /** Ms after the first frame before the first disaster (the city settles), and between a fire and the spill (the
@@ -128,8 +128,8 @@ export function createDemo(kind: DemoKind, deps: DemoDeps): { frame(now: number)
     : kind === 'spill' ? [{ at: SETTLE_MS, run: spill }]
     : kind === 'flood' ? [{ at: SETTLE_MS, run: flood }]
     : kind === 'crash' ? [{ at: SETTLE_MS, run: crash }]
-    : kind === 'party' || kind === 'fair' || kind === 'festival' ? [{ at: SETTLE_MS, run: () => {
-        const at = deps.party?.(kind === 'fair' ? 'craft-fair' : kind === 'festival' ? 'festival' : 'block-party');
+    : kind === 'party' || kind === 'fair' || kind === 'festival' || kind === 'protest' || kind === 'uprising' ? [{ at: SETTLE_MS, run: () => {
+        const at = deps.party?.(kind === 'fair' ? 'craft-fair' : kind === 'party' ? 'block-party' : kind);
         if (at) deps.view(at.x, at.y);
       } }]
     : [

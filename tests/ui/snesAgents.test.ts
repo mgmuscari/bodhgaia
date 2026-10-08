@@ -71,6 +71,15 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     expect(tiles.get('@sprite/stall/0')!.data.join()).not.toBe(tiles.get('@sprite/stall/1')!.data.join());
   });
 
+  it('protesters carry placards: a few pixels of sign on a pole, smaller than a person is tall', () => {
+    for (let v = 0; v < 2; v++) {
+      const s = tiles.get(`@sprite/placard/${v}`)!;
+      expect(s).toBeDefined();
+      expect(s.w).toBeLessThanOrEqual(4);
+      expect(s.h).toBeLessThanOrEqual(4);
+    }
+  });
+
   it('a crash leaves debris: a few pixels of glass and metal, smaller than a car', () => {
     const d = tiles.get('@sprite/debris')!;
     expect(d).toBeDefined();

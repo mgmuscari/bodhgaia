@@ -1182,6 +1182,8 @@ export class Renderer {
     // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a
     // demand path) it stays centred. The person is FIXED per citizen (a stable hash of its identity —
     // skin tone + shirt), with a two-frame walk while it moves. (Drivers are CARS, drawn above.)
+    // protesters (and those rising up) carry placards above their heads
+    const marching = new Set((ambient.gatherings ?? []).filter((g) => g.kind === 'protest' || g.kind === 'uprising').map((g) => g.id));
     for (const { m: p, pose } of poses.peds) { // (not those inside a building, or riding their car)
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
@@ -1191,6 +1193,10 @@ export class Renderer {
       const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
       const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame));
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      if (p.gather && marching.has(p.gather.id)) {
+        const sign = this.sprites.get(`@sprite/placard/${seed & 1}`);
+        if (sign) this.drawArt(ctx, sign, pose.x + 0.06, pose.y - 0.22, camera);
+      }
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground

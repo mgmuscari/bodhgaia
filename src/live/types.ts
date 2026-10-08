@@ -208,7 +208,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash';
+  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising';
   x: number;
   y: number;
   w: number;
