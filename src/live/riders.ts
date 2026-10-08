@@ -10,7 +10,8 @@ import { walkPath } from './pathing';
 import { isWalkable } from './network';
 import { advanceMover, commitHeading, pathStep } from './motion';
 import { DIR_DX, DIR_DY } from './geometry';
-import { PED_SPEED } from './tuning';
+import { FUEL_TANK, PED_SPEED, TRAIN_LEN } from './tuning';
+import { TRAM_LEN } from './trains';
 import { TravelMode } from '../citizens/modes';
 
 /** The furthest a rider walks to or from a stop (Manhattan, to its platform). */
@@ -19,8 +20,11 @@ export const STOP_WALK = 8;
 export const MIN_RIDE = 8;
 /** Substeps a rider waits before giving up and walking (~45 s). */
 export const WAIT_MAX = 900;
-/** Riders a vehicle carries. */
-export const CAPACITY: Record<LineFamily, number> = { tram: 20, rail: 40 };
+/** Riders a car carries; a vehicle carries that times its consist (Maddy 2026-10-08: a two-car tram, 64). */
+export const PER_CAR = 32;
+export const capacityOf = (family: LineFamily): number => PER_CAR * (family === 'tram' ? TRAM_LEN : TRAIN_LEN);
+/** Energy a rider gets back each substep aboard — a ride is a rest (Maddy 2026-10-08). */
+export const RIDE_REST = 1;
 
 export interface Ride {
   family: LineFamily;
@@ -143,7 +147,7 @@ export function stepRider(state: AmbientState, map: GameMap, p: Ped): boolean {
   if (ride.stage === 'waiting') {
     const t = state.trains.find(
       (v) => (v.family ?? 'rail') === ride.family && (v.dwell ?? 0) > 0 && headTile(map, v) === ride.board.track &&
-        state.peds.filter((q) => q.ride?.vehicle === v).length < CAPACITY[ride.family],
+        state.peds.filter((q) => q.ride?.vehicle === v).length < capacityOf(ride.family),
     );
     if (t) {
       ride.vehicle = t;
@@ -169,6 +173,7 @@ export function stepRider(state: AmbientState, map: GameMap, p: Ped): boolean {
   }
   p.x = t.hx;
   p.y = t.hy;
+  p.fuel = Math.min(FUEL_TANK, (p.fuel ?? FUEL_TANK) + RIDE_REST);
   if ((t.dwell ?? 0) > 0 && headTile(map, t) === ride.alight.track) {
     const [ax, ay] = tileXY(map, ride.alight.platform);
     p.x = ax;

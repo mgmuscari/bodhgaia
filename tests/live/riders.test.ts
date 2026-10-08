@@ -7,7 +7,9 @@ import { BuiltKind, placeTransport } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState, offStreet, type Ped } from '../../src/live/types';
 import { spawnTransit, stepTrain } from '../../src/live/trains';
-import { planRide, startRide, WAIT_MAX } from '../../src/live/riders';
+import { planRide, startRide, WAIT_MAX, capacityOf } from '../../src/live/riders';
+import { TRAM_LEN } from '../../src/live/trains';
+import { TRAIN_LEN, FUEL_TANK } from '../../src/live/tuning';
 import { chooseMode } from '../../src/live/pathing';
 import { TravelMode } from '../../src/citizens/modes';
 import { stepPed } from '../../src/live/peds';
@@ -89,5 +91,28 @@ describe('riding transit', () => {
     });
     expect(waited).toBeGreaterThanOrEqual(WAIT_MAX);
     expect(gaveUp).toEqual({ phase: 'to-building', mode: TravelMode.Walk }); // on foot, still bound for the plot
+  });
+
+  it('carries 32 a car: a two-car tram 64, a train 32 × its consist (Maddy 2026-10-08)', () => {
+    expect(capacityOf('tram')).toBe(32 * TRAM_LEN);
+    expect(capacityOf('tram')).toBe(64);
+    expect(capacityOf('rail')).toBe(32 * TRAIN_LEN);
+  });
+
+  it('a ride is a rest: riders get some energy back on the way (Maddy 2026-10-08)', () => {
+    const c = city();
+    const plan = planRide(c.map, 3, 6, 44, 6, 'tram')!;
+    const p: Ped = { x: 3, y: 6, dir: 1, tx: 3, ty: 6, homeTile: c.map.idx(3, 7), fuel: FUEL_TANK / 4 };
+    startRide(p, plan, { x: 44, y: 7 }, 'to-building');
+    c.state.peds.push(p);
+    let boarded: number | null = null;
+    let alighted: number | null = null;
+    tick(c, 4000, true, () => {
+      if (boarded === null && p.ride?.stage === 'riding') boarded = p.fuel!;
+      if (boarded !== null && alighted === null && !p.ride) alighted = p.fuel!;
+    });
+    expect(boarded).not.toBeNull();
+    expect(alighted!).toBeGreaterThan(boarded! + 100);
+    expect(alighted!).toBeLessThanOrEqual(FUEL_TANK);
   });
 });
