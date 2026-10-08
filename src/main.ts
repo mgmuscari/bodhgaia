@@ -67,7 +67,7 @@ export function main(save: SaveV1 | null = null): void {
     parcels: world.parcels,
     caps: settings.current().live,
     saved: save?.live ?? null,
-    walkable: () => tech.hasCapability('walkability'), // Walkable Streets: people walk farther
+    practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
   });
   const power = createPowerController({ map: world.map, parcels: world.parcels, publish: (a) => renderer.setPowerGrid(a) });
 

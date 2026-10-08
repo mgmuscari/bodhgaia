@@ -173,6 +173,16 @@ export interface ParkingLotInfo {
 }
 
 /** The full ambient sprite state — renderer-side only, never part of the world. */
+/** The tech practices' coefficients the live layer reads. The host fills it from the tech tree's resolved
+ *  effects (tech/effects.ts) — structurally, so the live layer never imports tech. */
+export interface LivePractices {
+  /** Walk-range multiplier for mode choice (Walkable Streets). */
+  walkStretch: number;
+}
+
+/** No practices: the coefficients the live layer runs on before any tech. */
+export const NEUTRAL_PRACTICES: Readonly<LivePractices> = Object.freeze({ walkStretch: 1 });
+
 export interface AmbientState {
   cars: Car[];
   peds: Ped[];
@@ -253,8 +263,8 @@ export interface AmbientState {
   occupancy: Map<number, number>;
   /** Substep counter gating the occupancy re-evaluation to OCC_CADENCE. */
   occTick: number;
-  /** The city has Walkable Streets (set by the host from the tech tree): people walk farther. */
-  walkable: boolean;
+  /** The practices' live coefficients (set by the host from the tech tree each step). */
+  practices: LivePractices;
   /** Per home: the occupancy signal its residents are used to (see OCC_SETTLE_PASSES). */
   occExpect: Map<number, number>;
   /** Occupancy passes run so far (the opening settles for OCC_SETTLE_PASSES). */
@@ -303,7 +313,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     coverage: new Set(),
     occupancy: new Map(),
     occTick: 0,
-    walkable: false,
+    practices: { ...NEUTRAL_PRACTICES },
     occExpect: new Map(),
     occPasses: 0,
     roadDecay: new Map(),

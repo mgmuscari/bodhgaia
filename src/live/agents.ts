@@ -196,7 +196,7 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
     const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue);
     if (plot && stopReachable(state, map, cx, cy, plot)) {
       const jam = p.carId !== undefined ? 0 : Math.max(jamNear(map, state.traffic, cx, cy), jamNear(map, state.traffic, plot.x, plot.y));
-      const chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, state.walkable);
+      const chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, state.practices.walkStretch);
       // a drive into gridlock may simply not happen — the errand is forgone or folded into another
       if (chosen === TravelMode.Drive && tripEvaporates(jam, Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0))) continue;
       p.itinStep = step;
