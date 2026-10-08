@@ -661,3 +661,17 @@ export function networkMasks(map: GameMap): NetworkMasks {
   else rebuildAround(map, c, changed);
   return c;
 }
+
+/** Tiles closed to every route on a map — under flood water (app/flood.ts). Per map, so maps never share them. */
+const CLOSED = new WeakMap<GameMap, ReadonlySet<number>>();
+
+/** Close these tiles of `map` to routing (null reopens them all). New routes go round them. */
+export function closeTiles(map: GameMap, tiles: ReadonlySet<number> | null): void {
+  if (tiles && tiles.size > 0) CLOSED.set(map, tiles);
+  else CLOSED.delete(map);
+}
+
+/** The tiles of `map` closed to routing, if any. */
+export function closedTiles(map: GameMap): ReadonlySet<number> | undefined {
+  return CLOSED.get(map);
+}

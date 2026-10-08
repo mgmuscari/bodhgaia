@@ -55,6 +55,8 @@ export interface LiveDeps {
   saved: SaveV1['live'] | null;
   /** The tech practices' live coefficients (read each step). */
   practices(): LivePractices;
+  /** The in-game hour 0..23 (exposure deaths happen at night). Optional: absent ⇒ no clock. */
+  hour?(): number;
   /** An older save's economy rent-displacement count, folded into the unhoused pool on resume. */
   legacyDisplaced?: number;
   /** Wall-clock ms (default performance.now). */
@@ -133,6 +135,7 @@ export function createLive(deps: LiveDeps): LiveLayer {
     },
     step: (t) => {
       state.practices = deps.practices();
+      if (deps.hour) state.hour = deps.hour(); // the night's exposure deaths need the in-game clock
       stepAmbient(state, map, ambientRng, t - lastStep);
       lastStep = t;
     },

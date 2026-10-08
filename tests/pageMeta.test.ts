@@ -22,7 +22,7 @@ describe('page metadata (index.html)', () => {
     const desc = meta('name', 'description');
     expect(desc).toBeTruthy();
     expect(desc!.length).toBeLessThanOrEqual(200);
-    expect(meta('property', 'og:title')).toBe('Bodhitropolis');
+    expect(meta('property', 'og:title')).toBe('Bodhgaia');
     expect(meta('property', 'og:description')).toBeTruthy();
     expect(meta('property', 'og:type')).toBe('website');
   });
@@ -49,7 +49,7 @@ describe('desktop-only note (index.html)', () => {
   const body = html.slice(html.indexOf('<body'));
 
   it('carries a static "best on a desktop browser" note, dismissible without script', () => {
-    expect(body).toMatch(/class="desktop-note"[^>]*>[\s\S]*Bodhitropolis is best on a desktop browser/);
+    expect(body).toMatch(/class="desktop-note"[^>]*>[\s\S]*Bodhgaia is best on a desktop browser/);
     // pure-CSS dismiss: a checkbox toggled by a label, the note hidden once it is checked
     expect(body).toMatch(/<input[^>]*id="desktop-note-dismiss"/);
     expect(body).toMatch(/<label[^>]*for="desktop-note-dismiss"/);

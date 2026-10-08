@@ -24,6 +24,9 @@ import { createPowerController } from './app/power';
 import { installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { createEconomyController } from './app/economy';
+import { createEventsController } from './app/events';
+import { chooseSeed, randomSeed } from './app/seed';
+import { ZoneType, zoneTypeOf } from './engine/zone';
 import { neighborhoodVoice } from './civic/voice';
 import { displaceFromHomes } from './live/fields/occupancy';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
@@ -37,9 +40,27 @@ import { createNews } from './app/news';
 import { isPowerConsumer } from './growth/power';
 import { placeCategoryOf } from './audio/sfx';
 import { gameClock } from './ui/lighting';
+import { gameSec, setGameHour } from './ui/gameTime';
+import { OPENING_TIMING } from './ui/openingScript';
+import { mountNightOverlay } from './ui/openingNight';
+import { createNightOpening } from './app/openingNight';
+import { tourStops } from './ui/tourContent';
+import { worstSpots } from './ui/tutorialContent';
+import { mountTutorial } from './ui/tutorial';
+import { createTutorial, type Tutorial } from './app/tutorial';
+import { createLessons } from './app/lessons';
+import { createFireController } from './app/fire';
+import { drawSpills } from './live/spills';
+import { drawCrashes } from './live/accidents';
+import { drawCrime } from './live/crime';
+import { neighborhoodBelonging } from './civic/voice';
+import { NIGHT_FROM, NIGHT_TO } from './live/tuning';
+import { createWeather } from './app/weather';
+import { createFloodController } from './app/flood';
+import { applyRain } from './live/fields/pollution';
+import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
 
-const DEFAULT_SEED = 'bodhitropolis';
 
 export function main(save: SaveV1 | null = null): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
@@ -54,11 +75,23 @@ export function main(save: SaveV1 | null = null): void {
     applyAudio: (a) => sound.applySettings(a), // only on a user change, after `sound` exists
   });
   const { world: size } = settings.current();
-  const city = createCity({ seed: params.get('seed') ?? DEFAULT_SEED, size: { width: size.mapWidth, height: size.mapHeight }, save });
+  // A resumed city brings its own seed; `?seed=` pins one; otherwise a new player (or New city) gets a random world
+  // — a few draws at most, so a first city is never a hamlet.
+  const mapSize = { width: size.mapWidth, height: size.mapHeight };
+  const homesOf = (s: string): number => {
+    const parcels = createCity({ seed: s, size: mapSize, save: null }).world.parcels;
+    let homes = 0;
+    for (const i of parcels.aliveIndices()) if (zoneTypeOf(parcels.kindAt(i)) === ZoneType.Residential) homes++;
+    return homes;
+  };
+  const citySeed = params.get('seed') ?? (save ? save.seed : chooseSeed(() => randomSeed(), homesOf));
+  const city = createCity({ seed: citySeed, size: mapSize, save });
   const { seed, world, tech, civic, sim: deps } = city;
 
   // The opening is up unless `?nointro=1` or a resumed city; while it is, the key table swallows every game key.
   let openingUp = params.get('nointro') !== '1' && !save;
+  // A new city opens at night (bodhgaia-opening.md): set the clock before power and the economy read it.
+  if (openingUp) setGameHour(OPENING_TIMING.startHour);
 
   const view = createView({ canvas, map: world.map, camera: save?.camera, mode: settings.current().renderer });
   const { camera, renderer, markDirty, markPreviewDirty } = view;
@@ -70,6 +103,7 @@ export function main(save: SaveV1 | null = null): void {
     saved: save?.live ?? null,
     legacyDisplaced: save?.econ.state.displaced ?? 0,
     practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
+    hour: () => gameClock(gameSec()).hour, // exposure deaths happen at night
   });
   const power = createPowerController({
     map: world.map,
@@ -87,7 +121,7 @@ export function main(save: SaveV1 | null = null): void {
       const b = camera.screenToWorld(view.width(), view.height());
       return { x0: Math.floor(a.wx), y0: Math.floor(a.wy), x1: Math.ceil(b.wx), y1: Math.ceil(b.wy) };
     },
-    hour: () => gameClock(performance.now() / 1000).hour,
+    hour: () => gameClock(gameSec()).hour,
     hasHealing: () => world.parcels.aliveIndices().some((i) => world.parcels.kindAt(i) === BuiltKind.HealingCommons),
     hidden: () => document.hidden,
   });
@@ -105,12 +139,6 @@ export function main(save: SaveV1 | null = null): void {
       gpu: { isOn: () => view.gpu() !== null, mount: view.mountGpu, unmount: view.unmountGpu },
     });
   }
-  if (openingUp) {
-    mountOpeningFor(world, seed, () => {
-      openingUp = false;
-      markDirty();
-    });
-  }
 
   const economy = createEconomyController({
     map: world.map,
@@ -126,7 +154,9 @@ export function main(save: SaveV1 | null = null): void {
     displace: (amount, protectionAt) => displaceFromHomes(live.state, world.map, amount, protectionAt),
     autosave: () => saves.autosave(), // read at call time (loading a slot blanks autosave first)
     ui: {
-      practiceGranted: () => {
+      practiceGranted: (id) => {
+        lessons.offer(id); // its mechanic's lesson, the first time (plays when the screen is free)
+        if (power.recompute()) markDirty(); // a power practice (Sun and Wire, Renewables, Local Grids) acts now, not next hour
         sound.sfx.unlock();
         news.push('A new practice takes root in the city');
         tools.afterEffortChange();
@@ -219,6 +249,7 @@ export function main(save: SaveV1 | null = null): void {
     unhoused: () => Math.round(live.state.unhoused), // people without a home (docs/design/rehoming.md)
   });
   const mounted = mountPanels({
+    onReplayLessons: () => lessons.replay(),
     container: document.body,
     economy,
     tech,
@@ -301,7 +332,199 @@ export function main(save: SaveV1 | null = null): void {
   // The two clocks: the fixed-tick sim (a resumed game keeps its clock — repair rings are stamped in ticks) and
   // the rAF frame (the live layer steps on its own clock inside it).
   const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
-  const frame = createFrame({ start: performance.now(), power, economy, sim, view, live, world, hidden: () => document.hidden, syncDock: tools.syncDock });
+  // The opening's first act — the night: epigraphs, a walk to a death, the mantra, the dawn — then the city's
+  // indictment (the statistics + chronicle overlay), then play.
+  const night = openingUp
+    ? createNightOpening({
+        live: live.state,
+        map: world.map,
+        rng: createRng(seed).fork('opening-night'),
+        ui: mountNightOverlay(document.body),
+        follow: (x, y, zoom) => {
+          camera.centerOn(x, y, zoom ?? OPENING_TIMING.followZoom);
+          markDirty();
+        },
+        centre: () => ({
+          x: camera.x + camera.viewportWidth / camera.tileSize / 2,
+          y: camera.y + camera.viewportHeight / camera.tileSize / 2,
+        }),
+        stops: () => tourStops(world.map, world.parcels),
+        hour: () => gameClock(gameSec()).hour,
+        setHour: (h) => setGameHour(h),
+        // act three: the tutorial — the worst places, the indictment, the interface
+        onDone: () => {
+          tutorial = createTutorial({
+            ui: mountTutorial(document.body),
+            follow: (x, y, zoom) => {
+              camera.centerOn(x, y, zoom ?? OPENING_TIMING.followZoom);
+              markDirty();
+            },
+            centre: () => ({
+              x: camera.x + camera.viewportWidth / camera.tileSize / 2,
+              y: camera.y + camera.viewportHeight / camera.tileSize / 2,
+            }),
+            spots: () => worstSpots(world.map, world.parcels, live.state),
+            indict: (onContinue) => mountOpeningFor(world, seed, onContinue, 'Continue'),
+            onDone: () => {
+              openingUp = false;
+              markDirty();
+            },
+          });
+        },
+      })
+    : null;
+  let tutorial: Tutorial | null = null;
+
+  // Lessons: the first time a practice takes root, its mechanic is explained (lessonContent.ts) — once per player,
+  // remembered in this browser (storage may be unavailable: then they simply play each time).
+  const LESSONS_KEY = 'bodhgaia.lessonsSeen';
+  const lessons = createLessons({
+    storage: {
+      get: () => {
+        try {
+          return window.localStorage.getItem(LESSONS_KEY);
+        } catch {
+          return null;
+        }
+      },
+      set: (v) => {
+        try {
+          window.localStorage.setItem(LESSONS_KEY, v);
+        } catch {
+          // private window / blocked storage: nothing to remember with
+        }
+      },
+    },
+    busy: () => !!night?.active() || !!tutorial?.active(),
+    play: (lesson, onDone) =>
+      createTutorial(
+        {
+          ui: mountTutorial(document.body, 'Skip'),
+          follow: () => {},
+          centre: () => ({ x: 0, y: 0 }),
+          spots: () => [],
+          indict: (onContinue) => onContinue(),
+          onDone,
+        },
+        [{ kind: 'say', text: lesson.title }, ...lesson.steps],
+      ),
+  });
+  if (import.meta.env.DEV) {
+    const handle = (window as unknown as { bodhgaia?: Record<string, unknown> }).bodhgaia;
+    if (handle) handle.lessons = lessons; // live checks: offer a lesson without waiting out a practice
+  }
+
+  // Disasters (disasters.md) start only with the setting on, and never during the opening's night or tutorial.
+  const disastersOn = (): boolean => settings.current().disasters && !night?.active() && !tutorial?.active();
+  // Industrial spills: drawn once a game hour from the works' conditions; the cloud is stepped by the live layer.
+  const spillRng = createRng(seed).fork('spill');
+  // Traffic accidents: drawn once a game hour from the jams under moving cars.
+  const crashRng = createRng(seed).fork('crash');
+  const drawCrashesNow = (): void => {
+    if (!disastersOn()) return;
+    const n = drawCrashes(live.state, world.map, crashRng, gameClock(gameSec()).hour);
+    if (n > 0) news.push(n > 1 ? `${n} crashes on jammed roads` : 'A crash on a jammed road');
+  };
+  // Violent crime (conditions, not cops): drawn once a game hour from the despair on the street — at most one life.
+  const crimeRng = createRng(seed).fork('crime');
+  const drawCrimeNow = (): void => {
+    if (!disastersOn()) return;
+    const h = gameClock(gameSec()).hour;
+    if (drawCrime(live.state, world, crimeRng, h, h >= NIGHT_FROM || h < NIGHT_TO, (t) => neighborhoodBelonging(civic, deps.partition, t))) {
+      news.push('A life lost to violence on the street');
+    }
+  };
+  const drawSpillsNow = (): void => {
+    if (!disastersOn()) return;
+    for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
+  };
+
+  // Weather: storms on their own seeded schedule — rain seen and heard, the air washed; heavy ones flood.
+  const weather = createWeather({ live: live.state, map: world.map, rng: createRng(seed).fork('weather'), wash: () => applyRain(live.state, world.map) });
+
+  // Floods: heavy rain lifts the water over the low land by it; homes under water are evacuated until it goes.
+  const flood = createFloodController({ world, live: live.state, hour: () => gameClock(gameSec()).hour, disastersOn, markDirty, news: (t) => news.push(t) });
+
+  // Fire (disasters.md): ignition from conditions once a game hour, trucks from the stations, burnt-out ruins. Nothing
+  // new ignites while Disasters is off, or during the opening's night and tutorial.
+  const fire = createFireController({
+    world,
+    live: live.state,
+    rng: createRng(seed).fork('fire'),
+    hour: () => gameClock(gameSec()).hour,
+    disastersOn,
+    markDirty,
+    refreshHouseholds: () => live.refreshHouseholds(),
+    news: (t) => news.push(t),
+  });
+  if (import.meta.env.DEV) {
+    const handle = (window as unknown as { bodhgaia?: Record<string, unknown> }).bodhgaia;
+    if (handle) {
+      handle.fire = fire; // live checks: light a building (and live/spills.ts startSpill for a spill)
+      handle.weather = weather; // live checks: weather.storm(heavy)
+      handle.flood = flood;
+    }
+  }
+
+  // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
+  const demoKind = params.get('demo');
+  const demo =
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'disasters')
+      ? createDemo(demoKind as DemoKind, {
+          world,
+          live: live.state,
+          ignite: (i) => fire.ignite(i),
+          storm: (heavy) => weather.storm(heavy),
+          view: (x, y) => {
+            camera.centerOn(x, y, 3);
+            markDirty();
+          },
+        })
+      : null;
+
+  // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
+  const events = createEventsController({
+    map: world.map,
+    world,
+    live: live.state,
+    civic,
+    partition: () => deps.partition,
+    mourn: (n) => economy.mourn(n),
+    news: (t) => news.push(t),
+    skin: view.skin,
+    cctvOn: () => !night?.active() && !tutorial?.active(), // the opening's camera is its own
+    main: { canvas, renderer, gpu: view.gpu, smog: view.smog },
+    powered: () => power.grid().poweredAnchors,
+    clock: () => {
+      const h = gameClock(gameSec()).hour;
+      return `${String(h).padStart(2, '0')}:00`;
+    },
+  });
+  const frame = createFrame({
+    start: performance.now(),
+    power,
+    economy,
+    sim,
+    view,
+    live,
+    world,
+    hidden: () => document.hidden,
+    syncDock: tools.syncDock,
+    afterRender: (now) => {
+      night?.frame(now);
+      tutorial?.frame(now);
+      lessons.frame(now);
+      if (!night?.active() && !tutorial?.active()) weather.frame(now);
+      demo?.frame(now);
+      flood.frame(now);
+      fire.frame(now);
+      drawSpillsNow();
+      drawCrashesNow();
+      drawCrimeNow();
+      events.frame(now);
+    },
+    afterGpu: (now) => events.gpuPass(now),
+  });
   runFrames(frame, (cb) => window.requestAnimationFrame(cb));
 }
 

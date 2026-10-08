@@ -101,3 +101,11 @@ describe('audio settings (master / music / effects / ambience + mute)', () => {
     expect(bad.audio).toEqual(DEFAULT_SETTINGS.audio);
   });
 });
+
+describe('disasters setting (2026-10-08)', () => {
+  it('defaults on, keeps a boolean, ignores junk', () => {
+    expect(clampSettings({}).disasters).toBe(true);
+    expect(clampSettings({ disasters: false }).disasters).toBe(false);
+    expect(clampSettings({ disasters: 'nope' as unknown as boolean }).disasters).toBe(true);
+  });
+});

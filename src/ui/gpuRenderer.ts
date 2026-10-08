@@ -44,6 +44,7 @@ export class GpuRenderer {
   private canvas: HTMLCanvasElement | null = null;
   private lastBaseVersion = -1;
   private lastPatchVersion = -1;
+  private lastInsetVersion = -1;
   private readonly bridge: GridTextureBridge;
   private glow: GlowBatch | null = null;
   private glowData = new Float32Array(0);
@@ -153,6 +154,21 @@ export class GpuRenderer {
       if (blue) radial(pose.x, pose.y, 0.75, 0.3, 0.45, 1.0, 0.5);
       else radial(pose.x, pose.y, 0.75, 1.0, 0.25, 0.2, 0.5);
     }
+    // Fire: a flickering orange firelight over every burning building, day and night; a fire truck's flashing red.
+    for (const b of ambient.burning ?? []) {
+      const fl = 0.8 + 0.2 * Math.sin(timeSec * 11 + b.x * 1.7 + b.y);
+      radial(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) * 0.9 + 1.2, 1.0, 0.5, 0.15, 0.45 * fl);
+    }
+    // Wrecks: an amber hazard pool, flashing.
+    if (Math.floor((timeSec * 1000) / 400) % 2 === 0) {
+      for (const { m: c, pose } of fp ? fp.cars : posed(ambient.cars)) if (c.wreck !== undefined) radial(pose.x, pose.y, 0.7, 1.0, 0.7, 0.2, 0.45);
+    }
+    // Fire trucks: taillights, and a red/white flashing pool in step with the cruisers', day and night.
+    for (const { pose } of posed(ambient.trucks ?? [])) {
+      tail(pose.x, pose.y, pose.hx, pose.hy, Math.max(night, 0.5));
+      if (blue) radial(pose.x, pose.y, 0.75, 1.0, 0.25, 0.2, 0.5);
+      else radial(pose.x, pose.y, 0.75, 1.0, 0.95, 0.9, 0.35);
+    }
     // Buildings: RADIAL glow from the light map's actual lit pixels (windows / beacons), not the center.
     for (const bld of buildings) {
       const span = Math.max(bld.w, bld.h);
@@ -220,6 +236,41 @@ export class GpuRenderer {
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
     this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED });
+  }
+
+  /** The CCTV inset: a second viewport drawn into `rect` (device px, GL bottom-left origin) of this canvas, AFTER
+   *  the main render + glow — its own camera, its own baked base (the inset's sprite-only 2D renderer bakes it),
+   *  and its own light. Scissored, so the main view is untouched outside the rect. */
+  renderInset(
+    rect: { x: number; y: number; w: number; h: number },
+    camera: Camera,
+    cssWidth: number,
+    cssHeight: number,
+    timeSec: number,
+    base: TexImageSource,
+    baseVersion: number,
+    ambient: AmbientState,
+    buildings: readonly EmissiveBuilding[] = [],
+    beams: readonly HeadlightBeam[] = [],
+  ): void {
+    const gl = this.gl;
+    if (!this.shader || !gl || !this.canvas) return;
+    if (baseVersion !== this.lastInsetVersion) {
+      this.shader.uploadBase(base, 'inset');
+      this.lastInsetVersion = baseVersion;
+    }
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(rect.x, rect.y, rect.w, rect.h);
+    gl.viewport(rect.x, rect.y, rect.w, rect.h);
+    gl.clearColor(0.078, 0.071, 0.122, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED, slot: 'inset' });
+    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
+    this.renderGlow(ambient, origin, view, timeSec, night, buildings, beams);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
   /** Force a base re-upload on the next render (e.g. after a resize changes the base canvas size). */

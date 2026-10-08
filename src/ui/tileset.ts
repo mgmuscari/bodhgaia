@@ -1,6 +1,6 @@
 // The skin contract (PURE — no DOM, no transcendental Math → pure-ui allowlist): what a code-painted skin
 // hands the loader, and the reserved `@` key namespaces the renderer reads beside the tile atlas.
-// Bodhitropolis has one skin — Super (16-bit), painted by snesTileset.ts (Maddy 2026-09-30: one
+// Bodhgaia has one skin — Super (16-bit), painted by snesTileset.ts (Maddy 2026-09-30: one
 // consistent aesthetic) — and this module keeps its contract apart from its painting.
 
 import type { Pixels } from './pixelArt';

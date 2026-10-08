@@ -201,7 +201,7 @@ function recitation(text: ChantText): MusicTrack {
     sacred: true,
     piece: () => recite(text).piece,
     voices: { 0: 'chant', 1: 'pad' },
-    credit: { typesetter: 'the Bodhitropolis project', source: CHANT_REFERENCE.href, licence: 'gpl-3.0-or-later' },
+    credit: { typesetter: 'the Bodhgaia project', source: CHANT_REFERENCE.href, licence: 'gpl-3.0-or-later' },
   };
 }
 

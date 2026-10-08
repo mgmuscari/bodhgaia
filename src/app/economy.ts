@@ -16,13 +16,14 @@ import { isPowerConsumer } from '../growth/power';
 import { TECH_TREE } from '../tech/tree';
 import { wellbeing } from '../tech/effort';
 import { TRUST_FLOOR } from '../civic/dynamics';
-import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
+import { createEconomy, effortCapacity, mourn, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
 import { homeProtections, readCity, type CityInputs } from '../economy/readings';
 import { economyHour, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
 import { projectProgress } from '../economy/projects';
 import { economyLine } from '../ui/economyContent';
 import { budgetView, type BudgetView } from '../ui/budgetContent';
 import { gameClock } from '../ui/lighting';
+import { gameSec } from '../ui/gameTime';
 import type { Wallet } from '../tools/tools';
 
 /** Autosave every this many in-game hours (and whenever the tab is hidden or closed — see app/saves). */
@@ -35,7 +36,7 @@ const MAX_CATCH_UP = 6;
 /** What the shell refreshes as an hour lands (in this order). */
 export interface EconomyUi {
   /** A finished practice project granted its tech (toolbar refresh + flash, dock/panel snapshots, tech panel). */
-  practiceGranted(): void;
+  practiceGranted(id: string): void;
   /** The hour's refreshes (toolbar, tech panel, budget panel); `reliefNow` → open the Budget window. */
   hourRefreshed(reliefNow: boolean): void;
   /** Rewrite the pulse line (the economy readout · the last civic pulse). */
@@ -64,7 +65,7 @@ export interface EconomyDeps {
   /** Called every AUTOSAVE_HOURS hours — the caller resolves the current autosave at call time. */
   autosave: () => void;
   ui: EconomyUi;
-  /** Wall-clock seconds the in-game clock reads (default performance.now() / 1000). */
+  /** Seconds the in-game clock reads (default gameSec — wall time plus the opening's offset). */
   nowSec?: () => number;
   /** How organised the neighbourhood at a tile is, 0..1 (civic voice ÷ 255) — tenant organising. Default 0. */
   voiceAt?(tile: number): number;
@@ -100,11 +101,13 @@ export interface EconomyController {
   beginPractice(id: string): boolean;
   /** A practice project's progress 0..1, or undefined if none is underway. */
   projectProgress(id: string): number | undefined;
+  /** The city mourns `deaths` residents: approval, goodwill and effort fall at once. */
+  mourn(deaths: number): void;
 }
 
 export function createEconomyController(deps: EconomyDeps): EconomyController {
   const { map, parcels, tech, civic, sim, live, ui } = deps;
-  const nowSec = deps.nowSec ?? ((): number => performance.now() / 1000);
+  const nowSec = deps.nowSec ?? ((): number => gameSec());
 
   const wellbeing01 = (): number =>
     Math.min(1, wellbeing({ parcels, ecoMeans: sim.ecoMeans, civicMeans: sim.civicMeans }) / 200);
@@ -184,7 +187,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     }
     for (const done of r.completed) {
       const practice = (done.payload as { practice?: string } | null)?.practice;
-      if (practice && tech.grant(practice)) ui.practiceGranted();
+      if (practice && tech.grant(practice)) ui.practiceGranted(practice);
     }
     ui.hourRefreshed(reliefNow); // refreshes; the relief grant opens the Budget window with its strings
     if (econ.state.tick % AUTOSAVE_HOURS === 0) deps.autosave();
@@ -216,7 +219,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       }),
     runHour,
     advance: (nowMs) => {
-      const hourNow = gameClock(nowMs / 1000).slot;
+      const hourNow = gameClock(gameSec(nowMs)).slot;
       for (let k = 0; k < MAX_CATCH_UP && econSlot < hourNow; k++) {
         econSlot++;
         runHour();
@@ -245,6 +248,12 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       if (econ.state.funds < upfront) return false;
       econ = { ...econ, state: { ...econ.state, funds: econ.state.funds - upfront }, projects: [...econ.projects, practiceProject(node)] };
       return true;
+    },
+    mourn: (deaths) => {
+      if (deaths <= 0) return;
+      setState(mourn(econ.state, deaths));
+      // the effort on hand lives on the tech state between hours (runHour folds it back into the run)
+      tech.effort = Math.max(0, tech.effort - ECON.deathEffort * deaths);
     },
     projectProgress: (id) => {
       const p = econ.projects.find((q) => q.id === id);

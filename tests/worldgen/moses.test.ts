@@ -13,6 +13,7 @@ import {
   placeParcel,
 } from '../../src/engine/fabric';
 import {
+  RUIN_GRADE,
   createMosesState,
   era1Founding,
   era2MotorAge,
@@ -1577,6 +1578,30 @@ describe('back yards (Maddy 2026-10-07)', () => {
       expect(yards).toBeGreaterThan(0);
       const line = world.log.find((l) => /back yards/.test(l));
       expect(line).toBe(`back yards: +${yards} lots behind houses`);
+    });
+  }
+});
+
+describe('ruins (Maddy 2026-10-08: empty lots in redlined districts are ruined buildings)', () => {
+  for (const seed of SEEDS) {
+    it(`seed "${seed}": every ruin stands on a redlined street front, and the chronicle counts them`, () => {
+      const world = runFullStage(seed);
+      const { map, parcels } = world;
+      let ruins = 0;
+      for (const i of parcels.aliveIndices()) {
+        if (parcels.kindAt(i) !== BuiltKind.Ruin) continue;
+        ruins++;
+        const r = parcels.get(i);
+        expect(map.redline[map.idx(r.x, r.y)]!, `ruin at ${r.x},${r.y}`).toBeGreaterThanOrEqual(RUIN_GRADE);
+        const onStreet = ([[0, -1], [1, 0], [0, 1], [-1, 0]] as const).some(([dx, dy]) => {
+          const k = map.inBounds(r.x + dx, r.y + dy) ? map.built[map.idx(r.x + dx, r.y + dy)]! : 0;
+          return k >= 1 && k <= 3;
+        });
+        expect(onStreet, `ruin at ${r.x},${r.y}`).toBe(true);
+        expect(parcels.conditionAt(i)).toBe(0);
+      }
+      expect(ruins).toBeGreaterThan(0);
+      expect(world.log.find((l) => /^ruins:/.test(l))).toBe(`ruins: +${ruins} standing where homes were lost`);
     });
   }
 });

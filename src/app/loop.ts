@@ -9,6 +9,7 @@ import { simTick, type SimDeps, type SimTickResult } from '../civic/compose';
 import { neighborhoodVoice } from '../civic/voice';
 import { stepRepairShops, stepRevival } from '../growth/revival';
 import type { Camera } from '../ui/camera';
+import { gameSec } from '../ui/gameTime';
 import type { Renderer } from '../ui/renderer';
 import type { GpuRenderer } from '../ui/gpuRenderer';
 import type { SmogOverlay } from '../ui/smogOverlay';
@@ -124,6 +125,10 @@ export interface FrameCtx {
   hidden: () => boolean;
   /** The sim-gated sync (tools.syncDock). */
   syncDock: () => void;
+  /** After the map is drawn: the live event feed's CCTV inset. Optional. */
+  afterRender?: (now: number) => void;
+  /** After the GPU map, glow and smog: the CCTV inset's own GPU viewport. Optional. */
+  afterGpu?: (now: number) => void;
 }
 
 /** The rAF frame body (the caller re-requests the next frame after it). */
@@ -155,6 +160,7 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
       live.step(now);
       renderer.renderFrame(world, camera, live.state);
       view.clean();
+      ctx.afterRender?.(now);
     } else if (view.isDirty() || gpu) {
       // Ambient-OFF path: repaint only when something changed. With GPU on we still run the composite (it
       // produces/clears the base the GPU samples) each frame the base is dirty.
@@ -165,12 +171,15 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     const h = view.height();
     // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so it samples
     // the freshest baked tiles. The base re-uploads only when its version changed.
-    gpu?.render(camera, w, h, now / 1000, renderer.baseCanvas(), renderer.baseVersion(), renderer.basePatch());
+    gpu?.render(camera, w, h, gameSec(now), renderer.baseCanvas(), renderer.baseVersion(), renderer.basePatch());
     // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
-    if (gpu && live.on) gpu.renderAgents(live.state, camera, w, h, now / 1000, renderer.emissiveBuildingList(), renderer.headlightBeams());
+    if (gpu && live.on) gpu.renderAgents(live.state, camera, w, h, gameSec(now), renderer.emissiveBuildingList(), renderer.headlightBeams());
     // GPU smog overlay (z2, above sprites): the atmospheric haze.
     const smog = view.smog();
-    if (smog && live.on) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind);
+    // the haze is part of the map: drawn every frame so it follows the camera — with life off the pollution field
+    // simply holds still (Maddy 2026-10-08: it froze in place on screen and the map slid under it)
+    if (smog) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind, live.state.toxic);
+    ctx.afterGpu?.(now);
     // Sim-gated (Y5): re-derive the dock/panel signatures ONLY when a sim tick has run since the last sync.
     if (ctx.sim.takeChanged()) ctx.syncDock();
   };

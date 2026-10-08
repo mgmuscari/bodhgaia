@@ -163,7 +163,7 @@ browser").
 **BUILT 2026-06-19** (`tools/tileset/`, see its README). Two pieces:
 1. **Export harness** ✓ — `renderer.exportProceduralTiles()` walks `proceduralAtlas()`, dumps each
    native-16×16 tile as a PNG + its diffusion spec (`tilesetExport.ts` classifies category/tiling);
-   exposed at `window.bodhitropolis.exportTiles()`, pulled via a scratch Playwright dump,
+   exposed at `window.bodhgaia.exportTiles()`, pulled via a scratch Playwright dump,
    `split-control.mjs` explodes it to `control/<key>.png`. ComfyUI upscales nearest-exact, so we
    export tiny (the whole keyspace is ~135 KB).
 2. **Structural conditioning in ComfyUI** ✓ — the remote now has a **Z-Image Tile Fun-ControlNet**

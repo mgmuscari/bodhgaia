@@ -7,7 +7,9 @@
 //
 // Keys: @sprite/car/{tint}/{dir8}, @sprite/car-light/{dir8} (headlights + taillights, additive at night),
 // @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame},
-// @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant}.
+// @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant},
+// @sprite/firetruck/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant},
+// @sprite/rain/{0 light|1 heavy}, @sprite/debris.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
@@ -32,6 +34,9 @@ const CAR_E = ['.kkkkk.', 'kbwrrgb', 'kbwrrgb', '.kkkkk.'];
 const CAR_NE = ['...kkk', '..kbgk', '.kbrbk', 'kbrbk.', 'kwbk..', 'kkk...'];
 const COP_E = ['.kkkkk.', 'kbwLrgb', 'kbwMrgb', '.kkkkk.'];
 const COP_NE = ['...kkk', '..kbgk', '.kbLbk', 'kbMbk.', 'kwbk..', 'kkk...'];
+// Fire trucks: a cruiser's frame in red, a ladder (l) along the back, the light bar (L/M) behind the cab.
+const TRUCK_E = ['.kkkkk.', 'kllLbgb', 'kllMbgb', '.kkkkk.'];
+const TRUCK_NE = ['...kkk', '..kbgk', '.kLbbk', 'klMbk.', 'kllk..', 'kkk...'];
 const LIGHT_E = ['.......', 'T.....H', 'T.....H', '.......'];
 const LIGHT_NE = ['....H.', '.....H', '......', '......', 'T.....', '.T....'];
 
@@ -101,8 +106,9 @@ const SMOG_PX = [6, 10, 14] as const;
 export const SMOG_SIZES = SMOG_PX.length;
 
 /** One smog puff: three overlapping lobes, shaded dark-below / light-above, the rim frayed by a hash so
- *  it reads as vapour, not a disc. Drawn translucent by the renderer. */
-function smogPuff(size: number, variant: number): Pixels {
+ *  it reads as vapour, not a disc. Drawn translucent by the renderer. `shades` is (hi, mid, lo): slate for
+ *  smog, sickly yellow-greens for a spill's toxic cloud. */
+function smogPuff(size: number, variant: number, shades: readonly [RGB, RGB, RGB] = [C.slateHi, C.slate, C.slateLo]): Pixels {
   const p = blank(size, size);
   const r = size / 4;
   const lobes = [
@@ -122,7 +128,7 @@ function smogPuff(size: number, variant: number): Pixels {
       const h = hash2(x, y, size * 7 + variant) & 255;
       if (best > 0.55 && h < (best - 0.55) * 560) continue; // fray the rim
       const t = y / size; // light from above
-      px(p, x, y, t < 0.4 ? C.slateHi : t < 0.7 ? C.slate : C.slateLo);
+      px(p, x, y, t < 0.4 ? shades[0] : t < 0.7 ? shades[1] : shades[2]);
     }
   }
   return p;
@@ -157,6 +163,41 @@ function turnNE(east: Pixels, len: number, wid: number): Pixels {
   return out;
 }
 
+/** Flame frames (art px): FIRE_W × FIRE_H, a few tongues licking up from a burning tile. */
+const FIRE_W = 10;
+const FIRE_H = 12;
+export const FIRE_FRAMES = 4;
+
+/** One flame frame: tongues of uneven height (taller in the middle), each banded from a pale core up through
+ *  gold and red to dark tips, a spark or two above — the bands and tips shift frame to frame, so the frames
+ *  cycled read as flicker. */
+function flame(frame: number): Pixels {
+  const p = blank(FIRE_W, FIRE_H);
+  const c = (FIRE_W - 1) / 2;
+  for (let x = 0; x < FIRE_W; x++) {
+    const lateral = Math.abs(x - c) / c;
+    const jitter = (hash2(x, frame, 71) % 5) - 2;
+    const height = Math.max(2, Math.round(FIRE_H * (0.45 + 0.45 * (1 - lateral))) + jitter);
+    for (let k = 0; k < height; k++) {
+      const y = FIRE_H - 1 - k;
+      const d = k / height; // 0 at the base, →1 at the tip
+      const col =
+        d > 0.8 ? C.roofRedLo
+        : d > 0.55 || lateral > 0.75 ? C.signal
+        : d > 0.3 || lateral > 0.45 ? C.gold
+        : lateral < 0.25 && d < 0.2 ? C.petal
+        : C.flower;
+      px(p, x, y, col);
+    }
+  }
+  // a spark or two lifted off the tips
+  for (let s = 0; s < 2; s++) {
+    const h = hash2(s, frame, 113);
+    px(p, 2 + (h % (FIRE_W - 4)), (h >> 4) % 3, s === 0 ? C.flower : C.gold);
+  }
+  return p;
+}
+
 // Birds: a five-pixel gull, wings up / wings down.
 const BIRD_FRAMES = [
   ['k...k', '.k.k.', '..k..'],
@@ -183,6 +224,17 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
     };
     eightWays(glyph(COP_E, cols), glyph(COP_NE, cols)).forEach((f, d) => out.set(`@sprite/cop/${d}/${phase}`, f));
   }
+  for (const phase of [0, 1]) {
+    const cols = { k: C.roofRedLo, b: C.roofRed, l: C.paveHi, g: C.glassLo, L: phase === 0 ? C.signal : C.line, M: phase === 0 ? C.line : C.signal };
+    eightWays(glyph(TRUCK_E, cols), glyph(TRUCK_NE, cols)).forEach((f, d) => out.set(`@sprite/firetruck/${d}/${phase}`, f));
+  }
+  for (let f = 0; f < FIRE_FRAMES; f++) out.set(`@sprite/fire/${f}`, flame(f));
+  out.set('@sprite/drop', glyph(['w'], { w: C.foam }));
+  // a crash's debris: broken glass and a bit of trim on the road
+  out.set('@sprite/debris', glyph(['g.p.g', '.g.p.'], { g: C.glassHi, p: C.paveHi }));
+  // rain: a streak one art pixel wide, a pale head over a glassier tail; a heavy storm's is longer
+  out.set('@sprite/rain/0', glyph(['h', 'g', 'g'], { h: C.glassHi, g: C.glass }));
+  out.set('@sprite/rain/1', glyph(['h', 'h', 'g', 'g', 'g'], { h: C.glassHi, g: C.glass }));
   const carCols = { k: C.slateLo, b: C.paveHi, w: C.glassLo };
   const locoCols = { k: C.roofRedLo, r: C.roofRed, m: C.slate, g: C.glass };
   for (const [part, rows, cols] of [['car', TRAIN_CAR_E, carCols], ['loco', TRAIN_LOCO_E, locoCols]] as const) {
@@ -191,7 +243,10 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   }
   BIRD_FRAMES.forEach((rows, f) => out.set(`@sprite/bird/${f}`, glyph(rows, { k: C.ink })));
   SMOG_PX.forEach((size, i) => {
-    for (const v of [0, 1]) out.set(`@sprite/smog/${i}/${v}`, smogPuff(size, v));
+    for (const v of [0, 1]) {
+      out.set(`@sprite/smog/${i}/${v}`, smogPuff(size, v));
+      out.set(`@sprite/toxic/${i}/${v}`, smogPuff(size, v, [C.meadowHi, C.meadow, C.grassMid]));
+    }
   });
   SKIN_TONES.forEach((h, tone) => {
     SHIRTS.forEach((s, shirt) => {

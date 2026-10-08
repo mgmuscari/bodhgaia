@@ -39,7 +39,7 @@ describe('credits content', () => {
   it('names the licence and links the source and the shipped licence text', () => {
     expect(text).toContain('GPL-3.0-or-later');
     expect(text).toContain(SOURCE_URL);
-    expect(SOURCE_URL).toBe('https://github.com/mgmuscari/bodhitropolis');
+    expect(SOURCE_URL).toBe('https://github.com/mgmuscari/bodhgaia');
     const hrefs = creditsBlocks().flatMap((b) => (b.links ?? []).map((l) => l.href));
     expect(hrefs).toContain(SOURCE_URL);
     expect(hrefs).toContain(COPYING_HREF);
@@ -122,5 +122,16 @@ describe('credits content', () => {
         expect(body).toContain(v.meaning);
       }
     }
+  });
+});
+
+describe('the opening’s words are credited (Maddy 2026-10-08)', () => {
+  it('names the Berkeley Zen Center chant book for the epigraphs and vows', () => {
+    const block = creditsBlocks().find((b) => /opening/i.test(b.heading))!;
+    expect(block).toBeDefined();
+    expect(block.paragraphs.join(' ')).toMatch(/Berkeley Zen Center/);
+    expect(block.paragraphs.join(' ')).toMatch(/Heart Sutra/);
+    expect(block.paragraphs.join(' ')).toMatch(/Dōgen/);
+    expect((block.links ?? []).some((l) => /berkeleyzencenter\.org/.test(l.href))).toBe(true);
   });
 });

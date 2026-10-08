@@ -32,12 +32,22 @@ export interface Household {
 /** A tiny-home village shelters this many people (rehoming.md) — its size, not its density. */
 export const VILLAGE_RESIDENTS = 12;
 
+/** Homes whose residents scale with their footprint (player-built, multi-tile). */
+const FOOTPRINT_SIZED: ReadonlySet<number> = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune]);
+
 export function residentialCensus(parcels: ParcelStore): Household[] {
   const out: Household[] = [];
   for (const i of parcels.aliveIndices()) {
     if (zoneTypeOf(parcels.kindAt(i)) !== ZoneType.Residential) continue;
     const p = parcels.get(i);
-    out.push({ x: p.x, y: p.y, count: p.kind === BuiltKind.TinyHomes ? VILLAGE_RESIDENTS : citizensOf(p.density) });
+    // a co-op or commune is sized by its footprint (a 2×2 co-op holds four houses' worth); a village by its cabins
+    const count =
+      p.kind === BuiltKind.TinyHomes
+        ? VILLAGE_RESIDENTS
+        : FOOTPRINT_SIZED.has(p.kind)
+          ? citizensOf(p.density) * p.width * p.height
+          : citizensOf(p.density);
+    out.push({ x: p.x, y: p.y, count });
   }
   return out;
 }

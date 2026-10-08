@@ -204,11 +204,16 @@ export function healGroundNearGreens(state: AmbientState, map: GameMap): void {
  *  simultaneous update (no within-pass cascade). Live/non-hashed; gated to WIND_CADENCE by the
  *  caller. */
 export function driftPollution(state: AmbientState, map: GameMap): void {
-  const { dx, dy } = state.wind;
+  driftField(state.pollution, state.wind, map, POLL_MAX);
+}
+
+/** {@link driftPollution} over any air field (smog, a spill's toxic smog). */
+export function driftField(field: Map<number, number>, wind: { dx: number; dy: number }, map: GameMap, max: number): void {
+  const { dx, dy } = wind;
   if (dx === 0 && dy === 0) return;
-  if (state.pollution.size === 0) return;
+  if (field.size === 0) return;
   const arrivals: Array<[number, number]> = []; // (downwind tile, amount) — applied after the scan
-  for (const [i, p] of state.pollution) {
+  for (const [i, p] of field) {
     if (p <= 0) continue;
     const x = i % map.width;
     const y = (i - x) / map.width;
@@ -218,9 +223,9 @@ export function driftPollution(state: AmbientState, map: GameMap): void {
     const move = p * WIND_FRACTION;
     if (move <= 0) continue;
     arrivals.push([map.idx(nx, ny), move]);
-    state.pollution.set(i, p - move);
+    field.set(i, p - move);
   }
-  for (const [ni, amt] of arrivals) layField(state.pollution, ni, amt, POLL_MAX);
+  for (const [ni, amt] of arrivals) layField(field, ni, amt, max);
 }
 
 /** Isotropic DIFFUSION of the smog field (Maddy: "smog diffuses in addition to blowing in the wind").
@@ -229,9 +234,14 @@ export function driftPollution(state: AmbientState, map: GameMap): void {
  *  this fattens/softens it so it isn't a hard streak. Departures from pre-pass values, arrivals after
  *  (a clean simultaneous update). Live/non-hashed; gated to WIND_CADENCE by the caller. */
 export function diffusePollution(state: AmbientState, map: GameMap, coeff = POLL_DIFFUSE_COEFF): void {
-  if (state.pollution.size === 0 || coeff <= 0) return;
+  diffuseField(state.pollution, map, coeff, POLL_MAX);
+}
+
+/** {@link diffusePollution} over any air field. */
+export function diffuseField(field: Map<number, number>, map: GameMap, coeff: number, max: number): void {
+  if (field.size === 0 || coeff <= 0) return;
   const arrivals: Array<[number, number]> = [];
-  for (const [i, p] of state.pollution) {
+  for (const [i, p] of field) {
     if (p <= 0) continue;
     const x = i % map.width;
     const y = (i - x) / map.width;
@@ -243,9 +253,9 @@ export function diffusePollution(state: AmbientState, map: GameMap, coeff = POLL
       if (!map.inBounds(nx, ny)) continue; // off-map → the share leaves the system
       arrivals.push([map.idx(nx, ny), share]);
     }
-    state.pollution.set(i, p - p * coeff); // sheds the full coeff fraction; only in-bounds shares arrive
+    field.set(i, p - p * coeff); // sheds the full coeff fraction; only in-bounds shares arrive
   }
-  for (const [ni, amt] of arrivals) layField(state.pollution, ni, amt, POLL_MAX);
+  for (const [ni, amt] of arrivals) layField(field, ni, amt, max);
 }
 
 /** A RAIN event (Maddy): rain washes airborne smog DOWN onto the land, then mobilises ground

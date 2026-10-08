@@ -4,11 +4,12 @@
 // sets the cadence.
 
 import type { GameMap } from '../../engine/map';
-import { isRoadKind, isServiceStation } from '../../engine/fabric';
+import { BuiltKind, isRoadKind, isServiceStation } from '../../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../../engine/zone';
 import { layField, sampleField } from '../../citizens/field';
 import {
   AMENITY_KINDS,
+  LV_RUIN,
   COVERAGE_RADIUS,
   LV_AMENITY,
   LV_BASE,
@@ -82,6 +83,7 @@ export function landValueAt(
   // linear falloff: more greens near = nicer); nuisances take the worst nearby (one jammed/smoggy road
   // is enough to drag a plot down).
   let amenity = 0;
+  let ruins = 0; // empty shells nearby: a dead street drags a living one
   let pollNear = 0;
   let trafNear = 0;
   let wearNear = 0;
@@ -97,6 +99,7 @@ export function landValueAt(
       const ni = map.idx(nx, ny);
       const falloff = 1 - dist / (LV_RADIUS + 1); // 1 on the tile → ~0 at the edge of the radius
       if (AMENITY_KINDS.has(map.built[ni]!)) amenity += falloff;
+      else if (map.built[ni] === BuiltKind.Ruin) ruins += falloff;
       // Nuisances felt by distance: the worst weighted road nearby sets the drag (one jam is enough).
       if (pollution) pollNear = Math.max(pollNear, sampleField(pollution, ni) * falloff);
       if (traffic) trafNear = Math.max(trafNear, sampleField(traffic, ni) * falloff);
@@ -108,6 +111,7 @@ export function landValueAt(
     }
   }
   v += amenity * LV_AMENITY;
+  v -= ruins * LV_RUIN;
   v -= (pollNear / POLL_MAX) * LV_POLL_PEN;
   v -= (trafNear / TRAFFIC_MAX) * LV_TRAFFIC_PEN;
   v -= (wearNear / WEAR_MAX) * LV_WEAR_PEN;

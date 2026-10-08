@@ -163,7 +163,7 @@ export function stepRepairShops(world: RevivalWorld): number {
   let mended = 0;
   for (const i of parcels.aliveIndices()) {
     const p = parcels.get(i);
-    if (p.kind === BuiltKind.MakerSpace || p.condition >= 255) continue;
+    if (p.kind === BuiltKind.MakerSpace || p.kind === BuiltKind.Ruin || p.condition >= 255) continue; // a ruin isn't mended
     const near = boxes.some((b) => p.x <= b.x1 && p.x + p.width - 1 >= b.x0 && p.y <= b.y1 && p.y + p.height - 1 >= b.y0);
     if (!near) continue;
     parcels.setCondition(i, p.condition + MAKER_REPAIR);

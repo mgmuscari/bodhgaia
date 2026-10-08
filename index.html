@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" href="./favicon.svg" /><!-- static pixel house; repainted at boot from the tileset (main.ts setPixelFavicon) -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bodhitropolis</title>
+    <title>Bodhgaia</title>
     <meta name="description" content="A pixel city that was cut apart on purpose: freeways through the neighbourhoods, red lines on the map, smoke downwind. You do not build it. You repair it." />
     <meta name="theme-color" content="#181828" />
-    <meta property="og:title" content="Bodhitropolis" />
+    <meta property="og:title" content="Bodhgaia" />
     <meta property="og:description" content="A pixel city cut apart on purpose by Moses-era freeways and redlining. You do not build it. You repair it." />
     <meta property="og:type" content="website" />
     <style>
@@ -302,6 +302,209 @@
       }
       .tech-detail-costs {
         color: var(--ui-muted);
+      }
+      .night-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 1.2s ease;
+      }
+      .night-dark {
+        background: rgba(4, 6, 14, 0.97);
+      }
+      .night-dim {
+        background: rgba(4, 6, 14, 0.45);
+        align-items: flex-end; /* the words in the lower third: the spot where they fell stays in view */
+        padding-bottom: 18vh;
+      }
+      .night-clear {
+        background: transparent;
+      }
+      .night-vow {
+        background: transparent;
+        align-items: flex-end;
+        padding-bottom: 12vh;
+      }
+      .night-vowtext {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 14px 22px;
+        font-size: 1.3rem;
+        line-height: 1.55;
+        color: #f4ecd2;
+        background: rgba(8, 10, 20, 0.62);
+        border-radius: 4px;
+        animation: night-in 1.8s ease both;
+      }
+      .night-stage {
+        max-width: 760px;
+        padding: 0 24px;
+        text-align: center;
+        color: #e8e2cc;
+      }
+      .night-card,
+      .night-mantra,
+      .night-title {
+        animation: night-in 1.6s ease both;
+      }
+      .night-line {
+        margin: 0.35rem 0;
+        font-size: 1.35rem;
+        line-height: 1.5;
+      }
+      .night-source {
+        margin-top: 1.4rem;
+        color: #a8a290;
+        font-size: 1rem;
+      }
+      .night-mantra {
+        font-size: 2.2rem;
+        letter-spacing: 0.08em;
+        color: #f0d890;
+        text-shadow: 0 0 18px rgba(240, 200, 120, 0.45);
+      }
+      .night-title {
+        font-size: 3rem;
+        color: #ffe6a8;
+        text-shadow: 0 0 24px rgba(255, 210, 140, 0.6);
+      }
+      .night-hint {
+        position: absolute;
+        right: 16px;
+        bottom: calc(var(--status-h) + 10px);
+        color: rgba(232, 226, 204, 0.55);
+        font-size: 0.85rem;
+      }
+      @keyframes night-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      .tutorial {
+        position: fixed;
+        inset: 0;
+        z-index: 55;
+        cursor: pointer;
+      }
+      .tutorial[hidden] {
+        display: none;
+      }
+      .tutorial-spot {
+        position: fixed;
+        border: 2px solid #f0d890;
+        border-radius: 4px;
+        box-shadow: 0 0 0 9999px rgba(4, 6, 14, 0.62), 0 0 16px rgba(240, 216, 144, 0.6);
+        transition: all 0.45s ease;
+        pointer-events: none;
+      }
+      .tutorial-box {
+        position: fixed;
+        left: 50%;
+        bottom: 14vh;
+        transform: translateX(-50%);
+        width: min(620px, calc(100vw - 32px));
+        padding: 16px 22px 14px;
+        background: #121a3a;
+        border: 3px solid #e8d8a0;
+        box-shadow: inset 0 0 0 2px #2c3c7c, 0 6px 18px rgba(0, 0, 0, 0.55);
+        color: #f4ecd2;
+      }
+      .tutorial-box-top {
+        bottom: auto;
+        top: 12vh;
+      }
+      .tutorial-box-in {
+        animation: tutorial-in 0.5s ease both;
+      }
+      @keyframes tutorial-in {
+        /* keeps the centring translate (night-in's transform would drop it) */
+        from {
+          opacity: 0;
+          transform: translate(-50%, 6px);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
+      }
+      .tutorial-text {
+        margin: 0;
+        font-size: 1.15rem;
+        line-height: 1.5;
+      }
+      .tutorial-more {
+        position: absolute;
+        right: 12px;
+        bottom: 8px;
+        color: #f0d890;
+        animation: cctv-blink 1s steps(2, start) infinite;
+      }
+      .tutorial-skip {
+        position: absolute;
+        right: 8px;
+        top: -30px;
+        font-size: 0.8rem;
+        padding: 3px 8px;
+        cursor: pointer;
+      }
+      #cctv {
+        position: fixed;
+        right: 12px;
+        bottom: calc(var(--status-h) + 12px);
+        z-index: 40;
+        border: 2px solid var(--ui-border, #3a4a8a);
+        background: #000;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        pointer-events: none;
+      }
+      #cctv[hidden] {
+        display: none;
+      }
+      #cctv canvas {
+        display: block;
+        image-rendering: pixelated;
+      }
+      #cctv.cctv-gpu {
+        /* the feed's ground is drawn by the GPU map beneath; only the frame and caption bar are opaque */
+        background: transparent;
+      }
+      #cctv::after {
+        /* scanlines over the feed */
+        content: '';
+        position: absolute;
+        inset: 0 0 22px 0;
+        background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0 1px, transparent 1px 3px);
+        pointer-events: none;
+      }
+      .cctv-bar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        height: 22px;
+        padding: 0 6px;
+        font-size: 0.75rem;
+        color: #d8e0d0;
+        background: #101418;
+      }
+      .cctv-rec {
+        color: #e04848;
+        animation: cctv-blink 1s steps(2, start) infinite;
+      }
+      .cctv-caption {
+        flex: 1;
+      }
+      @keyframes cctv-blink {
+        to {
+          visibility: hidden;
+        }
       }
       .tech-detail-needs {
         color: var(--ui-bad);
@@ -801,7 +1004,7 @@
     <input type="checkbox" id="desktop-note-dismiss" class="desktop-note-toggle" />
     <div class="desktop-note" role="note">
       <label for="desktop-note-dismiss" class="desktop-note__close" title="Dismiss">✕</label>
-      Bodhitropolis is best on a desktop browser — a mouse, a keyboard and a wide window.
+      Bodhgaia is best on a desktop browser — a mouse, a keyboard and a wide window.
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

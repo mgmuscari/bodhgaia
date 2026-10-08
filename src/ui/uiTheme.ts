@@ -4,6 +4,7 @@
 
 import '@fontsource/jersey-10/400.css';
 import { FRAME_KINDS, framePixels, themeVars } from './uiKit';
+import { pngDataUrl } from './pngEncode';
 
 export function installUiTheme(): void {
   const root = document.documentElement.style;
@@ -11,16 +12,7 @@ export function installUiTheme(): void {
   // Jersey 10 at 20 px (twice its 10-px grid, so it stays crisp): chunky, unambiguous digits — Pixelify
   // Sans's 3 read as an 8 at 16 px (Maddy 2026-10-01: "numbers are hard to read in the font")
   root.setProperty('--ui-font', '"Jersey 10", ui-monospace, monospace');
-  for (const kind of FRAME_KINDS) {
-    const p = framePixels(kind);
-    const c = document.createElement('canvas');
-    c.width = p.w;
-    c.height = p.h;
-    const ctx = c.getContext('2d');
-    if (!ctx) continue;
-    const id = ctx.createImageData(p.w, p.h);
-    id.data.set(p.data);
-    ctx.putImageData(id, 0, 0);
-    root.setProperty(`--ui-frame-${kind}`, `url("${c.toDataURL('image/png')}")`);
-  }
+  // encoded directly, not read back from a canvas: Safari's fingerprinting protection scrambles canvas readback,
+  // which emptied every frame and left the bars dark (pngEncode.ts)
+  for (const kind of FRAME_KINDS) root.setProperty(`--ui-frame-${kind}`, `url("${pngDataUrl(framePixels(kind))}")`);
 }

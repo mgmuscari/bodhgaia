@@ -32,6 +32,10 @@ import { spawnCitizens } from './agents';
 import { buildVehicleCtx, stepCar } from './cars';
 import { stepPed } from './peds';
 import { buildSafeZones, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
+import { stepDeaths, stepExposure } from './death';
+import { stepWanderer } from './wanderer';
+import { stepTrucks } from './trucks';
+import { stepClouds, stepToxic } from './spills';
 import { spawnTrains, stepTrain } from './trains';
 import { advanceFlock, flockTile, spawnFlocks } from './birds';
 import { stepOccupancy } from './fields/occupancy';
@@ -51,6 +55,13 @@ import { snapshotMovers } from './poses';
 // --- The substep + the public stepper ------------------------------------
 
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
+  // the fallen and the memorials; the night's exposure deaths (once per in-game hour, with a host clock)
+  stepDeaths(state);
+  stepExposure(state, map, rng);
+  if (state.wanderer) stepWanderer(state, map, rng); // the opening's night walker
+  if (state.trucks) stepTrucks(state, map); // fire trucks on a call
+  if (state.clouds?.length) stepClouds(state, map, rng); // toxic clouds from a spill (no draws without one)
+  if (state.toxic?.size) stepToxic(state, map, state.windTick % WIND_CADENCE === 0); // their smog drifts and clears
   // 1. Despawn anything whose substrate vanished (read-only self-healing). See pedDespawns for the
   //    exemptions (last-mile walkers + hidden drivers).
   state.cars = state.cars.filter((c) => !carOffNetwork(map, c));

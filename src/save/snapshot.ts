@@ -16,7 +16,9 @@ import type { CivicState } from '../civic/state';
 import type { EconomyRun } from '../economy/run';
 import type { AmbientState } from '../live/types';
 
-export const SAVE_FORMAT = 'bodhitropolis-save';
+export const SAVE_FORMAT = 'bodhgaia-save';
+/** Saves written before the rename (2026-10-07) — still read. */
+const LEGACY_FORMATS: ReadonlySet<unknown> = new Set([SAVE_FORMAT, 'bodhitropolis-save']);
 export const SAVE_VERSION = 2;
 
 /** The map layers a save carries, by GameMap field name (all of them: they are the world). v1 also carried
@@ -164,14 +166,14 @@ export function parseSave(text: string): SaveV1 {
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error('not a Bodhitropolis save (unreadable)');
+    throw new Error('not a Bodhgaia save (unreadable)');
   }
-  if (typeof raw !== 'object' || raw === null || (raw as { format?: unknown }).format !== SAVE_FORMAT) {
-    throw new Error('not a Bodhitropolis save');
+  if (typeof raw !== 'object' || raw === null || !LEGACY_FORMATS.has((raw as { format?: unknown }).format)) {
+    throw new Error('not a Bodhgaia save');
   }
   let s = raw as Record<string, unknown>;
   let v = Number(s.version);
-  if (!Number.isInteger(v) || v < 1) throw new Error('not a Bodhitropolis save (no version)');
+  if (!Number.isInteger(v) || v < 1) throw new Error('not a Bodhgaia save (no version)');
   if (v > SAVE_VERSION) throw new Error(`this save is from a newer version of the game (v${v}; this build reads v${SAVE_VERSION})`);
   while (v < SAVE_VERSION) {
     const lift = MIGRATIONS[v];
