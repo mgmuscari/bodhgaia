@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { NEUTRAL_EFFECTS, NODE_EFFECTS, resolveEffects } from '../../src/tech/effects';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
+import { NEUTRAL_ECONOMY_PRACTICES } from '../../src/economy/readings';
 
 const ids = new Set(TECH_TREE.map((n) => n.id));
 
@@ -31,6 +32,19 @@ describe('tech effects', () => {
     expect(e.voicePerTick).toBe(4); // 1 + 2 + 1
     expect(e.socialInfra).toBe(4); // circles 2 + budgeting 2
     expect(resolveEffects(['gift-circles']).socialInfra).toBe(0);
+  });
+
+  it('the economy practices', () => {
+    const e = resolveEffects(['participatory-budgeting', 'gift-circles', 'community-land-trust', 'shared-table', 'craft-fairs']);
+    expect(e.taxPainMul).toBe(0.5);
+    expect(e.tendingMul).toBe(0.75);
+    expect(e.landTrust).toBe(true);
+    expect(e.burnoutHealMul).toBe(2);
+    expect(e.craftInfra).toBe(2);
+  });
+
+  it('the economy reads exactly its neutral practices from the neutral effects', () => {
+    for (const [k, v] of Object.entries(NEUTRAL_ECONOMY_PRACTICES)) expect(NEUTRAL_EFFECTS[k as keyof typeof NEUTRAL_EFFECTS], k).toBe(v);
   });
 
   it('ignores unknown ids and is independent of unlock order', () => {

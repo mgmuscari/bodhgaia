@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
-import { readCity, UPKEEP, TENDING } from '../../src/economy/readings';
+import { readCity, UPKEEP, TENDING, NEUTRAL_ECONOMY_PRACTICES, type EconomyPractices } from '../../src/economy/readings';
 
 // The economy reads the live city as a handful of aggregates (src/economy stays headless: the city hands
 // it plain accessors, like growth's occupancy accessor).
@@ -74,5 +74,53 @@ describe('readCity', () => {
     const r = read(city());
     expect(r.tending).toBeCloseTo(TENDING.get(BuiltKind.CommunityGarden)!, 9);
     expect(r.socialInfra).toBeGreaterThanOrEqual(1); // the garden is a gathering place
+  });
+});
+
+// The practices' economy effects (docs/design/tech-tree-balance.md), handed in as plain numbers.
+describe('readCity — the practices', () => {
+  const withPractices = (c: ReturnType<typeof city>, practices: Partial<EconomyPractices>) =>
+    readCity({
+      map: c.map,
+      parcels: c.parcels,
+      occupancyAt: (t) => c.occ.get(t),
+      landValueAt: (t) => c.lv.get(t),
+      wellbeing: 0.5,
+      extraInfra: 0,
+      harms: { blackouts: 0, policeViolence: 0, takings: 0 },
+      repairs: 0,
+      practices: { ...NEUTRAL_ECONOMY_PRACTICES, ...practices },
+    });
+
+  it('neutral practices read exactly as before', () => {
+    const c = city();
+    expect(withPractices(c, {})).toEqual(read(c));
+  });
+
+  it('Community Land Trust protects every home within 4 tiles of a co-op, commune or healing commons', () => {
+    const c = city();
+    placeParcel(c.map, c.parcels, { x: 14, y: 14, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    c.occ.set(c.map.idx(14, 14), 10);
+    // the co-op's 6 of 20 households are protected; the house beside it isn't — until the trust holds the land
+    expect(withPractices(c, {}).protectedShare).toBeCloseTo(6 / 20, 9);
+    expect(withPractices(c, { landTrust: true }).protectedShare).toBeCloseTo(10 / 20, 9); // + the house at (1,1); not (14,14)
+  });
+
+  it('Gift Circles: the commons need a quarter less tending', () => {
+    const c = city();
+    expect(withPractices(c, { tendingMul: 0.75 }).tending).toBeCloseTo(read(c).tending * 0.75, 9);
+  });
+
+  it('Craft Fairs: each maker space and bazaar adds social infrastructure', () => {
+    const c = city();
+    placeParcel(c.map, c.parcels, { x: 8, y: 8, width: 2, height: 2, kind: BuiltKind.Bazaar });
+    placeParcel(c.map, c.parcels, { x: 11, y: 8, width: 2, height: 2, kind: BuiltKind.MakerSpace });
+    expect(withPractices(c, { craftInfra: 2 }).socialInfra).toBe(withPractices(c, {}).socialInfra + 4);
+  });
+
+  it('carries the approval and burnout coefficients through to the model', () => {
+    const r = withPractices(city(), { taxPainMul: 0.5, burnoutHealMul: 2 });
+    expect(r.taxPainMul).toBe(0.5);
+    expect(r.burnoutHealMul).toBe(2);
   });
 });

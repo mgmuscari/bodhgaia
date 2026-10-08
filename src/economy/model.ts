@@ -49,6 +49,9 @@ export interface CityReading {
   harms: { blackouts: number; policeViolence: number; takings: number };
   /** Repairs this tick (things the government fixed or delivered), ≥ 0. */
   repairs: number;
+  /** Practices: multipliers on how much taxes weigh on approval, and on burnout's recovery (absent ⇒ 1). */
+  taxPainMul?: number;
+  burnoutHealMul?: number;
 }
 
 /** The player's levers. */
@@ -206,7 +209,7 @@ export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): Ec
   // buffer below a fifth of capacity) is what wears neighbours out; a healthy buffer lets them recover.
   const overdraw = Math.max(0, demand - regen);
   const stretched = effort < 0.2 * cap && overdraw > 0;
-  const burnout = clamp(s.burnout + (stretched ? ECON.burnoutGain * overdraw : -ECON.burnoutHeal), 0, 0.9);
+  const burnout = clamp(s.burnout + (stretched ? ECON.burnoutGain * overdraw : -ECON.burnoutHeal * (city.burnoutHealMul ?? 1)), 0, 0.9);
 
   // ── Rent and displacement: rent chases unprotected land value (+ the tax that landlords pass on)
   const avgTax = (lev.tax.r + lev.tax.c + lev.tax.i) / 3;
@@ -228,7 +231,7 @@ export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): Ec
   // ── Approval: perceived performance, a delayed read of wellbeing, goodwill, tax pain and the police bump
   // a neutral city (wellbeing ½, goodwill neutral, modest taxes) reads about 50
   const actual = clamp(
-    30 + 40 * city.wellbeing + 0.4 * (goodwill - ECON.goodwillNeutral) - 100 * ECON.taxPain * avgTax + Math.min(ECON.policeLiftCap, ECON.policeLift * lev.police * 100),
+    30 + 40 * city.wellbeing + 0.4 * (goodwill - ECON.goodwillNeutral) - 100 * ECON.taxPain * (city.taxPainMul ?? 1) * avgTax + Math.min(ECON.policeLiftCap, ECON.policeLift * lev.police * 100),
     0,
     100,
   );

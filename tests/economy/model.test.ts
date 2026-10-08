@@ -129,3 +129,21 @@ describe('goodwill shock — the part the city applies to civic trust (one trust
     expect(stepEconomy(high, city(), lev()).shock).toBe(0);
   });
 });
+
+describe('the practices in the model', () => {
+  it('Participatory Budgeting: taxes cost half the approval', () => {
+    const taxed = lev({ tax: { r: 0.15, c: 0.15, i: 0.15 } });
+    const plain = run(200, city(), taxed);
+    const budgeted = run(200, city({ taxPainMul: 0.5 }), taxed);
+    expect(budgeted.approval).toBeGreaterThan(plain.approval);
+    // and exactly neutral at ×1
+    expect(run(50, city({ taxPainMul: 1 }), taxed)).toEqual(run(50, city(), taxed));
+  });
+
+  it('Shared Table: burnout heals twice as fast', () => {
+    const tired = { ...createEconomy(), burnout: 0.5 };
+    const a = stepEconomy(tired, city(), lev());
+    const b = stepEconomy(tired, city({ burnoutHealMul: 2 }), lev());
+    expect(0.5 - b.burnout).toBeCloseTo(2 * (0.5 - a.burnout), 9);
+  });
+});

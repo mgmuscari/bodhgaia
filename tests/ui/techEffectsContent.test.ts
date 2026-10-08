@@ -7,9 +7,6 @@ import { kindEffectLines, nodeEffectLines, practiceEffectLines } from '../../src
  *  test below fails the moment a listed node gains its effect, so the list can only shrink. */
 const PENDING_PRACTICES = new Set([
   'soil-and-soul',
-  'community-land-trust',
-  'shared-table',
-  'craft-fairs',
   'bike-shares',
   'sun-and-wire',
   'renewable-energy',

@@ -13,7 +13,7 @@ import type { TechNode } from '../tech/tree';
 import { plantOutput, plantPollution } from '../growth/power';
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
-import { PROTECTED, TENDING, UPKEEP } from '../economy/readings';
+import { LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
 import { TravelMode, modeSpec } from '../citizens/modes';
@@ -57,6 +57,16 @@ function practiceLine(e: Effect): string {
         .filter((n): n is string => !!n);
       return `Unlocks road conversions: ${names.join(', ')}`;
     }
+    case 'landTrust':
+      return `Homes within ${LAND_TRUST_RADIUS} tiles of a co-op, commune or healing commons are rent-protected`;
+    case 'tendingMul':
+      return `The commons need ${pct(1 - (e.value as number))} less tending effort`;
+    case 'craftInfra':
+      return `Each maker space and bazaar adds ${pct(ECON.capPerInfra * (e.value as number))} effort capacity`;
+    case 'taxPainMul':
+      return `Taxes cost ${pct(1 - (e.value as number))} less approval`;
+    case 'burnoutHealMul':
+      return `Burnout recovers ${num(e.value as number)}× as fast`;
   }
 }
 
