@@ -350,6 +350,9 @@ export interface AmbientState {
   trucks?: Truck[];
   /** Toxic clouds drifting downwind from a spill (live/spills.ts). */
   clouds?: ToxicCloud[];
+  /** The toxic smog the clouds lay: drifts and spreads like smog, drawn greenish-yellow by the smog overlay.
+   *  Absent until the first spill. */
+  toxic?: Map<number, number>;
   /** The in-game hour spills were last drawn for. */
   spillHour?: number;
   /** Fires the trucks have put out (parcel store indices) — the host hands them to the fire step and clears it. */

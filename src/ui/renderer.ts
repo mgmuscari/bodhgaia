@@ -1191,6 +1191,22 @@ export class Renderer {
         const img = this.sprites.get(`@sprite/smog/${size}/${tile & 1}`);
         if (img) this.drawArt(ctx, img, wx, wy, camera);
       }
+      // a spill's toxic smog: the same streaming puffs, greenish-yellow and denser
+      for (const [tile, amt] of ambient.toxic ?? []) {
+        if (amt < 16) continue;
+        const px = tile % mapW;
+        const py = (tile - px) / mapW;
+        const phase = (drift * 0.35 + (tile % 13) * 0.11) % 1;
+        const wx = px + 0.5 + ambient.wind.dx * phase * 3.0;
+        const wy = py + 0.5 + ambient.wind.dy * phase * 3.0;
+        const { sx, sy } = camera.worldToScreen(wx, wy);
+        if (!onScreen(sx, sy)) continue;
+        const size = Math.min(SMOG_SIZES - 1, Math.floor(phase * SMOG_SIZES + amt / 120));
+        const env = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+        ctx.globalAlpha = Math.min(0.8, (amt / 255) * 1.1) * env;
+        const img = this.sprites.get(`@sprite/toxic/${size}/${tile & 1}`);
+        if (img) this.drawArt(ctx, img, wx, wy, camera);
+      }
       ctx.globalAlpha = 1;
     }
 

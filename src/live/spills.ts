@@ -11,11 +11,17 @@ import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { layField } from '../citizens/field';
 import type { AmbientState, LivePractices } from './types';
 import { residentDies } from './death';
+import { diffuseField, driftField } from './fields/pollution';
+import { decayField } from '../citizens/field';
 import {
   CLOUD_DEATH_CHANCE,
   CLOUD_DEATH_MAX,
   CLOUD_RADIUS,
   CLOUD_SMOG,
+  CLOUD_TOXIC,
+  POLL_DIFFUSE_COEFF,
+  TOXIC_DECAY,
+  TOXIC_MAX,
   CLOUD_SPEED,
   CLOUD_SUBSTEPS,
   GROUND_POLL_MAX,
@@ -98,6 +104,7 @@ export function stepClouds(state: AmbientState, map: GameMap, rng: Rng): void {
       for (let tx = Math.floor(c.x - CLOUD_RADIUS); tx <= Math.ceil(c.x + CLOUD_RADIUS); tx++) {
         if (!map.inBounds(tx, ty) || (tx + 0.5 - c.x) ** 2 + (ty + 0.5 - c.y) ** 2 > r2) continue;
         layField(state.pollution, map.idx(tx, ty), CLOUD_SMOG * fade, POLL_MAX);
+        layField((state.toxic ??= new Map()), map.idx(tx, ty), CLOUD_TOXIC * fade, TOXIC_MAX);
       }
     }
     if (c.deaths >= CLOUD_DEATH_MAX) continue;
@@ -116,4 +123,16 @@ export function stepClouds(state: AmbientState, map: GameMap, rng: Rng): void {
     if (dead.size > 0) state.peds = state.peds.filter((p) => !dead.has(p));
   }
   state.clouds = state.clouds.filter((c) => c.age < CLOUD_SUBSTEPS && map.inBounds(Math.floor(c.x), Math.floor(c.y)));
+}
+
+/** One substep of the toxic smog: on the wind's turns it drifts downwind and spreads (as smog does); every substep
+ *  it clears a little. */
+export function stepToxic(state: AmbientState, map: GameMap, windTurn: boolean): void {
+  const toxic = state.toxic;
+  if (!toxic || toxic.size === 0) return;
+  if (windTurn) {
+    driftField(toxic, state.wind, map, TOXIC_MAX);
+    diffuseField(toxic, map, POLL_DIFFUSE_COEFF, TOXIC_MAX);
+  }
+  decayField(toxic, TOXIC_DECAY);
 }

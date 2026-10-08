@@ -178,7 +178,7 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     const smog = view.smog();
     // the haze is part of the map: drawn every frame so it follows the camera — with life off the pollution field
     // simply holds still (Maddy 2026-10-08: it froze in place on screen and the map slid under it)
-    if (smog) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind);
+    if (smog) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind, live.state.toxic);
     ctx.afterGpu?.(now);
     // Sim-gated (Y5): re-derive the dock/panel signatures ONLY when a sim tick has run since the last sync.
     if (ctx.sim.takeChanged()) ctx.syncDock();
