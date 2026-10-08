@@ -481,3 +481,6 @@ export const NIGHT_FROM = 22;
 export const NIGHT_TO = 6;
 /** Nobody dies of exposure within this reach (Chebyshev) of shelter — a healing commons or a tiny-home village. */
 export const SHELTER_RADIUS = 6;
+/** Grief: homes within GRIEF_RADIUS (Chebyshev) of a death lose GRIEF_HEALTH of their wellbeing (building health). */
+export const GRIEF_RADIUS = 3;
+export const GRIEF_HEALTH = 20;

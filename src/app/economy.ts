@@ -16,7 +16,7 @@ import { isPowerConsumer } from '../growth/power';
 import { TECH_TREE } from '../tech/tree';
 import { wellbeing } from '../tech/effort';
 import { TRUST_FLOOR } from '../civic/dynamics';
-import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
+import { createEconomy, effortCapacity, mourn, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
 import { homeProtections, readCity, type CityInputs } from '../economy/readings';
 import { economyHour, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
 import { projectProgress } from '../economy/projects';
@@ -100,6 +100,8 @@ export interface EconomyController {
   beginPractice(id: string): boolean;
   /** A practice project's progress 0..1, or undefined if none is underway. */
   projectProgress(id: string): number | undefined;
+  /** The city mourns `deaths` residents: approval, goodwill and effort fall at once. */
+  mourn(deaths: number): void;
 }
 
 export function createEconomyController(deps: EconomyDeps): EconomyController {
@@ -245,6 +247,12 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       if (econ.state.funds < upfront) return false;
       econ = { ...econ, state: { ...econ.state, funds: econ.state.funds - upfront }, projects: [...econ.projects, practiceProject(node)] };
       return true;
+    },
+    mourn: (deaths) => {
+      if (deaths <= 0) return;
+      setState(mourn(econ.state, deaths));
+      // the effort on hand lives on the tech state between hours (runHour folds it back into the run)
+      tech.effort = Math.max(0, tech.effort - ECON.deathEffort * deaths);
     },
     projectProgress: (id) => {
       const p = econ.projects.find((q) => q.id === id);

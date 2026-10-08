@@ -124,6 +124,8 @@ export interface FrameCtx {
   hidden: () => boolean;
   /** The sim-gated sync (tools.syncDock). */
   syncDock: () => void;
+  /** After the map is drawn: the live event feed's CCTV inset. Optional. */
+  afterRender?: (now: number) => void;
 }
 
 /** The rAF frame body (the caller re-requests the next frame after it). */
@@ -155,6 +157,7 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
       live.step(now);
       renderer.renderFrame(world, camera, live.state);
       view.clean();
+      ctx.afterRender?.(now);
     } else if (view.isDirty() || gpu) {
       // Ambient-OFF path: repaint only when something changed. With GPU on we still run the composite (it
       // produces/clears the base the GPU samples) each frame the base is dirty.

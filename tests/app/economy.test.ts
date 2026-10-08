@@ -189,6 +189,16 @@ describe('createEconomyController', () => {
     expect(calls.every((c) => c.amount === 0) || calls.length === 0).toBe(true);
   });
 
+  it('mourn: deaths take approval, goodwill and the effort on hand at once', () => {
+    const { econ, tech } = setup();
+    tech.effort = 100;
+    const before = econ.run().state;
+    econ.mourn(2);
+    expect(econ.run().state.approval).toBeCloseTo(before.approval - 2 * ECON.deathApproval, 9);
+    expect(econ.run().state.goodwill).toBeCloseTo(before.goodwill - 2 * ECON.deathGoodwill, 9);
+    expect(tech.effort).toBe(100 - 2 * ECON.deathEffort);
+  });
+
   it('beginning a practice pays its money up front, once — and is refused without it', () => {
     const terms = practiceTerms(TECH_TREE.find((n) => n.id === 'walkable-streets')!);
     const rich = setup({ state: createEconomy(terms.upfront + 100), projects: [], levers: DEFAULT_LEVERS });
