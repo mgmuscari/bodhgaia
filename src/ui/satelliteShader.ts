@@ -53,6 +53,8 @@ in vec2 v_uv;
 out vec4 fragColor;
 
 ${ART_GRID_GLSL}
+const float WATER_LAP_S = 0.7;  // the flood's wave rhythm
+const float WATER_LAP_PX = 2.0; // art pixels the crests lap
 vec4 cell(vec2 c) { return texture(u_data, (c + 0.5) / u_grid); }
 void main() {
   vec2 g = u_origin + v_uv * u_view; // screen UV → world cell space (camera pan/zoom)
@@ -65,6 +67,16 @@ void main() {
   vec3 col = texture(u_base, v_uv).rgb;
   vec2 ga = artPixel(g); // light is evaluated once per ART pixel, never across one
   int type = int(cell(floor(ga)).r * 255.0 + 0.5); // this cell's kind (roofs take no cast shadow)
+  // Water laps (Maddy 2026-10-08: the water tiles animated the way the flood is): per tile in a checker, every
+  // WATER_LAP_S the art alternates with itself shifted WATER_LAP_PX art pixels, so the wave crests lap back and
+  // forth — taken only where the shifted pixel is water too, so a shore never smears into the bay.
+  if (type == SAT_WATER) {
+    vec2 wc = floor(ga);
+    if (mod(floor(u_time / WATER_LAP_S) + wc.x + wc.y, 2.0) > 0.5) {
+      vec2 lap = vec2(WATER_LAP_PX / ART_PX, 0.0);
+      if (int(cell(floor(ga + lap)).r * 255.0 + 0.5) == SAT_WATER) col = texture(u_base, v_uv + lap / u_view).rgb;
+    }
+  }
 
   // Day/night: the sun ARCS east→west across the sky (NOT a full orbit around the map — that read as
   // flat-earth, Maddy). Altitude = sin(day): >0 daytime, <0 night. Azimuth sweeps via cos(day), with a
