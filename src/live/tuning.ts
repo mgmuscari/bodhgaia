@@ -266,6 +266,12 @@ export const OCC_EXPECT_RATE = 1 / 600;
 // there before the player arrives (~20% unhoused on lotus/harbor/oak, whose homes average grade ≈ 0.4) — floored
 // at OCC_FLOOR. Repairs and housing then win people back; harms push more out.
 export const INHERITED_VACANCY = 0.5;
+/** Re-homing (docs/design/rehoming.md): a home built since the opening fills this share of its baseline per
+ *  occupancy pass (~50 s to fill), from the unhoused first; any home with room below its baseline takes the
+ *  unhoused back at REHOME_WELCOME × its neighbourhood's voice (0..1) of its baseline per pass (~3½ min to
+ *  refill at full voice). No voice, no welcome: the inherited crisis holds until the city organises or builds. */
+export const REHOME_FRESH = 0.02;
+export const REHOME_WELCOME = 0.005;
 /** Per-kind growth HEADROOM: how far above its seeded baseline a home's occupancy can climb when it
  *  thrives. A single house barely densifies; apartments / projects / co-ops / communes hold far more. */
 export const OCC_HEADROOM: ReadonlyMap<number, number> = new Map([

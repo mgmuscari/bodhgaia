@@ -13,7 +13,6 @@ import { metaButtons } from './ui/dockContent';
 import { mountSavesPanel } from './ui/savesPanel';
 import { inspectReadout } from './ui/inspectContent';
 import { sampleRestoration } from './ui/restorationContent';
-import { sampleUnhoused } from './ui/unhousedContent';
 import { wellbeing } from './tech/effort';
 import type { SaveV1 } from './save/snapshot';
 import { CURRENT, readSlot } from './save/store';
@@ -67,6 +66,7 @@ export function main(save: SaveV1 | null = null): void {
     parcels: world.parcels,
     caps: settings.current().live,
     saved: save?.live ?? null,
+    legacyDisplaced: save?.econ.state.displaced ?? 0,
     practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
   });
   const power = createPowerController({
@@ -210,7 +210,7 @@ export function main(save: SaveV1 | null = null): void {
     readout: () => economy.readout(),
     wellbeing: () => wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }),
     // the city's decline left them without a home, or rent displaced them (loop-coupled: healing lowers it)
-    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
+    unhoused: () => Math.round(live.state.unhoused), // people without a home (docs/design/rehoming.md)
   });
   const mounted = mountPanels({
     container: document.body,
@@ -240,7 +240,7 @@ export function main(save: SaveV1 | null = null): void {
     height: world.map.height,
     policeViolence: () => live.state.policeViolence,
     traffic: () => live.state.traffic,
-    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
+    unhoused: () => Math.round(live.state.unhoused), // people without a home (docs/design/rehoming.md)
     dark: () => {
       const lit = power.grid().poweredAnchors;
       let dark = 0;
@@ -256,7 +256,7 @@ export function main(save: SaveV1 | null = null): void {
     show: (items) => toolbar.setNews(items),
   });
   {
-    const u = sampleUnhoused(live.state, world.map.width).unhoused;
+    const u = Math.round(live.state.unhoused);
     if (u > 0) news.push(`${u} residents are without a home`); // the inherited crisis, from the first frame
   }
 

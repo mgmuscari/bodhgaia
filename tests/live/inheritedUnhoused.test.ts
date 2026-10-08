@@ -5,7 +5,6 @@ import { createAmbientState, setHouseholds } from '../../src/live/types';
 import { seedDecay } from '../../src/live/fields/pollution';
 import { INHERITED_VACANCY } from '../../src/live/tuning';
 import { OCC_FLOOR } from '../../src/live/tuning';
-import { sampleUnhoused } from '../../src/ui/unhousedContent';
 
 // Maddy 2026-10-06: "we do expect high homeless population in distressed cities". The crisis is INHERITED — the
 // city opens with homes emptied by disinvestment, in proportion to how redlined their ground is — rather than
@@ -38,7 +37,7 @@ describe('the inherited housing crisis', () => {
   });
 
   it('the city opens with unhoused residents — the crisis is visible from the first frame', () => {
-    const { map, state } = city();
-    expect(sampleUnhoused(state, map.width).unhoused).toBeGreaterThan(0);
+    const { state } = city();
+    expect(state.unhoused).toBeGreaterThan(0);
   });
 });

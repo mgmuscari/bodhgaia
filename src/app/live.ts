@@ -55,6 +55,8 @@ export interface LiveDeps {
   saved: SaveV1['live'] | null;
   /** The tech practices' live coefficients (read each step). */
   practices(): LivePractices;
+  /** An older save's economy rent-displacement count, folded into the unhoused pool on resume. */
+  legacyDisplaced?: number;
   /** Wall-clock ms (default performance.now). */
   now?(): number;
 }
@@ -115,7 +117,7 @@ export function createLive(deps: LiveDeps): LiveLayer {
   // and polluted the shorelines, before the player arrives to heal it. A resumed city's saved stocks go OVER
   // the seeded decay — so restore strictly after seed.
   seedDecay(state, map);
-  if (deps.saved) restoreLive(state, deps.saved);
+  if (deps.saved) restoreLive(state, deps.saved, map.width, deps.legacyDisplaced ?? 0);
 
   return {
     state,
