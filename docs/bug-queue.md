@@ -54,7 +54,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   the budget could never balance. Fixed: residents move on the gap from what they expect (settled on the
   inherited city), taxes recalibrated on the settled state, and ways out of debt (freeway salvage, volunteer
   works, a one-time relief grant).
-- 🟡 **Map clicks dropped when a no-button move arrives between press and release** — `src/ui/input.ts`
+- ✅ **Map clicks dropped when a no-button move arrives between press and release** — `src/ui/input.ts`
   safety net (`e.buttons === 0` → end drag) swallows the pointerup, so a build click places nothing (seen
   driving the game from the Chrome extension). Fix: only apply the safety net when the pointer isn't captured.
 - 🟡 **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
