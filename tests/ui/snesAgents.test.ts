@@ -61,6 +61,14 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     expect(opaque(tiles.get('@sprite/drop')!)).toBeGreaterThan(0);
   });
 
+  it('rain is short streaks, one art pixel wide — longer in a heavy storm', () => {
+    const light = tiles.get('@sprite/rain/0')!;
+    const heavy = tiles.get('@sprite/rain/1')!;
+    expect(light.w).toBe(1);
+    expect(heavy.w).toBe(1);
+    expect(heavy.h).toBeGreaterThan(light.h);
+  });
+
   it('toxic smog billows like smog, in a sickly yellow-green', () => {
     for (let s = 0; s < SMOG_SIZES; s++) {
       for (const v of [0, 1]) {

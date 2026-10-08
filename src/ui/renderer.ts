@@ -1210,6 +1210,35 @@ export class Renderer {
       ctx.globalAlpha = 1;
     }
 
+    // Rain (app/weather.ts): while a storm lasts the sky greys a little and streaks fall across the view — sprites
+    // on the art grid, each drop on its own phase, leaning with the wind; a heavy storm's are longer and thicker.
+    // Drawn before the lighting pass, so night dims the rain with everything else.
+    if (ambient.rain) {
+      const heavy = ambient.rain.heavy;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = heavy ? 'rgba(40, 52, 72, 0.24)' : 'rgba(40, 52, 72, 0.14)';
+      ctx.fillRect(0, 0, this.base.width, this.base.height);
+      ctx.restore();
+      const img = this.sprites.get(`@sprite/rain/${heavy ? 1 : 0}`);
+      if (img) {
+        const t = performance.now() / 1000;
+        const count = Math.round(((w * h) / (ts * ts)) * (heavy ? 2.2 : 0.9));
+        const fall = h * (heavy ? 1.6 : 1.2); // screens per second
+        ctx.globalAlpha = heavy ? 0.75 : 0.6;
+        for (let i = 0; i < count; i++) {
+          const a = Math.imul(i + 1, 0x9e3779b1) >>> 0;
+          const b = Math.imul(a ^ (a >>> 15), 0x85ebca6b) >>> 0;
+          const y = ((b % 1000) / 1000) * (h + ts) + t * fall;
+          const sy = (y % (h + ts)) - ts;
+          const sx = ((a % 1000) / 1000) * w + ambient.wind.dx * (sy / h) * ts;
+          const at = camera.screenToWorld(sx, sy);
+          this.drawArt(ctx, img, at.wx, at.wy, camera);
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
     // GPU mode: light the sprite layer to MATCH the ground — the same day/night dim + night cool the shader
     // applies (lighting.ts mirrors it), source-atop over the sprite pixels so transparent gaps stay clear.
     // Uniform across the view: the ground's only spatial light is building contact shadow, which sprites
