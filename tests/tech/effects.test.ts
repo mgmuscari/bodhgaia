@@ -4,6 +4,7 @@ import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { NEUTRAL_ECONOMY_PRACTICES } from '../../src/economy/readings';
 import { NEUTRAL_PRACTICES } from '../../src/live/types';
+import { NEUTRAL_POWER_PRACTICES } from '../../src/growth/power';
 
 const ids = new Set(TECH_TREE.map((n) => n.id));
 
@@ -55,6 +56,12 @@ describe('tech effects', () => {
     expect(e.droneShopDrop).toBe(0.5);
     expect(e.occFloor).toBe(0.5);
     expect(e.industryVisit).toBe(-1);
+  });
+
+  it('the power grid reads exactly its neutral practices from the neutral effects', () => {
+    for (const [k, v] of Object.entries(NEUTRAL_POWER_PRACTICES)) expect(NEUTRAL_EFFECTS[k as keyof typeof NEUTRAL_EFFECTS], k).toBe(v);
+    const e = resolveEffects(['sun-and-wire', 'renewable-energy', 'local-grids']);
+    expect([e.homeDayDemand, e.renewableOutput, e.localGrids]).toEqual([0.75, 1.25, true]);
   });
 
   it('the economy reads exactly its neutral practices from the neutral effects', () => {

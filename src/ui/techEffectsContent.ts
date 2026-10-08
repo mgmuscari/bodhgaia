@@ -10,7 +10,7 @@ import { BuiltKind, isServiceStation, isTransportKind } from '../engine/fabric';
 import { GameMap } from '../engine/map';
 import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
-import { plantOutput, plantPollution } from '../growth/power';
+import { LOCAL_GRID_RADIUS, ROOF_SOLAR_FROM, ROOF_SOLAR_TO, plantOutput, plantPollution } from '../growth/power';
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
 import { LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
@@ -79,6 +79,12 @@ function practiceLine(e: Effect): string {
       return `Neighbours take people in: no home falls below ${pct(e.value as number)} of its residents (was ${pct(OCC_FLOOR)})`;
     case 'industryVisit':
       return `A day at worker-owned industry costs ${-(e.value as number)} wellbeing (was ${-visitValue(BuiltKind.Industrial)})`;
+    case 'homeDayDemand':
+      return `Rooftop solar: homes draw ${pct(1 - (e.value as number))} less power ${ROOF_SOLAR_FROM}:00–${ROOF_SOLAR_TO}:00`;
+    case 'renewableOutput':
+      return `Hydro, wind and solar plants make ${pct((e.value as number) - 1)} more power`;
+    case 'localGrids':
+      return `In a blackout, homes within ${LOCAL_GRID_RADIUS} tiles of an energy node are kept lit first`;
   }
 }
 
