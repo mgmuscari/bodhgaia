@@ -1,6 +1,6 @@
 # Tech tree balance pass: every tech does something exact
 
-Status: **proposed, 2026-10-07.** Follows [tech-tree-audit.md](tech-tree-audit.md). Maddy's
+Status: **batches 1–2 built, 2026-10-07** (branch `feat/tech-effects`); batch 3 (buildings) next. Follows [tech-tree-audit.md](tech-tree-audit.md). Maddy's
 decision: keep all 39 nodes and give each one a mechanic. No pruning, and the prereq graph is
 unchanged.
 
