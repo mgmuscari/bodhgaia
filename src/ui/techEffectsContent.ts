@@ -10,6 +10,7 @@ import { BuiltKind, isServiceStation, isTransportKind } from '../engine/fabric';
 import { GameMap } from '../engine/map';
 import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
+import { MAKER_RADIUS, MAKER_REPAIR } from '../growth/revival';
 import { LOCAL_GRID_RADIUS, ROOF_SOLAR_FROM, ROOF_SOLAR_TO, plantOutput, plantPollution } from '../growth/power';
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
@@ -142,6 +143,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (kind === BuiltKind.ADU) effects.push(`Built beside a house: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
   if (kind === BuiltKind.AINode) effects.push(`Schedules trips: car trips within ${AI_NODE_RADIUS} tiles evaporate ${AI_EVAPORATION_BOOST}× as readily in a jam`);
   if (kind === BuiltKind.Commune) effects.push('Its residents own no cars');
+  if (kind === BuiltKind.MakerSpace) effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
   if (kind === BuiltKind.ElevatedRail) effects.push(`Stations: plots within ${STATION_RADIUS} tiles of the line gain ${LV_STATION} land value`);
   if (kind === BuiltKind.CompostHub) effects.push(`Gardens and vertical farms within ${COMPOST_RADIUS} tiles need ${pct(1 - COMPOST_TENDING)} less tending`);
   if (kind === BuiltKind.Bazaar) effects.push(`Draws a crowd: shops within ${BAZAAR_RADIUS} tiles pay ${pct(BAZAAR_LIFT - 1)} more tax`);
