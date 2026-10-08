@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-Project-specific guidance for Bodhitropolis. Process and methodology come from the
+Project-specific guidance for Bodhgaia. Process and methodology come from the
 global config; this file covers only what is particular to this repo.
 
 ## What this is
 
-Bodhitropolis is a dharmapunk browser city-builder: a deterministic, procedurally
+Bodhgaia is a dharmapunk browser city-builder: a deterministic, procedurally
 generated world in TypeScript (Vite + Vitest), in the GPL-3 lineage of Micropolis
 (the open-sourced SimCity Classic, upstream [SimHacker/micropolis](https://github.com/SimHacker/micropolis),
 git remote `micropolis`).
@@ -91,7 +91,7 @@ terrain as cover — so damage reads as *produced by policy*, not natural.
   HMR full-reload no longer wipes her session — but `?new` (or New city) does start
   fresh and the next autosave overwrites the city in progress. Don't navigate her tab
   to `?new`; to show a fresh city, serve a build on another port (its own storage).
-  Reading `window.bodhitropolis` is fine — it exists in DEV builds only (stripped from
+  Reading `window.bodhgaia` is fine — it exists in DEV builds only (stripped from
   the published page).
 - **Drive live logic via dynamic import.** In a page `evaluate`,
   `await import('/src/live/pathing.ts')` (or `/src/live/agents.ts`,

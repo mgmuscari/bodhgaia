@@ -39,6 +39,7 @@ import { placeCategoryOf } from './audio/sfx';
 import { gameClock } from './ui/lighting';
 import { BuiltKind } from './engine/fabric';
 
+// The default world's seed — its identity, so it keeps the pre-rename name (Bodhgaia was Bodhitropolis).
 const DEFAULT_SEED = 'bodhitropolis';
 
 export function main(save: SaveV1 | null = null): void {

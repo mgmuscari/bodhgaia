@@ -95,7 +95,7 @@ export class Camera {
   /** Center the view on world tile (wx, wy), optionally setting the zoom first
    *  (rounded to an integer and clamped to [MIN_ZOOM, MAX_ZOOM]). The position is
    *  clamped to the map, so a target near an edge lands as close to centre as the
-   *  map allows. The zoom-to-location API behind `window.bodhitropolis.focus`. */
+   *  map allows. The zoom-to-location API behind `window.bodhgaia.focus`. */
   centerOn(wx: number, wy: number, zoom?: number): void {
     if (zoom !== undefined) this.zoom = clamp(Math.round(zoom), MIN_ZOOM, MAX_ZOOM);
     const ts = this.tileSize;

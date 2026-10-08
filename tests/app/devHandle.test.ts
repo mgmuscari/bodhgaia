@@ -32,7 +32,7 @@ describe('installDevHandle (dev builds)', () => {
       },
     } as unknown as DevHandleDeps;
     installDevHandle(deps);
-    const h = g.window.bodhitropolis as {
+    const h = g.window.bodhgaia as {
       power: () => PowerGrid;
       gpuOn: () => boolean;
       toggleGpu: () => boolean;

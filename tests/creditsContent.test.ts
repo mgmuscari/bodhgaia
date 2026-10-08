@@ -39,7 +39,7 @@ describe('credits content', () => {
   it('names the licence and links the source and the shipped licence text', () => {
     expect(text).toContain('GPL-3.0-or-later');
     expect(text).toContain(SOURCE_URL);
-    expect(SOURCE_URL).toBe('https://github.com/mgmuscari/bodhitropolis');
+    expect(SOURCE_URL).toBe('https://github.com/mgmuscari/bodhgaia');
     const hrefs = creditsBlocks().flatMap((b) => (b.links ?? []).map((l) => l.href));
     expect(hrefs).toContain(SOURCE_URL);
     expect(hrefs).toContain(COPYING_HREF);

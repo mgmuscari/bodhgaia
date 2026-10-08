@@ -1,4 +1,6 @@
-# Bodhitropolis
+# Bodhgaia
+
+*(Formerly Bodhitropolis — renamed 2026-10-07. Saves, the browser database and the default seed keep the old name.)*
 
 A dharmapunk browser city-builder — a deterministic, procedurally-generated
 world atop the GPL-3 Micropolis lineage (the open-sourced SimCity Classic by
