@@ -10,7 +10,7 @@
 // version is lifted through MIGRATIONS (one step per version) before use.
 
 import type { GameMap } from '../engine/map';
-import type { ParcelColumns, ParcelStore } from '../engine/fabric';
+import { BuiltKind, type ParcelColumns, type ParcelStore } from '../engine/fabric';
 import type { TechState } from '../tech/state';
 import type { CivicState } from '../civic/state';
 import type { EconomyRun } from '../economy/run';
@@ -19,7 +19,7 @@ import type { AmbientState } from '../live/types';
 export const SAVE_FORMAT = 'bodhgaia-save';
 /** Saves written before the rename (2026-10-07) — still read. */
 const LEGACY_FORMATS: ReadonlySet<unknown> = new Set([SAVE_FORMAT, 'bodhitropolis-save']);
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /** The map layers a save carries, by GameMap field name (all of them: they are the world). v1 also carried
  *  'traffic' — an always-zero legacy layer, retired in v2 (MIGRATIONS[1] drops it). */
@@ -158,6 +158,17 @@ const MIGRATIONS: Record<number, (s: Record<string, unknown>) => Record<string, 
     if (!world?.layers) return s;
     const { traffic: _dropped, ...layers } = world.layers;
     return { ...s, world: { ...world, layers } };
+  },
+  // v2 → v3 (Maddy 2026-10-08): parklets moved off their own lots onto the road's kerb (the deck layer). A
+  // parklet lot in an older city becomes a pocket park — its parcel kind and its tiles' built kind, nothing else.
+  2: (s) => {
+    const world = s.world as { layers?: Record<string, string>; parcels?: { kind?: number[] } } | undefined;
+    if (!world?.layers?.built || !world.parcels?.kind) return s;
+    const bytes = decodeBytes(world.layers.built);
+    const built = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 1);
+    for (let i = 0; i < built.length; i++) if (built[i] === BuiltKind.Parklet) built[i] = BuiltKind.Park;
+    const kind = world.parcels.kind.map((k) => (k === BuiltKind.Parklet ? BuiltKind.Park : k));
+    return { ...s, world: { ...world, layers: { ...world.layers, built: encodeBytes(bytes) }, parcels: { ...world.parcels, kind } } };
   },
 };
 
