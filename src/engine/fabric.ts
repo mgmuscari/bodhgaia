@@ -103,6 +103,8 @@ export const BuiltKind = {
   // for Park, a gathering place (see civic dynamics).
   Park: 61,
   RewildedLand: 62,
+  // Re-homing (docs/design/rehoming.md): homes that shelter only the city's unhoused.
+  TinyHomes: 63,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -122,6 +124,7 @@ const COMMONS_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.Bazaar,
   BuiltKind.MakerSpace,
   BuiltKind.VerticalFarm,
+  BuiltKind.TinyHomes,
 ]);
 export const isCommonsKind = (k: number): boolean => COMMONS_KINDS.has(k);
 /** Elevated transit that can deck OVER a road as an overpass: elevated rail (8) or promenade (9). */

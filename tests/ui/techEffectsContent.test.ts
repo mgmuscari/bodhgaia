@@ -56,3 +56,12 @@ describe('effect text uses the numbers the sim runs on', () => {
     expect(kindEffectLines(BuiltKind.WindTurbine).costs).toEqual(['Upkeep: $0.6/hour']);
   });
 });
+
+describe('the tiny-home village', () => {
+  it('says whom it shelters, that rent cannot touch it, and what it costs to keep', () => {
+    const l = kindEffectLines(BuiltKind.TinyHomes);
+    expect(l.effects[0]).toBe("Shelters 12 of the city's unhoused — and only them");
+    expect(l.effects).toContain('Rent-protected: residents are never priced out by land value');
+    expect(l.costs).toEqual(['Tending: 0.1 effort/hour']);
+  });
+});

@@ -3,6 +3,7 @@
 // it implies. Cut verbatim from ui/ambientContent.ts; the stepper sets the cadence.
 
 import type { GameMap } from '../../engine/map';
+import { BuiltKind } from '../../engine/fabric';
 import { sampleField } from '../../citizens/field';
 import { liveCaps } from '../caps';
 import {
@@ -74,7 +75,9 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
   for (const h of homes) {
     const t = map.idx(h.x, h.y);
     const cap = capacityOf(map.built[t]!, h.count);
-    const floor = h.count * state.practices.occFloor; // a home never thins below this fraction of its baseline (Mutual Aid raises it)
+    // a tiny-home village shelters only the city's unhoused: it fills from the pool alone and may stand empty
+    const poolOnly = map.built[t] === BuiltKind.TinyHomes;
+    const floor = poolOnly ? 0 : h.count * state.practices.occFloor; // a home never thins below this share of its baseline (Mutual Aid raises it)
     let cur = state.occupancy.get(t);
     if (cur === undefined) {
       // the opening census is seeded full; a home BUILT since opens empty and fills (rehoming.md)
@@ -91,14 +94,17 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     );
     // a new home (or the opening) takes its conditions as normal
     const was = settling ? raw : (state.occExpect.get(t) ?? raw);
-    let occ = moveFromPool(state, cur, occupancyStep(cur, floor, cap, raw - was));
+    let to = occupancyStep(cur, floor, cap, raw - was);
+    if (poolOnly && to > cur) to = cur + Math.min(to - cur, state.unhoused);
+    let occ = moveFromPool(state, cur, to);
     // Re-homing into room below the home's baseline: a fresh home fills at REHOME_FRESH (from the pool,
     // else from people moving to the city); any home is welcomed back at REHOME_WELCOME × its voice.
     const room = h.count - occ;
     if (room > 0) {
       const welcome = state.welcome?.get(t) ?? 0;
-      const moved = state.freshHomes?.has(t)
-        ? Math.min(room, REHOME_FRESH * h.count)
+      const fresh = state.freshHomes?.has(t) ?? false;
+      const moved = fresh
+        ? Math.min(room, REHOME_FRESH * h.count, poolOnly ? state.unhoused : Infinity)
         : Math.min(room, state.unhoused, REHOME_WELCOME * welcome * h.count);
       occ = moveFromPool(state, occ, occ + moved);
     }

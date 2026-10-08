@@ -281,6 +281,7 @@ export const OCC_HEADROOM: ReadonlyMap<number, number> = new Map([
   [BuiltKind.Projects, 3],
   [BuiltKind.CoopHousing, 2.5],
   [BuiltKind.Commune, 2.5],
+  [BuiltKind.TinyHomes, 1], // a shelter holds its cabins' worth, no more
 ]);
 
 /** Wellbeing a walking citizen loses per substep spent trudging along a road/stroad — a long
