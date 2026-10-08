@@ -41,3 +41,15 @@ describe('laying rail across other ways', () => {
     expect(placeTransport(map, 5, 5, BuiltKind.Rail)).toBe(false);
   });
 });
+
+describe('streetcar and rail are drawn as separate tracks (Maddy 2026-10-08)', () => {
+  it('where they meet, neither joins the other', async () => {
+    const { transportMask } = await import('../../src/engine/fabric');
+    const map = new GameMap(10, 5);
+    for (let x = 1; x <= 4; x++) map.setBuilt(x, 2, BuiltKind.Streetcar);
+    for (let x = 5; x <= 8; x++) map.setBuilt(x, 2, BuiltKind.Rail);
+    expect(transportMask(map, 4, 2)).toBe(8); // the streetcar's end: only its own line, west
+    expect(transportMask(map, 5, 2)).toBe(2); // the rail's end: only its own line, east
+    expect(transportMask(map, 3, 2)).toBe(2 | 8);
+  });
+});
