@@ -1067,6 +1067,13 @@ export class Renderer {
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
+    // The opening's night walker: an unhoused resident on foot, drawn like any citizen (a two-step walk).
+    if (ambient.wanderer) {
+      const w = ambient.wanderer;
+      const img = this.sprites.get(personKey('ped', w.seed >>> 0, Math.floor(performance.now() / 260) % 2));
+      if (img) this.drawArt(ctx, img, w.x + 0.5, w.y + 0.5, camera);
+    }
+
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
     // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
     const psx = camera.tileSize / BASE_TILE;

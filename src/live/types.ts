@@ -314,6 +314,9 @@ export interface AmbientState {
   fallen?: { x: number; y: number; t: number }[];
   /** Street memorials — a candle and flowers — where someone died (age in substeps). */
   memorials?: { x: number; y: number; age: number }[];
+  /** The opening's night walker (bodhgaia-opening.md): one unhoused resident the camera follows until they die.
+   *  Position in tiles; `path` is the current foot route (tile indices), `i` the next waypoint. */
+  wanderer?: { x: number; y: number; path: number[]; i: number; age: number; life: number; seed: number };
   /** Residents who have died so far (the news reads its change). */
   deaths?: number;
   /** The live event feed — deaths, arrests (disasters later) — for the host's CCTV inset, news and costs.
