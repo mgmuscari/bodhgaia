@@ -49,6 +49,8 @@ export interface CityReading {
   harms: { blackouts: number; policeViolence: number; takings: number };
   /** Repairs this tick (things the government fixed or delivered), ≥ 0. */
   repairs: number;
+  /** Households counted for effort regeneration — communes count twice (absent ⇒ households). */
+  regenHouseholds?: number;
   /** Practices: multipliers on how much taxes weigh on approval, and on burnout's recovery (absent ⇒ 1). */
   taxPainMul?: number;
   burnoutHealMul?: number;
@@ -161,7 +163,7 @@ export function effortCapacity(city: CityReading): number {
 /** Effort regenerated this tick: households × wellbeing × trust × (1 − burnout). */
 export function effortRegen(city: CityReading, s: EconomyState): number {
   const trust = 0.4 + 0.6 * (s.goodwill / 100); // a distrusted government still gets some help
-  return city.households * ECON.regenPerHousehold * city.wellbeing * trust * (1 - s.burnout);
+  return (city.regenHouseholds ?? city.households) * ECON.regenPerHousehold * city.wellbeing * trust * (1 - s.burnout);
 }
 
 /** Money in this tick: each class's base × its rate. */

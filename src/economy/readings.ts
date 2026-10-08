@@ -108,6 +108,28 @@ export const NEUTRAL_ECONOMY_PRACTICES: Readonly<EconomyPractices> = Object.free
   burnoutHealMul: 1,
 });
 
+/** A building's reach: every parcel whose footprint comes within `r` tiles (Chebyshev) of a parcel of one of
+ *  `kinds`. Returns the predicate; cheap when there are none. */
+export function reachOf(parcels: ParcelStore, kinds: ReadonlySet<number>, r: number): (p: { x: number; y: number; width: number; height: number }) => boolean {
+  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  for (const i of parcels.aliveIndices()) {
+    const a = parcels.get(i);
+    if (kinds.has(a.kind)) boxes.push({ x0: a.x - r, y0: a.y - r, x1: a.x + a.width - 1 + r, y1: a.y + a.height - 1 + r });
+  }
+  if (boxes.length === 0) return () => false;
+  return (p) => boxes.some((b) => p.x <= b.x1 && p.x + p.width - 1 >= b.x0 && p.y <= b.y1 && p.y + p.height - 1 >= b.y0);
+}
+
+/** Compost Hub: the gardens and farms within this reach need COMPOST_TENDING of their tending. */
+export const COMPOST_RADIUS = 4;
+export const COMPOST_TENDING = 0.5;
+const COMPOSTED: ReadonlySet<number> = new Set<number>([BuiltKind.CommunityGarden, BuiltKind.VerticalFarm]);
+/** Bazaar: the shops within this reach are assessed BAZAAR_LIFT × (the bazaar draws a crowd). */
+export const BAZAAR_RADIUS = 4;
+export const BAZAAR_LIFT = 1.25;
+/** Commune: its households regenerate effort COMMUNE_REGEN × (pooled lives, pooled time). */
+export const COMMUNE_REGEN = 2;
+
 /** How far (Chebyshev, from the anchor's footprint) a Land Trust's protection reaches. */
 export const LAND_TRUST_RADIUS = 4;
 /** The places a Land Trust holds land around. */
@@ -170,6 +192,9 @@ export function readCity(inp: CityInputs): CityReading {
   const { map, parcels } = inp;
   const pr = inp.practices ?? NEUTRAL_ECONOMY_PRACTICES;
   const protection = homeProtections(inp);
+  const composted = reachOf(parcels, new Set([BuiltKind.CompostHub]), COMPOST_RADIUS);
+  const nearBazaar = reachOf(parcels, new Set([BuiltKind.Bazaar]), BAZAAR_RADIUS);
+  let communeHouseholds = 0;
   let crafts = 0;
   let households = 0;
   let protectedHouseholds = 0;
@@ -184,16 +209,17 @@ export function readCity(inp: CityInputs): CityReading {
     const lv = (inp.landValueAt(anchor) ?? 0) / 255;
     if (RESIDENTIAL.has(p.kind)) {
       households += occ;
+      if (p.kind === BuiltKind.Commune) communeHouseholds += occ;
       protectedHouseholds += occ * (protection.get(anchor) ?? 0);
       base.r += occ * lv * BASE_PER_UNIT.r;
     } else if (COMMERCIAL.has(p.kind) || INDUSTRIAL.has(p.kind)) {
       // a workplace's tax base is its jobs: density, scaled by how well the building is kept
       const jobs = p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
-      if (COMMERCIAL.has(p.kind)) base.c += jobs * lv * BASE_PER_UNIT.c;
+      if (COMMERCIAL.has(p.kind)) base.c += jobs * lv * BASE_PER_UNIT.c * (p.kind !== BuiltKind.Bazaar && nearBazaar(p) ? BAZAAR_LIFT : 1);
       else base.i += jobs * BASE_PER_UNIT.i; // assessed on output: industry's land value is its own victim
     }
     upkeep += UPKEEP.get(p.kind) ?? 0;
-    tending += TENDING.get(p.kind) ?? 0;
+    tending += (TENDING.get(p.kind) ?? 0) * (COMPOSTED.has(p.kind) && composted(p) ? COMPOST_TENDING : 1);
     if (GATHERING.has(p.kind)) gathering++;
     if (CRAFT_KINDS.has(p.kind)) crafts++;
   }
@@ -213,6 +239,7 @@ export function readCity(inp: CityInputs): CityReading {
     socialInfra: gathering + inp.extraInfra + crafts * pr.craftInfra,
     harms: inp.harms,
     repairs: inp.repairs,
+    regenHouseholds: households + communeHouseholds * (COMMUNE_REGEN - 1),
     taxPainMul: pr.taxPainMul,
     burnoutHealMul: pr.burnoutHealMul,
   };

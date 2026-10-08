@@ -153,3 +153,44 @@ describe('readCity — voice protects (tenant organising, Maddy 2026-10-07)', ()
     expect(homeProtection(BuiltKind.HouseSingle, false, 0)).toBe(0);
   });
 });
+
+describe('readCity — building area effects (tech-tree batch 3)', () => {
+  const base = (c: ReturnType<typeof city>) =>
+    readCity({
+      map: c.map,
+      parcels: c.parcels,
+      occupancyAt: (t) => c.occ.get(t),
+      landValueAt: (t) => c.lv.get(t),
+      wellbeing: 0.5,
+      extraInfra: 0,
+      harms: { blackouts: 0, policeViolence: 0, takings: 0 },
+      repairs: 0,
+    });
+
+  it('a compost hub halves the tending of gardens and vertical farms within 4 tiles', () => {
+    const c = city(); // the garden at (5,1)
+    const before = base(c).tending;
+    placeParcel(c.map, c.parcels, { x: 7, y: 1, width: 1, height: 1, kind: BuiltKind.CompostHub }); // 2 tiles away
+    const garden = TENDING.get(BuiltKind.CommunityGarden)!;
+    expect(base(c).tending).toBeCloseTo(before + TENDING.get(BuiltKind.CompostHub)! - garden / 2, 9);
+  });
+
+  it('a bazaar draws a crowd: shops within 4 tiles are assessed a quarter more', () => {
+    const c = city(); // the strip at (3,1)
+    const before = base(c).base.c;
+    placeParcel(c.map, c.parcels, { x: 9, y: 9, width: 2, height: 2, kind: BuiltKind.Bazaar }); // far: no lift
+    expect(base(c).base.c).toBeCloseTo(before, 9);
+    const c2 = city();
+    placeParcel(c2.map, c2.parcels, { x: 4, y: 4, width: 2, height: 2, kind: BuiltKind.Bazaar }); // 3 tiles from the strip
+    expect(base(c2).base.c).toBeCloseTo(before * 1.25, 9); // the bazaar itself holds no jobs at occupancy 0
+  });
+
+  it("a commune's households regenerate effort twice over", () => {
+    const c = city();
+    placeParcel(c.map, c.parcels, { x: 10, y: 10, width: 3, height: 3, kind: BuiltKind.Commune });
+    c.occ.set(c.map.idx(10, 10), 5);
+    const r = base(c);
+    expect(r.households).toBe(15);
+    expect(r.regenHouseholds).toBe(20);
+  });
+});

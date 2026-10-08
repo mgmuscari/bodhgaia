@@ -14,7 +14,7 @@ import { LOCAL_GRID_RADIUS, ROOF_SOLAR_FROM, ROOF_SOLAR_TO, plantOutput, plantPo
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
-import { LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
+import { BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
 import { VILLAGE_RESIDENTS } from '../citizens/census';
@@ -128,6 +128,9 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (eco.soil || eco.flora || eco.fauna) {
     effects.push(`Ecology on its tiles: soil +${eco.soil}, flora +${eco.flora}, fauna +${eco.fauna}`);
   }
+  if (kind === BuiltKind.CompostHub) effects.push(`Gardens and vertical farms within ${COMPOST_RADIUS} tiles need ${pct(1 - COMPOST_TENDING)} less tending`);
+  if (kind === BuiltKind.Bazaar) effects.push(`Draws a crowd: shops within ${BAZAAR_RADIUS} tiles pay ${pct(BAZAAR_LIFT - 1)} more tax`);
+  if (kind === BuiltKind.Commune) effects.push(`Pooled lives: its households give ${COMMUNE_REGEN}× the effort`);
   if (kind === BuiltKind.TinyHomes) effects.push(`Shelters ${VILLAGE_RESIDENTS} of the city's unhoused — and only them`);
   const headroom = OCC_HEADROOM.get(kind);
   if (headroom !== undefined && headroom > 1) effects.push(`Home: fills up to ${headroom}× its first residents`);

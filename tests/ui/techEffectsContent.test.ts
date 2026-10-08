@@ -4,12 +4,6 @@ import { BuiltKind } from '../../src/engine/fabric';
 import { solarFactor } from '../../src/growth/power';
 import { kindEffectLines, nodeEffectLines, practiceEffectLines } from '../../src/ui/techEffectsContent';
 
-/** Building pairs that still read the same (the design splits them in batch 3). */
-const PENDING_DUPLICATES: readonly [string, string][] = [
-  ['urban-bazaars', 'maker-spaces'],
-  ['coop-housing', 'communes'],
-];
-
 describe('every tech says exactly what it does', () => {
   for (const n of TECH_TREE) {
     it(`${n.id} names at least one effect`, () => {
@@ -17,7 +11,7 @@ describe('every tech says exactly what it does', () => {
     });
   }
 
-  it('no two building techs read the same, except the pairs still to be split', () => {
+  it('no two building techs read the same', () => {
     const seen = new Map<string, string>();
     const dupes: string[] = [];
     for (const n of TECH_TREE) {
@@ -27,7 +21,7 @@ describe('every tech says exactly what it does', () => {
       if (prior) dupes.push([prior, n.id].sort().join('+'));
       else seen.set(key, n.id);
     }
-    expect(dupes.sort()).toEqual(PENDING_DUPLICATES.map((p) => [...p].sort().join('+')).sort());
+    expect(dupes).toEqual([]);
   });
 });
 
