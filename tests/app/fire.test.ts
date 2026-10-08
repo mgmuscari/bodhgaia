@@ -3,7 +3,7 @@ import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel, placeTransport } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
-import { createFireController, FIRE_STEP_MS, FIRE_DEATH_MAX } from '../../src/app/fire';
+import { createFireController, homeVacancy, FIRE_STEP_MS, FIRE_DEATH_MAX } from '../../src/app/fire';
 import { BURN_STEPS } from '../../src/growth/fire';
 
 function town(withStation = true) {
@@ -32,6 +32,15 @@ function town(withStation = true) {
 }
 
 describe('the fire controller', () => {
+  it('a home\'s vacancy is the share of its baseline people gone (an abandoned home burns more readily)', () => {
+    const h = town();
+    expect(homeVacancy(h.live, h.map).get(h.home)).toBe(0);
+    h.live.occupancy.set(h.map.idx(30, 6), 5);
+    expect(homeVacancy(h.live, h.map).get(h.home)).toBeCloseTo(0.75);
+    h.live.occupancy.delete(h.map.idx(30, 6));
+    expect(homeVacancy(h.live, h.map).get(h.home)).toBe(1);
+  });
+
   it('a new fire gets a truck from the nearest station, the camera, and the news', () => {
     const h = town();
     h.fire.ignite(h.home);

@@ -19,6 +19,20 @@ export const FIRE_STEP_MS = 1000;
 export const FIRE_DEATH_SHARE = 0.15;
 export const FIRE_DEATH_MAX = 3;
 
+/** Each home's vacancy (parcel → 0..1): the share of its baseline people no longer there. A derelict (no baseline)
+ *  or unpeopled home is fully abandoned. growth/fire reads it: an abandoned building burns more readily. */
+export function homeVacancy(live: AmbientState, map: GameMap): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const h of live.households ?? []) {
+    const t = map.idx(h.x, h.y);
+    const id = map.parcel[t]!;
+    if (id === 0) continue;
+    const occ = live.occupancy.get(t) ?? 0;
+    out.set(id - 1, h.count <= 0 ? 1 : Math.min(1, Math.max(0, 1 - occ / h.count)));
+  }
+  return out;
+}
+
 export interface FireDeps {
   world: { map: GameMap; parcels: ParcelStore };
   live: AmbientState;
@@ -78,7 +92,9 @@ export function createFireController(deps: FireDeps): FireController {
       last = now;
       const quenched = live.quenched ?? new Set<number>();
       live.quenched = new Set();
-      const ev = stepFire(world, fires, deps.rng, { hour: deps.disastersOn() ? deps.hour() : undefined, quenched });
+      const hour = deps.disastersOn() ? deps.hour() : undefined;
+      const vacancy = hour !== undefined && hour !== fires.lastHour ? homeVacancy(live, map) : undefined; // only on the hour's draw
+      const ev = stepFire(world, fires, deps.rng, { hour, quenched, vacancy });
 
       for (const i of [...lit.splice(0), ...ev.ignited]) {
         if (!fires.burning.has(i)) continue;

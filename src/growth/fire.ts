@@ -2,8 +2,9 @@
 // hashed stock — a building that burns out is left a ruin. Deterministic in (world, its rng fork, the hour, the
 // fires the host says trucks have reached). Engine-layer discipline: no DOM, no transcendental Math, no ui.
 //
-// - Ignition: once per in-game hour, each building may catch, likelier the more decayed it is, likelier still for a
-//   ruin, an industrial works or a combustion plant. Greens, yards and parking don't burn. Rare: a typical city sees
+// - Ignition: once per in-game hour, each building may catch, likelier the more decayed it is, the more distressed
+//   its ground (redline grade) and the more abandoned (emptied of its people; the host says how far), likelier still
+//   for a ruin, an industrial works or a combustion plant (Maddy 2026-10-08). Greens, yards and parking don't burn. Rare: a typical city sees
 //   a fire or two a day; a healing one fewer.
 // - Spread: each step a burning building may set a neighbour (a building within a tile of it) alight.
 // - Burnout: left BURN_STEPS steps, a fire leaves its building a ruin.
@@ -17,6 +18,10 @@ import type { Rng } from '../engine/rng';
 export const IGNITE_BASE = 1 / 24000;
 /** A building at condition 0 is (1 + DECAY_FACTOR)× as likely to catch as a pristine one. */
 export const DECAY_FACTOR = 3;
+/** A building on fully redlined ground is (1 + DISTRESS_FACTOR)× as likely to catch. */
+export const DISTRESS_FACTOR = 1;
+/** A fully abandoned building (no one left of its baseline) is (1 + ABANDON_FACTOR)× as likely to catch. */
+export const ABANDON_FACTOR = 1;
 /** Each step, each burning building sets each neighbour alight with this chance. */
 export const SPREAD_CHANCE = 0.03;
 /** Steps (the host steps ~1 a second) a fire burns before its building is a ruin. */
@@ -49,11 +54,14 @@ export function createFireState(): FireState {
   return { burning: new Map(), started: 0 };
 }
 
-/** The chance a building of `kind` at `condition` catches in an hour. 0 for what doesn't burn. */
-export function igniteChance(kind: number, condition: number): number {
+/** The chance a building of `kind` at `condition` catches in an hour, on ground of redline `grade` (0..255), with
+ *  `vacancy` (0..1) of its people gone. 0 for what doesn't burn. */
+export function igniteChance(kind: number, condition: number, grade = 0, vacancy = 0): number {
   if (!isBuildingKind(kind) || FIREPROOF.has(kind)) return 0;
   const decay = 1 + DECAY_FACTOR * (1 - Math.min(255, Math.max(0, condition)) / 255);
-  return IGNITE_BASE * decay * (TINDER.has(kind) ? 2 : 1);
+  const distress = 1 + DISTRESS_FACTOR * (Math.min(255, Math.max(0, grade)) / 255);
+  const abandon = 1 + ABANDON_FACTOR * Math.min(1, Math.max(0, vacancy));
+  return IGNITE_BASE * decay * distress * abandon * (TINDER.has(kind) ? 2 : 1);
 }
 
 export interface FireEvents {
@@ -84,7 +92,7 @@ export function stepFire(
   world: { map: GameMap; parcels: ParcelStore },
   fires: FireState,
   rng: Rng,
-  opts: { hour?: number; quenched?: ReadonlySet<number> },
+  opts: { hour?: number; quenched?: ReadonlySet<number>; vacancy?: ReadonlyMap<number, number> },
 ): FireEvents {
   const { map, parcels } = world;
   const ev: FireEvents = { ignited: [], spread: [], burntOut: [], quenched: [] };
@@ -99,7 +107,8 @@ export function stepFire(
     fires.lastHour = opts.hour;
     for (const i of parcels.aliveIndices()) {
       if (fires.burning.has(i)) continue;
-      const chance = igniteChance(parcels.kindAt(i), parcels.conditionAt(i));
+      const p = parcels.get(i);
+      const chance = igniteChance(p.kind, p.condition, map.redline[map.idx(p.x, p.y)]!, opts.vacancy?.get(i) ?? 0);
       if (chance > 0 && rng.next() < chance) {
         fires.burning.set(i, { age: 0 });
         ev.ignited.push(i);

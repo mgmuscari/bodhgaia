@@ -18,7 +18,7 @@ The player's repairs are what make disasters rarer and smaller.
 
 | Event | Where it starts (likelier with…) | What it does | What the player's work changes |
 |---|---|---|---|
-| **Fire** | a building, likelier in low condition, ruins and industry | burns for a while and spreads to neighbours; a building that burns out becomes a ruin; occupied homes can lose people | **a fire station dispatches a truck**, a live agent that drives the road network to the fire and puts it out on arrival; fire coverage means a short drive; healing commons cover too |
+| **Fire** | a building, likelier in low condition, on distressed (redlined) ground, abandoned (emptied of its people), ruins and industry | burns for a while and spreads to neighbours; a building that burns out becomes a ruin; occupied homes can lose people | **a fire station dispatches a truck**, a live agent that drives the road network to the fire and puts it out on arrival; fire coverage means a short drive; healing commons cover too |
 | **Industrial spill** | an industrial works, likelier in poor condition and redlined | ground and water pollution at the works; a **toxic cloud** that rides the wind and harms (and can kill) people under it | worker-owned industry and wastewater works; fewer, cleaner works |
 | **Heavy rain → flood** | a rain event (the existing cycle) | low tiles near water flood for a while: buildings lose condition, residents are displaced, roads are impassable | greens, gardens and rewilded land soak up the water; paving makes it worse |
 | **Traffic accident** | a jammed road | a crash: a car stops, a person can die | fewer cars: mode shift, road diets, quiet streets, drone deliveries |

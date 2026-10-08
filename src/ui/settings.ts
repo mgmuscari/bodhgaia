@@ -25,6 +25,8 @@ export interface Settings {
   renderer: RendererMode;
   /** Sound levels (0..1), applied instantly to the audio engine's buses. */
   audio: AudioSettings;
+  /** Disasters — fires, spills, floods, accidents, crime (disasters.md). Off ⇒ nothing new starts. */
+  disasters: boolean;
 }
 
 export type RendererMode = 'cpu' | 'gpu';
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   world: { mapWidth: MAP_SIZES.medium, mapHeight: MAP_SIZES.medium },
   renderer: 'gpu',
   audio: { master: 0.7, music: 0.5, effects: 0.7, ambience: 0.4, muted: false },
+  disasters: true,
 };
 
 // Safe bands. Caps are perf ceilings (the floor keeps the game from emptying; the ceiling is a memory
@@ -118,5 +121,6 @@ export function clampSettings(partial?: DeepPartial<Settings>): Settings {
       ambience: clampLevel(audio.ambience, d.audio.ambience),
       muted: typeof audio.muted === 'boolean' ? audio.muted : d.audio.muted,
     },
+    disasters: typeof p.disasters === 'boolean' ? p.disasters : d.disasters,
   };
 }
