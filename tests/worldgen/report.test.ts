@@ -187,8 +187,10 @@ describe('buildReport: real pipeline (terrain + moses)', () => {
       expect(r.organicAdded).not.toBeNull();
       // Non-vacuous store<->chronicle identity (guarded to founded seeds). Organic growth is a NEW
       // layer added after era 5, so it joins the identity as its own term.
+      // Back yards are laid last, behind the houses still standing (Maddy 2026-10-07): their own term too.
+      expect(r.yardsAdded).not.toBeNull();
       expect(r.parcelsAlive).toBe(
-        r.preEra5Standing! - r.abandoned! + r.craters! + r.organicAdded!,
+        r.preEra5Standing! - r.abandoned! + r.craters! + r.organicAdded! + r.yardsAdded!,
       );
     });
 

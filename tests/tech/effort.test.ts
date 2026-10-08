@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { effortPerTick, wellbeing, accrue, type EffortWorld } from '../../src/tech/effort';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
-import { ParcelStore, BuiltKind, placeParcel, convertParcel } from '../../src/engine/fabric';
+import { ParcelStore, BuiltKind, placeParcel, convertParcel, placeTransport, layYardFor } from '../../src/engine/fabric';
 import { GameMap } from '../../src/engine/map';
 
 /** A minimal effort-world: N parcels with the given conditions. */
@@ -180,5 +180,18 @@ describe('effort.ts source', () => {
     const src = fs.readFileSync(path.resolve(here, '../../src/tech/effort.ts'), 'utf8');
     expect(src).not.toMatch(/PLACEHOLDER/);
     expect(src).toMatch(/wellbeing/i);
+  });
+});
+
+describe('wellbeing counts buildings, not their back yards (2026-10-07)', () => {
+  it('laying a yard behind a house leaves wellbeing unchanged', () => {
+    const map = new GameMap(10, 10);
+    const parcels = new ParcelStore();
+    for (let x = 0; x < 10; x++) placeTransport(map, x, 5, BuiltKind.RoadStreet);
+    for (let x = 0; x < 9; x++) placeParcel(map, parcels, { x, y: 4, width: 1, height: 1, kind: BuiltKind.HouseSingle, condition: 100 });
+    const before = wellbeing({ parcels });
+    for (let x = 0; x < 9; x++) layYardFor(map, parcels, x, 4);
+    expect(parcels.aliveCount()).toBeGreaterThan(9);
+    expect(wellbeing({ parcels })).toBe(before);
   });
 });

@@ -632,13 +632,24 @@ describe('overpass placement: an elevated kind built over a road decks it (grade
   });
 });
 
-describe('Accessory Dwellings go beside a house (tech-tree batch 3)', () => {
-  it('is refused on open land and placed next to a house', () => {
+describe('a house comes with a back yard; an accessory dwelling goes in it (Maddy 2026-10-07)', () => {
+  it('building a house on a street lays its yard behind it', () => {
     const world = freshWorld();
     const tech = freshTech(1000);
-    expect(previewTool(world, tech, toolDef(`build-${BuiltKind.ADU}`)!, 10, 10)).toEqual({ valid: false, reason: 'needs-house' });
-    expect(applyTool(world, tech, toolDef('build-16')!, 12, 12).ok).toBe(true);
-    expect(previewTool(world, tech, toolDef(`build-${BuiltKind.ADU}`)!, 13, 13).valid).toBe(true); // diagonal counts
-    expect(applyTool(world, tech, toolDef(`build-${BuiltKind.ADU}`)!, 12, 13).ok).toBe(true);
+    for (let x = 0; x < 16; x++) expect(applyTool(world, tech, toolDef('build-1')!, x, 12).ok).toBe(true);
+    expect(applyTool(world, tech, toolDef('build-16')!, 5, 11).ok).toBe(true);
+    expect(world.map.built[world.map.idx(5, 10)]).toBe(BuiltKind.Yard);
+  });
+
+  it('an ADU is refused on open land or beside a house, and built on a yard', () => {
+    const world = freshWorld();
+    const tech = freshTech(1000);
+    for (let x = 0; x < 16; x++) applyTool(world, tech, toolDef('build-1')!, x, 12);
+    applyTool(world, tech, toolDef('build-16')!, 5, 11);
+    const adu = toolDef(`build-${BuiltKind.ADU}`)!;
+    expect(previewTool(world, tech, adu, 15, 3)).toEqual({ valid: false, reason: 'needs-yard' });
+    expect(previewTool(world, tech, adu, 6, 11)).toEqual({ valid: false, reason: 'needs-yard' }); // beside, not a yard
+    expect(applyTool(world, tech, adu, 5, 10).ok).toBe(true);
+    expect(world.map.built[world.map.idx(5, 10)]).toBe(BuiltKind.ADU);
   });
 });

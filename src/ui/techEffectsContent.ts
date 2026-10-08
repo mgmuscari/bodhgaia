@@ -151,7 +151,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   }
   if (kind === BuiltKind.Parklet) effects.push(`Takes the curb's parking: homes within ${PARKLET_RADIUS} tiles drive ${pct(PARKLET_SHIFT)} fewer trips`);
   if (kind === BuiltKind.VerticalFarm) effects.push(`Fresh food: homes within ${FRESH_FOOD_RADIUS} tiles hold their residents (+${FRESH_FOOD_PULL} pull)`);
-  if (kind === BuiltKind.ADU) effects.push(`Built beside a house: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
+  if (kind === BuiltKind.ADU) effects.push(`Built in a house's back yard: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
   if (kind === BuiltKind.AINode) {
     effects.push(`Smart grid: homes within ${SMART_GRID_RADIUS} tiles draw ${pct(SMART_GRID_CUT)} less power ${SMART_GRID_FROM}:00–${SMART_GRID_TO}:00`);
   }

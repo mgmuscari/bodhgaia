@@ -138,7 +138,7 @@ describe('live layer golden determinism', () => {
   });
 
   it('matches the pinned digest (a pure refactor must leave this byte-identical)', () => {
-    expect(first).toBe('cars=38 peds=197 cruisers=4 trains=1 flocks=0 #302c2e05');
+    expect(first).toBe('cars=38 peds=194 cruisers=4 trains=1 flocks=1 #42440eff');
   });
 });
 

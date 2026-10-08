@@ -28,7 +28,7 @@
 // STRUCTURALLY — `parcels` plus two optional plain-shaped means — so src/tech never
 // imports worldgen, ecology, or civic (the architecture guard asserts this).
 
-import type { ParcelStore } from '../engine/fabric';
+import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import type { TechState } from './state';
 
 /**
@@ -55,9 +55,14 @@ export interface EffortWorld {
  */
 export function wellbeing(world: EffortWorld): number {
   const { parcels } = world;
-  const alive = parcels.aliveCount();
+  // buildings, not their back yards (a yard is the house's open ground, not another building)
+  let alive = 0;
   let sumCondition = 0;
-  for (const i of parcels.aliveIndices()) sumCondition += parcels.conditionAt(i);
+  for (const i of parcels.aliveIndices()) {
+    if (parcels.kindAt(i) === BuiltKind.Yard) continue;
+    alive++;
+    sumCondition += parcels.conditionAt(i);
+  }
   const conditionMean = alive === 0 ? 0 : Math.floor(sumCondition / alive);
 
   const ecoMean = world.ecoMeans

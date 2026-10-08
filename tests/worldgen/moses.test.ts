@@ -1500,3 +1500,30 @@ describe('eraOrganicGrowth (Maddy: settlement accretes from transport termini)',
     }
   });
 });
+
+describe('back yards (Maddy 2026-10-07)', () => {
+  for (const seed of SEEDS) {
+    it(`seed "${seed}": every yard sits directly behind a house that faces one street`, () => {
+      const world = runFullStage(seed);
+      const { map, parcels } = world;
+      let yards = 0;
+      for (const i of parcels.aliveIndices()) {
+        if (parcels.kindAt(i) !== BuiltKind.Yard) continue;
+        yards++;
+        const y = parcels.get(i);
+        const owner = ([[0, -1], [1, 0], [0, 1], [-1, 0]] as const).some(([dx, dy]) => {
+          const hx = y.x + dx;
+          const hy = y.y + dy;
+          if (!map.inBounds(hx, hy) || map.built[map.idx(hx, hy)] !== BuiltKind.HouseSingle) return false;
+          const fx = hx + dx; // the house's front, opposite its yard
+          const fy = hy + dy;
+          return map.inBounds(fx, fy) && (map.built[map.idx(fx, fy)]! >= 1 && map.built[map.idx(fx, fy)]! <= 3 || map.built[map.idx(fx, fy)] === BuiltKind.QuietStreet);
+        });
+        expect(owner, `yard at ${y.x},${y.y}`).toBe(true);
+      }
+      expect(yards).toBeGreaterThan(0);
+      const line = world.log.find((l) => /back yards/.test(l));
+      expect(line).toBe(`back yards: +${yards} lots behind houses`);
+    });
+  }
+});
