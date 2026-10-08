@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
-import { RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, readCity, homeProtection, UPKEEP, TENDING, NEUTRAL_ECONOMY_PRACTICES, type EconomyPractices } from '../../src/economy/readings';
+import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, readCity, homeProtection, UPKEEP, TENDING, NEUTRAL_ECONOMY_PRACTICES, type EconomyPractices } from '../../src/economy/readings';
 
 // The economy reads the live city as a handful of aggregates (src/economy stays headless: the city hands
 // it plain accessors, like growth's occupancy accessor).
@@ -203,5 +203,22 @@ describe('readCity — elevated rail draws shoppers (Maddy 2026-10-07)', () => {
     const c = city(); // the strip at (3,1)
     for (let x = 0; x < 8; x++) c.map.deck[c.map.idx(x, 3)] = BuiltKind.ElevatedRail; // over the street, 2 rows away
     expect(read1(c).base.c).toBeCloseTo(before * RAIL_COMMERCE_LIFT, 9);
+  });
+});
+
+describe('readCity — a commune doubles as a market (Maddy 2026-10-07)', () => {
+  it(`its workshops are assessed at ${COMMUNE_COMMERCE_SHARE}× a shop of its size`, () => {
+    const read1 = (c: ReturnType<typeof city>) =>
+      readCity({ map: c.map, parcels: c.parcels, occupancyAt: (t) => c.occ.get(t), landValueAt: (t) => c.lv.get(t), wellbeing: 0.5, extraInfra: 0, harms: { blackouts: 0, policeViolence: 0, takings: 0 }, repairs: 0 });
+    const plain = city();
+    const before = read1(plain).base.c;
+    const withCommune = city();
+    placeParcel(withCommune.map, withCommune.parcels, { x: 10, y: 10, width: 3, height: 3, kind: BuiltKind.Commune });
+    withCommune.lv.set(withCommune.map.idx(10, 10), 128);
+    const asShop = city();
+    placeParcel(asShop.map, asShop.parcels, { x: 10, y: 10, width: 3, height: 3, kind: BuiltKind.CommercialStrip });
+    asShop.lv.set(asShop.map.idx(10, 10), 128);
+    const shopTax = read1(asShop).base.c - before;
+    expect(read1(withCommune).base.c - before).toBeCloseTo(shopTax * COMMUNE_COMMERCE_SHARE, 6);
   });
 });

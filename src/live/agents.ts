@@ -7,7 +7,7 @@
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { visitValue } from '../citizens/plots';
-import { DAILY_ITINERARY, StopCategory } from '../citizens/itinerary';
+import { StopCategory, itineraryFor } from '../citizens/itinerary';
 import { TravelMode } from '../citizens/modes';
 import type { Household } from '../citizens/census';
 import { layField } from '../citizens/field';
@@ -569,7 +569,7 @@ export function spawnCitizens(state: AmbientState, map: GameMap, rng: Rng): void
       tx: sx,
       ty: sy,
       homeTile: map.idx(home.x, home.y),
-      itinerary: DAILY_ITINERARY,
+      itinerary: itineraryFor(map.built[map.idx(home.x, home.y)]!),
       itinStep: -1, // advanceItinerary sets the first stop (step 0 = Work)
     };
     if (advanceItinerary(state, ped, map)) state.peds.push(ped); // dropped if the district has no stops
