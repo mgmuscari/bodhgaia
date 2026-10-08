@@ -74,7 +74,7 @@ describe('icons fit the button', () => {
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
       if (!isHead(at(x, y))) continue;
       heads++;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         const n = at(x + dx, y + dy);
         if (n && n[3]! > 0) expect(isHead(n) || isInk(n), `head (${x},${y}) touches (${x + dx},${y + dy})`).toBe(true);
       }
