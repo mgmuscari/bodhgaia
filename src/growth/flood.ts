@@ -95,7 +95,7 @@ function threshold(map: GameMap, t: number, dist: number): number {
       if (!map.inBounds(x + dx, y + dy)) continue;
       const n = map.idx(x + dx, y + dy);
       const k = map.built[n]!;
-      if (SOAKERS.has(k) || (k === BuiltKind.None && map.landCover[n] === LandCover.Forest)) scale += GREEN_SOAK;
+      if (SOAKERS.has(k) || map.deck[n] === BuiltKind.Parklet || (k === BuiltKind.None && map.landCover[n] === LandCover.Forest)) scale += GREEN_SOAK;
       else if (isRoadKind(k) || k === BuiltKind.ParkingLot) scale -= PAVE_SHED;
     }
   }

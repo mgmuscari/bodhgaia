@@ -19,7 +19,7 @@
 // tested contract is directional invariants + determinism, never balance.
 
 import { GameMap, Water } from '../engine/map';
-import { isTransportKind } from '../engine/fabric';
+import { BuiltKind, isTransportKind } from '../engine/fabric';
 import { influenceOf, isUnsealed, RADIUS } from './influence';
 import { clampByte } from '../engine/clamp';
 
@@ -94,23 +94,28 @@ export function ecologyTick(map: GameMap, practices: EcologyPractices = NEUTRAL_
   // fabric, so it is stable within the tick.
   next.soilInf.fill(0);
   next.floraInf.fill(0);
+  const stamp = (k: number, x: number, y: number): void => {
+    const inf = influenceOf(k);
+    if (inf.soil === 0 && inf.flora === 0) return;
+    const x0 = x - RADIUS < 0 ? 0 : x - RADIUS;
+    const x1 = x + RADIUS >= width ? width - 1 : x + RADIUS;
+    const y0 = y - RADIUS < 0 ? 0 : y - RADIUS;
+    const y1 = y + RADIUS >= height ? height - 1 : y + RADIUS;
+    for (let yy = y0; yy <= y1; yy++) {
+      for (let xx = x0; xx <= x1; xx++) {
+        const t = map.idx(xx, yy);
+        next.soilInf[t]! += inf.soil;
+        next.floraInf[t]! += inf.flora;
+      }
+    }
+  };
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const k = built[map.idx(x, y)]!;
+      const i = map.idx(x, y);
+      const k = built[i]!;
       if (k === 0) continue;
-      const inf = influenceOf(k);
-      if (inf.soil === 0 && inf.flora === 0) continue;
-      const x0 = x - RADIUS < 0 ? 0 : x - RADIUS;
-      const x1 = x + RADIUS >= width ? width - 1 : x + RADIUS;
-      const y0 = y - RADIUS < 0 ? 0 : y - RADIUS;
-      const y1 = y + RADIUS >= height ? height - 1 : y + RADIUS;
-      for (let yy = y0; yy <= y1; yy++) {
-        for (let xx = x0; xx <= x1; xx++) {
-          const t = map.idx(xx, yy);
-          next.soilInf[t]! += inf.soil;
-          next.floraInf[t]! += inf.flora;
-        }
-      }
+      stamp(k, x, y);
+      if (map.deck[i] === BuiltKind.Parklet) stamp(BuiltKind.Parklet, x, y); // a kerb parklet greens its block
     }
   }
 

@@ -165,7 +165,9 @@ export function nearPlayerGreen(map: GameMap, x: number, y: number): boolean {
     for (let dx = -GREEN_HEAL_RADIUS; dx <= GREEN_HEAL_RADIUS; dx++) {
       const nx = x + dx;
       const ny = y + dy;
-      if (map.inBounds(nx, ny) && GREEN_HEAL_KINDS.has(map.built[map.idx(nx, ny)]!)) return true;
+      if (!map.inBounds(nx, ny)) continue;
+      const i = map.idx(nx, ny);
+      if (GREEN_HEAL_KINDS.has(map.built[i]!) || map.deck[i] === BuiltKind.Parklet) return true; // a kerb parklet too
     }
   }
   return false;

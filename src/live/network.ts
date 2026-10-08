@@ -315,6 +315,7 @@ export function isParkable(map: GameMap, x: number, y: number): boolean {
   if (!map.inBounds(x, y)) return false;
   const k = map.built[map.idx(x, y)]!;
   if (!carTraversable(k) || k === BuiltKind.RoadHighway) return false;
+  if (map.deck[map.idx(x, y)] === BuiltKind.Parklet) return false; // a parklet took this kerb's parking
   return map.water[map.idx(x, y)] === 0;
 }
 

@@ -21,6 +21,8 @@ import {
   convertParcel,
   buildOnYard,
   layYardFor,
+  canPlaceParklet,
+  placeParklet,
   demolishParcel,
   demolishTransportAt,
   isInteriorRoadLane,
@@ -165,6 +167,7 @@ export type ToolReason =
   | 'not-an-interior-lane'
   | 'nothing-to-bulldoze'
   | 'needs-yard'
+  | 'needs-kerb'
   | 'effort';
 
 export interface PreviewResult {
@@ -387,6 +390,8 @@ function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): P
 
   // build-*
   const kind = tool.kind!;
+  // a parklet goes on a road, in place of its kerb (Maddy 2026-10-08)
+  if (kind === BuiltKind.Parklet) return canPlaceParklet(map, x, y) ? { valid: true } : { valid: false, reason: 'needs-kerb' };
   if (isBuildingKind(kind)) {
     // an accessory dwelling is a backyard cottage: it goes IN a house's back yard, not on new land
     if (kind === BuiltKind.ADU) return map.built[map.idx(x, y)] === BuiltKind.Yard ? { valid: true } : { valid: false, reason: 'needs-yard' };
@@ -512,7 +517,9 @@ export function applyTool(
   }
   // build-*
   const kind = tool.kind!;
-  if (kind === BuiltKind.ADU) {
+  if (kind === BuiltKind.Parklet) {
+    placeParklet(map, x, y); // on the road's kerb, in its deck
+  } else if (kind === BuiltKind.ADU) {
     buildOnYard(map, parcels, x, y, kind); // the yard's lot becomes the cottage's
   } else if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
