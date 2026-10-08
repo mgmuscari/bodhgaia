@@ -87,9 +87,10 @@ export function powerDemand(kind: number, density: number): number {
   return per * (density > 0 ? density : 0);
 }
 
-/** True iff a kind draws power (an R/C/I/Civic consumer). */
+/** True iff a kind draws power (an R/C/I/Civic consumer) — never a source: an energy node is civic but feeds the
+ *  grid, and read as "unpowered" for want of a supply it is itself (Maddy 2026-10-08). */
 export function isPowerConsumer(kind: number): boolean {
-  return DEMAND_PER_DENSITY.has(zoneTypeOf(kind));
+  return DEMAND_PER_DENSITY.has(zoneTypeOf(kind)) && !PLANT_OUTPUT.has(kind);
 }
 
 // ── Time-varying demand ───────────────────────────────────────────────────────────────────────────
