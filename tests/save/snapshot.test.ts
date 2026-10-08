@@ -171,3 +171,19 @@ describe('the rename (Bodhitropolis → Bodhgaia, 2026-10-07)', () => {
     expect(() => parseSave(JSON.stringify({ ...save, format: 'something-else' }))).toThrow(/not a Bodhgaia save/);
   });
 });
+
+describe('encampments are saved (Maddy 2026-10-08)', () => {
+  it('the camps come back where they were; a save from before them has none until they settle', () => {
+    const p = parts();
+    p.live.camps = new Map([[100, 7], [205, 3.5]]);
+    p.live.unhoused = 10.5;
+    const save = parseSave(JSON.stringify(captureGame(p)));
+    const live = createAmbientState();
+    restoreLive(live, save.live, p.world.map.width);
+    expect([...live.camps!]).toEqual([[100, 7], [205, 3.5]]);
+    const old = { ...save.live, camps: undefined };
+    const live2 = createAmbientState();
+    restoreLive(live2, old, p.world.map.width);
+    expect(live2.camps?.size ?? 0).toBe(0);
+  });
+});

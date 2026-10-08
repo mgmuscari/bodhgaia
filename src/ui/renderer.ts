@@ -33,6 +33,7 @@ import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
 import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, windowsLit } from './snesAgents';
 import { transitFor } from '../live/transit';
 import { ridersAboard } from '../live/riders';
+import { tentsAt } from '../live/camps';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
@@ -123,20 +124,30 @@ function washLevel(v: number): number {
 }
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
 
-/** What a tile's desire-path wear bakes into the base: beaten earth in three depths, then junk, then tents. */
-function wearMarks(wear: number): { level: number; nJunk: number; nTents: number } {
+/** What a tile bakes into the base: its desire-path wear's beaten earth (three depths) and junk; and the tents of
+ *  the people camped there (live/camps.ts) — tents are people, never wear (Maddy 2026-10-08). */
+function wearMarks(wear: number, people: number): { level: number; nJunk: number; nTents: number } {
+  const nTents = tentsAt(people);
+  const worn = wear >= GARBAGE_WEAR ? (wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1) : 0;
   return {
     level: wear >= 200 ? 3 : wear >= 120 ? 2 : wear >= 50 ? 1 : 0,
-    nJunk: wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1,
-    nTents: wear >= ENCAMPMENT_WEAR ? Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12)) : 0,
+    nJunk: nTents > 0 ? Math.max(1, worn) : worn,
+    nTents,
   };
 }
 
 /** A signature of exactly what wearMarks draws on a tile (0 = nothing), with or without the encampment layer. */
-function wearSig(wear: number, encampments: boolean): number {
-  const m = wearMarks(wear);
-  if (!encampments || wear < GARBAGE_WEAR) return m.level;
+function wearSig(wear: number, people: number, encampments: boolean): number {
+  const m = wearMarks(wear, people);
+  if (!encampments || (m.nJunk === 0 && m.nTents === 0)) return m.level;
   return m.level | (m.nJunk << 2) | (m.nTents << 4) | 64;
+}
+
+/** The tiles that may carry live marks: worn ground and camps. */
+function markTiles(ambient: AmbientState): number[] {
+  const tiles = new Set<number>(ambient.wear.keys());
+  for (const t of ambient.camps?.keys() ?? []) tiles.add(t);
+  return [...tiles].sort((a, b) => a - b);
 }
 
 /** A device-pixel rect of the base canvas (a patched tile, for the GPU's sub-upload). */
@@ -770,23 +781,25 @@ export class Renderer {
       const ps = ts / BASE_TILE; // one art pixel
       const mapW2 = world.map.width;
       const encampments = camera.zoom >= 2 && skinTents.length > 0;
-      for (const [tile, wear] of ambient.wear) {
+      for (const tile of markTiles(ambient)) {
+        const wear = ambient.wear.get(tile) ?? 0;
+        const people = ambient.camps?.get(tile) ?? 0;
         const wx = tile % mapW2;
         const wy = (tile - wx) / mapW2;
         if (near && (wx < near.x0 || wx > near.x1 || wy < near.y0 || wy > near.y1)) continue;
         if (!this.wearShown(camera, wx, wy)) continue;
         if (full) {
-          const sig = wearSig(wear, encampments);
+          const sig = wearSig(wear, people, encampments);
           if (sig !== 0) this.bakedMarks.set(tile, sig);
         }
         const tileHash = Math.imul(((wx * 73856093) ^ (wy * 19349663)) >>> 0, 0x9e3779b1) >>> 0;
         {
           // beaten earth in three depths (no translucent wash over the pixel art)
-          const { level, nJunk, nTents } = wearMarks(wear);
+          const { level, nJunk, nTents } = wearMarks(wear, people);
           const o = camera.tileOrigin(wx, wy);
           const img = level > 0 ? this.sprites.get(`@wear/${level}`) : undefined;
           if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, o.dx, o.dy, ts, ts);
-          if (encampments && wear >= GARBAGE_WEAR) {
+          if (encampments && nJunk + nTents > 0) {
             const pick = (set: AtlasImage[], k: number): AtlasImage =>
               set[(Math.imul((tileHash ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 16) % set.length]!;
             const items = [
@@ -831,10 +844,10 @@ export class Renderer {
     const dirty = new Set<number>();
     const encampments = camera.zoom >= 2 && [0, 1, 2].some((k) => this.sprites.has(`@sprite/tent/${k}`));
     const marks = new Map<number, number>();
-    for (const [tile, wear] of ambient.wear) {
+    for (const tile of markTiles(ambient)) {
       const wx = tile % map.width;
       if (!this.wearShown(camera, wx, (tile - wx) / map.width)) continue;
-      const sig = wearSig(wear, encampments);
+      const sig = wearSig(ambient.wear.get(tile) ?? 0, ambient.camps?.get(tile) ?? 0, encampments);
       if (sig !== 0) marks.set(tile, sig);
       if (sig !== (this.bakedMarks.get(tile) ?? 0)) dirty.add(tile);
     }

@@ -60,7 +60,14 @@ export interface SaveV1 {
   civic: Array<{ belonging: number; voice: number; trust: number; ring: number[] }>;
   econ: EconomyRun;
   /** `unhoused`/`freshHomes` arrived 2026-10-07 (rehoming.md); an older save derives the pool on restore. */
-  live: { maps: Record<LiveMapName, Array<[number, number]>>; occPasses: number; unhoused?: number; freshHomes?: number[] };
+  live: {
+    maps: Record<LiveMapName, Array<[number, number]>>;
+    occPasses: number;
+    unhoused?: number;
+    freshHomes?: number[];
+    /** Encampments, tile → people (2026-10-08; absent in older saves ⇒ placed by the emptiest homes on settle). */
+    camps?: Array<[number, number]>;
+  };
   /** Energy-node battery charge, anchor → power-hours (2026-10-07; absent in older saves ⇒ empty). */
   power?: { storage: Array<[number, number]> };
 }
@@ -221,7 +228,13 @@ export function restoreCivic(civic: CivicState, saved: SaveV1['civic']): void {
 export function captureLive(live: AmbientState): SaveV1['live'] {
   const maps = {} as Record<LiveMapName, Array<[number, number]>>;
   for (const name of LIVE_MAPS) maps[name] = [...live[name].entries()];
-  return { maps, occPasses: live.occPasses, unhoused: live.unhoused, freshHomes: [...(live.freshHomes ?? [])] };
+  return {
+    maps,
+    occPasses: live.occPasses,
+    unhoused: live.unhoused,
+    freshHomes: [...(live.freshHomes ?? [])],
+    camps: [...(live.camps ?? new Map<number, number>()).entries()],
+  };
 }
 
 /** Put the saved live stocks back; derived fields recompute on their own cadences, agents respawn. A save from
@@ -231,6 +244,9 @@ export function restoreLive(live: AmbientState, saved: SaveV1['live'], mapWidth:
   for (const name of LIVE_MAPS) live[name] = new Map(saved.maps[name] ?? []);
   live.occPasses = saved.occPasses;
   live.freshHomes = new Set(saved.freshHomes ?? []);
+  live.camps = new Map(saved.camps ?? []);
+  live.campIn?.clear();
+  live.campOut?.clear();
   if (saved.unhoused !== undefined) {
     live.unhoused = saved.unhoused;
     return;

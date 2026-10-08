@@ -11,7 +11,7 @@ import type { Rng } from '../engine/rng';
 import type { AmbientState } from '../live/types';
 import type { CivicState } from '../civic/state';
 import { SEED_BELONGING, SEED_TRUST, SEED_VOICE } from '../civic/state';
-import { ENCAMPMENT_WEAR, POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS } from '../live/tuning';
+import { POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS } from '../live/tuning';
 import type { NeighborhoodMap } from '../civic/neighborhoods';
 import { GATHER_LEAVE, startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
 import { closeTiles } from '../live/network';
@@ -240,7 +240,7 @@ export function createCommunity(deps: CommunityDeps): Community {
     let pv = 0;
     for (const [t, v] of live.policeViolence) if (part.tileToNeighborhood[t] === hood) pv += v;
     let camps = 0;
-    for (const [t, w] of live.wear) if (w >= ENCAMPMENT_WEAR && part.tileToNeighborhood[t] === hood) camps++;
+    for (const [t, n] of live.camps ?? new Map<number, number>()) if (n >= 1 && part.tileToNeighborhood[t] === hood) camps++;
     let mourned = 0;
     for (const m of [...(live.memorials ?? []), ...(live.fallen ?? [])]) if (part.tileToNeighborhood[map.idx(m.x, m.y)] === hood) mourned++;
     const violence = Math.min(1, pv / tiles / (POLICE_VIOLENCE_MAX / 2));
