@@ -49,6 +49,7 @@ import { worstSpots } from './ui/tutorialContent';
 import { mountTutorial } from './ui/tutorial';
 import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
+import { createFireController } from './app/fire';
 import { BuiltKind } from './engine/fabric';
 
 
@@ -404,6 +405,23 @@ export function main(save: SaveV1 | null = null): void {
     if (handle) handle.lessons = lessons; // live checks: offer a lesson without waiting out a practice
   }
 
+  // Fire (disasters.md): ignition from conditions once a game hour, trucks from the stations, burnt-out ruins. Nothing
+  // new ignites while Disasters is off, or during the opening's night and tutorial.
+  const fire = createFireController({
+    world,
+    live: live.state,
+    rng: createRng(seed).fork('fire'),
+    hour: () => gameClock(gameSec()).hour,
+    disastersOn: () => settings.current().disasters && !night?.active() && !tutorial?.active(),
+    markDirty,
+    refreshHouseholds: () => live.refreshHouseholds(),
+    news: (t) => news.push(t),
+  });
+  if (import.meta.env.DEV) {
+    const handle = (window as unknown as { bodhgaia?: Record<string, unknown> }).bodhgaia;
+    if (handle) handle.fire = fire; // live checks: light a building
+  }
+
   // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
   const events = createEventsController({
     map: world.map,
@@ -436,6 +454,7 @@ export function main(save: SaveV1 | null = null): void {
       night?.frame(now);
       tutorial?.frame(now);
       lessons.frame(now);
+      fire.frame(now);
       events.frame(now);
     },
     afterGpu: (now) => events.gpuPass(now),

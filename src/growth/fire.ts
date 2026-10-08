@@ -4,8 +4,7 @@
 //
 // - Ignition: once per in-game hour, each building may catch, likelier the more decayed it is, the more distressed
 //   its ground (redline grade) and the more abandoned (emptied of its people; the host says how far), likelier still
-//   for a ruin, an industrial works or a combustion plant (Maddy 2026-10-08). Greens, yards and parking don't burn. Rare: a typical city sees
-//   a fire or two a day; a healing one fewer.
+//   for a ruin, an industrial works or a combustion plant (Maddy 2026-10-08). Greens, yards and parking don't burn. Rare (see IGNITE_BASE).
 // - Spread: each step a burning building may set a neighbour (a building within a tile of it) alight.
 // - Burnout: left BURN_STEPS steps, a fire leaves its building a ruin.
 // - Quenched: a fire a truck has reached goes out; the building stands, scorched (QUENCH_DAMAGE condition).
@@ -14,16 +13,19 @@ import { BuiltKind, isBuildingKind, type ParcelStore } from '../engine/fabric';
 import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 
-/** Ignition chance per building per in-game hour at full condition (a city of ~1000 buildings: ~1 fire a day). */
-export const IGNITE_BASE = 1 / 24000;
+/** Ignition chance per building per in-game hour at full condition. Rare in REAL time (a game day is ~2.6 min):
+ *  measured 2026-10-08, the inherited lotus city (978 buildings, decayed, redlined, emptied) draws ~0.25 fires a
+ *  game day — one every ~10 minutes of play — and a pristine one ~0.05. */
+export const IGNITE_BASE = 1 / 480000;
 /** A building at condition 0 is (1 + DECAY_FACTOR)× as likely to catch as a pristine one. */
 export const DECAY_FACTOR = 3;
 /** A building on fully redlined ground is (1 + DISTRESS_FACTOR)× as likely to catch. */
 export const DISTRESS_FACTOR = 1;
 /** A fully abandoned building (no one left of its baseline) is (1 + ABANDON_FACTOR)× as likely to catch. */
 export const ABANDON_FACTOR = 1;
-/** Each step, each burning building sets each neighbour alight with this chance. */
-export const SPREAD_CHANCE = 0.03;
+/** Each step, each burning building sets each neighbour alight with this chance: over an unattended burn
+ *  (BURN_STEPS) ~24% per neighbour, so a fire usually stays contained and only sometimes jumps a lot. */
+export const SPREAD_CHANCE = 0.006;
 /** Steps (the host steps ~1 a second) a fire burns before its building is a ruin. */
 export const BURN_STEPS = 45;
 /** Condition a building loses to a fire that was put out. */
