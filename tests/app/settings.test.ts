@@ -87,3 +87,16 @@ describe('createSettingsController — audio', () => {
     expect(s.current().audio.muted).toBe(true);
   });
 });
+
+describe('the music picker in Settings', () => {
+  it('reaches the sound system once it exists, and not before', () => {
+    const played: string[] = [];
+    let sound: { tracks: typeof import('../../src/audio/music/tracks').MUSIC_TRACKS; current(): string | null; play(id: string): void; next(): void } | null = null;
+    const s = createSettingsController({ applyLive: () => {}, setRenderer: () => {}, music: () => sound });
+    expect(s.panel.music?.()).toBeNull();
+    sound = { tracks: [], current: () => 'x', play: (id) => played.push(id), next: () => played.push('next') };
+    s.panel.music!()!.play('satie-gymnopedie-1');
+    s.panel.music!()!.next();
+    expect(played).toEqual(['satie-gymnopedie-1', 'next']);
+  });
+});

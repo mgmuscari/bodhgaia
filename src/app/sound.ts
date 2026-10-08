@@ -9,6 +9,7 @@ import { createAudio, installAudioUnlock, applyAudioSettings } from './audio';
 import { createSfx, type Sfx } from '../audio/sfx';
 import { createAmbience, type AmbienceSnapshot } from '../audio/ambience';
 import { createMusicPlayer, type Mood } from '../audio/music/player';
+import type { MusicControl } from '../ui/musicPickerContent';
 import { MUSIC_TRACKS } from '../audio/music/tracks';
 import type { AmbientState, Mover } from '../live/types';
 import { policePhase } from '../live/police';
@@ -92,6 +93,8 @@ export interface SoundDeps {
 export interface Sound {
   sfx: Sfx;
   applySettings(a: AudioSettings): void;
+  /** The music player as the Settings picker drives it. */
+  music: MusicControl;
 }
 
 const LISTEN_MS = 250;
@@ -141,5 +144,14 @@ export function createSound(deps: SoundDeps): Sound {
       siren.glide?.({ pitch: high ? SIREN.hi : SIREN.lo, velocity: s.level }, 0.4);
     }
   }, LISTEN_MS);
-  return { sfx, applySettings: (a) => applyAudioSettings(engine, a) };
+  return {
+    sfx,
+    applySettings: (a) => applyAudioSettings(engine, a),
+    music: {
+      tracks: MUSIC_TRACKS,
+      current: () => music.current,
+      play: (id) => void music.play(id).catch(() => {}),
+      next: () => void music.next().catch(() => {}),
+    },
+  };
 }

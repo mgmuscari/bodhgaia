@@ -74,6 +74,7 @@ export function main(save: SaveV1 | null = null): void {
     applyLive: (caps) => live.applyCaps(caps),
     setRenderer: (m) => view.setMode(m),
     applyAudio: (a) => sound.applySettings(a), // only on a user change, after `sound` exists
+    music: () => sound.music, // the picker opens only after `sound` exists
   });
   const { world: size } = settings.current();
   // A resumed city brings its own seed; `?seed=` pins one; otherwise a new player (or New city) gets a random world
