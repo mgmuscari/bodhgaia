@@ -111,6 +111,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/glRect.ts',
   'src/ui/tourContent.ts',
   'src/ui/tutorialContent.ts',
+  'src/ui/lessonContent.ts',
   'src/ui/renderKey.ts',
   'src/ui/decoration.ts',
   'src/ui/toolbarContent.ts',

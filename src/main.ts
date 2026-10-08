@@ -46,6 +46,7 @@ import { tourStops } from './ui/tourContent';
 import { worstSpots } from './ui/tutorialContent';
 import { mountTutorial } from './ui/tutorial';
 import { createTutorial, type Tutorial } from './app/tutorial';
+import { createLessons } from './app/lessons';
 import { BuiltKind } from './engine/fabric';
 
 // The default world's seed — its identity, so it keeps the pre-rename name (Bodhgaia was Bodhitropolis).
@@ -133,7 +134,8 @@ export function main(save: SaveV1 | null = null): void {
     displace: (amount, protectionAt) => displaceFromHomes(live.state, world.map, amount, protectionAt),
     autosave: () => saves.autosave(), // read at call time (loading a slot blanks autosave first)
     ui: {
-      practiceGranted: () => {
+      practiceGranted: (id) => {
+        lessons.offer(id); // its mechanic's lesson, the first time (plays when the screen is free)
         sound.sfx.unlock();
         news.push('A new practice takes root in the city');
         tools.afterEffortChange();
@@ -226,6 +228,7 @@ export function main(save: SaveV1 | null = null): void {
     unhoused: () => Math.round(live.state.unhoused), // people without a home (docs/design/rehoming.md)
   });
   const mounted = mountPanels({
+    onReplayLessons: () => lessons.replay(),
     container: document.body,
     economy,
     tech,
@@ -351,6 +354,45 @@ export function main(save: SaveV1 | null = null): void {
     : null;
   let tutorial: Tutorial | null = null;
 
+  // Lessons: the first time a practice takes root, its mechanic is explained (lessonContent.ts) — once per player,
+  // remembered in this browser (storage may be unavailable: then they simply play each time).
+  const LESSONS_KEY = 'bodhgaia.lessonsSeen';
+  const lessons = createLessons({
+    storage: {
+      get: () => {
+        try {
+          return window.localStorage.getItem(LESSONS_KEY);
+        } catch {
+          return null;
+        }
+      },
+      set: (v) => {
+        try {
+          window.localStorage.setItem(LESSONS_KEY, v);
+        } catch {
+          // private window / blocked storage: nothing to remember with
+        }
+      },
+    },
+    busy: () => !!night?.active() || !!tutorial?.active(),
+    play: (lesson, onDone) =>
+      createTutorial(
+        {
+          ui: mountTutorial(document.body, 'Skip'),
+          follow: () => {},
+          centre: () => ({ x: 0, y: 0 }),
+          spots: () => [],
+          indict: (onContinue) => onContinue(),
+          onDone,
+        },
+        [{ kind: 'say', text: lesson.title }, ...lesson.steps],
+      ),
+  });
+  if (import.meta.env.DEV) {
+    const handle = (window as unknown as { bodhgaia?: Record<string, unknown> }).bodhgaia;
+    if (handle) handle.lessons = lessons; // live checks: offer a lesson without waiting out a practice
+  }
+
   // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
   const events = createEventsController({
     map: world.map,
@@ -382,6 +424,7 @@ export function main(save: SaveV1 | null = null): void {
     afterRender: (now) => {
       night?.frame(now);
       tutorial?.frame(now);
+      lessons.frame(now);
       events.frame(now);
     },
     afterGpu: (now) => events.gpuPass(now),

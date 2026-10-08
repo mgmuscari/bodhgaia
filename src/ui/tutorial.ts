@@ -4,7 +4,7 @@
 
 import type { TutorialUi } from '../app/tutorial';
 
-export function mountTutorial(container: HTMLElement): TutorialUi {
+export function mountTutorial(container: HTMLElement, skipLabel = 'Skip tutorial'): TutorialUi {
   const root = document.createElement('div');
   root.className = 'tutorial';
   const spot = document.createElement('div');
@@ -19,7 +19,7 @@ export function mountTutorial(container: HTMLElement): TutorialUi {
   more.textContent = '▶';
   const skipBtn = document.createElement('button');
   skipBtn.className = 'tutorial-skip';
-  skipBtn.textContent = 'Skip tutorial';
+  skipBtn.textContent = skipLabel;
   box.append(skipBtn, text, more);
   root.append(spot, box);
   container.appendChild(root);

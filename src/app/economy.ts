@@ -36,7 +36,7 @@ const MAX_CATCH_UP = 6;
 /** What the shell refreshes as an hour lands (in this order). */
 export interface EconomyUi {
   /** A finished practice project granted its tech (toolbar refresh + flash, dock/panel snapshots, tech panel). */
-  practiceGranted(): void;
+  practiceGranted(id: string): void;
   /** The hour's refreshes (toolbar, tech panel, budget panel); `reliefNow` → open the Budget window. */
   hourRefreshed(reliefNow: boolean): void;
   /** Rewrite the pulse line (the economy readout · the last civic pulse). */
@@ -187,7 +187,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     }
     for (const done of r.completed) {
       const practice = (done.payload as { practice?: string } | null)?.practice;
-      if (practice && tech.grant(practice)) ui.practiceGranted();
+      if (practice && tech.grant(practice)) ui.practiceGranted(practice);
     }
     ui.hourRefreshed(reliefNow); // refreshes; the relief grant opens the Budget window with its strings
     if (econ.state.tick % AUTOSAVE_HOURS === 0) deps.autosave();
