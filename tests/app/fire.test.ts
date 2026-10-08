@@ -5,6 +5,7 @@ import { createRng } from '../../src/engine/rng';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
 import { createFireController, homeVacancy, FIRE_STEP_MS, FIRE_DEATH_MAX, FIRE_SMOKE } from '../../src/app/fire';
 import { BURN_STEPS } from '../../src/growth/fire';
+import { POLL_MAX } from '../../src/live/tuning';
 
 function town(withStation = true) {
   const map = new GameMap(40, 12);
@@ -56,7 +57,7 @@ describe('the fire controller', () => {
     h.fire.ignite(h.home);
     h.fire.frame(FIRE_STEP_MS);
     h.fire.frame(2 * FIRE_STEP_MS);
-    expect(h.live.pollution.get(h.map.idx(30, 6)) ?? 0).toBeGreaterThanOrEqual(2 * FIRE_SMOKE);
+    expect(h.live.pollution.get(h.map.idx(30, 6)) ?? 0).toBeGreaterThanOrEqual(Math.min(2 * FIRE_SMOKE, POLL_MAX)); // two steps of smoke, to the cap
   });
 
   it('with no fire station, it burns out: a ruin, a few dead, the rest unhoused', () => {
