@@ -23,6 +23,14 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Walkers warp across tiles** (Maddy 2026-10-08, her (106, 37)) — measured on a 96² lotus: 803 jumps > 0.2 tile in a
+  50 ms step before the avenue-kerb change, 1,699 after (worst 0.9). Cause: the drawn pose is heading-relative
+  (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. In progress.
+- **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
+  - rail running beside a road is drawn with at-grade crossings though there's road on one side only;
+  - pedestrians walk on train tracks (and streetcar tracks);
+  - pedestrians don't walk to the line to wait for a train or streetcar to pick them up;
+  - there are no animated streetcars.
 - **Safari scrambles canvas readback** (Maddy 2026-10-08) — ✅ the UI frames (dark bars) now encode PNGs
   directly (`ui/pngEncode.ts`). The night glow and headlight rims still read back (`glowBatch.ts`, `renderer.ts`
   litSilhouette) but Maddy checked: they look right in Safari — left as they are.
