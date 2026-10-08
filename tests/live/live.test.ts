@@ -430,7 +430,7 @@ describe('agent substrate invariants (Maddy: cars park on freeways, peds cross w
 
   it('a train spawns on a rail line and rides it, every car on rail (Maddy: rails need trains)', () => {
     const m = new GameMap(40, 4);
-    for (let x = 1; x <= 38; x++) m.built[m.idx(x, 2)] = BuiltKind.Rail; // ≥ TRAIN_RAIL_PER → one train
+    for (let x = 1; x <= 38; x++) m.built[m.idx(x, 2)] = BuiltKind.Rail; // a long line → it runs trains
     const state = createAmbientState();
     for (let s = 0; s < 80; s++) stepAmbient(state, m, createRng(7), 60);
     expect(state.trains.length).toBeGreaterThan(0);

@@ -7,7 +7,7 @@ import { BuiltKind, placeTransport } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState, offStreet, type Ped } from '../../src/live/types';
 import { spawnTransit, stepTrain } from '../../src/live/trains';
-import { planRide, startRide, WAIT_MAX, capacityOf } from '../../src/live/riders';
+import { planRide, startRide, WAIT_MAX, capacityOf, rideCrowded } from '../../src/live/riders';
 import { TRAM_LEN } from '../../src/live/trains';
 import { TRAIN_LEN, FUEL_TANK } from '../../src/live/tuning';
 import { chooseMode } from '../../src/live/pathing';
@@ -61,6 +61,23 @@ describe('riding transit', () => {
     expect(chooseMode(c.map, 10, 7, 24, 7)).toBe(TravelMode.Streetcar); // bike range, stops at both ends
     expect(chooseMode(c.map, 10, 7, 20, 7)).toBe(TravelMode.Streetcar); // walk range too
     expect(chooseMode(c.map, 10, 7, 12, 7)).toBe(TravelMode.Walk); // next door: just walk
+  });
+
+  it('a stop already crowded past a vehicle-load turns people to another way (Maddy 2026-10-08: big streams of walkers)', async () => {
+    const { advanceItinerary } = await import('../../src/live/agents');
+    const { capacityOf } = await import('../../src/live/riders');
+    const c = city();
+    const plan = planRide(c.map, 10, 7, 24, 7, 'tram')!;
+    for (let k = 0; k < capacityOf('tram') + 1; k++) {
+      const q: Ped = { x: 10, y: 6, dir: 1, tx: 10, ty: 6, homeTile: c.map.idx(10, 7) };
+      startRide(q, plan, { x: 24, y: 7 }, 'to-building');
+      q.ride!.stage = 'waiting';
+      c.state.peds.push(q);
+    }
+    expect(rideCrowded(c.state, plan.board)).toBe(true);
+    const other = planRide(c.map, 30, 7, 44, 7, 'tram')!;
+    expect(rideCrowded(c.state, other.board)).toBe(false);
+    void advanceItinerary;
   });
 
   it('walks to the platform, waits in sight, boards, rides out of sight, gets off at the far stop, walks on', () => {

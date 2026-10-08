@@ -526,13 +526,13 @@ export function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode
  *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
  *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
  *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1, bikeStretch = 1): TravelMode {
+export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1, bikeStretch = 1, rides = true): TravelMode {
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
   // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
   const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
   // A ride is the cheap way (Maddy 2026-10-08): whenever a line runs from end to end — the walk to and from its
   // stops under half the trip — people take it, even for a trip they might have walked or biked
-  for (const family of ['tram', 'rail'] as const) {
+  for (const family of rides ? (['tram', 'rail'] as const) : []) {
     const ride = planRide(map, ox, oy, dx, dy, family);
     if (ride && 2 * ride.walk <= d) return family === 'tram' ? TravelMode.Streetcar : TravelMode.ElevatedRail;
   }
@@ -547,7 +547,7 @@ export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy:
     }
     // a line: a ride with stops near BOTH ends (riders.ts — they walk to the stop, wait, ride, walk on)
     if (mode === TravelMode.Streetcar || mode === TravelMode.ElevatedRail) {
-      if (planRide(map, ox, oy, dx, dy, mode === TravelMode.Streetcar ? 'tram' : 'rail')) return mode;
+      if (rides && planRide(map, ox, oy, dx, dy, mode === TravelMode.Streetcar ? 'tram' : 'rail')) return mode;
       continue;
     }
     // drive: available when roads serve BOTH ends of the leg.

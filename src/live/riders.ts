@@ -217,3 +217,11 @@ export function ridersAboard(state: AmbientState): Map<Train, number> {
   }
   return out;
 }
+
+/** Is a stop already crowded past a vehicle-load — more waiting for it (or on their way) than one vehicle carries?
+ *  Then a new trip goes another way rather than join the queue (Maddy 2026-10-08: big streams of walkers). */
+export function rideCrowded(state: AmbientState, board: Stop): boolean {
+  let n = 0;
+  for (const p of state.peds) if (p.ride && p.ride.stage !== 'riding' && p.ride.board.track === board.track) n++;
+  return n >= capacityOf(board.family);
+}
