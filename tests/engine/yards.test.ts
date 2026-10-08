@@ -21,6 +21,23 @@ describe('yardTileFor', () => {
     expect(yardTileFor(map, 6, 6)).toEqual({ x: 6, y: 7 });
   });
 
+  it('a house facing a streetcar line, promenade, bike path or rail gets one too (Maddy 2026-10-08)', () => {
+    for (const kind of [BuiltKind.Streetcar, BuiltKind.Promenade, BuiltKind.BikePath, BuiltKind.Rail, BuiltKind.ElevatedRail]) {
+      const map = new GameMap(10, 10);
+      const parcels = new ParcelStore();
+      for (let x = 0; x < 10; x++) placeTransport(map, x, 5, kind);
+      placeParcel(map, parcels, { x: 3, y: 4, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+      expect(yardTileFor(map, 3, 4), String(kind)).toEqual({ x: 3, y: 3 });
+    }
+  });
+
+  it('a street out front wins over a line out back: the yard stays behind, against the line', () => {
+    const { map, parcels } = street();
+    for (let x = 0; x < 10; x++) placeTransport(map, x, 2, BuiltKind.Rail); // a line two rows back
+    placeParcel(map, parcels, { x: 3, y: 4, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    expect(yardTileFor(map, 3, 4)).toEqual({ x: 3, y: 3 });
+  });
+
   it('a corner house gets none', () => {
     const { map, parcels } = street();
     for (let y = 0; y < 5; y++) placeTransport(map, 4, y, BuiltKind.RoadStreet); // a cross street

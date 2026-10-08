@@ -661,22 +661,29 @@ export function convertParcel(
 // A house fronts the street it sits beside; its yard is the tile directly behind it. A corner house (streets on
 // two or more sides) has no "behind" and gets no yard, and neither does a house whose back tile is taken.
 
-/** The tile behind the house at (x, y) — away from the one street it faces — if it is free to be a yard. */
+/** The tile behind the house at (x, y) — away from the one street it faces — if it is free to be a yard. A house
+ *  on no street faces the one line it sits beside instead: a streetcar, promenade, bike path or rail (Maddy
+ *  2026-10-08: houses on a tram street got no yard). */
 export function yardTileFor(map: GameMap, x: number, y: number): { x: number; y: number } | null {
+  const street = (k: number): boolean => isRoadKind(k) || k === BuiltKind.QuietStreet;
+  const front = frontOf(map, x, y, street) ?? frontOf(map, x, y, isTransportKind);
+  if (!front) return null; // off any street or line, or a corner
+  const bx = x - front[0];
+  const by = y - front[1];
+  return map.inBounds(bx, by) && canPlaceParcel(map, bx, by, 1, 1) ? { x: bx, y: by } : null;
+}
+
+/** The one side of (x, y) that `faces` — or null if none does, or several do (a corner has no back). */
+function frontOf(map: GameMap, x: number, y: number, faces: (k: number) => boolean): readonly [number, number] | null {
   let front: readonly [number, number] | null = null;
   for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
     const nx = x + dx;
     const ny = y + dy;
-    if (!map.inBounds(nx, ny)) continue;
-    const k = map.built[map.idx(nx, ny)]!;
-    if (!isRoadKind(k) && k !== BuiltKind.QuietStreet) continue;
-    if (front) return null; // a corner: no back
+    if (!map.inBounds(nx, ny) || !faces(map.built[map.idx(nx, ny)]!)) continue;
+    if (front) return null;
     front = [dx, dy];
   }
-  if (!front) return null; // off any street
-  const bx = x - front[0];
-  const by = y - front[1];
-  return map.inBounds(bx, by) && canPlaceParcel(map, bx, by, 1, 1) ? { x: bx, y: by } : null;
+  return front;
 }
 
 /** Lay the yard behind the house at (x, y) as its own 1×1 lot. False when it can have none. */
