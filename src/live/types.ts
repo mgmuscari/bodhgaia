@@ -297,6 +297,16 @@ export interface AmbientState {
   welcome?: Map<number, number>;
   /** Homes built since the opening that are still filling for the first time (they open empty). */
   freshHomes?: Set<number>;
+  /** The in-game hour (0..23), set by the host each step; absent ⇒ no clock (tests, the golden run). */
+  hour?: number;
+  /** The last hour exposure was drawn for (deaths are drawn once per in-game hour). */
+  exposureHour?: number;
+  /** Residents who have just died, lying where they fell (t = substeps since). */
+  fallen?: { x: number; y: number; t: number }[];
+  /** Street memorials — a candle and flowers — where someone died (age in substeps). */
+  memorials?: { x: number; y: number; age: number }[];
+  /** Residents who have died so far (the news reads its change). */
+  deaths?: number;
   /** Live ROAD DECAY (0..ROAD_DECAY_MAX), keyed by road tile: how crumbled the pavement is.
    *  Redlined roads crumble (the city won't maintain the disinvested districts); roads recover
    *  where the neighborhood is cared-for (high land value). Drags land value, never hashed. */

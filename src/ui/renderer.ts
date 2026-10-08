@@ -31,6 +31,7 @@ import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH } from '../live/geometry';
+import { ENCAMPMENT_WEAR } from '../live/tuning';
 import type { AmbientState } from '../live/types';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
@@ -93,7 +94,6 @@ function washLevel(v: number): number {
   return v >= 170 ? 3 : v >= 90 ? 2 : v > 0 ? 1 : 0;
 }
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
-const ENCAMPMENT_WEAR = 225; // wear at/above which the heaviest-worn empty tile shows an encampment tent
 
 /** What a tile's desire-path wear bakes into the base: beaten earth in three depths, then junk, then tents. */
 function wearMarks(wear: number): { level: number; nJunk: number; nTents: number } {

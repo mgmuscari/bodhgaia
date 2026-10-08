@@ -466,3 +466,18 @@ export const ADU_HOUSE_HEADROOM = 2;
 /** Elevated Rail: homes within RAIL_NOISE_RADIUS (Chebyshev) of the line lose RAIL_NOISE of their occupancy pull. */
 export const RAIL_NOISE_RADIUS = 2;
 export const RAIL_NOISE = 0.05;
+
+// ── Death and memorial (docs/design/bodhgaia-opening.md §2) ─────────────────────────────────────────────
+/** Wear at/above which the heaviest-worn empty tile shows an encampment tent — where the unhoused shelter. */
+export const ENCAMPMENT_WEAR = 225;
+/** Substeps a resident who has died lies on the ground before the memorial takes their place (~3 s). */
+export const FALL_SUBSTEPS = 60;
+/** Substeps a street memorial (a candle and flowers) stays where someone died (~2 min). */
+export const MEMORIAL_SUBSTEPS = 2400;
+/** Exposure: the unhoused who die per in-game night hour, per person unhoused (600 unhoused ≈ 2 a night). */
+export const EXPOSURE_PER_PERSON_HOUR = 1 / 2400;
+/** Night, for exposure: from NIGHT_FROM to NIGHT_TO (exclusive). */
+export const NIGHT_FROM = 22;
+export const NIGHT_TO = 6;
+/** Nobody dies of exposure within this reach (Chebyshev) of shelter — a healing commons or a tiny-home village. */
+export const SHELTER_RADIUS = 6;
