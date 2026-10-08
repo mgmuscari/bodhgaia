@@ -19,8 +19,8 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
 ### 1 — Live-game bugs (playtest loop, do first)
 - **Safari scrambles canvas readback** (Maddy 2026-10-08) — ✅ the UI frames (dark bars) now encode PNGs
-  directly (`ui/pngEncode.ts`). Still reading back: `glowBatch.ts:162` (night window glow) and `renderer.ts:478`
-  (headlight-lit sprites) — check them in Safari at night; derive those from the pixel arrays instead.
+  directly (`ui/pngEncode.ts`). The night glow and headlight rims still read back (`glowBatch.ts`, `renderer.ts`
+  litSilhouette) but Maddy checked: they look right in Safari — left as they are.
 - ✅ **Intersection at (97, 37) looks bad** (Maddy 2026-09-30) — an avenue crossing a 3-wide freeway at
   grade: freeway lanes/ramp dashes were painted through the crossing and ramp decks read as block corners
   (stray kerb hooks). Fixed: `freewayCrossing` junction box + ramp-aware `innerCornerMask`.
