@@ -145,6 +145,9 @@ function smogPuff(size: number, variant: number, shades: readonly [RGB, RGB, RGB
 // Trains: a locomotive (cab window at the nose) and silver carriages, ~0.8 tile long, as wide as the
 // rail gauge. k edge, b body, w window, r/m loco body + roof gear, g windshield.
 const TRAIN_CAR_E = ['.kkkkkkkkkkk.', 'kbbbbbbbbbbbk', 'kbwbwbwbwbwbk', 'kbwbwbwbwbwbk', 'kbbbbbbbbbbbk', '.kkkkkkkkkkk.'];
+// Trams (docs/design/transit.md): a cream car with a red band and a row of windows; the head has its windscreen.
+const TRAM_HEAD_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'kcwcwcwcwcwgk', 'kcwcwcwcwcwgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
+const TRAM_CAR_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrrk', 'kcwcwcwcwcwck', 'kcwcwcwcwcwck', 'krrrrrrrrrrrk', '.kkkkkkkkkkk.'];
 const TRAIN_LOCO_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'krmmmmmmmrrgk', 'krmmmmmmmrrgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
 
 /** The north-east frame of an east-facing body: the drawing laid along the diagonal, each target pixel
@@ -256,6 +259,11 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   for (const [part, rows, cols] of [['car', TRAIN_CAR_E, carCols], ['loco', TRAIN_LOCO_E, locoCols]] as const) {
     const east = glyph(rows, cols);
     eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => out.set(`@sprite/train/${part}/${d}`, f));
+  }
+  const tramCols = { k: C.roofRedLo, r: C.roofRed, c: C.cream, w: C.glass, g: C.glassHi };
+  for (const [part, rows] of [['head', TRAM_HEAD_E], ['car', TRAM_CAR_E]] as const) {
+    const east = glyph(rows, tramCols);
+    eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => out.set(`@sprite/tram/${part}/${d}`, f));
   }
   BIRD_FRAMES.forEach((rows, f) => out.set(`@sprite/bird/${f}`, glyph(rows, { k: C.ink })));
   SMOG_PX.forEach((size, i) => {

@@ -92,3 +92,49 @@ export function transitLines(map: GameMap): Line[] {
   }
   return lines;
 }
+
+/** Substeps a vehicle halts at a stop (~2 s), long enough to see it and for riders to get on and off. */
+export const DWELL = 40;
+
+export interface Transit {
+  lines: Line[];
+  /** Stop by its track tile. */
+  stopAt: Map<number, Stop>;
+  /** The line each tile belongs to (-1 off the network). */
+  lineOf: Int32Array;
+}
+
+interface Cached extends Transit {
+  sig: number;
+  calls: number;
+}
+const CACHE = new WeakMap<GameMap, Cached>();
+/** Calls between re-checks of the track for changes (the scan is cheap but not per-vehicle cheap). */
+const RECHECK = 20;
+
+function trackSignature(map: GameMap): number {
+  let h = 0;
+  for (let i = 0; i < map.built.length; i++) {
+    const k = map.built[i]!;
+    if (familyOf(k) !== null) h = (Math.imul(h, 31) + i * 7 + k) | 0;
+  }
+  return h;
+}
+
+/** The map's lines and stops, rebuilt when its track changes (re-checked every RECHECK calls). */
+export function transitFor(map: GameMap): Transit {
+  let c = CACHE.get(map);
+  if (c && ++c.calls % RECHECK !== 0) return c;
+  const sig = trackSignature(map);
+  if (c && c.sig === sig) return c;
+  const lines = transitLines(map);
+  const stopAt = new Map<number, Stop>();
+  const lineOf = new Int32Array(map.width * map.height).fill(-1);
+  for (const l of lines) {
+    for (const t of l.tiles) lineOf[t] = l.id;
+    for (const s of l.stops) stopAt.set(s.track, s);
+  }
+  c = { lines, stopAt, lineOf, sig, calls: 0 };
+  CACHE.set(map, c);
+  return c;
+}

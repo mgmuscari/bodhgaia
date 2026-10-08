@@ -163,6 +163,11 @@ export interface Train {
   /** One Mover per car (head first), re-synced each substep by syncTrainLegs — the same movers cars and
    *  peds are, so the substep snapshot and pose blending cover trains too. */
   cars?: Mover[];
+  /** Which track it runs on (live/transit.ts): a train (rail, elevated rail) or a tram (streetcar). */
+  family?: 'rail' | 'tram';
+  /** Substeps left halted at a stop, and the stop it last halted at (so it moves on). */
+  dwell?: number;
+  lastStop?: number;
 }
 
 /** A parking lot the ambient layer can store cars in: its centre, its bounding box (for the

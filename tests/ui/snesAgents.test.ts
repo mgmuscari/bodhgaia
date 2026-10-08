@@ -80,6 +80,18 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     }
   });
 
+  it('trams have their own look: 8 headings, a head with a windscreen and a car, the size of a train car', () => {
+    for (let d = 0; d < 8; d++) {
+      for (const part of ['head', 'car']) {
+        const p = tiles.get(`@sprite/tram/${part}/${d}`)!;
+        expect(p, `tram ${part} ${d}`).toBeDefined();
+        const train = tiles.get(`@sprite/train/car/${d}`)!;
+        expect([p.w, p.h]).toEqual([train.w, train.h]);
+      }
+      expect(tiles.get(`@sprite/tram/head/${d}`)!.data.join()).not.toBe(tiles.get(`@sprite/train/loco/${d}`)!.data.join());
+    }
+  });
+
   it('a crash leaves debris: a few pixels of glass and metal, smaller than a car', () => {
     const d = tiles.get('@sprite/debris')!;
     expect(d).toBeDefined();

@@ -1173,7 +1173,9 @@ export class Renderer {
       trainPoses(tr, mapW, alpha).forEach((q, k) => {
         const { sx, sy } = camera.worldToScreen(q.x, q.y);
         if (!onScreen(sx, sy)) return;
-        const img = this.sprites.get(`@sprite/train/${k === 0 ? 'loco' : 'car'}/${heading8(q.hx, q.hy)}`);
+        const img = this.sprites.get(
+          tr.family === 'tram' ? `@sprite/tram/${k === 0 ? 'head' : 'car'}/${heading8(q.hx, q.hy)}` : `@sprite/train/${k === 0 ? 'loco' : 'car'}/${heading8(q.hx, q.hy)}`,
+        );
         if (img) this.drawArt(ctx, img, q.x, q.y, camera);
         addBody(q.x, q.y, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
       });
