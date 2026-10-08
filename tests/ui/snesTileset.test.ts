@@ -702,3 +702,13 @@ describe('rail track curves (Maddy 2026-09-30: track turns and junctions smoothe
     expect(plus.some(([x]) => x === 5) && plus.some(([, y]) => y === 5)).toBe(true);
   });
 });
+
+describe('flood water (disasters.md)', () => {
+  it('is the river tile, recoloured murky — a full tile, two variants for the wave', () => {
+    const a = tiles.get('@sprite/flood/0')!;
+    const b = tiles.get('@sprite/flood/1')!;
+    expect([a.w, a.h]).toEqual([BASE_TILE, BASE_TILE]);
+    expect(a.data.join()).not.toBe(b.data.join());
+    expect(a.data.join()).toBe(tiles.get('river-0~m2')!.data.join());
+  });
+});

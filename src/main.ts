@@ -442,17 +442,19 @@ export function main(save: SaveV1 | null = null): void {
     if (handle) {
       handle.fire = fire; // live checks: light a building (and live/spills.ts startSpill for a spill)
       handle.weather = weather; // live checks: weather.storm(heavy)
+      handle.flood = flood;
     }
   }
 
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
           ignite: (i) => fire.ignite(i),
+          storm: (heavy) => weather.storm(heavy),
           view: (x, y) => {
             camera.centerOn(x, y, 3);
             markDirty();

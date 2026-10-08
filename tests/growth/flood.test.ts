@@ -5,7 +5,8 @@ import { GameMap, Water } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
 import { createFloodState, floodPlain, stepFlood, FLOOD_DAMAGE } from '../../src/growth/flood';
 
-/** A shore: water in columns 0–2 at elevation 0.34; land rising gently from 0.37 at column 3 by 0.01 a column. */
+/** A shore: water in columns 0–2 at elevation 0.34; land rising gently from 0.35 at column 3 by 0.003 a column
+ *  (low enough to flood up to column ~11; high ground beyond). */
 function shore() {
   const map = new GameMap(30, 10);
   for (let y = 0; y < 10; y++) {
@@ -14,7 +15,7 @@ function shore() {
       if (x < 3) {
         map.water[i] = Water.Ocean;
         map.elevation[i] = 0.34;
-      } else map.elevation[i] = 0.37 + (x - 3) * 0.01;
+      } else map.elevation[i] = 0.35 + (x - 3) * 0.003;
     }
   }
   return { map, parcels: new ParcelStore() };

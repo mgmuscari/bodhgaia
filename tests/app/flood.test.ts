@@ -14,7 +14,7 @@ function town() {
       if (x < 3) {
         map.water[i] = Water.Ocean;
         map.elevation[i] = 0.34;
-      } else map.elevation[i] = 0.37 + (x - 3) * 0.01;
+      } else map.elevation[i] = 0.35 + (x - 3) * 0.003;
     }
   }
   const parcels = new ParcelStore();
@@ -41,7 +41,12 @@ function town() {
     now += FLOOD_STEP_MS;
     flood.frame(now);
   };
-  return { map, live, news, hourPasses };
+  /** A frame within the current hour (the controller runs every FLOOD_STEP_MS; the flood moves once an hour). */
+  const secondPasses = () => {
+    now += FLOOD_STEP_MS;
+    flood.frame(now);
+  };
+  return { map, live, news, hourPasses, secondPasses };
 }
 
 describe('the flood controller', () => {
@@ -60,6 +65,15 @@ describe('the flood controller', () => {
     expect(closedTiles(t.map)).toBeUndefined(); // the roads open again
     expect(t.live.occupancy.get(t.map.idx(3, 4))).toBe(10);
     expect(t.live.unhoused).toBe(5);
+  });
+
+  it('an evacuated home stays evacuated between the hours (the flood moves hourly; the controller every second)', () => {
+    const t = town();
+    t.hourPasses(true);
+    t.hourPasses(true);
+    for (let s = 0; s < 5; s++) t.secondPasses();
+    expect(t.live.occupancy.get(t.map.idx(3, 4))).toBe(0);
+    expect(t.live.unhoused).toBe(15);
   });
 
   it('light rain floods nothing', () => {

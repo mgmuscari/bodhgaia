@@ -13,15 +13,15 @@ import { BuiltKind, isRoadKind, type ParcelStore } from '../engine/fabric';
 import { LandCover, type GameMap } from '../engine/map';
 
 /** How far above the shoreline water's level land can lie and still flood (elevation is 0..1). */
-export const FLOOD_RISE = 0.06;
+export const FLOOD_RISE = 0.035;
 /** The plain is at most this many tiles from the water. */
 export const FLOOD_REACH = 10;
 /** Flood level gained per heavy-rain hour, and lost per other hour (level 1 reaches the plain's far edge on
  *  neutral ground). */
-export const FLOOD_CLIMB = 0.18;
+export const FLOOD_CLIMB = 0.1;
 export const FLOOD_RECEDE = 0.08;
 /** Condition a building loses each hour it stands in water. */
-export const FLOOD_DAMAGE = 12;
+export const FLOOD_DAMAGE = 6;
 /** How much each paved / soaking tile within SOAK_RADIUS moves a tile's threshold (×). */
 const PAVE_SHED = 0.03;
 const GREEN_SOAK = 0.06;
@@ -96,10 +96,12 @@ function threshold(map: GameMap, t: number, dist: number): number {
       else if (isRoadKind(k) || k === BuiltKind.ParkingLot) scale -= PAVE_SHED;
     }
   }
-  return (dist / FLOOD_REACH) * Math.max(0.4, scale);
+  return ((dist - 0.5) / FLOOD_REACH) * Math.max(0.4, scale); // the shore goes under in the first heavy hour
 }
 
 export interface FloodEvents {
+  /** Did the flood move this call (a new hour)? Otherwise the lists are empty because nothing happened. */
+  stepped: boolean;
   /** Tiles that went under / came out of water this hour. */
   rose: number[];
   fell: number[];
@@ -109,8 +111,9 @@ export interface FloodEvents {
 
 /** One flood step: once per in-game hour, climb (heavy rain) or recede, then damage what stands in the water. */
 export function stepFlood(world: { map: GameMap; parcels: ParcelStore }, f: FloodState, opts: { hour?: number; heavy: boolean }): FloodEvents {
-  const ev: FloodEvents = { rose: [], fell: [], underWater: [] };
+  const ev: FloodEvents = { stepped: false, rose: [], fell: [], underWater: [] };
   if (opts.hour === undefined || opts.hour === f.lastHour) return ev;
+  ev.stepped = true;
   f.lastHour = opts.hour;
   const { map, parcels } = world;
   f.level = opts.heavy ? Math.min(1.5, f.level + FLOOD_CLIMB) : Math.max(0, f.level - FLOOD_RECEDE);
