@@ -20,7 +20,14 @@ import { visitValue } from '../citizens/plots';
 import { VILLAGE_RESIDENTS } from '../citizens/census';
 import { TravelMode, modeSpec } from '../citizens/modes';
 import {
+  ADU_HOUSE_HEADROOM,
+  AI_EVAPORATION_BOOST,
+  AI_NODE_RADIUS,
   AMENITY_KINDS,
+  FRESH_FOOD_PULL,
+  FRESH_FOOD_RADIUS,
+  PARKLET_RADIUS,
+  PARKLET_SHIFT,
   BIKE_RANGE,
   OCC_FLOOR,
   COVERAGE_RADIUS,
@@ -128,6 +135,11 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (eco.soil || eco.flora || eco.fauna) {
     effects.push(`Ecology on its tiles: soil +${eco.soil}, flora +${eco.flora}, fauna +${eco.fauna}`);
   }
+  if (kind === BuiltKind.Parklet) effects.push(`Takes the curb's parking: homes within ${PARKLET_RADIUS} tiles drive ${pct(PARKLET_SHIFT)} fewer trips`);
+  if (kind === BuiltKind.VerticalFarm) effects.push(`Fresh food: homes within ${FRESH_FOOD_RADIUS} tiles hold their residents (+${FRESH_FOOD_PULL} pull)`);
+  if (kind === BuiltKind.ADU) effects.push(`Built beside a house: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
+  if (kind === BuiltKind.AINode) effects.push(`Schedules trips: car trips within ${AI_NODE_RADIUS} tiles evaporate ${AI_EVAPORATION_BOOST}× as readily in a jam`);
+  if (kind === BuiltKind.Commune) effects.push('Its residents own no cars');
   if (kind === BuiltKind.CompostHub) effects.push(`Gardens and vertical farms within ${COMPOST_RADIUS} tiles need ${pct(1 - COMPOST_TENDING)} less tending`);
   if (kind === BuiltKind.Bazaar) effects.push(`Draws a crowd: shops within ${BAZAAR_RADIUS} tiles pay ${pct(BAZAAR_LIFT - 1)} more tax`);
   if (kind === BuiltKind.Commune) effects.push(`Pooled lives: its households give ${COMMUNE_REGEN}× the effort`);
