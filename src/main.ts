@@ -74,6 +74,7 @@ export function main(save: SaveV1 | null = null): void {
     applyLive: (caps) => live.applyCaps(caps),
     setRenderer: (m) => view.setMode(m),
     applyAudio: (a) => sound.applySettings(a), // only on a user change, after `sound` exists
+    music: () => sound.music, // the picker opens only after `sound` exists
   });
   const { world: size } = settings.current();
   // A resumed city brings its own seed; `?seed=` pins one; otherwise a new player (or New city) gets a random world
@@ -125,6 +126,7 @@ export function main(save: SaveV1 | null = null): void {
     hour: () => gameClock(gameSec()).hour,
     hasHealing: () => world.parcels.aliveIndices().some((i) => world.parcels.kindAt(i) === BuiltKind.HealingCommons),
     hidden: () => document.hidden,
+    firstTrack: import.meta.env.DEV ? (params.get('track') ?? undefined) : undefined, // DEV: audition a piece
   });
   sound.applySettings(settings.current().audio);
   let deniedAt = 0; // a refused drag would repeat per tile — one 'no' per gesture is enough

@@ -18,6 +18,7 @@ import {
   type WorldSettings,
 } from './settings';
 import { panelVisibility, type PanelHandle } from './panelHandle';
+import { nowPlaying, pickerRows, type MusicControl } from './musicPickerContent';
 
 export interface SettingsPanelCallbacks {
   /** The current (already-clamped) settings, read fresh each time the panel opens. */
@@ -32,6 +33,8 @@ export interface SettingsPanelCallbacks {
   onAudioChange(audio: AudioSettings): void;
   /** Disasters on/off (takes effect at once: nothing new starts). */
   onDisastersChange(on: boolean): void;
+  /** The music player, for the picker (null until the sound system is up). */
+  music?(): MusicControl | null;
   /** Fired on every open/close, so the dock's button can follow. */
   onToggle?(open: boolean): void;
 }
@@ -84,6 +87,7 @@ export function mountSettingsPanel(
     panel.appendChild(worldSection(s));
     panel.appendChild(rendererSection(s));
     panel.appendChild(audioSection(s));
+    panel.appendChild(musicSection());
     panel.appendChild(disastersSection(s));
   };
 
@@ -142,6 +146,65 @@ export function mountSettingsPanel(
     note.className = 'settings-panel__note';
     note.textContent = 'Sound starts after your first click or key press (the browser asks for that).';
     sec.appendChild(note);
+    return sec;
+  };
+
+  // — Music: what's playing, Next, and every piece to pick from (it plays now; the rotation carries on after) —
+  const musicSection = (): HTMLElement => {
+    const sec = section('Music');
+    const control = cb.music?.() ?? null;
+    if (!control) {
+      sec.appendChild(row('Music starts with your first click'));
+      return sec;
+    }
+    const current = control.current();
+    const head = row(nowPlaying(control.tracks, current));
+    const next = document.createElement('button');
+    next.className = 'settings-panel__btn';
+    next.textContent = 'Next';
+    next.addEventListener('click', () => {
+      control.next();
+      setTimeout(render, 400); // the next piece loads, then the panel shows it
+    });
+    head.appendChild(next);
+    sec.appendChild(head);
+    // a scrolling list of pieces (Maddy: a list, not buttons) — click a row, or Tab to it and press Enter
+    const list = document.createElement('ul');
+    list.className = 'settings-panel__tracks';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', 'Music');
+    let playingRow: HTMLElement | null = null;
+    for (const r of pickerRows(control.tracks, current)) {
+      const li = document.createElement('li');
+      li.className = 'settings-panel__track' + (r.playing ? ' settings-panel__track--playing' : '');
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', String(r.playing));
+      li.tabIndex = 0;
+      li.title = `Plays at: ${r.when}`;
+      const name = document.createElement('span');
+      name.textContent = (r.playing ? '♪ ' : '') + r.label;
+      const when = document.createElement('span');
+      when.className = 'settings-panel__track-when';
+      when.textContent = r.when;
+      li.append(name, when);
+      const pick = (): void => {
+        control.play(r.id);
+        setTimeout(render, 400);
+      };
+      li.addEventListener('click', pick);
+      li.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation(); // the game's keys stay out of it
+          pick();
+        }
+      });
+      if (r.playing) playingRow = li;
+      list.appendChild(li);
+    }
+    sec.appendChild(list);
+    // keep the playing piece in view
+    if (playingRow) requestAnimationFrame(() => playingRow?.scrollIntoView({ block: 'nearest' }));
     return sec;
   };
 

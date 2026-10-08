@@ -57,6 +57,9 @@ export function mountNightOverlay(container: HTMLElement): NightUi {
     title(text) {
       set('night-dim', [el('h1', 'night-title', text)]);
     },
+    credit(text, big) {
+      set('night-dark', [el(big ? 'h1' : 'p', big ? 'night-credit night-credit-name' : 'night-credit', text)]);
+    },
     clear() {
       set('night-clear', []);
     },

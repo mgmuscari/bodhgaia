@@ -148,6 +148,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/uiKit.ts',
   'src/ui/pngEncode.ts',
   'src/ui/prayerFlags.ts',
+  'src/ui/musicPickerContent.ts',
   'src/ui/uiIcons.ts',
   'src/ui/economyContent.ts',
   'src/ui/moneyFormat.ts',

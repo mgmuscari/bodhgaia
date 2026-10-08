@@ -62,6 +62,13 @@ export interface MusicPlayer {
 const LEAD = 0.1;
 /** Long notes (held pedal, drones) are trimmed so voices free up. */
 const MAX_NOTE = 8;
+/** The melody's channel (an arrangement's lead, the right hand of a score, the chant): admitted first among notes
+ *  due together; its highest note at each onset (the melody note) may take LEAD_HEADROOM voices past the cap — a held
+ *  pad or a comp chord never crowds the tune out. */
+const LEAD_CHANNEL = 0;
+const LEAD_HEADROOM = 2;
+/** The order notes due together are admitted in: the lead, then pitched parts high to low, then drums. */
+const priority = (n: MidiNote): number => (n.channel === LEAD_CHANNEL ? 0 : n.percussion ? 2 : 1);
 /** Drums, when kept at all, sit well under the melody. */
 const PERCUSSION_GAIN = 0.4;
 /** A light stereo spread by register: low left, high right, never far. */
@@ -133,12 +140,12 @@ export function createMusicPlayer(
     return n.percussion ? percussionFor(n.pitch) : instrumentForProgram(n.program);
   }
 
-  function emit(n: MidiNote): void {
+  function emit(n: MidiNote, melody = false): void {
     const instrument = instrumentFor(n);
     if (!instrument) return;
     const at = start + n.time / rate();
     const duration = Math.min(MAX_NOTE, Math.max(0.05, n.duration / rate()));
-    if (!poly.admit(at, at + duration)) return;
+    if (!poly.admit(at, at + duration, melody ? LEAD_HEADROOM : 0)) return;
     const velocity = soften(n.velocity) * (n.percussion ? PERCUSSION_GAIN : 1);
     const voice = engine.play({ instrument, pitch: n.pitch, velocity, bus: 'music', at, duration, pan: pan(n.pitch) });
     if (voice) sounding.push({ voice, end: at + duration });
@@ -155,7 +162,10 @@ export function createMusicPlayer(
     sounding = sounding.filter((s) => s.end > now);
     const r = dueNotes(piece.notes, cursor, (now + lookahead - start) * rate());
     cursor = r.cursor;
-    for (const n of r.due) emit(n);
+    // the melody note of each onset: the highest on the lead channel — it alone gets the headroom
+    const melody = new Map<number, MidiNote>();
+    for (const n of r.due) if (n.channel === LEAD_CHANNEL && !n.percussion && (melody.get(n.time)?.pitch ?? -1) < n.pitch) melody.set(n.time, n);
+    for (const n of [...r.due].sort((a, b) => priority(a) - priority(b) || a.time - b.time || b.pitch - a.pitch)) emit(n, melody.get(n.time) === n);
     if (cursor >= piece.notes.length && now >= start + piece.duration / rate() + gap && !advancing) {
       advancing = true;
       next().catch(() => halt()).finally(() => (advancing = false));

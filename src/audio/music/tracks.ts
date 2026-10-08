@@ -24,6 +24,12 @@ export interface TrackCredit {
   typesetter: string;
   /** The page where the licence was verified. */
   source: string;
+  /** Arranged for this game (the arranger is `typesetter`), not typeset from a score. */
+  arranged?: boolean;
+  /** A typeset score arranged for the game as an ensemble (scripts/arrange.ts): who arranged it, and the licence the
+   *  arrangement carries — ShareAlike stays ShareAlike; a public-domain score's arrangement goes with the game. */
+  arranger?: string;
+  arrangementLicence?: LicenceId;
   /** The exact file fetched. */
   download?: string;
   licence: LicenceId;
@@ -57,7 +63,15 @@ function mutopia(
     title,
     composer,
     moods,
-    credit: { typesetter, source: page(pieceId), download: `${MUTOPIA}/ftp/${ftpPath}`, licence },
+    credit: {
+      typesetter,
+      source: page(pieceId),
+      download: `${MUTOPIA}/ftp/${ftpPath}`,
+      licence,
+      // arranged for the game as an ensemble (Maddy 2026-10-08) from the score kept in assets/music-originals/
+      arranger: 'Madeleine Muscari',
+      arrangementLicence: licence === 'cc-by-sa-4.0' ? 'cc-by-sa-4.0' : 'gpl-3.0-or-later',
+    },
   };
 }
 
@@ -186,6 +200,29 @@ export const CLASSICAL_TRACKS: MusicTrack[] = [
   ),
 ];
 
+/** Arranged for Bodhgaia by Madeleine Muscari (2026-10-08): ensemble settings of public-domain songs and
+ *  traditional Buddhist melodies, shipped under public/music/ and licensed with the game (GPL-3.0-or-later).
+ *  City music — in the day/night rotation, not the sacred calm-only rule (Maddy's call). */
+function arrangement(id: string, title: string, composer: string, moods: Mood[]): MusicTrack {
+  return {
+    id,
+    file: `${id}.mid`,
+    title,
+    composer,
+    moods,
+    credit: { typesetter: 'Madeleine Muscari', source: 'https://github.com/mgmuscari/bodhgaia', licence: 'gpl-3.0-or-later', arranged: true },
+  };
+}
+
+export const ARRANGED_TRACKS: MusicTrack[] = [
+  arrangement('kyabdro-night', 'Kyabdro', 'traditional Tibetan refuge prayer', ['night']),
+  arrangement('om-mani-town', 'Om Mani', 'traditional mantra', ['day']),
+  arrangement('namo-bossa', 'Namo', 'traditional Buddhist homage', ['day']),
+  arrangement('st-louis-blues', 'St. Louis Blues', 'W. C. Handy', ['day']),
+  arrangement('after-youve-gone', "After You've Gone", 'Turner Layton and Henry Creamer', ['day']),
+  arrangement('motherless-night', 'Sometimes I Feel Like a Motherless Child', 'traditional spiritual', ['night']),
+];
+
 /** The reference the transcriptions follow (rules only — no notation was copied). */
 export const CHANT_REFERENCE = {
   label: 'Tone Rules for Pāḷi Chanting in the Thai Tradition (Metta Forest Monastery, dhammatalks.org)',
@@ -209,4 +246,4 @@ function recitation(text: ChantText): MusicTrack {
 export const CHANT_TRACKS: MusicTrack[] = [recitation(TISARANA), recitation(METTA_SUTTA)];
 
 /** Everything the player can play. */
-export const MUSIC_TRACKS: MusicTrack[] = [...CLASSICAL_TRACKS, ...CHANT_TRACKS];
+export const MUSIC_TRACKS: MusicTrack[] = [...CLASSICAL_TRACKS, ...ARRANGED_TRACKS, ...CHANT_TRACKS];

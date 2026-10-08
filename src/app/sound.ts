@@ -9,6 +9,7 @@ import { createAudio, installAudioUnlock, applyAudioSettings } from './audio';
 import { createSfx, type Sfx } from '../audio/sfx';
 import { createAmbience, type AmbienceSnapshot } from '../audio/ambience';
 import { createMusicPlayer, type Mood } from '../audio/music/player';
+import type { MusicControl } from '../ui/musicPickerContent';
 import { MUSIC_TRACKS } from '../audio/music/tracks';
 import type { AmbientState, Mover } from '../live/types';
 import { policePhase } from '../live/police';
@@ -85,11 +86,15 @@ export interface SoundDeps {
   hasHealing(): boolean;
   /** Is the tab hidden (the soundscape rests)? */
   hidden(): boolean;
+  /** Play this track first instead of the mood's pick (DEV auditions: ?track=<id>). */
+  firstTrack?: string;
 }
 
 export interface Sound {
   sfx: Sfx;
   applySettings(a: AudioSettings): void;
+  /** The music player as the Settings picker drives it. */
+  music: MusicControl;
 }
 
 const LISTEN_MS = 250;
@@ -101,7 +106,8 @@ export function createSound(deps: SoundDeps): Sound {
   const ambience = createAmbience(engine);
   let mood = moodFor(deps.hour(), deps.hasHealing());
   const music = createMusicPlayer(engine, MUSIC_TRACKS, { mood });
-  void music.next().catch(() => {}); // waits for the unlock, then the first piece of the mood
+  // waits for the unlock, then the first piece of the mood (or the one asked for)
+  void (deps.firstTrack ? music.play(deps.firstTrack) : music.next()).catch(() => {});
   let resting = false;
   let siren: Voice | null = null;
   let sirenTick = 0;
@@ -138,5 +144,14 @@ export function createSound(deps: SoundDeps): Sound {
       siren.glide?.({ pitch: high ? SIREN.hi : SIREN.lo, velocity: s.level }, 0.4);
     }
   }, LISTEN_MS);
-  return { sfx, applySettings: (a) => applyAudioSettings(engine, a) };
+  return {
+    sfx,
+    applySettings: (a) => applyAudioSettings(engine, a),
+    music: {
+      tracks: MUSIC_TRACKS,
+      current: () => music.current,
+      play: (id) => void music.play(id).catch(() => {}),
+      next: () => void music.next().catch(() => {}),
+    },
+  };
 }
