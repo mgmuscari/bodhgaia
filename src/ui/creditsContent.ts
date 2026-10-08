@@ -18,10 +18,10 @@ export interface CreditsBlock {
   links?: CreditLink[];
 }
 
-export const GAME_NAME = 'Bodhitropolis';
+export const GAME_NAME = 'Bodhgaia';
 export const AUTHOR = 'Madeleine Muscari';
 export const LICENCE = 'GPL-3.0-or-later';
-export const SOURCE_URL = 'https://github.com/mgmuscari/bodhitropolis';
+export const SOURCE_URL = 'https://github.com/mgmuscari/bodhgaia';
 /** The GNU GPL v3 text, shipped next to the page (public/COPYING.txt → dist/); relative for subpath hosting, .txt so
  *  browsers display it rather than download it (public/COPYING ships too, by convention). */
 export const COPYING_HREF = 'COPYING.txt';

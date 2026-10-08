@@ -119,7 +119,7 @@ describe('save v2: the always-zero traffic layer is retired', () => {
 
 describe('the format refuses what it cannot read', () => {
   it('rejects a non-save and a save from a newer version', () => {
-    expect(() => parseSave('{"hello":1}')).toThrow(/not a Bodhitropolis save/);
+    expect(() => parseSave('{"hello":1}')).toThrow(/not a Bodhgaia save/);
     const future = { ...captureGame(parts()), version: SAVE_VERSION + 1 };
     expect(() => parseSave(JSON.stringify(future))).toThrow(/newer/);
   });
@@ -131,5 +131,15 @@ describe('the batteries are saved', () => {
     const save = parseSave(JSON.stringify(captureGame(p)));
     expect(save.power?.storage).toEqual([[17, 300]]);
     expect(captureGame(parts()).power).toEqual({ storage: [] });
+  });
+});
+
+describe('the rename (Bodhitropolis → Bodhgaia, 2026-10-07)', () => {
+  it('writes Bodhgaia saves and still reads Bodhitropolis ones', () => {
+    const save = captureGame(parts());
+    expect(save.format).toBe('bodhgaia-save');
+    const old = JSON.stringify({ ...save, format: 'bodhitropolis-save' });
+    expect(parseSave(old).seed).toBe('lotus');
+    expect(() => parseSave(JSON.stringify({ ...save, format: 'something-else' }))).toThrow(/not a Bodhgaia save/);
   });
 });

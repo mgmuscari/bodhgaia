@@ -1,4 +1,4 @@
-// The redline grade — Bodhitropolis's discriminatory social geography.
+// The redline grade — Bodhgaia's discriminatory social geography.
 //
 // "Redlining" is named here CRITICALLY, scoped to the oppressive-planning history
 // this worldgen models. Be precise about what it WAS: redlining was the DENIAL OF

@@ -1,4 +1,4 @@
-// App shell: the tab favicon and the DEV-only `window.bodhitropolis` live-pass hook (DOM allowed).
+// App shell: the tab favicon and the DEV-only `window.bodhgaia` live-pass hook (DOM allowed).
 // The hook reads mutable app state (the power grid, the GPU renderer) through GETTERS passed in by
 // main.ts, never through captured snapshots — main reassigns those, and a handle must see the current one.
 
@@ -47,7 +47,7 @@ export interface DevHandleDeps {
 export function installDevHandle(deps: DevHandleDeps): void {
   if (!import.meta.env.DEV) return;
   const { camera, world, ambient, tech, power, markDirty, gpu } = deps;
-  (window as unknown as Record<string, unknown>).bodhitropolis = {
+  (window as unknown as Record<string, unknown>).bodhgaia = {
     zoomTo: (wx: number, wy: number, zoom?: number): void => {
       camera.centerOn(wx, wy, zoom);
       markDirty();
