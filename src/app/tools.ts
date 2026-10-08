@@ -11,6 +11,7 @@
 
 import { TECH_TREE } from '../tech/tree';
 import type { TechState } from '../tech/state';
+import { refusalText } from '../ui/toolbarContent';
 import { availableTools, previewTool, applyTool, toolDef, type ToolDef, type ToolId, type ToolWorld, type Wallet } from '../tools/tools';
 import { isLineTool } from '../ui/lineTools';
 import { isRepairTool } from '../ui/repairTools';
@@ -130,8 +131,12 @@ export function createToolController(deps: ToolsDeps): ToolController {
       return;
     }
     if (!r.ok) {
-      // an empty tile in a bulldoze stroke isn't a refusal — only a real 'no' sounds
-      if (r.reason !== 'nothing-to-bulldoze') deps.feedback?.denied();
+      // an empty tile in a bulldoze stroke isn't a refusal — only a real 'no' sounds, and says why
+      const why = refusalText(r.reason);
+      if (why) {
+        deps.feedback?.denied();
+        toolbar.setStatus(why);
+      }
       return;
     }
     deps.feedback?.applied(def);
