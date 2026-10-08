@@ -1,24 +1,35 @@
-// Deterministic neighborhood partition: parcel clusters split by fragmenting
-// roads — the Moses geometry made civic. A neighborhood is a 4-connected
-// component of the membership set M = parcel tiles + their non-fragmenting
-// frontage halo. Busy roads (RoadStreet/RoadAvenue/RoadHighway — fragmenting)
-// are barriers: never members, so they SPLIT clusters into separate components.
-// A non-fragmenting connector (QuietStreet/Promenade/BikePath/rail) shared in
-// the halo of two clusters IS in M and 4-connects them into ONE component — the
-// road-diet payoff reused. Assignment is by connected component, never by
-// nearest-parcel, so a shared halo tile needs no "which neighborhood owns it"
-// tiebreak.
+// Deterministic neighborhood partition: parcel clusters split by the big roads —
+// the Moses geometry made civic. A neighborhood is a 4-connected component of the
+// membership set M = parcel tiles + their frontage halo. Avenues, freeways, ramps
+// and heavy rail are barriers (NEIGHBORHOOD_BARRIERS): never members, so they
+// SPLIT clusters. Any other frontage tile shared by two clusters — a local street,
+// a quiet street, a promenade, empty land — IS in M and joins them into ONE
+// component. Assignment is by connected component, never by nearest-parcel, so a
+// shared halo tile needs no "which neighborhood owns it" tiebreak.
 //
 // Pure module: no DOM, no rng, no transcendental Math (the architecture guard
-// scans src/civic). The one outward edge is civic → ecology: it imports
-// influenceOf to read the per-kind `fragmenting` flag. Ecology never imports
-// civic, so there is no cycle (the guard asserts the reverse import is absent).
+// scans src/civic).
 
 import type { GameMap } from '../engine/map';
 // 4-neighbour offsets, N/E/S/W (orthogonal only — the halo and connectivity are both 4-connected,
 // so every halo tile is guaranteed connected to its seeding parcel).
 import { DIRS4_NESW } from '../engine/dirs';
-import { influenceOf } from '../ecology/influence';
+import { BuiltKind } from '../engine/fabric';
+
+/** The barriers between neighbourhoods (Maddy 2026-10-07: only big roads divide). A local street is shared
+ *  frontage — neighbours meet across it — but an avenue, a freeway or its ramps, or heavy rail walls a
+ *  district off: the Moses geometry, not every kerb. (Ecology's wildlife barriers are separate:
+ *  ecology/influence `fragmenting`, where a busy street does stop a hedgehog.) */
+export const NEIGHBORHOOD_BARRIERS: ReadonlySet<number> = new Set<number>([
+  BuiltKind.RoadAvenue,
+  BuiltKind.RoadHighway,
+  BuiltKind.RoadRamp,
+  BuiltKind.Rail,
+]);
+
+export function dividesNeighborhoods(kind: number): boolean {
+  return NEIGHBORHOOD_BARRIERS.has(kind);
+}
 
 /** One neighborhood: a 4-connected component of the membership set M. */
 export interface Neighborhood {
@@ -42,7 +53,7 @@ export interface NeighborhoodMap {
 
 /**
  * Partition `map` into neighborhoods. Membership M: a tile is in M iff it is
- * NOT fragmenting AND (it is a parcel tile OR it is 4-adjacent to ≥1 parcel
+ * NOT a barrier AND (it is a parcel tile OR it is 4-adjacent to ≥1 parcel
  * tile). Neighborhoods are the 4-connected components of M, ids numbered by
  * ascending anchor (lowest member-tile index) — so recomputation on an unchanged
  * map yields a byte-identical partition, and a fabric change re-anchors
@@ -54,17 +65,17 @@ export function computeNeighborhoods(map: GameMap): NeighborhoodMap {
   const tileToNeighborhood = new Uint16Array(n);
 
   const isParcel = (i: number): boolean => map.parcel[i] !== 0;
-  const isFragmenting = (i: number): boolean => influenceOf(map.built[i]!).fragmenting;
+  const isBarrier = (i: number): boolean => dividesNeighborhoods(map.built[i]!);
 
-  // --- Membership set M (one pass). A halo tile must be non-fragmenting and have
-  // a parcel 4-neighbour; a fragmenting tile is a barrier and is never a member
-  // (parcel tiles are buildings, never fragmenting, so the two clauses never
+  // --- Membership set M (one pass). A halo tile must not be a barrier and must have
+  // a parcel 4-neighbour; a barrier tile is never a member
+  // (parcel tiles are buildings, never barriers, so the two clauses never
   // conflict — but the barrier check is explicit so the contract is local).
   const inM = new Uint8Array(n);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = map.idx(x, y);
-      if (isFragmenting(i)) continue; // barrier → ∉ M
+      if (isBarrier(i)) continue; // barrier → ∉ M
       if (isParcel(i)) {
         inM[i] = 1;
         continue;

@@ -8,9 +8,9 @@ import { mosesCenturyStage } from '../../src/worldgen/moses';
 import { ecoSeedStage } from '../../src/worldgen/ecoseed';
 
 // Neighborhoods are the 4-connected components of M = parcel tiles + their
-// non-fragmenting frontage halo. Busy roads (RoadStreet/Avenue/Highway —
-// fragmenting) are barriers: never members, so they SPLIT clusters; a shared
-// non-fragmenting halo tile (QuietStreet/Promenade/BikePath/rail) JOINS them.
+// frontage halo. Big roads (Avenue/Highway/Ramp) and heavy rail are barriers:
+// never members, so they SPLIT clusters; any other shared halo tile (a local
+// street, QuietStreet/Promenade/BikePath) JOINS them.
 
 function blank(w: number, h: number): { map: GameMap; parcels: ParcelStore } {
   return { map: new GameMap(w, h), parcels: new ParcelStore() };
@@ -50,12 +50,16 @@ describe('computeNeighborhoods: JOIN vs SPLIT (the Moses geometry made civic)', 
     expect(a).not.toBe(b);
   });
 
-  it('the SAME clusters with a RoadStreet between = TWO (every busy road fragments)', () => {
+  it('the SAME clusters across a local RoadStreet = ONE (Maddy 2026-10-07: only big roads divide)', () => {
     const map = twoClustersBridgedBy(BuiltKind.RoadStreet);
     const nb = computeNeighborhoods(map);
-    expect(nb.neighborhoods.length).toBe(2);
-    expect(nb.tileToNeighborhood[map.idx(1, 0)]).toBe(0);
-    expect(nb.tileToNeighborhood[map.idx(0, 0)]).not.toBe(nb.tileToNeighborhood[map.idx(2, 0)]);
+    expect(nb.neighborhoods.length).toBe(1);
+    expect(nb.tileToNeighborhood[map.idx(1, 0)]).toBe(nb.tileToNeighborhood[map.idx(0, 0)]);
+  });
+
+  it('heavy rail between = TWO (the wrong side of the tracks)', () => {
+    const map = twoClustersBridgedBy(BuiltKind.Rail);
+    expect(computeNeighborhoods(map).neighborhoods.length).toBe(2);
   });
 
   it('a RoadAvenue between also fragments to TWO (the whole busy-road family)', () => {
