@@ -11,8 +11,9 @@ import { DIR_DX, DIR_DY } from './geometry';
 export type LineFamily = 'tram' | 'rail';
 
 export interface Stop {
-  /** Which line (index into the lines). */
+  /** Which line (index into the lines), and its family. */
   line: number;
+  family: LineFamily;
   /** The track tile a vehicle halts on. */
   track: number;
   /** The walkable tile beside it where riders wait. */
@@ -86,7 +87,7 @@ export function transitLines(map: GameMap): Line[] {
       });
       if (near) continue;
       const platform = platformBeside(map, x, y);
-      if (platform >= 0) stops.push({ line: id, track: t, platform });
+      if (platform >= 0) stops.push({ line: id, family, track: t, platform });
     }
     lines.push({ id, family, tiles, stops });
   }

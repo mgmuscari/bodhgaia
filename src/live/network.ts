@@ -534,7 +534,7 @@ export function adjacentRoad(map: GameMap, x: number, y: number): number {
  */
 export function pedDespawns(map: GameMap, p: Ped): boolean {
   // a gatherer walks a committed route to its gathering and home (live/gatherings.ts) — a routed walker too
-  return !offStreet(p) && p.phase !== 'gathering' && p.walkTo === undefined && pedOffNetwork(map, p);
+  return !offStreet(p) && p.phase !== 'gathering' && p.phase !== 'transit' && p.walkTo === undefined && pedOffNetwork(map, p);
 }
 
 // --- Precomputed network masks (the A* hot loop) ---------------------------

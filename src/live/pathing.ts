@@ -42,6 +42,7 @@ import {
   WEAR_MAX,
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
+import { planRide } from './riders';
 import { carPassable, closedTiles, isParkable, isWalkable, isWearable, networkMasks, reachedPlot } from './network';
 
 /** The nearest pedestrian-walkable tile to (x, y) within `maxR` (ring search, the tile itself
@@ -538,7 +539,12 @@ export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy:
       if (d <= BIKE_RANGE * stretch * bikeStretch) return TravelMode.Bike;
       continue;
     }
-    // rail / streetcar / drive: available when their network serves BOTH ends of the leg.
+    // a line: a ride with stops near BOTH ends (riders.ts — they walk to the stop, wait, ride, walk on)
+    if (mode === TravelMode.Streetcar || mode === TravelMode.ElevatedRail) {
+      if (planRide(map, ox, oy, dx, dy, mode === TravelMode.Streetcar ? 'tram' : 'rail')) return mode;
+      continue;
+    }
+    // drive: available when roads serve BOTH ends of the leg.
     if (infraNear(map, ox, oy, mode) && infraNear(map, dx, dy, mode)) return mode;
   }
   return TravelMode.Walk;

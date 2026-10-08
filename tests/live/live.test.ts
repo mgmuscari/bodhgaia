@@ -2761,16 +2761,18 @@ describe('mode choice (close → walk; car-dependent until calm/transit infra; t
   it('rides elevated rail when a line serves both ends — even far (transit beats driving)', () => {
     const map = new GameMap(60, 10);
     for (let x = 0; x < 60; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet; // roads exist too
-    map.built[map.idx(4, 5)] = BuiltKind.ElevatedRail; // a stop near the origin
-    map.built[map.idx(50, 5)] = BuiltKind.ElevatedRail; // and near the destination
+    for (let x = 4; x <= 50; x++) map.built[map.idx(x, 4)] = BuiltKind.ElevatedRail; // one line, stops near both ends
     expect(chooseMode(map, 3, 6, 50, 6)).toBe(TravelMode.ElevatedRail);
   });
 
   it('rides a streetcar when a line serves both ends and there is no rail', () => {
     const map = new GameMap(60, 10);
-    map.built[map.idx(4, 5)] = BuiltKind.Streetcar;
-    map.built[map.idx(49, 5)] = BuiltKind.Streetcar;
+    for (let x = 4; x <= 49; x++) map.built[map.idx(x, 5)] = BuiltKind.Streetcar; // one line (docs/design/transit.md)
     expect(chooseMode(map, 3, 6, 50, 6)).toBe(TravelMode.Streetcar);
+    const lone = new GameMap(60, 10); // two stray track tiles aren't a line anyone can ride
+    lone.built[lone.idx(4, 5)] = BuiltKind.Streetcar;
+    lone.built[lone.idx(49, 5)] = BuiltKind.Streetcar;
+    expect(chooseMode(lone, 3, 6, 50, 6)).not.toBe(TravelMode.Streetcar);
   });
 });
 

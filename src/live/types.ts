@@ -86,7 +86,9 @@ export interface Mover {
    *  ('to-home'), depositing the visit at `homeTile` on arrival. `phase` tracks the leg;
    *  `building` is the destination plot (the wellbeing source); `dwellInside` times the visit. */
   carId?: number;
-  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving' | 'gathering' | 'riding';
+  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving' | 'gathering' | 'transit' | 'riding';
+  /** On a transit trip (live/riders.ts): walking to the stop and waiting ('transit'), or aboard ('riding'). */
+  ride?: import('./riders').Ride;
   /** At a gathering (live/gatherings.ts): which, where they are in it, and the kerb they walk home to. */
   gather?: { id: number; go: 'coming' | 'here' | 'milling' | 'going'; mill: number; home: { x: number; y: number } };
   building?: { x: number; y: number };
