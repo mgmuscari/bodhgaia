@@ -25,6 +25,8 @@ import { installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { createEconomyController } from './app/economy';
 import { createEventsController } from './app/events';
+import { chooseSeed, randomSeed } from './app/seed';
+import { ZoneType, zoneTypeOf } from './engine/zone';
 import { neighborhoodVoice } from './civic/voice';
 import { displaceFromHomes } from './live/fields/occupancy';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
@@ -49,8 +51,6 @@ import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
 import { BuiltKind } from './engine/fabric';
 
-// The default world's seed — its identity, so it keeps the pre-rename name (Bodhgaia was Bodhitropolis).
-const DEFAULT_SEED = 'bodhitropolis';
 
 export function main(save: SaveV1 | null = null): void {
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
@@ -65,7 +65,17 @@ export function main(save: SaveV1 | null = null): void {
     applyAudio: (a) => sound.applySettings(a), // only on a user change, after `sound` exists
   });
   const { world: size } = settings.current();
-  const city = createCity({ seed: params.get('seed') ?? DEFAULT_SEED, size: { width: size.mapWidth, height: size.mapHeight }, save });
+  // A resumed city brings its own seed; `?seed=` pins one; otherwise a new player (or New city) gets a random world
+  // — a few draws at most, so a first city is never a hamlet.
+  const mapSize = { width: size.mapWidth, height: size.mapHeight };
+  const homesOf = (s: string): number => {
+    const parcels = createCity({ seed: s, size: mapSize, save: null }).world.parcels;
+    let homes = 0;
+    for (const i of parcels.aliveIndices()) if (zoneTypeOf(parcels.kindAt(i)) === ZoneType.Residential) homes++;
+    return homes;
+  };
+  const citySeed = params.get('seed') ?? (save ? save.seed : chooseSeed(() => randomSeed(), homesOf));
+  const city = createCity({ seed: citySeed, size: mapSize, save });
   const { seed, world, tech, civic, sim: deps } = city;
 
   // The opening is up unless `?nointro=1` or a resumed city; while it is, the key table swallows every game key.
