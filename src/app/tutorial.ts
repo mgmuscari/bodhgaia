@@ -37,7 +37,7 @@ const SPOT_GLIDE_MS = 1800;
 
 type Step = TutorialStep | { kind: 'spot'; spot: WorstSpot };
 
-export function createTutorial(deps: TutorialDeps): Tutorial {
+export function createTutorial(deps: TutorialDeps, script: readonly TutorialStep[] = TUTORIAL): Tutorial {
   const { ui } = deps;
   let steps: Step[] | null = null;
   let i = -1;
@@ -103,7 +103,7 @@ export function createTutorial(deps: TutorialDeps): Tutorial {
       if (done) return;
       lastNow = now;
       if (!steps) {
-        steps = [...TUTORIAL];
+        steps = [...script];
         show(0);
         return;
       }
