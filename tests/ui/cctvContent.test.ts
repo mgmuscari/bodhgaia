@@ -72,3 +72,17 @@ describe('going there (Maddy 2026-10-08: clicking the feed takes you to it)', ()
     expect(GO_TO_ZOOM).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('community events on camera (Maddy 2026-10-08)', () => {
+  it('labels them', () => {
+    expect(cctvLabel({ kind: 'party', x: 0, y: 0, w: 1, h: 1 })).toBe('Block party');
+    expect(cctvLabel({ kind: 'fair', x: 0, y: 0, w: 1, h: 1 })).toBe('Craft fair');
+    expect(cctvLabel({ kind: 'festival', x: 0, y: 0, w: 1, h: 1 })).toBe('Festival');
+  });
+
+  it('a celebration never goes before a death or a disaster', () => {
+    const q = new CctvQueue();
+    q.push([{ kind: 'festival', x: 0, y: 0, w: 1, h: 1 }, { kind: 'fire', x: 1, y: 1, w: 1, h: 1 }], 0);
+    expect(q.current(0)!.kind).toBe('fire');
+  });
+});
