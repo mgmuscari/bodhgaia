@@ -10,6 +10,7 @@ import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { layField } from '../citizens/field';
 import type { AmbientState, LivePractices } from './types';
+import { offStreet } from './types';
 import { residentDies } from './death';
 import { diffuseField, driftField } from './fields/pollution';
 import { decayField } from '../citizens/field';
@@ -110,7 +111,7 @@ export function stepClouds(state: AmbientState, map: GameMap, rng: Rng): void {
     if (c.deaths >= CLOUD_DEATH_MAX) continue;
     const dead = new Set<object>();
     for (const p of state.peds) {
-      if (p.phase === 'inside' || p.phase === 'driving' || c.touched.has(p)) continue;
+      if (offStreet(p) || c.touched.has(p)) continue;
       if ((p.x + 0.5 - c.x) ** 2 + (p.y + 0.5 - c.y) ** 2 > r2) continue;
       c.touched.add(p);
       if (c.deaths >= CLOUD_DEATH_MAX || rng.next() >= CLOUD_DEATH_CHANCE) continue;

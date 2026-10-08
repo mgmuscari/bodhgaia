@@ -25,6 +25,7 @@ import {
   WORN_WALK_PENALTY,
 } from './tuning';
 import type { AmbientState, Ped } from './types';
+import { offStreet } from './types';
 import {
   advanceItinerary,
   boardOwnedCar,
@@ -82,7 +83,7 @@ function finishOnFoot(p: Ped): void {
  * peds 'inside' a building are hidden and exempt. (Maddy: pedestrians crossing water / freeways.)
  */
 function snapToWalkable(map: GameMap, p: Ped): boolean {
-  if (p.phase === 'driving' || p.phase === 'inside' || isWalkable(map, Math.round(p.x), Math.round(p.y))) return true;
+  if (offStreet(p) || isWalkable(map, Math.round(p.x), Math.round(p.y))) return true;
   const w = nearestWalkable(map, Math.round(p.x), Math.round(p.y));
   if (w === null) return false;
   p.x = w.x;

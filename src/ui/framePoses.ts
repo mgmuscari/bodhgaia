@@ -8,6 +8,7 @@
 // Pure: no DOM, no transcendental Math.
 import { carPose, pedPose, type Pose } from '../live/poses';
 import type { AmbientState, Mover } from '../live/types';
+import { offStreet } from '../live/types';
 
 /** A draw pose sits strictly less than this many tiles from its mover's raw (x, y) on each axis: the
  *  pose rides at most a tile and a half off the sim position, and an interpolated pose is blended from
@@ -65,7 +66,7 @@ export function computeFramePoses(
   for (const m of ambient.cruisers) if (inRect(near, m.x, m.y)) cruisers.push({ m, pose: carPose(m, alpha) });
   const peds: Posed[] = [];
   for (const m of ambient.peds) {
-    if (m.phase === 'inside' || m.phase === 'driving') continue; // inside a building, or riding its car
+    if (offStreet(m)) continue; // inside a building, driving its car, or riding a tram or train
     if (inRect(near, m.x, m.y)) peds.push({ m, pose: pedPose(m, onRoadAt, alpha) });
   }
   return { alpha, cars, cruisers, peds, counts: [ambient.cars.length, ambient.cruisers.length, ambient.peds.length] };

@@ -7,6 +7,7 @@
 import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import type { AmbientState, Car, Ped } from './types';
+import { offStreet } from './types';
 import { residentDies } from './death';
 import { CRASH_BASE, CRASH_DEATH, CRASH_JAM, CRASH_SUBSTEPS, TRAFFIC_MAX } from './tuning';
 
@@ -47,7 +48,7 @@ export function crash(state: AmbientState, map: GameMap, rng: Rng, c: Car): void
   const y = Math.max(0, Math.min(map.height - 1, Math.round(c.y)));
   state.events?.push({ kind: 'crash', x, y, w: 1, h: 1 });
   if (rng.next() >= CRASH_DEATH) return;
-  const walker = state.peds.find((p) => p !== driver && p.phase !== 'inside' && p.phase !== 'driving' && Math.abs(p.x - c.x) + Math.abs(p.y - c.y) <= 1.5);
+  const walker = state.peds.find((p) => p !== driver && !offStreet(p) && Math.abs(p.x - c.x) + Math.abs(p.y - c.y) <= 1.5);
   const victim = walker && rng.next() < 0.4 ? walker : driver;
   if (victim) {
     state.peds = state.peds.filter((p) => p !== victim);
