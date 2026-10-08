@@ -306,6 +306,8 @@ export const PED_BEATEN = 1.5; // subtracted from ground cost at full wear
 export const PED_GROUND_MIN = 6.5; // floor: a fully-beaten path, still well above a jammed stroad (4.0)
 /** Crossing a parking lot on foot: no sidewalk, cars backing out. */
 export const PED_LOT = 1.5;
+/** A back yard is someone's home (Maddy 2026-10-08): a last resort on foot, dearer than a jammed avenue. */
+export const PED_YARD = 5;
 
 /** A worn desire path is convenient underfoot but DEGRADED (brown, littered): a citizen walking it
  *  brings home less wellbeing. A wearable tile counts as wellbeing-degrading once its wear reaches

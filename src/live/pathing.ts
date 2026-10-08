@@ -32,6 +32,7 @@ import {
   PED_GROUND_BASE,
   PED_GROUND_MIN,
   PED_LOT,
+  PED_YARD,
   PED_LUSH,
   PED_POLL_WEIGHT,
   POLL_MAX,
@@ -95,6 +96,7 @@ export function pedCost(
     const worn = (wear?.get(i) ?? 0) / WEAR_MAX;
     base = Math.max(PED_GROUND_MIN, PED_GROUND_BASE + flora * PED_LUSH - worn * PED_BEATEN);
   } else if (k === BuiltKind.ParkingLot) base = PED_LOT;
+  else if (k === BuiltKind.Yard) base = PED_YARD; // someone's back yard: only when there is no other way
   else base = 0.9; // transit / built greens (a walk through the park is the point)
   return base + smog;
 }
