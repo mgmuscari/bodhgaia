@@ -4,11 +4,20 @@
 // back. Pure (the architecture guard scans src/civic).
 
 import type { NeighborhoodMap } from './neighborhoods';
-import { SEED_VOICE, type CivicState } from './state';
+import { SEED_BELONGING, SEED_VOICE, type CivicState } from './state';
 
 export function neighborhoodVoice(civic: CivicState, partition: NeighborhoodMap, tile: number): number {
   const id = partition.tileToNeighborhood[tile] ?? 0;
   if (id === 0 || id > civic.count()) return 0;
   const above = civic.getValues(id).voice - SEED_VOICE;
   return above <= 0 ? 0 : above / (255 - SEED_VOICE);
+}
+
+/** How held a tile's neighbourhood is, 0..1: its belonging above the opening level (violent crime falls with it —
+ *  disasters.md, conditions not cops). 0 off any neighbourhood. */
+export function neighborhoodBelonging(civic: CivicState, partition: NeighborhoodMap, tile: number): number {
+  const id = partition.tileToNeighborhood[tile] ?? 0;
+  if (id === 0 || id > civic.count()) return 0;
+  const above = civic.getValues(id).belonging - SEED_BELONGING;
+  return above <= 0 ? 0 : above / (255 - SEED_BELONGING);
 }

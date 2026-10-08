@@ -363,6 +363,8 @@ export interface AmbientState {
   spillHour?: number;
   /** The in-game hour crashes were last drawn for (live/accidents.ts). */
   crashHour?: number;
+  /** The in-game hour violent crime was last drawn for (live/crime.ts). */
+  crimeHour?: number;
   /** Fires the trucks have put out (parcel store indices) — the host hands them to the fire step and clears it. */
   quenched?: Set<number>;
   /** Footprints burning now (published by the host from the fire step) — the renderer draws the flames. */

@@ -533,3 +533,18 @@ export const CRASH_BASE = 1 / 2400;
 export const CRASH_SUBSTEPS = 600;
 /** The share of crashes that kill someone — the driver, or a walker beside the road. */
 export const CRASH_DEATH = 0.25;
+
+// ── Violent crime (docs/design/disasters.md — conditions, not cops) ─────────────────────────────────────────
+/** What makes a street desperate, each 0..1 at full weight: encampments within 3 tiles, decayed buildings within 2,
+ *  the police-violence record under it. */
+export const DESPAIR_CAMPS = 1;
+export const DESPAIR_DECAY = 0.8;
+export const DESPAIR_POLICE = 1;
+/** Belonging takes up to this share off despair; within a refuge's reach it is multiplied by CRIME_REFUGE. */
+export const CRIME_BELONGING = 0.6;
+export const CRIME_REFUGE = 0.35;
+/** Chance per person out on the street per in-game hour, per unit of despair; ×CRIME_NIGHT after dark. Measured
+ *  2026-10-08: in the inherited lotus city (417 of 461 people out on the street stand in despair) about one life in
+ *  10 minutes of play; it falls as the city heals and belongs. */
+export const CRIME_BASE = 1 / 18000;
+export const CRIME_NIGHT = 2;

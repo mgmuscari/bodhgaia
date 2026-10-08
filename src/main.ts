@@ -52,6 +52,9 @@ import { createLessons } from './app/lessons';
 import { createFireController } from './app/fire';
 import { drawSpills } from './live/spills';
 import { drawCrashes } from './live/accidents';
+import { drawCrime } from './live/crime';
+import { neighborhoodBelonging } from './civic/voice';
+import { NIGHT_FROM, NIGHT_TO } from './live/tuning';
 import { createWeather } from './app/weather';
 import { createFloodController } from './app/flood';
 import { applyRain } from './live/fields/pollution';
@@ -422,6 +425,15 @@ export function main(save: SaveV1 | null = null): void {
     const n = drawCrashes(live.state, world.map, crashRng, gameClock(gameSec()).hour);
     if (n > 0) news.push(n > 1 ? `${n} crashes on jammed roads` : 'A crash on a jammed road');
   };
+  // Violent crime (conditions, not cops): drawn once a game hour from the despair on the street — at most one life.
+  const crimeRng = createRng(seed).fork('crime');
+  const drawCrimeNow = (): void => {
+    if (!disastersOn()) return;
+    const h = gameClock(gameSec()).hour;
+    if (drawCrime(live.state, world, crimeRng, h, h >= NIGHT_FROM || h < NIGHT_TO, (t) => neighborhoodBelonging(civic, deps.partition, t))) {
+      news.push('A life lost to violence on the street');
+    }
+  };
   const drawSpillsNow = (): void => {
     if (!disastersOn()) return;
     for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
@@ -508,6 +520,7 @@ export function main(save: SaveV1 | null = null): void {
       fire.frame(now);
       drawSpillsNow();
       drawCrashesNow();
+      drawCrimeNow();
       events.frame(now);
     },
     afterGpu: (now) => events.gpuPass(now),
