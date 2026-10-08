@@ -80,6 +80,20 @@ describe('riding transit', () => {
     void advanceItinerary;
   });
 
+  it('…the way they would go without the line — a long trip drives, it does not walk the whole way (Maddy 2026-10-08: streams of walkers)', async () => {
+    const { tripMode } = await import('../../src/live/agents');
+    const c = city();
+    expect(tripMode(c.state, c.map, 3, 7, { x: 44, y: 7 })).toBe(TravelMode.Streetcar);
+    const plan = planRide(c.map, 3, 7, 44, 7, 'tram')!;
+    for (let k = 0; k < capacityOf('tram'); k++) {
+      const q: Ped = { x: 3, y: 6, dir: 1, tx: 3, ty: 6, homeTile: c.map.idx(3, 7) };
+      startRide(q, plan, { x: 44, y: 7 }, 'to-building');
+      q.ride!.stage = 'waiting';
+      c.state.peds.push(q);
+    }
+    expect(tripMode(c.state, c.map, 3, 7, { x: 44, y: 7 })).toBe(TravelMode.Drive);
+  });
+
   it('walks to the platform, waits in sight, boards, rides out of sight, gets off at the far stop, walks on', () => {
     const c = city();
     const plan = planRide(c.map, 3, 6, 44, 6, 'tram')!;
