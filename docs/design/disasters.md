@@ -58,3 +58,11 @@ The live layer may not write the world, but a fire that burns a building to a ru
   dead and displaced. It is deterministic in (world, its rng fork, inputs), and the host steps it.
 - **The trucks and flames** live in the live layer: a truck drives from the nearest fire station along roadPath,
   sprays, and the host puts the fire out.
+
+## Architecture note: spills
+
+A spill changes no hashed state, so it lives wholly in the live layer (`live/spills.ts`): once a game hour each
+industrial works may spill (decay, redline grade, Collective Ownership ×0.25); it bursts the existing ground and
+water pollution fields (a wastewater works near the water halves it) and sends a `ToxicCloud` along `state.wind`
+that lays smog and kills a few people outdoors (one roll each, at most 3). Rate measured 2026-10-08: lotus's
+one works spills about once in half an hour of play.
