@@ -30,6 +30,30 @@ export const PLANT_OUTPUT: ReadonlyMap<number, number> = new Map<number, number>
   [BuiltKind.EnergyNode, 168], // distributed community microgrid
 ]);
 
+/** The practices' power effects (resolved tech-side, tech/effects.ts — passed as plain values). */
+export interface PowerPractices {
+  /** Multiplier on home demand by day, ROOF_SOLAR_FROM..ROOF_SOLAR_TO (Sun and Wire: rooftop solar). */
+  homeDayDemand: number;
+  /** Multiplier on hydro, wind and solar output (Renewable Energy). */
+  renewableOutput: number;
+  /** Homes within LOCAL_GRID_RADIUS of an energy node are served first in a blackout (Local Grids). */
+  localGrids: boolean;
+}
+
+export const NEUTRAL_POWER_PRACTICES: Readonly<PowerPractices> = Object.freeze({
+  homeDayDemand: 1,
+  renewableOutput: 1,
+  localGrids: false,
+});
+
+/** The daylight hours rooftop solar covers (from inclusive, to exclusive). */
+export const ROOF_SOLAR_FROM = 7;
+export const ROOF_SOLAR_TO = 18;
+/** How far (Chebyshev, from its footprint) an energy node's local grid reaches. */
+export const LOCAL_GRID_RADIUS = 4;
+/** The plants Renewable Energy boosts. */
+export const RENEWABLE_KINDS: ReadonlySet<number> = new Set<number>([BuiltKind.HydroPlant, BuiltKind.WindTurbine, BuiltKind.SolarPlant]);
+
 // Power demand per unit density, by zone class. Industry is the hungriest, homes the
 // least — the classic R<C<I load curve. Civic services draw a flat-ish mid load.
 const DEMAND_PER_DENSITY: ReadonlyMap<ZoneType, number> = new Map<ZoneType, number>([
@@ -126,6 +150,25 @@ export function demandAt(kind: number, density: number, anchor: number, clock: G
   return (base * loadProfile(zoneTypeOf(kind), clock.hour + phase) * jitter) / 10000;
 }
 
+/** The home anchors inside an energy node's local grid (Local Grids). */
+function localGridAnchors(map: GameMap, parcels: ParcelStore): Set<number> {
+  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    if (p.kind !== BuiltKind.EnergyNode) continue;
+    const r = LOCAL_GRID_RADIUS;
+    boxes.push({ x0: p.x - r, y0: p.y - r, x1: p.x + p.width - 1 + r, y1: p.y + p.height - 1 + r });
+  }
+  const out = new Set<number>();
+  if (boxes.length === 0) return out;
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    if (zoneTypeOf(p.kind) !== ZoneType.Residential) continue;
+    if (boxes.some((b) => p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1)) out.add(map.idx(p.x, p.y));
+  }
+  return out;
+}
+
 // ── Rolling blackouts ─────────────────────────────────────────────────────────────────────────────
 // A short grid sheds whole FEEDERS (FEEDER×FEEDER-tile blocks), never scattered single homes, and the
 // order feeders are served in is re-drawn every ROTATION_HOURS — so the dark patch moves around the
@@ -163,7 +206,12 @@ interface ConsumerRef {
  * in a plantless component are unpowered. Returns the powered consumer anchors plus
  * global capacity/demand totals. Pure + deterministic.
  */
-export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: GridClock): PowerGrid {
+export function computePowerGrid(
+  map: GameMap,
+  parcels: ParcelStore,
+  clock?: GridClock,
+  practices: PowerPractices = NEUTRAL_POWER_PRACTICES,
+): PowerGrid {
   const size = map.width * map.height;
   const built = map.built;
 
@@ -208,7 +256,7 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
     const anchor = map.idx(p.x, p.y);
     const c = comp[anchor]!;
     if (c < 0) continue;
-    const out = plantOutput(p.kind);
+    const out = plantOutput(p.kind) * (RENEWABLE_KINDS.has(p.kind) ? practices.renewableOutput : 1);
     if (out > 0) {
       capByComp[c] = capByComp[c]! + out;
       capacity += out;
@@ -217,7 +265,10 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
       }
       continue;
     }
-    const d = clock ? demandAt(p.kind, p.density, anchor, clock) : powerDemand(p.kind, p.density);
+    let d = clock ? demandAt(p.kind, p.density, anchor, clock) : powerDemand(p.kind, p.density);
+    // rooftop solar: homes draw less while the sun is up
+    const day = !!clock && clock.hour >= ROOF_SOLAR_FROM && clock.hour < ROOF_SOLAR_TO;
+    if (day && practices.homeDayDemand !== 1 && zoneTypeOf(p.kind) === ZoneType.Residential) d *= practices.homeDayDemand;
     if (d > 0) {
       consumersByComp[c]!.push({ anchor, demand: d });
       demand += d;
@@ -259,11 +310,18 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
   //     the remaining budget goes dark as a block (a smaller one later in the order may still fit).
   if (clock) {
     const rotation = Math.floor(clock.slot / ROTATION_HOURS);
+    const local = practices.localGrids ? localGridAnchors(map, parcels) : null;
     for (let c = 0; c < nComp; c++) {
       let budget = capByComp[c]!;
       if (budget <= 0) continue;
       const feeders = new Map<number, ConsumerRef[]>();
       for (const cons of consumersByComp[c]!) {
+        // Local Grids: the homes an energy node holds are served before any feeder takes its turn
+        if (local?.has(cons.anchor) && cons.demand <= budget) {
+          budget -= cons.demand;
+          poweredAnchors.add(cons.anchor);
+          continue;
+        }
         const f = feederOf(map, cons.anchor);
         const list = feeders.get(f);
         if (list) list.push(cons);

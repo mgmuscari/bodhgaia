@@ -40,6 +40,12 @@ export interface TechEffects {
   occFloor: number;
   /** The wellbeing a citizen brings home from a day at industry (Collective Ownership). */
   industryVisit: number;
+  /** Multiplier on home power demand by day (Sun and Wire). */
+  homeDayDemand: number;
+  /** Multiplier on hydro, wind and solar output (Renewable Energy). */
+  renewableOutput: number;
+  /** Homes around an energy node are served first in a blackout (Local Grids). */
+  localGrids: boolean;
 }
 
 export type EffectKey = keyof TechEffects;
@@ -64,6 +70,9 @@ export const NEUTRAL_EFFECTS: Readonly<TechEffects> = Object.freeze({
   droneShopDrop: 0,
   occFloor: 0.4, // = live OCC_FLOOR (pinned by tests/tech/effects.test.ts)
   industryVisit: -4, // = visitValue(Industrial) (pinned likewise)
+  homeDayDemand: 1,
+  renewableOutput: 1,
+  localGrids: false,
 });
 
 /** Each practice's effects, by node id. */
@@ -91,6 +100,9 @@ export const NODE_EFFECTS: Readonly<Record<string, readonly Effect[]>> = {
   'drone-deliveries': [{ key: 'droneShopDrop', op: 'set', value: 0.5 }],
   'mutual-aid': [{ key: 'occFloor', op: 'set', value: 0.5 }],
   'collective-ownership': [{ key: 'industryVisit', op: 'set', value: -1 }],
+  'sun-and-wire': [{ key: 'homeDayDemand', op: 'mul', value: 0.75 }],
+  'renewable-energy': [{ key: 'renewableOutput', op: 'mul', value: 1.25 }],
+  'local-grids': [{ key: 'localGrids', op: 'set', value: true }],
 };
 
 function apply(out: Record<string, number | boolean>, e: Effect): void {

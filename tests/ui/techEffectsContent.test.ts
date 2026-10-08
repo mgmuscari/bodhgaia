@@ -7,9 +7,6 @@ import { kindEffectLines, nodeEffectLines, practiceEffectLines } from '../../src
  *  test below fails the moment a listed node gains its effect, so the list can only shrink. */
 const PENDING_PRACTICES = new Set([
   'soil-and-soul',
-  'sun-and-wire',
-  'renewable-energy',
-  'local-grids',
 ]);
 
 /** Building pairs that still read the same (the design splits them in batch 3). */

@@ -6,7 +6,7 @@
 
 import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
-import { computePowerGrid, type PowerGrid } from '../growth/power';
+import { computePowerGrid, NEUTRAL_POWER_PRACTICES, type PowerGrid, type PowerPractices } from '../growth/power';
 import { gameClock } from '../ui/lighting';
 
 export interface PowerDeps {
@@ -16,6 +16,8 @@ export interface PowerDeps {
   publish: (poweredAnchors: Set<number>) => void;
   /** Wall-clock seconds the in-game clock reads (default performance.now() / 1000). */
   nowSec?: () => number;
+  /** The tech practices' power effects, read at every solve (default: none). */
+  practices?: () => PowerPractices;
 }
 
 export interface PowerController {
@@ -32,8 +34,9 @@ const signature = (g: PowerGrid): string => `${g.capacity}/${g.demand}/${g.power
 export function createPowerController(deps: PowerDeps): PowerController {
   const { map, parcels, publish } = deps;
   const nowSec = deps.nowSec ?? ((): number => performance.now() / 1000);
+  const practices = deps.practices ?? ((): PowerPractices => NEUTRAL_POWER_PRACTICES);
   const clock0 = gameClock(nowSec());
-  let grid = computePowerGrid(map, parcels, clock0);
+  let grid = computePowerGrid(map, parcels, clock0, practices());
   let sig = signature(grid);
   let slot = clock0.slot;
   publish(grid.poweredAnchors);
@@ -41,7 +44,7 @@ export function createPowerController(deps: PowerDeps): PowerController {
   const recompute = (): boolean => {
     const clock = gameClock(nowSec());
     slot = clock.slot;
-    grid = computePowerGrid(map, parcels, clock);
+    grid = computePowerGrid(map, parcels, clock, practices());
     publish(grid.poweredAnchors);
     const next = signature(grid);
     const changed = next !== sig;

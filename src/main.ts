@@ -69,7 +69,12 @@ export function main(save: SaveV1 | null = null): void {
     saved: save?.live ?? null,
     practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
   });
-  const power = createPowerController({ map: world.map, parcels: world.parcels, publish: (a) => renderer.setPowerGrid(a) });
+  const power = createPowerController({
+    map: world.map,
+    parcels: world.parcels,
+    publish: (a) => renderer.setPowerGrid(a),
+    practices: () => tech.effects(), // Sun and Wire, Renewable Energy, Local Grids
+  });
 
   // Sound: silent until the first click or key unlocks it; listens to the city through the camera.
   const sound = createSound({
