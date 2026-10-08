@@ -104,8 +104,8 @@ export function transitLines(map: GameMap): Line[] {
   return lines;
 }
 
-/** Substeps a vehicle halts at a stop (~2 s), long enough to see it and for riders to get on and off. */
-export const DWELL = 40;
+/** Substeps a vehicle halts at a stop (~5 s): long enough to see it wait, and for riders to get on and off. */
+export const DWELL = 100;
 
 export interface Transit {
   lines: Line[];
