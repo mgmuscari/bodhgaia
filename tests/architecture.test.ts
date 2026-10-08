@@ -146,6 +146,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/snesBigBuildings.ts',
   'src/ui/headlights.ts',
   'src/ui/uiKit.ts',
+  'src/ui/pngEncode.ts',
   'src/ui/uiIcons.ts',
   'src/ui/economyContent.ts',
   'src/ui/moneyFormat.ts',
