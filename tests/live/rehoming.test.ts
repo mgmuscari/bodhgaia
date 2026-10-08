@@ -3,7 +3,9 @@
 // people; harms, rent and demolition make them unhoused; nothing moves without a cause.
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
-import { BuiltKind } from '../../src/engine/fabric';
+import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
+import { residentialCensus, VILLAGE_RESIDENTS } from '../../src/citizens/census';
+import { homeProtection } from '../../src/economy/readings';
 import { createAmbientState, setHouseholds, type AmbientState } from '../../src/live/types';
 import { stepOccupancy, seedInheritedOccupancy, displaceFromHomes } from '../../src/live/fields/occupancy';
 import { OCC_SETTLE_PASSES } from '../../src/live/tuning';
@@ -161,5 +163,42 @@ describe('rent displaces people from real homes', () => {
     const moved = displaceFromHomes(c.state, c.map, 1000, () => 0);
     for (const x of [2, 5, 8]) expect(c.state.occupancy.get(c.t(x))!).toBeCloseTo(10 * c.state.practices.occFloor, 9);
     expect(moved).toBeCloseTo(3 * 10 * (1 - c.state.practices.occFloor), 9);
+  });
+});
+
+describe('the tiny-home village shelters only the unhoused', () => {
+  const withVillage = (pool: number) => {
+    const c = street([{ x: 2, count: 10 }]);
+    settle(c);
+    c.state.unhoused = pool;
+    c.map.built[c.t(9)] = BuiltKind.TinyHomes;
+    setHouseholds(c.state, [{ x: 2, y: 1, count: 10 }, { x: 9, y: 1, count: VILLAGE_RESIDENTS }]);
+    for (let i = 0; i < 400; i++) stepOccupancy(c.state, c.map);
+    return c;
+  };
+
+  it('fills from the unhoused', () => {
+    const c = withVillage(30);
+    expect(c.state.occupancy.get(c.t(9))!).toBeCloseTo(VILLAGE_RESIDENTS, 6);
+    expect(c.state.unhoused).toBeCloseTo(30 - VILLAGE_RESIDENTS, 6);
+  });
+
+  it('takes nobody from outside the city: with nobody unhoused it stays empty', () => {
+    const c = withVillage(0);
+    expect(c.state.occupancy.get(c.t(9))).toBe(0);
+  });
+
+  it('holds only as many as are unhoused', () => {
+    const c = withVillage(5);
+    expect(c.state.occupancy.get(c.t(9))!).toBeCloseTo(5, 6);
+    expect(c.state.unhoused).toBeCloseTo(0, 6);
+  });
+
+  it('the census sizes it by its residents, and rent cannot price it out', () => {
+    const map = new GameMap(8, 8);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 1, y: 1, width: 2, height: 2, kind: BuiltKind.TinyHomes });
+    expect(residentialCensus(parcels)).toEqual([{ x: 1, y: 1, count: VILLAGE_RESIDENTS }]);
+    expect(homeProtection(BuiltKind.TinyHomes, false, 0)).toBe(1);
   });
 });

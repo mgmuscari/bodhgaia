@@ -86,6 +86,7 @@ const VOLUNTEER_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.CoopHousing,
   BuiltKind.ADU,
   BuiltKind.Commune,
+  BuiltKind.TinyHomes,
   BuiltKind.QuietStreet,
   BuiltKind.BikePath,
   BuiltKind.Promenade,
@@ -231,6 +232,7 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.Bazaar]: { label: 'Bazaar', cost: 18, footprint: { w: 2, h: 2 } },
   [BuiltKind.MakerSpace]: { label: 'Maker Space', cost: 18, footprint: { w: 2, h: 2 } },
   [BuiltKind.HealingCommons]: { label: 'Healing Commons', cost: 28, footprint: { w: 3, h: 3 } },
+  [BuiltKind.TinyHomes]: { label: 'Tiny-Home Village', cost: 16, footprint: { w: 2, h: 2 } },
 };
 
 // Conversion tools keyed by TARGET kind. The transport targets are the union of

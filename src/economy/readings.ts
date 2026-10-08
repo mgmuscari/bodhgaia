@@ -48,6 +48,7 @@ export const TENDING: ReadonlyMap<number, number> = new Map<number, number>([
   [BuiltKind.Bazaar, 0.08],
   [BuiltKind.MakerSpace, 0.08],
   [BuiltKind.VerticalFarm, 0.1],
+  [BuiltKind.TinyHomes, 0.1], // neighbours keep the village running
 ]);
 
 const RESIDENTIAL = new Set<number>([
@@ -57,11 +58,12 @@ const RESIDENTIAL = new Set<number>([
   BuiltKind.ADU,
   BuiltKind.CoopHousing,
   BuiltKind.Commune,
+  BuiltKind.TinyHomes,
 ]);
 const COMMERCIAL = new Set<number>([BuiltKind.CommercialStrip, BuiltKind.Offices, BuiltKind.Bazaar, BuiltKind.MakerSpace]);
 const INDUSTRIAL = new Set<number>([BuiltKind.Industrial]);
 /** Homes on land held in common — rent can't chase land value there. */
-export const PROTECTED: ReadonlySet<number> = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune]);
+export const PROTECTED: ReadonlySet<number> = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune, BuiltKind.TinyHomes]);
 /** Places neighbours gather and organise (matches civic dynamics' gathering kinds). */
 const GATHERING = new Set<number>([
   BuiltKind.Bazaar,

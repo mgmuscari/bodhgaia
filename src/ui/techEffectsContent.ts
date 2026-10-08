@@ -17,6 +17,7 @@ import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
 import { LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
+import { VILLAGE_RESIDENTS } from '../citizens/census';
 import { TravelMode, modeSpec } from '../citizens/modes';
 import {
   AMENITY_KINDS,
@@ -125,8 +126,9 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (eco.soil || eco.flora || eco.fauna) {
     effects.push(`Ecology on its tiles: soil +${eco.soil}, flora +${eco.flora}, fauna +${eco.fauna}`);
   }
+  if (kind === BuiltKind.TinyHomes) effects.push(`Shelters ${VILLAGE_RESIDENTS} of the city's unhoused — and only them`);
   const headroom = OCC_HEADROOM.get(kind);
-  if (headroom !== undefined) effects.push(`Home: fills up to ${headroom}× its first residents`);
+  if (headroom !== undefined && headroom > 1) effects.push(`Home: fills up to ${headroom}× its first residents`);
   if (PROTECTED.has(kind)) effects.push('Rent-protected: residents are never priced out by land value');
   const visit = visitValue(kind);
   if (visit > 0) effects.push(`Visitors bring home +${visit} wellbeing`);

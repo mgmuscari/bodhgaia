@@ -407,6 +407,27 @@ const commune: Painter = (W, H, v) => {
   return p;
 };
 
+const tinyHomes: Painter = (W, H, v) => {
+  const p = lot(W, H, 'meadow', 630 + v);
+  const L = blank(W, H);
+  // a shared path down the middle, small cabins either side of it, a kitchen garden at the end
+  rect(L, (W >> 1) - 1, 1, 2, H - 2, C.paveHi);
+  const roofs = HOUSE_ROOFS;
+  let k = 0;
+  for (let y = 2; y + 6 <= H - 1; y += 7) {
+    for (const x of [2, (W >> 1) + 3]) {
+      if (x + 8 > W) continue;
+      const h = hash2(k++, v, 63);
+      gable(L, x, y, 7, 3, roofs[h % roofs.length]!);
+      wall(L, x, y + 3, 7, 3, C.cream, C.creamLo);
+      door(L, x + 3, y + 4, 1, 2);
+    }
+  }
+  place(p, L);
+  tree(p, W - 3, H - 3, 1);
+  return p;
+};
+
 const bazaar: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 580 + v);
   const L = blank(W, H);
@@ -523,6 +544,7 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [55, [adu, 2]],
   [56, [coop, 1]],
   [57, [commune, 1]],
+  [63, [tinyHomes, 1]],
   [58, [bazaar, 2]],
   [59, [makerSpace, 1]],
   [60, [healingCommons, 1]],

@@ -80,6 +80,7 @@ const BUILDING_RENDER_KINDS: readonly number[] = [
   BuiltKind.ADU,
   BuiltKind.CoopHousing,
   BuiltKind.Commune,
+  BuiltKind.TinyHomes,
   BuiltKind.Bazaar,
   BuiltKind.MakerSpace,
   BuiltKind.HealingCommons,

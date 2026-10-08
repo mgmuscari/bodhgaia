@@ -5,7 +5,7 @@
 // rng, no transcendental Math), so the population is a deterministic function of the built
 // city, computed the same in any environment.
 
-import type { ParcelStore } from '../engine/fabric';
+import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 
 /** Citizens housed per unit of residential density: a building of density d houses
@@ -29,12 +29,15 @@ export interface Household {
 /** Every residential building (by zoneTypeOf) paired with its citizen count — the homes the
  *  agent layer spawns citizens from. Deterministic over the parcel store's alive set; skips
  *  commercial/industrial/civic/greens (they are trip DESTINATIONS, not homes). */
+/** A tiny-home village shelters this many people (rehoming.md) — its size, not its density. */
+export const VILLAGE_RESIDENTS = 12;
+
 export function residentialCensus(parcels: ParcelStore): Household[] {
   const out: Household[] = [];
   for (const i of parcels.aliveIndices()) {
     if (zoneTypeOf(parcels.kindAt(i)) !== ZoneType.Residential) continue;
     const p = parcels.get(i);
-    out.push({ x: p.x, y: p.y, count: citizensOf(p.density) });
+    out.push({ x: p.x, y: p.y, count: p.kind === BuiltKind.TinyHomes ? VILLAGE_RESIDENTS : citizensOf(p.density) });
   }
   return out;
 }

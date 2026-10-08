@@ -19,7 +19,7 @@ const DESIGN_BRIEF_IDS = [
   'soil-and-soul', 'urban-composting', 'community-gardens', 'vertical-farming',
   'wastewater-recycling', 'rewilding',
   // RestorativeJustice
-  'circles', 'community-land-trust', 'healing-commons', 'participatory-budgeting',
+  'circles', 'community-land-trust', 'healing-commons', 'tiny-home-villages', 'participatory-budgeting',
   // IntentionalCommunities
   'shared-table', 'adus', 'coop-housing', 'maker-spaces',
   // GiftEconomy
@@ -40,8 +40,8 @@ function cap(id: string, prereqs: string[] = []): TechNode {
 }
 
 describe('TECH_TREE shape', () => {
-  it('has 39 nodes', () => {
-    expect(TECH_TREE.length).toBe(39);
+  it('has 40 nodes (39 + Tiny-Home Villages, 2026-10-07)', () => {
+    expect(TECH_TREE.length).toBe(40);
   });
 
   it('contains exactly the design-brief node ids', () => {
