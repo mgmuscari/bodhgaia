@@ -149,10 +149,18 @@ describe('renderer live-mark patches', () => {
     const o7 = cam.tileOrigin(7, 15);
     const h15 = 240 - o6.dy; // the bottom row is cut by the canvas edge: the patch rect is clamped to it
     expect(h15).toBeLessThan(cam.tileSize);
-    expect(h.r.basePatch().rects).toEqual([
+    const rects = h.r.basePatch().rects;
+    expect(rects).toEqual(expect.arrayContaining([
       { x: o6.dx, y: o6.dy, w: cam.tileSize, h: h15 },
       { x: o7.dx, y: o7.dy, w: cam.tileSize, h: h15 },
-    ]);
+    ]));
+    // and their neighbours, whose edges blend toward them (murkEdge) — nothing else
+    const near = new Set<string>();
+    for (const [x, y] of [[6, 15], [7, 15]] as const) for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, -1]] as const) {
+      const o = cam.tileOrigin(x + dx, y + dy);
+      near.add(`${o.dx},${o.dy}`);
+    }
+    for (const r of rects) expect(near.has(`${r.x},${r.y}`), `${r.x},${r.y}`).toBe(true);
   });
 
   it('with a base overlay up (it may read live fields) the refresh is a full rebuild, as before', () => {
