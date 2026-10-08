@@ -18,7 +18,7 @@ The dated sections below this one are the **archive** (✅ done + diagnoses kept
 of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
 ### 0 — Active direction (2026-10-08)
-- **Disasters** (`docs/design/disasters.md`): ✅ fire, ✅ spills; next floods, then traffic accidents, then violent crime.
+- **Disasters** (`docs/design/disasters.md`): ✅ fire, ✅ spills, ✅ weather + floods; next traffic accidents, then violent crime.
 - **Then community events** (`docs/design/community-events.md`): craft fairs, block parties, festivals, parades,
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
