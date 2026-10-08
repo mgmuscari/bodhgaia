@@ -38,6 +38,7 @@ import { createNews } from './app/news';
 import { isPowerConsumer } from './growth/power';
 import { placeCategoryOf } from './audio/sfx';
 import { gameClock } from './ui/lighting';
+import { gameSec } from './ui/gameTime';
 import { BuiltKind } from './engine/fabric';
 
 // The default world's seed — its identity, so it keeps the pre-rename name (Bodhgaia was Bodhitropolis).
@@ -72,7 +73,7 @@ export function main(save: SaveV1 | null = null): void {
     saved: save?.live ?? null,
     legacyDisplaced: save?.econ.state.displaced ?? 0,
     practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
-    hour: () => gameClock(performance.now() / 1000).hour, // exposure deaths happen at night
+    hour: () => gameClock(gameSec()).hour, // exposure deaths happen at night
   });
   const power = createPowerController({
     map: world.map,
@@ -90,7 +91,7 @@ export function main(save: SaveV1 | null = null): void {
       const b = camera.screenToWorld(view.width(), view.height());
       return { x0: Math.floor(a.wx), y0: Math.floor(a.wy), x1: Math.ceil(b.wx), y1: Math.ceil(b.wy) };
     },
-    hour: () => gameClock(performance.now() / 1000).hour,
+    hour: () => gameClock(gameSec()).hour,
     hasHealing: () => world.parcels.aliveIndices().some((i) => world.parcels.kindAt(i) === BuiltKind.HealingCommons),
     hidden: () => document.hidden,
   });
@@ -316,7 +317,7 @@ export function main(save: SaveV1 | null = null): void {
     skin: view.skin,
     powered: () => power.grid().poweredAnchors,
     clock: () => {
-      const h = gameClock(performance.now() / 1000).hour;
+      const h = gameClock(gameSec()).hour;
       return `${String(h).padStart(2, '0')}:00`;
     },
   });
