@@ -9,8 +9,10 @@ import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { AmbientState } from '../live/types';
 import { startSpill } from '../live/spills';
 import { floodPlain } from '../growth/flood';
+import { crash as crashCar } from '../live/accidents';
+import { createRng } from '../engine/rng';
 
-export type DemoKind = 'fire' | 'spill' | 'flood' | 'disasters';
+export type DemoKind = 'fire' | 'spill' | 'flood' | 'crash' | 'disasters';
 
 type World = { map: GameMap; parcels: ParcelStore };
 
@@ -103,11 +105,33 @@ export function createDemo(kind: DemoKind, deps: DemoDeps): { frame(now: number)
     }
     if (best) deps.view(best.x, best.y);
   };
+  const crash = (): void => {
+    // the moving through-car on the most jammed road
+    let pick: (typeof live.cars)[number] | null = null;
+    let worst = -1;
+    for (const c of live.cars) {
+      if (c.parked || c.abandoned || c.wreck !== undefined || (c.owned && c.path === undefined)) continue;
+      const t = live.traffic.get(world.map.idx(Math.round(c.x), Math.round(c.y))) ?? 0;
+      if (t > worst) {
+        worst = t;
+        pick = c;
+      }
+    }
+    if (!pick) return;
+    crashCar(live, world.map, createRng('demo').fork('crash'), pick);
+    deps.view(pick.x, pick.y);
+  };
   const steps: { at: number; run: () => void }[] =
     kind === 'fire' ? [{ at: SETTLE_MS, run: fire }]
     : kind === 'spill' ? [{ at: SETTLE_MS, run: spill }]
     : kind === 'flood' ? [{ at: SETTLE_MS, run: flood }]
-    : [{ at: SETTLE_MS, run: fire }, { at: SETTLE_MS + FIRE_TO_SPILL_MS, run: spill }, { at: SETTLE_MS + 2 * FIRE_TO_SPILL_MS, run: flood }];
+    : kind === 'crash' ? [{ at: SETTLE_MS, run: crash }]
+    : [
+        { at: SETTLE_MS, run: fire },
+        { at: SETTLE_MS + FIRE_TO_SPILL_MS, run: spill },
+        { at: SETTLE_MS + 2 * FIRE_TO_SPILL_MS, run: crash },
+        { at: SETTLE_MS + 3 * FIRE_TO_SPILL_MS, run: flood },
+      ];
   let start: number | undefined;
   return {
     frame(now) {

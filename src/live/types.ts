@@ -127,6 +127,8 @@ export interface Mover {
    *  ambush (target AHEAD of the citizen's heading, Pinky), 2 = shy (only pounce when close, else
    *  patrol, Clyde). Assigned at spawn; read by huntTarget. */
   personality?: number;
+  /** A wrecked car (live/accidents.ts): substeps until it's towed; it doesn't move meanwhile. */
+  wreck?: number;
 }
 
 export type Car = Mover;
@@ -204,7 +206,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood';
+  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash';
   x: number;
   y: number;
   w: number;
@@ -359,6 +361,8 @@ export interface AmbientState {
   toxic?: Map<number, number>;
   /** The in-game hour spills were last drawn for. */
   spillHour?: number;
+  /** The in-game hour crashes were last drawn for (live/accidents.ts). */
+  crashHour?: number;
   /** Fires the trucks have put out (parcel store indices) — the host hands them to the fire step and clears it. */
   quenched?: Set<number>;
   /** Footprints burning now (published by the host from the fire step) — the renderer draws the flames. */

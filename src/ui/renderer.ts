@@ -1076,13 +1076,24 @@ export class Renderer {
       ctx.restore();
     }
 
+    // A wreck (live/accidents.ts) sits spun a frame round, glass on the road beside it, hazards flashing.
+    const hazardOn = Math.floor(performance.now() / 400) % 2 === 0;
     for (const { m: c, pose } of poses.cars) {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
-      const img = this.sprites.get(`@sprite/car/${tint}/${heading8(pose.hx, pose.hy)}`);
+      const frame = (heading8(pose.hx, pose.hy) + (c.wreck !== undefined ? 1 : 0)) % 8;
+      const img = this.sprites.get(`@sprite/car/${tint}/${frame}`);
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
-      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, c.parked ? 0 : night, img);
+      if (c.wreck !== undefined) {
+        const debris = this.sprites.get('@sprite/debris');
+        if (debris) this.drawArt(ctx, debris, pose.x + pose.hx * 0.35, pose.y + pose.hy * 0.35 + 0.15, camera);
+        if (hazardOn) {
+          const lights = this.sprites.get(`@sprite/car-light/${frame}`);
+          if (lights) this.drawArt(ctx, lights, pose.x, pose.y, camera);
+        }
+      }
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, c.parked || c.wreck !== undefined ? 0 : night, img);
     }
     // (Smog is drawn LAST — the top layer, above cars/peds — see end of drawSprites.)
 
@@ -1369,7 +1380,7 @@ export class Renderer {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = night;
       for (const { m: c, pose } of poses.cars) {
-        if (c.parked) continue; // a parked car is OFF
+        if (c.parked || c.wreck !== undefined) continue; // a parked car is OFF; a wreck's hazards flash (above)
         const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
         if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       }

@@ -61,6 +61,13 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     expect(opaque(tiles.get('@sprite/drop')!)).toBeGreaterThan(0);
   });
 
+  it('a crash leaves debris: a few pixels of glass and metal, smaller than a car', () => {
+    const d = tiles.get('@sprite/debris')!;
+    expect(d).toBeDefined();
+    expect(opaque(d)).toBeGreaterThanOrEqual(3);
+    expect(Math.max(d.w, d.h)).toBeLessThanOrEqual(6);
+  });
+
   it('rain is short streaks, one art pixel wide — longer in a heavy storm', () => {
     const light = tiles.get('@sprite/rain/0')!;
     const heavy = tiles.get('@sprite/rain/1')!;

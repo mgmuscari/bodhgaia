@@ -521,3 +521,15 @@ export const TOXIC_DECAY = 0.5;
 /** Each person outdoors the cloud passes over dies with this chance (one roll each); at most CLOUD_DEATH_MAX. */
 export const CLOUD_DEATH_CHANCE = 0.08;
 export const CLOUD_DEATH_MAX = 3;
+
+// ── Traffic accidents (docs/design/disasters.md) ───────────────────────────────────────────────────────────
+/** A road is jammed enough to crash on above this share of TRAFFIC_MAX. */
+export const CRASH_JAM = 0.6;
+/** Crash chance per moving car per in-game hour on a fully jammed road (scales from 0 at CRASH_JAM). Measured
+ *  2026-10-08: the inherited lotus city (55 of 58 moving cars in jams) crashes about once in 5 minutes of play;
+ *  fewer cars, fewer jams, fewer crashes. */
+export const CRASH_BASE = 1 / 2400;
+/** Substeps a wreck blocks its lane before it's towed (~30 s). */
+export const CRASH_SUBSTEPS = 600;
+/** The share of crashes that kill someone — the driver, or a walker beside the road. */
+export const CRASH_DEATH = 0.25;
