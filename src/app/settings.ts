@@ -7,6 +7,7 @@
 import { clampSettings, type AudioSettings, type LiveCaps, type RendererMode, type Settings } from '../ui/settings';
 import { loadSettings, saveSettings } from '../ui/settingsStore';
 import type { SettingsPanelCallbacks } from '../ui/settingsPanel';
+import type { MusicControl } from '../ui/musicPickerContent';
 
 export interface SettingsDeps {
   /** Where the blob persists (localStorage in the browser; undefined = the ambient store). */
@@ -15,6 +16,8 @@ export interface SettingsDeps {
   setRenderer: (mode: RendererMode) => void;
   /** Push audio levels to the engine (the host passes `(a) => applyAudioSettings(audio, a)`). */
   applyAudio?: (audio: AudioSettings) => void;
+  /** The music player, once the sound system exists (null before) — the picker drives it. */
+  music?: () => MusicControl | null;
 }
 
 export interface SettingsController {
@@ -47,6 +50,7 @@ export function createSettingsController(deps: SettingsDeps): SettingsController
         deps.applyAudio?.(settings.audio);
       },
       onDisastersChange: (on) => update({ disasters: on }),
+      music: () => deps.music?.() ?? null,
     },
   };
 }

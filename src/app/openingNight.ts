@@ -9,7 +9,7 @@ import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import type { AmbientState } from '../live/types';
 import { startWanderer } from '../live/wanderer';
-import { AWAKENING, EPIGRAPHS, MANTRA, VOWS, OPENING_TIMING as T, type Epigraph } from '../ui/openingScript';
+import { AWAKENING, EPIGRAPHS, MANTRA, VOWS, OPENING_TIMING as T, type Epigraph, TITLE_CARDS } from '../ui/openingScript';
 import { glide, type TourStop } from '../ui/tourContent';
 
 /** The act's overlay (DOM in ui/openingNight.ts; a fake in tests). */
@@ -20,6 +20,8 @@ export interface NightUi {
   /** Show the first `n` words of the mantra. */
   words(n: number): void;
   title(text: string): void;
+  /** A title card alone on the dark — the byline, then the name (`big`). */
+  credit(text: string, big?: boolean): void;
   clear(): void;
   onAdvance(cb: () => void): void;
   onSkip(cb: () => void): void;
@@ -52,6 +54,7 @@ type Phase =
   | { kind: 'walk' }
   | { kind: 'hold'; since: number; x: number; y: number }
   | { kind: 'mantra'; since: number; shown: number; x: number; y: number }
+  | { kind: 'credit'; i: number; since: number }
   | { kind: 'awaken'; since: number; x: number; y: number }
   | { kind: 'vow'; i: number; since: number; from: { x: number; y: number }; stops: readonly TourStop[] }
   | { kind: 'done' };
@@ -97,11 +100,24 @@ export function createNightOpening(deps: NightDeps): NightOpening {
     frame(now) {
       if (phase?.kind === 'done') return;
       if (!phase) {
-        phase = { kind: 'epigraph', i: 0, since: now };
-        ui.card(EPIGRAPHS[0]!);
+        phase = { kind: 'credit', i: 0, since: now };
+        ui.credit(TITLE_CARDS[0]); // the byline; the name comes last
         return;
       }
       switch (phase.kind) {
+        case 'credit': {
+          if (!advanced && now - phase.since < T.creditMs) return;
+          advanced = false;
+          const i = phase.i + 1;
+          if (i < TITLE_CARDS.length) {
+            phase = { kind: 'credit', i, since: now };
+            ui.credit(TITLE_CARDS[i]!, i === TITLE_CARDS.length - 1);
+          } else {
+            phase = { kind: 'epigraph', i: 0, since: now };
+            ui.card(EPIGRAPHS[0]!);
+          }
+          return;
+        }
         case 'epigraph': {
           if (!advanced && now - phase.since < T.epigraphMs) return;
           advanced = false;

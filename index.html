@@ -350,6 +350,24 @@
       .night-title {
         animation: night-in 1.6s ease both;
       }
+      /* the opening's title cards: the byline small and spaced, the name large, tracked wide, in the accent */
+      .night-credit {
+        margin: 0;
+        font-size: 1.5rem;
+        letter-spacing: 0.14em;
+        padding-left: 0.14em; /* tracking trails the last letter: balance it so the line stays centred */
+        color: var(--ui-text);
+        opacity: 0.9;
+        animation: night-in 1.8s ease both;
+      }
+      .night-credit-name {
+        font-size: 4rem;
+        letter-spacing: 0.32em;
+        padding-left: 0.32em;
+        color: var(--ui-accent);
+        opacity: 1;
+        text-shadow: 3px 3px 0 var(--ui-ink);
+      }
       .night-line {
         margin: 0.35rem 0;
         font-size: 1.35rem;
@@ -789,6 +807,36 @@
         font-family: inherit;
         font-size: 1.0rem;
         padding: 0.1rem 0.3rem;
+      }
+      /* the music picker: a scrolling list of pieces in a sunken well, the playing one in the accent */
+      .settings-panel__tracks {
+        list-style: none;
+        border: 8px solid transparent;
+        border-image: var(--ui-frame-inset) 4 fill / 8px stretch;
+        max-height: 15rem;
+        overflow-y: auto;
+        margin: 0.3rem 0 0;
+        padding: 0.1rem 0.2rem;
+      }
+      .settings-panel__track {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        padding: 0.1rem 0.3rem;
+        color: var(--ui-text);
+        cursor: pointer;
+      }
+      .settings-panel__track:hover,
+      .settings-panel__track:focus {
+        background: rgba(255, 255, 255, 0.08);
+        outline: none;
+      }
+      .settings-panel__track--playing {
+        color: var(--ui-accent);
+      }
+      .settings-panel__track-when {
+        color: var(--ui-muted);
+        white-space: nowrap;
       }
       .settings-panel__note {
         color: var(--ui-muted);

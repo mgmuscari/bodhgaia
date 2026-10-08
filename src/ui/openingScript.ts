@@ -5,6 +5,9 @@ export interface Epigraph {
   source: string;
 }
 
+/** The opening's first cards (Maddy 2026-10-08): the byline, then the name, each alone on the dark. */
+export const TITLE_CARDS = ['a game by madeleine muscari', 'BODHGAIA'] as const;
+
 export const EPIGRAPHS: readonly Epigraph[] = [
   {
     lines: [
@@ -37,6 +40,8 @@ export const VOWS: readonly string[] = [
 ];
 
 export const OPENING_TIMING = {
+  /** Each title card holds this long (click or Space moves on sooner). */
+  creditMs: 4000,
   /** Each epigraph holds this long (click or Space moves on sooner). */
   epigraphMs: 9000,
   /** The walk, in live substeps (~30 s). */

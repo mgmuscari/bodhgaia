@@ -65,3 +65,32 @@ describe('VoicePool', () => {
     expect(p.admit(0.1, 0, Infinity)?.steal).toBeNull();
   });
 });
+
+describe('the shared pool gives way to the city (Maddy 2026-10-08: music must not crowd out birds or sirens)', () => {
+  it('music never takes a voice from the soundscape or the effects — it gives way to them', () => {
+    const p = new VoicePool(3);
+    const siren = p.admit(0.2, 0, Infinity, 'ambience')!;
+    const bird = p.admit(0.1, 0, 5, 'sfx')!;
+    const m1 = p.admit(0.3, 0, 5, 'music')!;
+    expect(siren && bird && m1).toBeTruthy();
+    // a loud music note finds the pool full: it may not steal the siren or the bird, only music
+    const m2 = p.admit(0.6, 1, 5, 'music');
+    expect(m2?.steal).toBe(m1.id);
+    expect(p.has(siren.id) && p.has(bird.id)).toBe(true);
+  });
+
+  it('a quiet bird call takes a music voice rather than go unheard', () => {
+    const p = new VoicePool(2);
+    const m1 = p.admit(0.5, 0, 5, 'music')!;
+    p.admit(0.5, 0, 5, 'music');
+    const bird = p.admit(0.08, 1, 2, 'sfx');
+    expect(bird).not.toBeNull();
+    expect([m1.id]).toContain(bird!.steal);
+  });
+
+  it('with no music to give way, the old rule holds: released first, then quieter', () => {
+    const p = new VoicePool(1);
+    p.admit(0.5, 0, 5, 'sfx');
+    expect(p.admit(0.1, 1, 2, 'sfx')).toBeNull(); // a quieter effect doesn't cut a louder one
+  });
+});

@@ -107,6 +107,9 @@ describe('credits content', () => {
     expect(body).toContain('Nocturne in B major, Op. 9 No. 3');
     expect(body).toContain('Glen Larsen');
     expect(body).not.toMatch(/ShareAlike [0-3]\.\d/); // only 4.0 licences ship
+    // the arrangements made for the game say so, and say by whom
+    expect(body).toContain("St. Louis Blues — W. C. Handy. Arranged for Bodhgaia by Madeleine Muscari");
+    expect(body).toContain('MIDI typeset by Glen Larsen for the Mutopia Project (Creative Commons Attribution-ShareAlike 4.0); arranged for Bodhgaia by Madeleine Muscari; Creative Commons Attribution-ShareAlike 4.0.');
   });
 
   it('credits the Pali chant as a transcription of traditional recitation, with the text and its meaning', () => {
