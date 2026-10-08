@@ -28,6 +28,14 @@ export const MANTRA: readonly string[] = ['GATÉ,', 'GATÉ,', 'PĀRAGATÉ,', 'P�
 
 export const AWAKENING = 'The City is Awakening!!';
 
+/** The second act: the vows, while the camera tours the city. */
+export const VOWS: readonly string[] = [
+  'May I continually cultivate the ground of peace for myself and others and persist, mindful and dedicated to this work, independent of results.',
+  "May I know that my peace and the world's peace are not separate; that our peace in the world is a result of our work for justice.",
+  'May all beings be well, happy, and peaceful.',
+  'Homage to the future Maitreya Buddha!',
+];
+
 export const OPENING_TIMING = {
   /** Each epigraph holds this long (click or Space moves on sooner). */
   epigraphMs: 9000,
@@ -45,4 +53,8 @@ export const OPENING_TIMING = {
   dawnHour: 6,
   /** The camera's zoom while it follows the walker. */
   followZoom: 4,
+  /** Each vow holds this long (click or Space moves on sooner); the camera glides to its stop over the first
+   *  `glideShare` of it. */
+  vowMs: 8500,
+  glideShare: 0.65,
 } as const;

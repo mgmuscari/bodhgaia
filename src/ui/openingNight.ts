@@ -48,6 +48,9 @@ export function mountNightOverlay(container: HTMLElement): NightUi {
       card.append(...e.lines.map((l) => el('p', 'night-line', l)), el('p', 'night-source', `— ${e.source}`));
       set('night-dark', [card]);
     },
+    vow(text) {
+      set('night-vow', [el('p', 'night-vowtext', text)]);
+    },
     words(n) {
       set('night-dim', [el('p', 'night-mantra', MANTRA.slice(0, n).join(' '))]);
     },

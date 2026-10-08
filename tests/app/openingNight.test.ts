@@ -4,7 +4,14 @@ import { BuiltKind, placeTransport } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState } from '../../src/live/types';
 import { createNightOpening, type NightUi } from '../../src/app/openingNight';
-import { EPIGRAPHS, MANTRA, AWAKENING, OPENING_TIMING as T } from '../../src/ui/openingScript';
+import { EPIGRAPHS, MANTRA, AWAKENING, VOWS, OPENING_TIMING as T } from '../../src/ui/openingScript';
+
+const STOPS = [
+  { x: 10, y: 10, zoom: 2 },
+  { x: 20, y: 20, zoom: 3 },
+  { x: 25, y: 5, zoom: 2 },
+  { x: 15, y: 15, zoom: 1 },
+];
 import { stepWanderer } from '../../src/live/wanderer';
 import { stepDeaths } from '../../src/live/death';
 
@@ -18,6 +25,7 @@ function harness() {
   let skip: () => void = () => {};
   const ui: NightUi = {
     card: (e) => log.push(`card ${e.source}`),
+    vow: (t) => log.push(`vow ${t.slice(0, 12)}`),
     words: (n) => log.push(`words ${n}`),
     title: (t) => log.push(`title ${t}`),
     clear: () => log.push('clear'),
@@ -27,12 +35,18 @@ function harness() {
   };
   let hour: number = T.startHour;
   const follows: number[] = [];
+  const zooms: number[] = [];
   const opening = createNightOpening({
     live,
     map,
     rng: createRng('opening').fork('o'),
     ui,
-    follow: (x) => follows.push(x),
+    follow: (x, _y, zoom) => {
+      follows.push(x);
+      zooms.push(zoom ?? T.followZoom);
+    },
+    centre: () => ({ x: 0, y: 0 }),
+    stops: () => STOPS,
     hour: () => hour,
     setHour: (h) => {
       hour = h;
@@ -40,7 +54,7 @@ function harness() {
     },
     onDone: () => log.push('done'),
   });
-  return { live, map, log, opening, follows, advance: () => advance(), skip: () => skip(), setHourTo: (h: number) => (hour = h) };
+  return { live, map, log, opening, follows, zooms, advance: () => advance(), skip: () => skip(), setHourTo: (h: number) => (hour = h) };
 }
 
 describe('the night opening (act one)', () => {
@@ -70,7 +84,15 @@ describe('the night opening (act one)', () => {
     h.setHourTo(4);
     h.opening.frame((t += T.mantraHoldMs + 1));
     expect(h.log.slice(-2)).toEqual([`hour ${T.dawnHour}`, `title ${AWAKENING}`]);
-    h.opening.frame((t += T.awakeningMs + 1));
+    // act two: the vows, the camera gliding from stop to stop, ending wide on the whole city
+    for (let i = 0; i < VOWS.length; i++) {
+      h.opening.frame((t += i === 0 ? T.awakeningMs + 1 : T.vowMs + 1));
+      expect(h.log.at(-1)).toBe(`vow ${VOWS[i]!.slice(0, 12)}`);
+      h.opening.frame((t += T.vowMs * T.glideShare + 1)); // the glide has arrived
+      expect(h.follows.at(-1)).toBe(STOPS[i]!.x);
+      expect(h.zooms.at(-1)).toBe(STOPS[i]!.zoom);
+    }
+    h.opening.frame((t += T.vowMs));
     expect(h.log.slice(-2)).toEqual(['remove', 'done']);
     expect(h.opening.active()).toBe(false);
   });
