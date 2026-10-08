@@ -86,7 +86,9 @@ export interface Mover {
    *  ('to-home'), depositing the visit at `homeTile` on arrival. `phase` tracks the leg;
    *  `building` is the destination plot (the wellbeing source); `dwellInside` times the visit. */
   carId?: number;
-  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving';
+  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving' | 'gathering';
+  /** At a gathering (live/gatherings.ts): which, where they are in it, and the kerb they walk home to. */
+  gather?: { id: number; go: 'coming' | 'here' | 'milling' | 'going'; mill: number; home: { x: number; y: number } };
   building?: { x: number; y: number };
   dwellInside?: number;
   /** (Car) A citizen's OWNED vehicle — a persistent entity its owner walks to and drives. The car
@@ -206,7 +208,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash';
+  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising';
   x: number;
   y: number;
   w: number;
@@ -365,6 +367,11 @@ export interface AmbientState {
   crashHour?: number;
   /** The in-game hour violent crime was last drawn for (live/crime.ts). */
   crimeHour?: number;
+  /** Community gatherings under way (live/gatherings.ts), the ones that have ended for the host to act on, and the
+   *  id counter. */
+  gatherings?: import('./gatherings').Gathering[];
+  gatheringsEnded?: import('./gatherings').Gathering[];
+  gatheringSeq?: number;
   /** Fires the trucks have put out (parcel store indices) — the host hands them to the fire step and clears it. */
   quenched?: Set<number>;
   /** Footprints burning now (published by the host from the fire step) — the renderer draws the flames. */

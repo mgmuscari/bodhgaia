@@ -9,6 +9,7 @@
 // Every handler returns whether the ped survives the substep (the caller filters on it). Order of
 // rng draws is load-bearing (tests/live/golden.test.ts).
 
+import { stepGatherer } from './gatherings';
 import type { GameMap } from '../engine/map';
 import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import type { Rng } from '../engine/rng';
@@ -162,7 +163,11 @@ const stepDriving: PedStep = (state, map, _rng, ctx, p) => {
   return true;
 };
 
-const PHASE_STEP: Partial<Record<Phase, PedStep>> = { inside: stepInside, driving: stepDriving };
+const PHASE_STEP: Partial<Record<Phase, PedStep>> = {
+  inside: stepInside,
+  driving: stepDriving,
+  gathering: (state, map, rng, _ctx, p) => stepGatherer(state, map, rng, p),
+};
 
 // --- walking a leg -------------------------------------------------------------
 
