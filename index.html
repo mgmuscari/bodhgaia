@@ -303,6 +303,73 @@
       .tech-detail-costs {
         color: var(--ui-muted);
       }
+      .night-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 1.2s ease;
+      }
+      .night-dark {
+        background: rgba(4, 6, 14, 0.97);
+      }
+      .night-dim {
+        background: rgba(4, 6, 14, 0.45);
+      }
+      .night-clear {
+        background: transparent;
+      }
+      .night-stage {
+        max-width: 760px;
+        padding: 0 24px;
+        text-align: center;
+        color: #e8e2cc;
+      }
+      .night-card,
+      .night-mantra,
+      .night-title {
+        animation: night-in 1.6s ease both;
+      }
+      .night-line {
+        margin: 0.35rem 0;
+        font-size: 1.35rem;
+        line-height: 1.5;
+      }
+      .night-source {
+        margin-top: 1.4rem;
+        color: #a8a290;
+        font-size: 1rem;
+      }
+      .night-mantra {
+        font-size: 2.2rem;
+        letter-spacing: 0.08em;
+        color: #f0d890;
+        text-shadow: 0 0 18px rgba(240, 200, 120, 0.45);
+      }
+      .night-title {
+        font-size: 3rem;
+        color: #ffe6a8;
+        text-shadow: 0 0 24px rgba(255, 210, 140, 0.6);
+      }
+      .night-hint {
+        position: absolute;
+        right: 16px;
+        bottom: 14px;
+        color: rgba(232, 226, 204, 0.55);
+        font-size: 0.85rem;
+      }
+      @keyframes night-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
       #cctv {
         position: fixed;
         right: 12px;
