@@ -510,8 +510,24 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
   if (k === BuiltKind.PlantedMedian) return false;
   // Rail is crossed, never walked along (Maddy 2026-10-08: people walk on the tracks) — a streetcar line is a street
   if (k === BuiltKind.Rail || k === BuiltKind.ElevatedRail) return railCrossing(map, x, y);
+  // plants, the precinct and ruins are fenced or shut, though they carry no R/C/I/Civic zone (Maddy 2026-10-08:
+  // walkers cut through the gas plant)
+  if (CLOSED_KINDS.has(k)) return false;
   return zoneTypeOf(k) === ZoneType.None;
 }
+
+/** Buildings with no zone that no one walks through. */
+const CLOSED_KINDS: ReadonlySet<number> = new Set([
+  BuiltKind.CoalPlant,
+  BuiltKind.GasPlant,
+  BuiltKind.HydroPlant,
+  BuiltKind.NuclearPlant,
+  BuiltKind.WindTurbine,
+  BuiltKind.SolarPlant,
+  BuiltKind.FusionPlant,
+  BuiltKind.Precinct,
+  BuiltKind.Ruin,
+]);
 
 /** A rail tile a road crosses: at grade (a level crossing), or a street passing under the viaduct. */
 export function railCrossing(map: GameMap, x: number, y: number): boolean {

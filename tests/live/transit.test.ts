@@ -94,3 +94,19 @@ describe('tracks are closed to walkers (docs/design/transit.md step 4; Maddy 202
     expect(isWalkable(map, 5, 5)).toBe(true);
   });
 });
+
+describe('what people walk through (Maddy 2026-10-08: walkers cut through the gas plant)', () => {
+  const walkableKind = (k: number) => {
+    const m = new GameMap(3, 3);
+    m.built[m.idx(1, 1)] = k;
+    return isWalkable(m, 1, 1);
+  };
+  it('never a power plant, the precinct or a ruin', () => {
+    for (const k of [BuiltKind.CoalPlant, BuiltKind.GasPlant, BuiltKind.HydroPlant, BuiltKind.NuclearPlant, BuiltKind.WindTurbine, BuiltKind.SolarPlant, BuiltKind.FusionPlant, BuiltKind.Precinct, BuiltKind.Ruin])
+      expect(walkableKind(k), String(k)).toBe(false);
+  });
+  it('open ground still: parks, gardens, rewilded land, yards and parking lots', () => {
+    for (const k of [BuiltKind.Park, BuiltKind.CommunityGarden, BuiltKind.RewildedLand, BuiltKind.Yard, BuiltKind.ParkingLot])
+      expect(walkableKind(k), String(k)).toBe(true);
+  });
+});

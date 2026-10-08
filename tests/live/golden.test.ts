@@ -138,8 +138,8 @@ describe('live layer golden determinism', () => {
   });
 
   it('matches the pinned digest (a pure refactor must leave this byte-identical)', () => {
-    // 2026-10-08: the unhoused live in camps (state.camps, live/camps.ts) — new state, no rng draws; counts unchanged
-    expect(first).toBe('cars=3 peds=126 cruisers=4 trains=4 flocks=6 #218d3535');
+    // 2026-10-08: walkers route around power plants, the precinct and ruins; a crowded stop's trips may drive
+    expect(first).toBe('cars=5 peds=127 cruisers=4 trains=4 flocks=5 #bab8870e');
   });
 });
 
