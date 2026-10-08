@@ -343,6 +343,10 @@ function voice(pcs: number[], lo: number, hi: number): number[] {
 /** Into the bass register: C2..B2. */
 const inBass = (pc: number): number => 36 + pc;
 
+/** Chords are voiced in at most this many notes (the strongest pitch classes): the texture breathes and the
+ *  melody has room (the player caps voices). */
+const VOICING = 3;
+
 /** Arrange a solo-piano score as an ensemble. */
 export function arrange(bytes: Uint8Array, plan: Arrangement): Uint8Array {
   const score = readScore(bytes);
@@ -363,13 +367,13 @@ export function arrange(bytes: Uint8Array, plan: Arrangement): Uint8Array {
     const at = (beats: number): number => bar.tick + Math.round(beats * bar.beat);
     const dur = (beats: number): number => Math.max(1, Math.round(beats * bar.beat));
     // the pad: the bar's chord, held
-    for (const p of voice(whole.pcs, 50, 67)) parts.pad.push({ tick: bar.tick, dur: bar.len - Math.round(score.division / 8), pitch: p, vel: 46 });
+    for (const p of voice(whole.pcs.slice(0, VOICING), 50, 67)) parts.pad.push({ tick: bar.tick, dur: bar.len - Math.round(score.division / 8), pitch: p, vel: 46 });
     // the comp: the beat's own chord on the style's hits
     for (const h of style.comp(bar.beats)) {
       const t = at(h.at);
       const beatChord = harmony(score, t, t + Math.round(bar.beat));
       const pcs = beatChord.pcs.length ? beatChord.pcs.filter((pc) => whole.pcs.includes(pc)) : whole.pcs;
-      for (const p of voice(pcs.length ? pcs : whole.pcs, 55, 70)) parts.comp.push({ tick: t, dur: dur(h.dur), pitch: p, vel: h.vel });
+      for (const p of voice((pcs.length ? pcs : whole.pcs).slice(0, VOICING), 55, 70)) parts.comp.push({ tick: t, dur: dur(h.dur), pitch: p, vel: h.vel });
     }
     // the bass: root and fifth (the fifth only where the score sounds it), an approach into the next bar's root
     const fifth = (root + 7) % 12;

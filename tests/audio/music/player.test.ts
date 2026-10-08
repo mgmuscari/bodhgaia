@@ -267,3 +267,17 @@ describe('createMusicPlayer', () => {
     await expect(player.play('nope')).rejects.toThrow(/nope/);
   });
 });
+
+describe('the melody is never crowded out (Maddy 2026-10-08: the Gymnopédie lost its lead)', () => {
+  it('a lead note sounds even when held chords fill the cap and a comp chord lands with it', async () => {
+    const held = [48, 52, 55, 59, 62, 64, 67].map((p) => note(0, p, { duration: 4, channel: 3 })); // a pad, filling the cap
+    const comp = [57, 60, 64, 66].map((p) => note(1, p, { duration: 0.5, channel: 2 }));
+    const lead = note(1, 78, { duration: 1, channel: 0 });
+    const drum = note(1, 51, { duration: 0.2, channel: 9, percussion: true });
+    const { env, timer, player } = setup([{ id: 'x', moods: ['day'] }], { x: piece([...held, ...comp, lead, drum], 4) });
+    await player.play('x');
+    run(env, timer, 2);
+    expect(env.played.some((p) => p.pitch === 78)).toBe(true); // the melody is heard
+    expect(env.played.filter((p) => p.pitch >= 57 && p.pitch <= 66 && (p.at ?? 0) > 0.5).length).toBeLessThan(4); // the comp gave way
+  });
+});
