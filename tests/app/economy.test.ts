@@ -7,7 +7,7 @@ import { TECH_TREE } from '../../src/tech/tree';
 import { computeNeighborhoods } from '../../src/civic/neighborhoods';
 import { createCivicState } from '../../src/civic/state';
 import { createEconomy, ECON } from '../../src/economy/model';
-import { DEFAULT_LEVERS, practiceProject, type EconomyRun } from '../../src/economy/run';
+import { DEFAULT_LEVERS, practiceProject, practiceTerms, type EconomyRun } from '../../src/economy/run';
 import { DAYSPEED } from '../../src/ui/lighting';
 import type { PowerGrid } from '../../src/growth/power';
 import { money } from '../../src/ui/moneyFormat';
@@ -163,6 +163,18 @@ describe('createEconomyController', () => {
     expect(tech.unlocked.has('walkable-streets')).toBe(true);
     expect(log).toEqual(['granted', 'refreshed', 'pulse']);
     expect(econ.run().projects).toHaveLength(0);
+  });
+
+  it('beginning a practice pays its money up front, once — and is refused without it', () => {
+    const terms = practiceTerms(TECH_TREE.find((n) => n.id === 'walkable-streets')!);
+    const rich = setup({ state: createEconomy(terms.upfront + 100), projects: [], levers: DEFAULT_LEVERS });
+    expect(rich.econ.beginPractice('walkable-streets')).toBe(true);
+    expect(rich.econ.run().state.funds).toBe(100);
+    expect(rich.econ.run().projects[0]!.funds).toBe(0); // only effort is left to draw
+    const poor = setup({ state: createEconomy(terms.upfront - 1), projects: [], levers: DEFAULT_LEVERS });
+    expect(poor.econ.beginPractice('walkable-streets')).toBe(false);
+    expect(poor.econ.run().state.funds).toBe(terms.upfront - 1);
+    expect(poor.econ.run().projects).toHaveLength(0);
   });
 
   it('beginPractice queues a project once; projectProgress reads it', () => {

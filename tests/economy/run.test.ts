@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createEconomy, type CityReading } from '../../src/economy/model';
-import { economyHour, practiceProject, DEFAULT_LEVERS, type EconomyRun } from '../../src/economy/run';
+import { economyHour, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../../src/economy/run';
 import { startProject } from '../../src/economy/projects';
 
 const city = (over: Partial<CityReading> = {}): CityReading => ({
@@ -30,12 +30,18 @@ describe('economyHour — one in-game hour of the economy', () => {
     expect(done).toEqual(['walkable-streets']);
   });
 
-  it('practices cost effort AND funds, scaled with the node, and take longer the deeper they are', () => {
-    const cheap = practiceProject({ id: 'a', name: 'A', cost: 10 });
-    const deep = practiceProject({ id: 'b', name: 'B', cost: 80 });
+  it('a practice costs money once to begin, then effort over its days (Maddy 2026-10-07)', () => {
+    const cheap = practiceTerms({ cost: 10 });
+    const deep = practiceTerms({ cost: 80 });
+    expect(cheap.upfront).toBeGreaterThan(0);
     expect(cheap.effort).toBeGreaterThan(0);
-    expect(cheap.funds).toBeGreaterThan(0);
-    expect(deep.hours).toBeGreaterThan(cheap.hours);
+    expect(deep.upfront).toBeGreaterThan(cheap.upfront);
     expect(deep.effort).toBeGreaterThan(cheap.effort);
+    expect(deep.hours).toBeGreaterThan(cheap.hours);
+    // the project the work runs as draws effort only — the money was paid at the start
+    const p = practiceProject({ id: 'a', name: 'A', cost: 10 });
+    expect(p.funds).toBe(0);
+    expect(p.effort).toBe(cheap.effort);
+    expect(p.hours).toBe(cheap.hours);
   });
 });

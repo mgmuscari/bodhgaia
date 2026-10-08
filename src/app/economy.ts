@@ -18,7 +18,7 @@ import { wellbeing } from '../tech/effort';
 import { TRUST_FLOOR } from '../civic/dynamics';
 import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
 import { readCity } from '../economy/readings';
-import { economyHour, practiceProject, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
+import { economyHour, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
 import { projectProgress } from '../economy/projects';
 import { economyLine } from '../ui/economyContent';
 import { budgetView, type BudgetView } from '../ui/budgetContent';
@@ -225,9 +225,12 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     beginPractice: (id) => {
       const r = tech.canUnlock(id);
       const node = TECH_TREE.find((n) => n.id === id);
-      const ok = !!node && (r.ok || r.reason === 'effort') && !econ.projects.some((p) => p.id === id);
-      if (ok) econ = { ...econ, projects: [...econ.projects, practiceProject(node!)] };
-      return ok;
+      if (!node || !(r.ok || r.reason === 'effort') || econ.projects.some((p) => p.id === id)) return false;
+      // the money is paid up front, once; the work then draws effort over its days
+      const upfront = practiceTerms(node).upfront;
+      if (econ.state.funds < upfront) return false;
+      econ = { ...econ, state: { ...econ.state, funds: econ.state.funds - upfront }, projects: [...econ.projects, practiceProject(node)] };
+      return true;
     },
     projectProgress: (id) => {
       const p = econ.projects.find((q) => q.id === id);
