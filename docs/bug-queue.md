@@ -31,7 +31,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - Walkers hop when re-planning mid-leg (up to 0.2 tile, once) and when stepping back onto the grid from a parked
   car's off-grid spot (up to 0.6, once). Smooth these.
 - ✅ **The toxic cloud glows at night** (Maddy 2026-10-08) — the smog overlay now darkens with the night.
-- **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — fast riders show the walking animation.
+- ✅ **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — real bicycles now.
 - **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
   - rail running beside a road is drawn with at-grade crossings though there's road on one side only;
   - pedestrians walk on train tracks (and streetcar tracks);

@@ -30,7 +30,7 @@ import { isPowerConsumer } from '../growth/power';
 import { ambientAlpha, movingPose, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
-import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, heading8, personKey } from './snesAgents';
+import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
@@ -1191,7 +1191,7 @@ export class Renderer {
       const moving = p.tx !== p.x || p.ty !== p.y;
       const frame = moving ? Math.floor(performance.now() / 220 + (seed & 7)) % 2 : 0; // a two-step walk
       const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame));
+      const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame, bike ? bikeFacing(pose.hx, pose.hy) : undefined));
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       if (p.gather && marching.has(p.gather.id)) {
         const sign = this.sprites.get(`@sprite/placard/${seed & 1}`);
