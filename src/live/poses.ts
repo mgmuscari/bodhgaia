@@ -2,8 +2,6 @@
 // which way it faces — the turn arcs, kerb/lane laterals, and the between-substep interpolation the
 // renderers read. Cut verbatim from ui/ambientContent.ts; pure, no trig (nlerp + sqrt).
 
-import type { GameMap } from '../engine/map';
-import { isRoadKind } from '../engine/fabric';
 import { SUBSTEP_MS } from './tuning';
 import { DIR_DX, DIR_DY, LANE, PED_CURB } from './geometry';
 import type { AmbientState, Car, Mover, Ped, Train } from './types';
@@ -22,14 +20,8 @@ export function legPaceFactor(m: Mover, lateral: number): number {
   return 1 / ((Math.PI / 2) * (0.5 - turn * lateral));
 }
 
-/** The kerb offset a pedestrian's current leg is DRAWN with at the tile it crosses (for legPaceFactor). */
-export function pedLegLateral(map: GameMap, p: Mover): number {
-  const x = p.tx - DIR_DX[p.dir]!;
-  const y = p.ty - DIR_DY[p.dir]!;
-  return map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!) ? PED_CURB : 0;
-}
 
-/** The leg state a pose is computed from — all {@link moverPose} and {@link pedLateral} read. A mover
+/** The leg state a pose is computed from — all {@link moverPose} and the walkers' pose read. A mover
  *  is one; so is its pre-substep snapshot (`Mover.snap`), which is posed directly, never copied. */
 export type LegState = Pick<Mover, 'x' | 'y' | 'dir' | 'prevDir' | 'tx' | 'ty'>;
 
@@ -236,44 +228,54 @@ export function movingPose(m: Mover, lateral: number, alpha: number): Pose {
   return before ? blendPose(before, now, alpha) : now;
 }
 
-/**
- * A pedestrian's kerb offset across the tile its leg crosses: PED_CURB on a road tile, 0 on open ground,
- * averaged at each edge with the neighbour across it — so a walker slides onto/off the kerb instead of
- * jumping as it steps between a road and a lot.
- */
-export function pedLateral(m: LegState, onRoadAt: (x: number, y: number) => boolean): LateralProfile {
-  // on a road, the kerb: the walker's right as a rule — but where their right is more road and their left
-  // is not (the near lane of an avenue), the kerb is on their left (Maddy 2026-10-08: not the middle of the road)
-  const lat = (x: number, y: number, dir: number): number => {
-    if (!onRoadAt(x, y)) return 0;
-    const r = (dir + 1) & 3;
-    const l = (dir + 3) & 3;
-    const roadRight = onRoadAt(x + DIR_DX[r]!, y + DIR_DY[r]!);
-    const roadLeft = onRoadAt(x + DIR_DX[l]!, y + DIR_DY[l]!);
-    return roadRight && !roadLeft ? -PED_CURB : PED_CURB;
-  };
-  const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
-  if (!onLeg) {
-    const here = lat(Math.round(m.x), Math.round(m.y), m.dir);
-    return { entry: here, mid: here, exit: here };
-  }
-  const d = m.dir;
-  const pd = m.prevDir ?? d;
-  const tx = m.tx - DIR_DX[d]!;
-  const ty = m.ty - DIR_DY[d]!;
-  const mid = lat(tx, ty, d);
+/** Which sidewalk a walker keeps to on a road with a kerb on both sides: a stable bit of who they are, so people
+ *  use both sides of a street and nobody switches sides mid-walk. */
+function sidewalkOf(p: { homeTile?: number; carId?: number }): number {
+  return ((Math.imul((p.homeTile ?? p.carId ?? 0) + 1, 0x9e3779b1) >>> 0) >>> 16) & 1;
+}
+
+/** Where on a tile a walker stands (offset from its centre): nothing off the road; on a road, its kerb — the side
+ *  with no road beyond it (the near kerb of an avenue's lane); where there are kerbs on both sides (a one-lane
+ *  street), the walker's own sidewalk; a junction's middle where there is no kerb at all. Fixed to the map, not to
+ *  the walker's heading — so turning round or turning a corner never moves them across the road. */
+function kerbOffset(x: number, y: number, side: number, onRoadAt: (x: number, y: number) => boolean): [number, number] {
+  if (!onRoadAt(x, y)) return [0, 0];
+  const n = !onRoadAt(x, y - 1);
+  const s = !onRoadAt(x, y + 1);
+  const w = !onRoadAt(x - 1, y);
+  const e = !onRoadAt(x + 1, y);
+  let ox = (e ? 1 : 0) - (w ? 1 : 0);
+  let oy = (s ? 1 : 0) - (n ? 1 : 0);
+  if (n && s) oy = side ? 1 : -1;
+  if (e && w) ox = side ? 1 : -1;
+  if (ox === 0 && oy === 0) return [0, 0];
+  const k = PED_CURB / Math.hypot(ox, oy);
+  return [ox * k, oy * k];
+}
+
+/** A walker's pose from its leg: straight along the leg between tile centres, standing at each tile's kerb and
+ *  gliding between them — continuous through turns and reversals (Maddy 2026-10-08: walkers warped across the
+ *  avenue when the old heading-relative kerb flipped sides). */
+function walkPose(m: LegState, side: number, onRoadAt: (x: number, y: number) => boolean): Pose {
+  const moving = m.tx !== m.x || m.ty !== m.y;
+  const sx = moving ? m.tx - DIR_DX[m.dir]! : Math.round(m.x);
+  const sy = moving ? m.ty - DIR_DY[m.dir]! : Math.round(m.y);
+  const t = moving ? Math.min(1, Math.max(0, 1 - (Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y)))) : 0;
+  const a = kerbOffset(sx, sy, side, onRoadAt);
+  const b = moving ? kerbOffset(m.tx, m.ty, side, onRoadAt) : a;
   return {
-    entry: (lat(tx - DIR_DX[pd]!, ty - DIR_DY[pd]!, pd) + mid) / 2,
-    mid,
-    exit: (mid + lat(m.tx, m.ty, d)) / 2,
+    x: m.x + 0.5 + a[0] + (b[0] - a[0]) * t,
+    y: m.y + 0.5 + a[1] + (b[1] - a[1]) * t,
+    hx: DIR_DX[m.dir]!,
+    hy: DIR_DY[m.dir]!,
   };
 }
 
-/** A pedestrian's draw pose: on the kerb along a road, down the middle elsewhere, easing between the
- *  two across a tile edge — smooth through turns ({@link moverPose}; `walkTo` is only the trip's
- *  destination, walkers still follow grid legs) and interpolated between substeps like {@link carPose}. */
+/** A pedestrian's draw pose: on a sidewalk fixed to the map (see kerbOffset), gliding between tiles, interpolated
+ *  between substeps like {@link carPose}. */
 export function pedPose(p: Ped, onRoadAt: (x: number, y: number) => boolean, alpha = 1): Pose {
-  const now = moverPose(p, pedLateral(p, onRoadAt));
-  const before = alpha < 1 && p.snap ? moverPose(p.snap, pedLateral(p.snap, onRoadAt)) : null;
-  return before ? blendPose(before, now, alpha) : now;
+  const side = sidewalkOf(p);
+  const now = walkPose(p, side, onRoadAt);
+  if (alpha >= 1 || !p.snap) return now;
+  return blendPose(walkPose(p.snap, side, onRoadAt), now, alpha); // (a teleport isn't blended: it lands)
 }
