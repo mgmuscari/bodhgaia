@@ -70,7 +70,7 @@ export function createEventsController(deps: EventsDeps): EventsController {
       const events = deps.live.events!.splice(0);
       if (events.length > 0) {
         handleEvents(events, deps);
-        queue.push(events);
+        queue.push(events, now);
       }
       const ev = queue.current(now);
       if (!ev) {

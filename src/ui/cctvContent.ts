@@ -11,6 +11,8 @@ export const CCTV_H = 160;
 export const CCTV_MS = 4000;
 /** Tiles of margin around the event, each side (half a tile: a single-tile event still gets the closest zoom). */
 const MARGIN = 0.5;
+/** Arrests are common (a sweep makes several a minute): at most one reaches the feed per this gap. Deaths always do. */
+export const ARREST_GAP_MS = 20_000;
 /** How many events may wait behind the one showing. */
 const QUEUE_MAX = 2;
 
@@ -34,13 +36,21 @@ export function cctvLabel(ev: LiveEvent): string {
 
 const RANK: Record<LiveEvent['kind'], number> = { death: 0, arrest: 1 };
 
-/** One event at a time, each for CCTV_MS; deaths go before arrests; only a few wait. */
+/** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
+ *  only a few wait. */
 export class CctvQueue {
   private showing: { ev: LiveEvent; since: number } | null = null;
   private waiting: LiveEvent[] = [];
+  private lastArrest = -Infinity;
 
-  push(events: readonly LiveEvent[]): void {
-    for (const ev of events) this.waiting.push(ev);
+  push(events: readonly LiveEvent[], now: number): void {
+    for (const ev of events) {
+      if (ev.kind === 'arrest') {
+        if (now - this.lastArrest < ARREST_GAP_MS) continue;
+        this.lastArrest = now;
+      }
+      this.waiting.push(ev);
+    }
     this.waiting.sort((a, b) => RANK[a.kind] - RANK[b.kind]); // stable: arrival order within a kind
     this.waiting.length = Math.min(this.waiting.length, QUEUE_MAX + (this.showing ? 0 : 1));
   }

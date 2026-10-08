@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cctvFrame, cctvLabel, CctvQueue, CCTV_W, CCTV_H, CCTV_MS } from '../../src/ui/cctvContent';
+import { cctvFrame, cctvLabel, CctvQueue, CCTV_W, CCTV_H, CCTV_MS, ARREST_GAP_MS } from '../../src/ui/cctvContent';
 
 describe('cctvFrame: the most zoomed-in view that fits the whole event', () => {
   it('a death (one tile) gets the closest zoom, centred on it', () => {
@@ -31,17 +31,28 @@ describe('CctvQueue: one event at a time, deaths before arrests', () => {
 
   it(`shows each for ${CCTV_MS} ms, then the next — a death jumps the queue`, () => {
     const q = new CctvQueue();
-    q.push([arrest, arrest, death]);
+    q.push([arrest, death], 0);
     expect(q.current(0)).toEqual(death);
     expect(q.current(CCTV_MS - 1)).toEqual(death);
     expect(q.current(CCTV_MS)).toEqual(arrest);
-    expect(q.current(2 * CCTV_MS)).toEqual(arrest);
-    expect(q.current(3 * CCTV_MS)).toBeNull();
+    expect(q.current(2 * CCTV_MS)).toBeNull();
   });
 
-  it('keeps only a few waiting (a sweep of arrests does not stack up for minutes)', () => {
+  it(`arrests are common — at most one every ${ARREST_GAP_MS / 1000} s reaches the feed; deaths always do`, () => {
     const q = new CctvQueue();
-    q.push(Array.from({ length: 20 }, () => arrest));
+    let shown = 0;
+    for (let t = 0; t < 60_000; t += 1000) {
+      q.push([arrest], t);
+      if (q.current(t) !== null && t % CCTV_MS === 0) shown++;
+    }
+    expect(shown).toBeLessThanOrEqual(Math.ceil(60_000 / ARREST_GAP_MS));
+    q.push([death, death], 60_000);
+    expect(q.current(60_000 + CCTV_MS)).toEqual(death);
+  });
+
+  it('keeps only a few waiting (a burst does not stack up for minutes)', () => {
+    const q = new CctvQueue();
+    q.push(Array.from({ length: 20 }, () => death), 0);
     let shown = 0;
     for (let t = 0; q.current(t) !== null; t += CCTV_MS) shown++;
     expect(shown).toBeLessThanOrEqual(3);
