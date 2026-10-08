@@ -289,7 +289,7 @@ function sidewalkOf(p: { homeTile?: number; carId?: number }): number {
 
 /** Where on a tile a walker stands (offset from its centre): nothing off the road; on a road, its kerb — the side
  *  with no road beyond it (the near kerb of an avenue's lane); where there are kerbs on both sides (a one-lane
- *  street), the walker's own sidewalk; a junction's middle where there is no kerb at all. Fixed to the map, not to
+ *  street), the walker's own sidewalk; on a junction (no kerb at all), the corner on their side of both streets. Fixed to the map, not to
  *  the walker's heading — so turning round or turning a corner never moves them across the road. */
 function kerbOffset(x: number, y: number, side: number, onRoadAt: (x: number, y: number) => boolean): [number, number] {
   if (!onRoadAt(x, y)) return [0, 0];
@@ -301,7 +301,9 @@ function kerbOffset(x: number, y: number, side: number, onRoadAt: (x: number, y:
   let oy = (s ? 1 : 0) - (n ? 1 : 0);
   if (n && s) oy = side ? 1 : -1;
   if (e && w) ox = side ? 1 : -1;
-  if (ox === 0 && oy === 0) return [0, 0];
+  // a junction (road all round, no kerb): its corner on the walker's own side of both streets — they turn there, or
+  // cross on the junction's edge along the crosswalk, never through its middle (Maddy 2026-10-08)
+  if (ox === 0 && oy === 0) return side ? [PED_CURB, PED_CURB] : [-PED_CURB, -PED_CURB];
   const k = PED_CURB / Math.hypot(ox, oy);
   return [ox * k, oy * k];
 }
