@@ -5,6 +5,9 @@
 import { SUBSTEP_MS } from './tuning';
 import { DIR_DX, DIR_DY, LANE, PED_CURB } from './geometry';
 import type { AmbientState, Car, Mover, Ped, Train } from './types';
+import type { GameMap } from '../engine/map';
+import { BuiltKind, isRoadKind } from '../engine/fabric';
+import { tramStreet } from './network';
 
 /**
  * How much faster a mover's current sim leg should run so its DRAWN path keeps its pace: a leg's pose
@@ -208,22 +211,53 @@ export function ambientAlpha(state: AmbientState): number {
   return Math.min(1, Math.max(0, state.accMs / SUBSTEP_MS));
 }
 
+/** Where a walker keeps to the kerb: a road, or a tram street (Maddy 2026-10-08: walkers down the middle of it). */
+export function streetAt(map: GameMap): (x: number, y: number) => boolean {
+  return (x, y) => {
+    if (!map.inBounds(x, y)) return false;
+    const k = map.built[map.idx(x, y)]!;
+    return isRoadKind(k) || k === BuiltKind.Streetcar;
+  };
+}
+
+/** A car's lane on a tram street: out past the rails, by the kerb (Maddy 2026-10-08: cars drive alongside trams). */
+export const TRAM_STREET_LANE = 0.3;
+
+/** The lane a car keeps to on each tile of the map: the outer lane of a tram street, else the usual one. */
+export function laneOnTile(map: GameMap): (x: number, y: number) => number {
+  return (x, y) => (tramStreet(map, x, y) ? TRAM_STREET_LANE : LANE);
+}
+
+/** A leg's lateral profile from the lanes of the tiles it runs through: the tile's own lane at its centre, easing
+ *  to the lane beyond at each edge — so a car moves over between street and tram street without a hop. */
+function laneProfile(laneAt: (x: number, y: number) => number): (m: LegState) => LateralProfile {
+  return (m) => {
+    const dx = DIR_DX[m.dir]!;
+    const dy = DIR_DY[m.dir]!;
+    const pd = m.prevDir ?? m.dir;
+    const cx = m.tx - dx;
+    const cy = m.ty - dy;
+    const mid = laneAt(cx, cy);
+    return { entry: (laneAt(cx - DIR_DX[pd]!, cy - DIR_DY[pd]!) + mid) / 2, mid, exit: (mid + laneAt(m.tx, m.ty)) / 2 };
+  };
+}
+
 /** A car's draw pose. Parked: on its stall/kerb spot, a kerb-parked car lying parallel to the kerb.
  *  Moving: {@link moverPose} in its right-hand lane, interpolated `alpha` of the way from its pose
  *  before the latest substep (1 = no interpolation). */
-export function carPose(c: Car, alpha = 1): Pose {
+export function carPose(c: Car, alpha = 1, laneAt?: (x: number, y: number) => number): Pose {
   if (c.parked) {
     // kerb-parked: parallel to the kerb; in a lot bay: east-west, the way the bays are laid out
     const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.lotIdx !== undefined ? 1 : c.dir;
     return { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! };
   }
-  return movingPose(c, LANE, alpha);
+  return movingPose(c, laneAt ? laneProfile(laneAt) : LANE, alpha);
 }
 
 /** A moving mover's draw pose: moverPose now, blended `alpha` of the way from its pose before the latest
  *  substep — the one path cars, cruisers and train cars share. */
-export function movingPose(m: Mover, lateral: number, alpha: number): Pose {
-  const now = moverPose(m, lateral);
+export function movingPose(m: Mover, lateral: number | ((leg: LegState) => LateralProfile), alpha: number): Pose {
+  const now = moverPose(m, typeof lateral === 'number' ? lateral : lateral(m));
   const before = alpha < 1 ? snapPose(m, lateral) : null;
   return before ? blendPose(before, now, alpha) : now;
 }

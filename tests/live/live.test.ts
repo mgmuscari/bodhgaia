@@ -2960,12 +2960,13 @@ describe('canDrive level crossings (Maddy: streetcars must not block cross traff
     expect(canDrive(m, 6, 5, 7, 5)).toBe(true); // …and out the far side ✓
   });
 
-  it('a car may NOT drive ALONG a tram line (no road straight beyond)', () => {
+  it('a car drives ALONG a tram street, alongside the trams (Maddy 2026-10-08: it was closed to cars)', () => {
     const m = new GameMap(12, 8);
     m.built[m.idx(5, 5)] = BuiltKind.RoadStreet;
     m.built[m.idx(6, 5)] = BuiltKind.Streetcar;
-    m.built[m.idx(7, 5)] = BuiltKind.Streetcar; // the tram continues — not a crossing, a line
-    expect(canDrive(m, 5, 5, 6, 5)).toBe(false); // can't enter: the tile beyond is more tram, not road
+    m.built[m.idx(7, 5)] = BuiltKind.Streetcar; // the tram continues — a tram street
+    expect(canDrive(m, 5, 5, 6, 5)).toBe(true);
+    expect(canDrive(m, 6, 5, 7, 5)).toBe(true);
   });
 
   it('a cross street crosses an avenue/streetcar/avenue median (the reported case)', () => {

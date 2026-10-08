@@ -252,6 +252,25 @@ export function carTraversable(kind: number): boolean {
   return isCarRoad(kind) || kind === BuiltKind.ParkingLot || kind === BuiltKind.RoadRamp;
 }
 
+/** A streetcar line laid as a street of its own: cars drive it alongside the trams (Maddy 2026-10-08). Not a tram
+ *  MEDIAN — a run between two roads (an avenue / streetcar / avenue), which cross traffic only crosses: its tile
+ *  and the next along both have road on either side (a lone such tile is a tram street meeting a cross street). */
+export function tramStreet(map: GameMap, x: number, y: number): boolean {
+  if (!map.inBounds(x, y) || map.built[map.idx(x, y)] !== BuiltKind.Streetcar) return false;
+  const road = (ax: number, ay: number): boolean => map.inBounds(ax, ay) && isCarRoad(map.built[map.idx(ax, ay)]!);
+  const tram = (ax: number, ay: number): boolean => map.inBounds(ax, ay) && map.built[map.idx(ax, ay)] === BuiltKind.Streetcar;
+  const flankedNS = (ax: number, ay: number): boolean => road(ax, ay - 1) && road(ax, ay + 1);
+  const flankedEW = (ax: number, ay: number): boolean => road(ax - 1, ay) && road(ax + 1, ay);
+  if (flankedNS(x, y) && ((tram(x - 1, y) && flankedNS(x - 1, y)) || (tram(x + 1, y) && flankedNS(x + 1, y)))) return false;
+  if (flankedEW(x, y) && ((tram(x, y - 1) && flankedEW(x, y - 1)) || (tram(x, y + 1) && flankedEW(x, y + 1)))) return false;
+  return true;
+}
+
+/** A tile a car may drive onto: a road, lot or ramp, or a tram street. */
+export function drivable(map: GameMap, x: number, y: number): boolean {
+  return map.inBounds(x, y) && (carTraversable(map.built[map.idx(x, y)]!) || tramStreet(map, x, y));
+}
+
 /** A freeway-family tile for LANE GEOMETRY: a highway or a ramp. A ramp is a freeway tile that also
  *  meets the surface, so for run-length classification it counts as freeway (it must not break the
  *  lane runs around it), even though canDrive treats the ramp itself as a free interchange. */
@@ -283,7 +302,7 @@ export function isLevelCrossable(kind: number): boolean {
  *  NOT a divided road's median. Cars neither spawn on, weave onto, nor turn (at a
  *  junction) onto a median — so the median stays a true no-traffic gap. */
 export function carPassable(map: GameMap, x: number, y: number): boolean {
-  if (!carTraversable(map.built[map.idx(x, y)]!)) return false;
+  if (!drivable(map, x, y)) return false;
   const lane = freewayLane(map, x, y);
   return lane === null || lane.role !== 'median';
 }
@@ -355,14 +374,14 @@ export function alongThrough(lane: { horizontal: boolean }, d: number): boolean 
 export function canDrive(map: GameMap, fx: number, fy: number, tx: number, ty: number): boolean {
   if (!map.inBounds(tx, ty)) return false;
   const toKind = map.built[map.idx(tx, ty)]!;
-  if (!carTraversable(toKind)) {
+  if (!carTraversable(toKind) && !tramStreet(map, tx, ty)) {
     // Level crossing: a car may CROSS an at-grade tram/rail line STRAIGHT through to the drivable
     // tile beyond (a cross street crossing an avenue's streetcar median), but never drive along it.
     if (isLevelCrossable(toKind)) {
       const d = moveDir(fx, fy, tx, ty);
       const bx = tx + DIR_DX[d]!;
       const by = ty + DIR_DY[d]!;
-      return map.inBounds(bx, by) && carTraversable(map.built[map.idx(bx, by)]!);
+      return drivable(map, bx, by);
     }
     return false;
   }
@@ -390,7 +409,7 @@ export function canDrive(map: GameMap, fx: number, fy: number, tx: number, ty: n
       if (d === opposite(L.dir)) return false; // wrong-way along the avenue
       const bx = tx + DIR_DX[d]!; // perpendicular → only as a straight crossing to a road beyond
       const by = ty + DIR_DY[d]!;
-      return map.inBounds(bx, by) && carTraversable(map.built[map.idx(bx, by)]!);
+      return drivable(map, bx, by);
     }
     return true;
   }

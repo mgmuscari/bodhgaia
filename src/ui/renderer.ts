@@ -5,7 +5,7 @@
 // only draws.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isBuildingKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
+import { BuiltKind, isBuildingKind, isTransportKind, transportMask, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import { C } from './snesPalette';
@@ -27,7 +27,7 @@ import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { ambientAlpha, movingPose, trainPoses } from '../live/poses';
+import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
 import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey } from './snesAgents';
@@ -977,7 +977,8 @@ export class Renderer {
    *  glow at the DPR transform, culled to the viewport. Cosmetic shell — live-pass tuned. */
   private drawSprites(world: WorldState, camera: Camera, ambient: AmbientState): void {
     const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
-    const onRoadAt = (x: number, y: number): boolean => world.map.inBounds(x, y) && isRoadKind(world.map.built[world.map.idx(x, y)]!);
+    const onRoadAt = streetAt(world.map);
+    const laneAt = laneOnTile(world.map);
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const ts = camera.tileSize;
@@ -990,7 +991,7 @@ export class Renderer {
     // Each mover near the view is posed ONCE this frame (culled on its raw position first); the GPU glow
     // pass reuses the same poses (framePoses.ts).
     const cam = camera.screenToWorld(0, 0);
-    const poses = computeFramePoses(ambient, viewRect(cam.wx, cam.wy, ts, w, h, 1), alpha, onRoadAt);
+    const poses = computeFramePoses(ambient, viewRect(cam.wx, cam.wy, ts, w, h, 1), alpha, onRoadAt, laneAt);
     shareFramePoses(ambient, poses);
 
     // (Desire-path WEAR + its JUNK/TENTS are now baked into the cached BASE in drawBase — ground level,
