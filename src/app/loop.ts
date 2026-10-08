@@ -6,7 +6,8 @@
 import { FixedTickLoop } from '../engine/loop';
 import type { Rng } from '../engine/rng';
 import { simTick, type SimDeps, type SimTickResult } from '../civic/compose';
-import { stepRevival } from '../growth/revival';
+import { neighborhoodVoice } from '../civic/voice';
+import { stepRepairShops, stepRevival } from '../growth/revival';
 import type { Camera } from '../ui/camera';
 import type { Renderer } from '../ui/renderer';
 import type { GpuRenderer } from '../ui/gpuRenderer';
@@ -28,6 +29,7 @@ export interface SimTickCtx {
     revivalRng: Rng;
     refreshParkingLots(): void;
     refreshHouseholds(): void;
+    publishWelcome(voiceAt: (tile: number) => number): void;
   };
   overlays: { onSimTick(r: SimTickResult): void };
   pulse: { tick(): void };
@@ -75,9 +77,12 @@ export function createSimTick(ctx: SimTickCtx): SimTicker {
         live.revivalRng,
         (tile) => power.grid().poweredAnchors.has(tile),
       );
+      const mended = stepRepairShops(sim.world); // maker spaces mend what's near (hashed stock, deterministic)
       live.refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
       live.refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
-      if (revived > 0 || powerChanged) ctx.markDirty(); // stock/grid changed → rebuild base
+      // organised neighbourhoods welcome the unhoused back (rehoming.md): publish the fresh voice per home
+      live.publishWelcome((t) => neighborhoodVoice(sim.civic, sim.partition, t));
+      if (revived > 0 || mended > 0 || powerChanged) ctx.markDirty(); // stock/grid changed → rebuild base
     },
     { startTick: ctx.startTick },
   );

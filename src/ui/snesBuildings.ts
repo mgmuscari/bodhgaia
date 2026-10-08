@@ -407,6 +407,51 @@ const commune: Painter = (W, H, v) => {
   return p;
 };
 
+const tinyHomes: Painter = (W, H, v) => {
+  const p = lot(W, H, 'meadow', 630 + v);
+  const L = blank(W, H);
+  // a shared path down the middle, small cabins either side of it, a kitchen garden at the end
+  rect(L, (W >> 1) - 1, 1, 2, H - 2, C.paveHi);
+  const roofs = HOUSE_ROOFS;
+  let k = 0;
+  for (let y = 2; y + 6 <= H - 1; y += 7) {
+    for (const x of [2, (W >> 1) + 3]) {
+      if (x + 8 > W) continue;
+      const h = hash2(k++, v, 63);
+      gable(L, x, y, 7, 3, roofs[h % roofs.length]!);
+      wall(L, x, y + 3, 7, 3, C.cream, C.creamLo);
+      door(L, x + 3, y + 4, 1, 2);
+    }
+  }
+  place(p, L);
+  tree(p, W - 3, H - 3, 1);
+  return p;
+};
+
+const yard: Painter = (W, H, v) => {
+  const p = lot(W, H, 'grass', 640 + v);
+  const L = blank(W, H);
+  // a picket fence round a back lawn: a tree, or a vegetable bed and a washing line
+  for (let x = 0; x < W; x += 2) {
+    px(L, x, 0, C.cream);
+    px(L, x, H - 1, C.cream);
+  }
+  for (let y = 0; y < H; y += 2) {
+    px(L, 0, y, C.cream);
+    px(L, W - 1, y, C.cream);
+  }
+  if (v % 2 === 0) tree(L, W - 5, 5, 2);
+  else {
+    rect(L, 3, H - 6, W - 6, 3, C.dirt);
+    for (let x = 4; x < W - 4; x += 2) px(L, x, H - 5, C.leaf);
+    hline(L, 3, W - 4, 4, C.paveLo);
+    px(L, 5, 5, C.petal);
+    px(L, 8, 5, C.roofBlueHi);
+  }
+  place(p, L);
+  return p;
+};
+
 const bazaar: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 580 + v);
   const L = blank(W, H);
@@ -523,6 +568,8 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [55, [adu, 2]],
   [56, [coop, 1]],
   [57, [commune, 1]],
+  [63, [tinyHomes, 1]],
+  [64, [yard, 2]],
   [58, [bazaar, 2]],
   [59, [makerSpace, 1]],
   [60, [healingCommons, 1]],

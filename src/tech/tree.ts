@@ -94,6 +94,8 @@ export const TECH_TREE: readonly TechNode[] = [
     'Land held in common cannot be flipped; the trust keeps the ground underfoot.'),
   node('healing-commons', RestorativeJustice, 'Healing Commons', ['community-land-trust'], 30, kind(BuiltKind.HealingCommons),
     'A shared house for grief and repair, open to anyone the city has wounded.'),
+  node('tiny-home-villages', RestorativeJustice, 'Tiny-Home Villages', ['healing-commons'], 25, kind(BuiltKind.TinyHomes),
+    'Small cabins round a shared kitchen: a door that locks, neighbours who know your name.'),
   node('participatory-budgeting', RestorativeJustice, 'Participatory Budgeting', ['circles'], 25, cap('participatory-budgeting'),
     'Neighbors decide where the money goes, line by line, out in the open.'),
 

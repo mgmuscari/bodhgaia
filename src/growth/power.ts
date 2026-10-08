@@ -30,6 +30,30 @@ export const PLANT_OUTPUT: ReadonlyMap<number, number> = new Map<number, number>
   [BuiltKind.EnergyNode, 168], // distributed community microgrid
 ]);
 
+/** The practices' power effects (resolved tech-side, tech/effects.ts — passed as plain values). */
+export interface PowerPractices {
+  /** Multiplier on home demand by day, ROOF_SOLAR_FROM..ROOF_SOLAR_TO (Sun and Wire: rooftop solar). */
+  homeDayDemand: number;
+  /** Multiplier on hydro, wind and solar output (Renewable Energy). */
+  renewableOutput: number;
+  /** Homes within LOCAL_GRID_RADIUS of an energy node are served first in a blackout (Local Grids). */
+  localGrids: boolean;
+}
+
+export const NEUTRAL_POWER_PRACTICES: Readonly<PowerPractices> = Object.freeze({
+  homeDayDemand: 1,
+  renewableOutput: 1,
+  localGrids: false,
+});
+
+/** The daylight hours rooftop solar covers (from inclusive, to exclusive). */
+export const ROOF_SOLAR_FROM = 7;
+export const ROOF_SOLAR_TO = 18;
+/** How far (Chebyshev, from its footprint) an energy node's local grid reaches. */
+export const LOCAL_GRID_RADIUS = 4;
+/** The plants Renewable Energy boosts. */
+export const RENEWABLE_KINDS: ReadonlySet<number> = new Set<number>([BuiltKind.HydroPlant, BuiltKind.WindTurbine, BuiltKind.SolarPlant]);
+
 // Power demand per unit density, by zone class. Industry is the hungriest, homes the
 // least — the classic R<C<I load curve. Civic services draw a flat-ish mid load.
 const DEMAND_PER_DENSITY: ReadonlyMap<ZoneType, number> = new Map<ZoneType, number>([
@@ -126,6 +150,85 @@ export function demandAt(kind: number, density: number, anchor: number, clock: G
   return (base * loadProfile(zoneTypeOf(kind), clock.hour + phase) * jitter) / 10000;
 }
 
+/** The home anchors inside an energy node's local grid (Local Grids). */
+function localGridAnchors(map: GameMap, parcels: ParcelStore): Set<number> {
+  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    if (p.kind !== BuiltKind.EnergyNode) continue;
+    const r = LOCAL_GRID_RADIUS;
+    boxes.push({ x0: p.x - r, y0: p.y - r, x1: p.x + p.width - 1 + r, y1: p.y + p.height - 1 + r });
+  }
+  const out = new Set<number>();
+  if (boxes.length === 0) return out;
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    if (zoneTypeOf(p.kind) !== ZoneType.Residential) continue;
+    if (boxes.some((b) => p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1)) out.add(map.idx(p.x, p.y));
+  }
+  return out;
+}
+
+// ── Wind and sun ──────────────────────────────────────────────────────────────────────────────────
+// With a clock (the live game), solar follows the sun and wind gusts hour to hour, blowing harder by night —
+// so the evening peak needs wind, energy nodes or steady plants, not just panels. Without one (worldgen,
+// static solves) every plant runs at its nameplate.
+
+/** Share of nameplate a solar plant makes at `hour`: full at noon, falling linearly to 0 at 06:00 and 18:00. */
+export function solarFactor(hour: number): number {
+  const h = ((hour % 24) + 24) % 24;
+  const f = 1 - Math.abs(h - 12) / 6;
+  return f > 0 ? f : 0;
+}
+
+/** Share of nameplate a wind turbine makes this hour: a gust re-drawn each in-game hour (0.6..1.4) × a night
+ *  bias (×1.15 from 20:00 to 06:00, ×0.85 by day), held to 0.4..1.6. Deterministic in the clock. */
+export function windFactor(clock: GridClock): number {
+  const h = ((clock.hour % 24) + 24) % 24;
+  const night = h >= 20 || h < 6;
+  const gust = 0.6 + (mix(clock.slot, 0, 21) % 81) / 100;
+  const f = (night ? 1.15 : 0.85) * gust;
+  return f < 0.4 ? 0.4 : f > 1.6 ? 1.6 : f;
+}
+
+// ── The smart grid (Community AI Node) ───────────────────────────────────────────────────────────────
+/** Homes within SMART_GRID_RADIUS (Chebyshev) of a Community AI Node shift flexible load (laundry, charging,
+ *  water heating) off the evening peak: they draw SMART_GRID_CUT less from SMART_GRID_FROM to SMART_GRID_TO. */
+export const SMART_GRID_RADIUS = 8;
+export const SMART_GRID_CUT = 0.2;
+export const SMART_GRID_FROM = 17;
+export const SMART_GRID_TO = 21;
+
+/** The share of its demand a consumer at `anchor` draws at `clock` under the smart grid (1 = untouched). */
+export function smartGridFactor(map: GameMap, anchor: number, clock: GridClock): number {
+  const h = ((clock.hour % 24) + 24) % 24;
+  if (h < SMART_GRID_FROM || h >= SMART_GRID_TO) return 1;
+  if (zoneTypeOf(map.built[anchor]!) !== ZoneType.Residential) return 1;
+  const x = anchor % map.width;
+  const y = (anchor - x) / map.width;
+  const r = SMART_GRID_RADIUS;
+  for (let yy = Math.max(0, y - r); yy <= Math.min(map.height - 1, y + r); yy++) {
+    for (let xx = Math.max(0, x - r); xx <= Math.min(map.width - 1, x + r); xx++) {
+      if (map.built[yy * map.width + xx] === BuiltKind.AINode) return 1 - SMART_GRID_CUT;
+    }
+  }
+  return 1;
+}
+
+function weatherFactor(kind: number, clock: GridClock | undefined): number {
+  if (!clock) return 1;
+  if (kind === BuiltKind.SolarPlant) return solarFactor(clock.hour);
+  if (kind === BuiltKind.WindTurbine) return windFactor(clock);
+  return 1;
+}
+
+// ── Batteries (Maddy 2026-10-07: the solar problem) ─────────────────────────────────────────────────────
+/** Every energy node carries a battery: it stores up to BATTERY_CAPACITY power-hours (4 h of its own output),
+ *  charging from its grid's surplus and discharging into its grid's shortfall at up to BATTERY_RATE an hour —
+ *  so the noon sun can light the evening. Only clocked (live) solves move the charge. */
+export const BATTERY_RATE = 168;
+export const BATTERY_CAPACITY = 4 * BATTERY_RATE;
+
 // ── Rolling blackouts ─────────────────────────────────────────────────────────────────────────────
 // A short grid sheds whole FEEDERS (FEEDER×FEEDER-tile blocks), never scattered single homes, and the
 // order feeders are served in is re-drawn every ROTATION_HOURS — so the dark patch moves around the
@@ -145,6 +248,8 @@ export function feederOf(map: GameMap, tile: number): number {
 export interface PowerGrid {
   /** Anchor tiles of consumer parcels that ARE powered this tick. */
   poweredAnchors: Set<number>;
+  /** Each energy node's battery charge after this hour (anchor → stored power-hours). */
+  storage: Map<number, number>;
   /** Total generation capacity across all plants on the map. */
   capacity: number;
   /** Total demand across all consumer parcels. */
@@ -163,7 +268,14 @@ interface ConsumerRef {
  * in a plantless component are unpowered. Returns the powered consumer anchors plus
  * global capacity/demand totals. Pure + deterministic.
  */
-export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: GridClock): PowerGrid {
+export function computePowerGrid(
+  map: GameMap,
+  parcels: ParcelStore,
+  clock?: GridClock,
+  practices: PowerPractices = NEUTRAL_POWER_PRACTICES,
+  storageIn: ReadonlyMap<number, number> = new Map(),
+): PowerGrid {
+  const storage = new Map(storageIn);
   const size = map.width * map.height;
   const built = map.built;
 
@@ -198,7 +310,10 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
 
   // 2. Bucket plant capacity + consumer demand by component; collect plant footprint tiles as the
   //    BFS sources for the distance-from-source ordering below.
+  let hasAiNode = false;
+  for (const i of parcels.aliveIndices()) if (parcels.kindAt(i) === BuiltKind.AINode) hasAiNode = true;
   const capByComp = new Float64Array(nComp);
+  const nodesByComp: number[][] = Array.from({ length: nComp }, () => []);
   const consumersByComp: ConsumerRef[][] = Array.from({ length: nComp }, () => []);
   const plantTiles: number[] = [];
   let capacity = 0;
@@ -208,7 +323,8 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
     const anchor = map.idx(p.x, p.y);
     const c = comp[anchor]!;
     if (c < 0) continue;
-    const out = plantOutput(p.kind);
+    const out = plantOutput(p.kind) * (RENEWABLE_KINDS.has(p.kind) ? practices.renewableOutput : 1) * weatherFactor(p.kind, clock);
+    if (p.kind === BuiltKind.EnergyNode) nodesByComp[c]!.push(anchor);
     if (out > 0) {
       capByComp[c] = capByComp[c]! + out;
       capacity += out;
@@ -217,7 +333,11 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
       }
       continue;
     }
-    const d = clock ? demandAt(p.kind, p.density, anchor, clock) : powerDemand(p.kind, p.density);
+    let d = clock ? demandAt(p.kind, p.density, anchor, clock) : powerDemand(p.kind, p.density);
+    // rooftop solar: homes draw less while the sun is up
+    const day = !!clock && clock.hour >= ROOF_SOLAR_FROM && clock.hour < ROOF_SOLAR_TO;
+    if (day && practices.homeDayDemand !== 1 && zoneTypeOf(p.kind) === ZoneType.Residential) d *= practices.homeDayDemand;
+    if (clock && hasAiNode) d *= smartGridFactor(map, anchor, clock);
     if (d > 0) {
       consumersByComp[c]!.push({ anchor, demand: d });
       demand += d;
@@ -259,11 +379,35 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
   //     the remaining budget goes dark as a block (a smaller one later in the order may still fit).
   if (clock) {
     const rotation = Math.floor(clock.slot / ROTATION_HOURS);
+    const local = practices.localGrids ? localGridAnchors(map, parcels) : null;
     for (let c = 0; c < nComp; c++) {
       let budget = capByComp[c]!;
       if (budget <= 0) continue;
+      // batteries: bank the surplus, or cover the shortfall from the bank
+      let load = 0;
+      for (const cons of consumersByComp[c]!) load += cons.demand;
+      let gap = budget - load;
+      for (const node of nodesByComp[c]!) {
+        const s0 = storage.get(node) ?? 0;
+        if (gap > 0) {
+          const add = Math.min(BATTERY_RATE, BATTERY_CAPACITY - s0, gap);
+          if (add > 0) storage.set(node, s0 + add);
+          gap -= Math.max(0, add);
+        } else if (gap < 0 && s0 > 0) {
+          const take = Math.min(BATTERY_RATE, s0, -gap);
+          storage.set(node, s0 - take);
+          budget += take;
+          gap += take;
+        }
+      }
       const feeders = new Map<number, ConsumerRef[]>();
       for (const cons of consumersByComp[c]!) {
+        // Local Grids: the homes an energy node holds are served before any feeder takes its turn
+        if (local?.has(cons.anchor) && cons.demand <= budget) {
+          budget -= cons.demand;
+          poweredAnchors.add(cons.anchor);
+          continue;
+        }
         const f = feederOf(map, cons.anchor);
         const list = feeders.get(f);
         if (list) list.push(cons);
@@ -278,7 +422,7 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
         for (const m of members) poweredAnchors.add(m.anchor);
       }
     }
-    return { poweredAnchors, capacity, demand };
+    return { poweredAnchors, storage, capacity, demand };
   }
 
   // 3b. Static solve (no clock — worldgen checks and tests): power consumers per component within its
@@ -297,5 +441,5 @@ export function computePowerGrid(map: GameMap, parcels: ParcelStore, clock?: Gri
     }
   }
 
-  return { poweredAnchors, capacity, demand };
+  return { poweredAnchors, storage, capacity, demand };
 }

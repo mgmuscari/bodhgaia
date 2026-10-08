@@ -13,7 +13,6 @@ import { metaButtons } from './ui/dockContent';
 import { mountSavesPanel } from './ui/savesPanel';
 import { inspectReadout } from './ui/inspectContent';
 import { sampleRestoration } from './ui/restorationContent';
-import { sampleUnhoused } from './ui/unhousedContent';
 import { wellbeing } from './tech/effort';
 import type { SaveV1 } from './save/snapshot';
 import { CURRENT, readSlot } from './save/store';
@@ -25,6 +24,8 @@ import { createPowerController } from './app/power';
 import { installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { createEconomyController } from './app/economy';
+import { neighborhoodVoice } from './civic/voice';
+import { displaceFromHomes } from './live/fields/occupancy';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
 import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/panels';
 import { createToolController } from './app/tools';
@@ -67,9 +68,16 @@ export function main(save: SaveV1 | null = null): void {
     parcels: world.parcels,
     caps: settings.current().live,
     saved: save?.live ?? null,
-    walkable: () => tech.hasCapability('walkability'), // Walkable Streets: people walk farther
+    legacyDisplaced: save?.econ.state.displaced ?? 0,
+    practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
   });
-  const power = createPowerController({ map: world.map, parcels: world.parcels, publish: (a) => renderer.setPowerGrid(a) });
+  const power = createPowerController({
+    map: world.map,
+    parcels: world.parcels,
+    publish: (a) => renderer.setPowerGrid(a),
+    practices: () => tech.effects(), // Sun and Wire, Renewable Energy, Local Grids
+    storage: new Map(save?.power?.storage ?? []), // the energy nodes' batteries
+  });
 
   // Sound: silent until the first click or key unlocks it; listens to the city through the camera.
   const sound = createSound({
@@ -113,6 +121,9 @@ export function main(save: SaveV1 | null = null): void {
     live: live.state,
     powerGrid: power.grid,
     initial: save?.econ ?? null,
+    // tenant organising protects homes; rent's displaced leave real homes into the unhoused (rehoming.md)
+    voiceAt: (t) => neighborhoodVoice(civic, deps.partition, t),
+    displace: (amount, protectionAt) => displaceFromHomes(live.state, world.map, amount, protectionAt),
     autosave: () => saves.autosave(), // read at call time (loading a slot blanks autosave first)
     ui: {
       practiceGranted: () => {
@@ -205,7 +216,7 @@ export function main(save: SaveV1 | null = null): void {
     readout: () => economy.readout(),
     wellbeing: () => wellbeing({ parcels: world.parcels, ecoMeans: deps.ecoMeans, civicMeans: deps.civicMeans }),
     // the city's decline left them without a home, or rent displaced them (loop-coupled: healing lowers it)
-    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
+    unhoused: () => Math.round(live.state.unhoused), // people without a home (docs/design/rehoming.md)
   });
   const mounted = mountPanels({
     container: document.body,
@@ -235,7 +246,7 @@ export function main(save: SaveV1 | null = null): void {
     height: world.map.height,
     policeViolence: () => live.state.policeViolence,
     traffic: () => live.state.traffic,
-    unhoused: () => sampleUnhoused(live.state, world.map.width).unhoused + Math.round(economy.run().state.displaced),
+    unhoused: () => Math.round(live.state.unhoused), // people without a home (docs/design/rehoming.md)
     dark: () => {
       const lit = power.grid().poweredAnchors;
       let dark = 0;
@@ -251,7 +262,7 @@ export function main(save: SaveV1 | null = null): void {
     show: (items) => toolbar.setNews(items),
   });
   {
-    const u = sampleUnhoused(live.state, world.map.width).unhoused;
+    const u = Math.round(live.state.unhoused);
     if (u > 0) news.push(`${u} residents are without a home`); // the inherited crisis, from the first frame
   }
 
@@ -265,6 +276,7 @@ export function main(save: SaveV1 | null = null): void {
       civic,
       econ: economy.run(),
       live: live.state,
+      power: { storage: power.grid().storage },
       tick: sim.tick(),
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
     }),

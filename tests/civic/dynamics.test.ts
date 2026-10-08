@@ -5,7 +5,7 @@ import { computeNeighborhoods } from '../../src/civic/neighborhoods';
 import { createCivicState, SEED_VOICE } from '../../src/civic/state';
 import { civicTick, TRUST_FLOOR, type CivicCaps } from '../../src/civic/dynamics';
 
-const NO_CAPS: CivicCaps = { circles: false, participatoryBudgeting: false, giftCircles: false };
+const NO_CAPS: CivicCaps = { voicePerTick: 0 };
 
 function blank(w: number, h: number): { map: GameMap; parcels: ParcelStore } {
   return { map: new GameMap(w, h), parcels: new ParcelStore() };
@@ -92,7 +92,7 @@ describe('civicTick: voice (consumes capabilities)', () => {
     const { map, parcels } = oneParcel(BuiltKind.CommunityGarden, 200); // belonging stays held
     const partition = computeNeighborhoods(map);
     const civic = createCivicState(partition);
-    const caps: CivicCaps = { circles: true, participatoryBudgeting: false, giftCircles: false };
+    const caps: CivicCaps = { voicePerTick: 1 };
     const before = civic.getValues(1).voice;
     for (let t = 1; t <= 4; t++) civicTick(map, parcels, partition, civic, caps, t);
     expect(civic.getValues(1).voice).toBeGreaterThan(before);
@@ -106,8 +106,8 @@ describe('civicTick: voice (consumes capabilities)', () => {
       civicTick(map, parcels, partition, civic, caps, 5);
       return civic.getValues(1).voice;
     };
-    const one = make({ circles: true, participatoryBudgeting: false, giftCircles: false });
-    const all = make({ circles: true, participatoryBudgeting: true, giftCircles: true });
+    const one = make({ voicePerTick: 1 });
+    const all = make({ voicePerTick: 4 });
     expect(all).toBeGreaterThan(one);
   });
 });
@@ -166,7 +166,7 @@ describe('civicTick: over-policing (precinct suppresses voice & trust in redline
   });
 
   it('community alternatives (caps) recover the voice the precinct silences', () => {
-    const all: CivicCaps = { circles: true, participatoryBudgeting: true, giftCircles: true };
+    const all: CivicCaps = { voicePerTick: 4 };
     const organized = hood(true, 255);
     const silenced = hood(true, 255);
     civicTick(organized.map, organized.parcels, organized.partition, organized.civic, all, 10);
@@ -190,7 +190,7 @@ describe('civicTick: bounds, determinism, isolation', () => {
     const { map, parcels } = oneParcel(BuiltKind.CommunityGarden, 200);
     const partition = computeNeighborhoods(map);
     const civic = createCivicState(partition);
-    const caps: CivicCaps = { circles: true, participatoryBudgeting: true, giftCircles: true };
+    const caps: CivicCaps = { voicePerTick: 4 };
     for (let t = 1; t <= 300; t++) civicTick(map, parcels, partition, civic, caps, t);
     const v = civic.getValues(1);
     for (const x of [v.belonging, v.voice, v.trust]) {
@@ -219,7 +219,7 @@ describe('civicTick: bounds, determinism, isolation', () => {
     const civic = createCivicState(partition);
     const mapBefore = map.snapshot();
     const parcelsBefore = parcels.snapshotBytes();
-    const caps: CivicCaps = { circles: true, participatoryBudgeting: true, giftCircles: true };
+    const caps: CivicCaps = { voicePerTick: 4 };
     for (let t = 1; t <= 20; t++) civicTick(map, parcels, partition, civic, caps, t);
     expect(map.snapshot()).toBe(mapBefore);
     expect(parcels.snapshotBytes()).toEqual(parcelsBefore);

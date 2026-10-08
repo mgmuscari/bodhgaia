@@ -28,9 +28,9 @@ import {
 import { stepAmbient } from '../../src/live/step';
 import { seedDecay } from '../../src/live/fields/pollution';
 
-// Seed chosen for coverage: at 48² it yields moving + parked cars, ~260 peds, police (arrests →
-// police violence), a train on the hand-laid rail, and a few flocks.
-const SEED = 'd';
+// Seed chosen for coverage: at 48² it yields cars, ~125 peds, police (arrests → police violence), trains on
+// the hand-laid rail, and flocks. Re-chosen 2026-10-07 ('d' → 'r'): on 4×8 blocks 'd' drew no cars at all.
+const SEED = 'r';
 const SIZE = 48;
 const FRAMES = 60;
 const FRAME_MS = 1000; // = AMBIENT_MAX_FRAME_MS → 20 substeps per frame, 1,200 substeps total
@@ -138,7 +138,7 @@ describe('live layer golden determinism', () => {
   });
 
   it('matches the pinned digest (a pure refactor must leave this byte-identical)', () => {
-    expect(first).toBe('cars=38 peds=197 cruisers=4 trains=1 flocks=0 #b44ddaa0');
+    expect(first).toBe('cars=4 peds=125 cruisers=4 trains=2 flocks=11 #81be8ae6');
   });
 });
 

@@ -37,7 +37,7 @@ const LAYERS = [
 type LayerName = (typeof LAYERS)[number];
 
 /** The live layer's STOCKS (Maps keyed by tile) — everything else in the live layer is derived or transient. */
-const LIVE_MAPS = ['occupancy', 'occExpect', 'wear', 'roadDecay', 'waterPollution', 'groundPollution', 'pollution', 'buildingHealth'] as const;
+export const LIVE_MAPS = ['occupancy', 'occExpect', 'wear', 'roadDecay', 'waterPollution', 'groundPollution', 'pollution', 'buildingHealth'] as const;
 type LiveMapName = (typeof LIVE_MAPS)[number];
 
 export interface SaveV1 {
@@ -57,7 +57,10 @@ export interface SaveV1 {
   tech: { unlocked: string[]; effort: number };
   civic: Array<{ belonging: number; voice: number; trust: number; ring: number[] }>;
   econ: EconomyRun;
-  live: { maps: Record<LiveMapName, Array<[number, number]>>; occPasses: number };
+  /** `unhoused`/`freshHomes` arrived 2026-10-07 (rehoming.md); an older save derives the pool on restore. */
+  live: { maps: Record<LiveMapName, Array<[number, number]>>; occPasses: number; unhoused?: number; freshHomes?: number[] };
+  /** Energy-node battery charge, anchor → power-hours (2026-10-07; absent in older saves ⇒ empty). */
+  power?: { storage: Array<[number, number]> };
 }
 
 /** Everything the save reads, as the running game holds it. */
@@ -70,6 +73,8 @@ export interface GameParts {
   civic: CivicState;
   econ: EconomyRun;
   live: AmbientState;
+  /** The power grid's battery charge (absent ⇒ none). */
+  power?: { storage: ReadonlyMap<number, number> };
   tick: number;
   camera: { x: number; y: number; zoom: number };
 }
@@ -121,8 +126,6 @@ export function captureGame(p: GameParts): SaveV1 {
   const map = p.world.map;
   const layers = {} as Record<LayerName, string>;
   for (const name of LAYERS) layers[name] = encodeBytes(bytesOf(map[name]));
-  const maps = {} as Record<LiveMapName, Array<[number, number]>>;
-  for (const name of LIVE_MAPS) maps[name] = [...p.live[name].entries()];
   return {
     format: SAVE_FORMAT,
     version: SAVE_VERSION,
@@ -137,7 +140,8 @@ export function captureGame(p: GameParts): SaveV1 {
     tech: { unlocked: [...p.tech.unlocked].sort(), effort: p.tech.effort },
     civic: p.civic.exportCells(),
     econ: JSON.parse(JSON.stringify(p.econ)) as EconomyRun,
-    live: { maps, occPasses: p.live.occPasses },
+    live: captureLive(p.live),
+    power: { storage: [...(p.power?.storage ?? new Map()).entries()] },
   };
 }
 
@@ -200,8 +204,28 @@ export function restoreCivic(civic: CivicState, saved: SaveV1['civic']): void {
   civic.importCells(saved);
 }
 
-/** Put the saved live stocks back; derived fields recompute on their own cadences, agents respawn. */
-export function restoreLive(live: AmbientState, saved: SaveV1['live']): void {
+/** The live stocks a save keeps (agents respawn; derived fields recompute). */
+export function captureLive(live: AmbientState): SaveV1['live'] {
+  const maps = {} as Record<LiveMapName, Array<[number, number]>>;
+  for (const name of LIVE_MAPS) maps[name] = [...live[name].entries()];
+  return { maps, occPasses: live.occPasses, unhoused: live.unhoused, freshHomes: [...(live.freshHomes ?? [])] };
+}
+
+/** Put the saved live stocks back; derived fields recompute on their own cadences, agents respawn. A save from
+ *  before the unhoused were a stock derives the pool from its emptied homes, plus `legacyDisplaced` (the old
+ *  economy's rent-displacement count, which was shown on top of them). `mapWidth` keys occupancy (y·width + x). */
+export function restoreLive(live: AmbientState, saved: SaveV1['live'], mapWidth: number, legacyDisplaced = 0): void {
   for (const name of LIVE_MAPS) live[name] = new Map(saved.maps[name] ?? []);
   live.occPasses = saved.occPasses;
+  live.freshHomes = new Set(saved.freshHomes ?? []);
+  if (saved.unhoused !== undefined) {
+    live.unhoused = saved.unhoused;
+    return;
+  }
+  let pool = legacyDisplaced;
+  for (const h of live.households ?? []) {
+    const occ = live.occupancy.get(h.y * mapWidth + h.x);
+    if (occ !== undefined && occ < h.count) pool += h.count - occ;
+  }
+  live.unhoused = pool;
 }

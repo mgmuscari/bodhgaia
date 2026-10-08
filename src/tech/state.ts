@@ -7,6 +7,7 @@
 
 import type { TechNode } from './tree';
 import type { BuiltKind } from '../engine/fabric';
+import { resolveEffects, type TechEffects } from './effects';
 
 export type UnlockReason = 'unknown' | 'unlocked' | 'prereqs' | 'effort';
 
@@ -19,6 +20,8 @@ export interface CanUnlockResult {
 export class TechState {
   private readonly byId: Map<string, TechNode>;
   private readonly unlockedSet = new Set<string>();
+  /** The resolved effects of the unlocked set, cached until it changes. */
+  private effectsCache: TechEffects | null = null;
   /** Accrued communal effort (integer). Public: the sim loop accrues into it. */
   effort = 0;
 
@@ -57,6 +60,7 @@ export class TechState {
     const n = this.byId.get(id)!;
     this.effort -= n.cost;
     this.unlockedSet.add(id);
+    this.effectsCache = null;
     return true;
   }
 
@@ -68,6 +72,7 @@ export class TechState {
     const r = this.canUnlock(id);
     if (!r.ok && r.reason !== 'effort') return false;
     this.unlockedSet.add(id);
+    this.effectsCache = null;
     return true;
   }
 
@@ -90,6 +95,7 @@ export class TechState {
   restore(ids: readonly string[], effort: number): void {
     this.unlockedSet.clear();
     for (const id of ids) if (this.byId.has(id)) this.unlockedSet.add(id);
+    this.effectsCache = null;
     this.effort = Math.max(0, Math.floor(effort));
   }
 
@@ -101,6 +107,11 @@ export class TechState {
       for (const k of n.grants.kinds ?? []) out.add(k);
     }
     return out;
+  }
+
+  /** What the unlocked practices change in the simulation (see effects.ts). */
+  effects(): TechEffects {
+    return (this.effectsCache ??= resolveEffects(this.unlockedSet));
   }
 
   /** True iff any unlocked node grants `cap`. */

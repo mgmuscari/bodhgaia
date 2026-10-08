@@ -17,8 +17,8 @@ import { TECH_TREE } from '../tech/tree';
 import { wellbeing } from '../tech/effort';
 import { TRUST_FLOOR } from '../civic/dynamics';
 import { createEconomy, effortCapacity, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
-import { readCity } from '../economy/readings';
-import { economyHour, practiceProject, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
+import { homeProtections, readCity, type CityInputs } from '../economy/readings';
+import { economyHour, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
 import { projectProgress } from '../economy/projects';
 import { economyLine } from '../ui/economyContent';
 import { budgetView, type BudgetView } from '../ui/budgetContent';
@@ -66,6 +66,11 @@ export interface EconomyDeps {
   ui: EconomyUi;
   /** Wall-clock seconds the in-game clock reads (default performance.now() / 1000). */
   nowSec?: () => number;
+  /** How organised the neighbourhood at a tile is, 0..1 (civic voice ÷ 255) — tenant organising. Default 0. */
+  voiceAt?(tile: number): number;
+  /** Take the hour's rent-displaced people out of real homes (live displaceFromHomes), sparing each home by its
+   *  protection; returns how many actually left. Absent ⇒ displacement is only counted. */
+  displace?(amount: number, protectionAt: (tile: number) => number): number;
 }
 
 export interface EconomyController {
@@ -103,17 +108,19 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
 
   const wellbeing01 = (): number =>
     Math.min(1, wellbeing({ parcels, ecoMeans: sim.ecoMeans, civicMeans: sim.civicMeans }) / 200);
-  const readNow = (harms: CityReading['harms']): CityReading =>
-    readCity({
-      map,
-      parcels,
-      occupancyAt: (t) => live.occupancy.get(t),
-      landValueAt: (t) => live.landValue.get(t),
-      wellbeing: wellbeing01(),
-      extraInfra: (tech.hasCapability('circles') ? 2 : 0) + (tech.hasCapability('participatory-budgeting') ? 2 : 0),
-      harms,
-      repairs: 0, // civic trust already earns repairs itself
-    });
+  const inputsNow = (harms: CityReading['harms']): CityInputs => ({
+    map,
+    parcels,
+    occupancyAt: (t) => live.occupancy.get(t),
+    landValueAt: (t) => live.landValue.get(t),
+    wellbeing: wellbeing01(),
+    extraInfra: tech.effects().socialInfra,
+    practices: tech.effects(),
+    voiceAt: deps.voiceAt,
+    harms,
+    repairs: 0, // civic trust already earns repairs itself
+  });
+  const readNow = (harms: CityReading['harms']): CityReading => readCity(inputsNow(harms));
   const violenceTotal = (): number => {
     let sum = 0;
     for (const v of live.policeViolence.values()) sum += v;
@@ -155,8 +162,15 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     setState({ ...econ.state, goodwill: trust, effort: tech.effort });
     const before = econ.state.funds;
     const hadRelief = econ.state.reliefTaken;
+    const displacedBefore = econ.state.displaced;
     const r = economyHour(econ, city);
     econ = r.run;
+    // rent's displaced leave real homes, the unprotected on dear land first (rehoming.md)
+    const displacedNow = econ.state.displaced - displacedBefore;
+    if (displacedNow > 0 && deps.displace) {
+      const protection = homeProtections(inputsNow(harms));
+      deps.displace(displacedNow, (t) => protection.get(t) ?? 0);
+    }
     const reliefNow = econ.state.reliefTaken && !hadRelief;
     // the grant is a one-off, not the hour's flow
     econFundsPerHour = econ.state.funds - before - (reliefNow ? ECON.reliefDays * 24 * city.upkeep : 0);
@@ -225,9 +239,12 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     beginPractice: (id) => {
       const r = tech.canUnlock(id);
       const node = TECH_TREE.find((n) => n.id === id);
-      const ok = !!node && (r.ok || r.reason === 'effort') && !econ.projects.some((p) => p.id === id);
-      if (ok) econ = { ...econ, projects: [...econ.projects, practiceProject(node!)] };
-      return ok;
+      if (!node || !(r.ok || r.reason === 'effort') || econ.projects.some((p) => p.id === id)) return false;
+      // the money is paid up front, once; the work then draws effort over its days
+      const upfront = practiceTerms(node).upfront;
+      if (econ.state.funds < upfront) return false;
+      econ = { ...econ, state: { ...econ.state, funds: econ.state.funds - upfront }, projects: [...econ.projects, practiceProject(node)] };
+      return true;
     },
     projectProgress: (id) => {
       const p = econ.projects.find((q) => q.id === id);

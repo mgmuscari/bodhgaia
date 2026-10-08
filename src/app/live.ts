@@ -12,7 +12,7 @@ import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
 import { stepAmbient } from '../live/step';
 import { applyLiveCaps, type LiveCaps } from '../live/caps';
-import { createAmbientState, setParkingLots, setHouseholds, setPlantEmitters, type AmbientState } from '../live/types';
+import { createAmbientState, setParkingLots, setHouseholds, setPlantEmitters, type AmbientState, type LivePractices } from '../live/types';
 import { seedDecay } from '../live/fields/pollution';
 import { parkingLots, parkingStalls } from '../ui/parkingContent';
 import { residentialCensus } from '../citizens/census';
@@ -53,8 +53,10 @@ export interface LiveDeps {
   caps: Partial<LiveCaps>;
   /** A resumed city's live stocks (put over the seeded decay), or null for a fresh one. */
   saved: SaveV1['live'] | null;
-  /** Walkable Streets: people walk farther (read each step). */
-  walkable(): boolean;
+  /** The tech practices' live coefficients (read each step). */
+  practices(): LivePractices;
+  /** An older save's economy rent-displacement count, folded into the unhoused pool on resume. */
+  legacyDisplaced?: number;
   /** Wall-clock ms (default performance.now). */
   now?(): number;
 }
@@ -75,6 +77,8 @@ export interface LiveLayer {
   refreshParkingLots(): void;
   /** The homes the daily-itinerary citizens spawn from — re-read as the city grows/decays. */
   refreshHouseholds(): void;
+  /** Publish each home's welcome (its neighbourhood's voice, 0..1) — the re-homing rate (rehoming.md). */
+  publishWelcome(voiceAt: (tile: number) => number): void;
   /** The dirty-plant smog sources — re-read when a plant is placed or bulldozed. */
   recomputePlantEmitters(): void;
 }
@@ -115,7 +119,7 @@ export function createLive(deps: LiveDeps): LiveLayer {
   // and polluted the shorelines, before the player arrives to heal it. A resumed city's saved stocks go OVER
   // the seeded decay — so restore strictly after seed.
   seedDecay(state, map);
-  if (deps.saved) restoreLive(state, deps.saved);
+  if (deps.saved) restoreLive(state, deps.saved, map.width, deps.legacyDisplaced ?? 0);
 
   return {
     state,
@@ -128,7 +132,7 @@ export function createLive(deps: LiveDeps): LiveLayer {
       if (next) lastStep = now();
     },
     step: (t) => {
-      state.walkable = deps.walkable();
+      state.practices = deps.practices();
       stepAmbient(state, map, ambientRng, t - lastStep);
       lastStep = t;
     },
@@ -138,6 +142,14 @@ export function createLive(deps: LiveDeps): LiveLayer {
     applyCaps: (caps) => applyLiveCaps(caps),
     refreshParkingLots,
     refreshHouseholds,
+    publishWelcome: (voiceAt) => {
+      const welcome = new Map<number, number>();
+      for (const h of state.households ?? []) {
+        const t = map.idx(h.x, h.y);
+        welcome.set(t, voiceAt(t));
+      }
+      state.welcome = welcome;
+    },
     recomputePlantEmitters,
   };
 }

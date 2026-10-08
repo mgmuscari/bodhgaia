@@ -266,15 +266,22 @@ export const OCC_EXPECT_RATE = 1 / 600;
 // there before the player arrives (~20% unhoused on lotus/harbor/oak, whose homes average grade ≈ 0.4) — floored
 // at OCC_FLOOR. Repairs and housing then win people back; harms push more out.
 export const INHERITED_VACANCY = 0.5;
+/** Re-homing (docs/design/rehoming.md): a home built since the opening fills this share of its baseline per
+ *  occupancy pass (~50 s to fill), from the unhoused first; any home with room below its baseline takes the
+ *  unhoused back at REHOME_WELCOME × its neighbourhood's voice (0..1) of its baseline per pass (~3½ min to
+ *  refill at full voice). No voice, no welcome: the inherited crisis holds until the city organises or builds. */
+export const REHOME_FRESH = 0.02;
+export const REHOME_WELCOME = 0.005;
 /** Per-kind growth HEADROOM: how far above its seeded baseline a home's occupancy can climb when it
  *  thrives. A single house barely densifies; apartments / projects / co-ops / communes hold far more. */
 export const OCC_HEADROOM: ReadonlyMap<number, number> = new Map([
   [BuiltKind.HouseSingle, 1.5],
-  [BuiltKind.ADU, 1.3],
+  [BuiltKind.ADU, 2], // = ADU_HOUSE_HEADROOM: a backyard cottage is room for elders, kids and newcomers
   [BuiltKind.Apartments, 3],
   [BuiltKind.Projects, 3],
   [BuiltKind.CoopHousing, 2.5],
   [BuiltKind.Commune, 2.5],
+  [BuiltKind.TinyHomes, 1], // a shelter holds its cabins' worth, no more
 ]);
 
 /** Wellbeing a walking citizen loses per substep spent trudging along a road/stroad — a long
@@ -431,8 +438,6 @@ export const STUCK_ESCAPE = 160;
  *  freeway's length, and classifies end tiles the same as mid tiles. */
 export const LANE_SCAN_CAP = 3;
 
-/** How much farther people walk once the city has Walkable Streets (the `walkability` capability). */
-export const WALKABLE_STRETCH = 1.5;
 /** How far (Manhattan) a trip end reads congestion. */
 export const JAM_RADIUS = 2;
 /** The share of driving trips that evaporate in a full jam. */
@@ -448,3 +453,16 @@ export const GREEN_HEAL_KINDS: ReadonlySet<number> = new Set([
 ]);
 export const GREEN_HEAL_RADIUS = 2;
 export const GROUND_GREEN_HEAL = 0.6; // extra decay multiplier on ground pollution within reach of a green
+
+// ── Tech-tree buildings' area effects (docs/design/tech-tree-balance.md, batch 3) ───────────────────────────
+/** Parklets take parking: homes within PARKLET_RADIUS of one drive PARKLET_SHIFT fewer of their trips (they walk). */
+export const PARKLET_RADIUS = 3;
+export const PARKLET_SHIFT = 0.25;
+/** Vertical farms: fresh food within FRESH_FOOD_RADIUS adds FRESH_FOOD_PULL to a home's occupancy signal. */
+export const FRESH_FOOD_RADIUS = 6;
+export const FRESH_FOOD_PULL = 0.05;
+/** Accessory dwellings: a house beside one (8-neighbour) can fill to this × its first residents (was 1.5). */
+export const ADU_HOUSE_HEADROOM = 2;
+/** Elevated Rail: homes within RAIL_NOISE_RADIUS (Chebyshev) of the line lose RAIL_NOISE of their occupancy pull. */
+export const RAIL_NOISE_RADIUS = 2;
+export const RAIL_NOISE = 0.05;

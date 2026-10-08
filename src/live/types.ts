@@ -7,6 +7,9 @@ import type { StopCategory } from '../citizens/itinerary';
 import type { TravelMode } from '../citizens/modes';
 import type { Household } from '../citizens/census';
 import { prevailingWind } from './fields/pollution';
+import { OCC_FLOOR } from './tuning';
+import { visitValue } from '../citizens/plots';
+import { BuiltKind } from '../engine/fabric';
 
 /** A grid-following sprite: float world position + heading + committed target tile. */
 export interface Mover {
@@ -173,6 +176,33 @@ export interface ParkingLotInfo {
 }
 
 /** The full ambient sprite state — renderer-side only, never part of the world. */
+/** The tech practices' coefficients the live layer reads. The host fills it from the tech tree's resolved
+ *  effects (tech/effects.ts) — structurally, so the live layer never imports tech. */
+export interface LivePractices {
+  /** Walk-range multiplier for mode choice (Walkable Streets). */
+  walkStretch: number;
+  /** Cycling-range multiplier for mode choice (Bike Shares). */
+  bikeStretch: number;
+  /** Share of police stops that go to a circle instead of an arrest (Circles). */
+  arrestRelease: number;
+  /** Share of driven shopping trips that are delivered instead (Drone Deliveries). */
+  droneShopDrop: number;
+  /** The fraction of a home's baseline it never thins below (Mutual Aid). */
+  occFloor: number;
+  /** The wellbeing a citizen brings home from a day at industry (Collective Ownership). */
+  industryVisit: number;
+}
+
+/** No practices: the coefficients the live layer runs on before any tech. */
+export const NEUTRAL_PRACTICES: Readonly<LivePractices> = Object.freeze({
+  walkStretch: 1,
+  bikeStretch: 1,
+  arrestRelease: 0,
+  droneShopDrop: 0,
+  occFloor: OCC_FLOOR,
+  industryVisit: visitValue(BuiltKind.Industrial),
+});
+
 export interface AmbientState {
   cars: Car[];
   peds: Ped[];
@@ -253,12 +283,20 @@ export interface AmbientState {
   occupancy: Map<number, number>;
   /** Substep counter gating the occupancy re-evaluation to OCC_CADENCE. */
   occTick: number;
-  /** The city has Walkable Streets (set by the host from the tech tree): people walk farther. */
-  walkable: boolean;
+  /** The practices' live coefficients (set by the host from the tech tree each step). */
+  practices: LivePractices;
   /** Per home: the occupancy signal its residents are used to (see OCC_SETTLE_PASSES). */
   occExpect: Map<number, number>;
   /** Occupancy passes run so far (the opening settles for OCC_SETTLE_PASSES). */
   occPasses: number;
+  /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
+   *  people back from it; it never moves without a cause. */
+  unhoused: number;
+  /** Per home tile: how organised its neighbourhood is, 0..1 (civic voice ÷ 255), set by the host after
+   *  each civic tick — the welcome that re-homes people there. Absent ⇒ no welcome anywhere. */
+  welcome?: Map<number, number>;
+  /** Homes built since the opening that are still filling for the first time (they open empty). */
+  freshHomes?: Set<number>;
   /** Live ROAD DECAY (0..ROAD_DECAY_MAX), keyed by road tile: how crumbled the pavement is.
    *  Redlined roads crumble (the city won't maintain the disinvested districts); roads recover
    *  where the neighborhood is cared-for (high land value). Drags land value, never hashed. */
@@ -303,9 +341,10 @@ export function createAmbientState(rng?: Rng): AmbientState {
     coverage: new Set(),
     occupancy: new Map(),
     occTick: 0,
-    walkable: false,
+    practices: { ...NEUTRAL_PRACTICES },
     occExpect: new Map(),
     occPasses: 0,
+    unhoused: 0,
     roadDecay: new Map(),
     roadTick: 0,
   };

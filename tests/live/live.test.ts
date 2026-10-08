@@ -17,6 +17,7 @@ import { StopCategory } from '../../src/citizens/itinerary';
 import { TravelMode } from '../../src/citizens/modes';
 import {
   createAmbientState,
+  NEUTRAL_PRACTICES,
   setParkingLots,
   setHouseholds,
   setPlantEmitters,
@@ -3498,12 +3499,12 @@ describe('Walkable Streets does something (Maddy 2026-10-01: "will walkable stre
   it('on walkable streets people walk farther: a leg past plain walking range is walked, not driven or biked', () => {
     const map = new GameMap(40, 10);
     for (let x = 0; x < 40; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet;
-    expect(chooseMode(map, 3, 5, 17, 5, 0, false)).toBe(TravelMode.Bike); // d=14
-    expect(chooseMode(map, 3, 5, 17, 5, 0, true)).toBe(TravelMode.Walk);
+    expect(chooseMode(map, 3, 5, 17, 5, 0, 1)).toBe(TravelMode.Bike); // d=14
+    expect(chooseMode(map, 3, 5, 17, 5, 0, 1.5)).toBe(TravelMode.Walk);
   });
 
-  it('the ambient state carries the capability (the host sets it from the tech tree)', () => {
-    expect(createAmbientState().walkable).toBe(false);
+  it('the ambient state carries the practices, neutral until the host sets them from the tech tree', () => {
+    expect(createAmbientState().practices).toEqual(NEUTRAL_PRACTICES);
   });
 });
 

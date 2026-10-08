@@ -27,6 +27,7 @@ import {
   placeBridge,
   demolishParcel,
   demolishTransportAt,
+  layYardFor,
   type ParcelStore,
 } from '../engine/fabric';
 import type { Rng } from '../engine/rng';
@@ -46,8 +47,11 @@ export interface MosesParams {
   siteTopK: number; // rng jitter among the top-K scored candidates
   // Founding grid
   foundingGridSpan: number; // total arterial length budget (centred on the site)
-  foundingBlocks: number; // parallel streets each side of each arterial
-  blockSpacing: number; // tiles between parallel streets
+  foundingBlocks: number; // parallel streets each side of each arterial (the site score's reach)
+  /** Tiles between parallel streets: horizontal streets every rowSpacing rows, vertical every colSpacing
+   *  columns — 4×8 blocks (Maddy 2026-10-07), deep enough for a house and a back yard on each side. */
+  rowSpacing: number;
+  colSpacing: number;
   // Streetcar rail (radial extensions only)
   railLines: number; // how many radial lines to lay
   railExtension: number; // max tiles per line beyond the grid
@@ -58,7 +62,7 @@ export interface MosesParams {
   commercialRadius: number; // "near the crossroads" = within this Manhattan radius
   coreRadius: number; // downtown core radius (Manhattan), used by later eras
   // Era 2 motor age
-  era2GrowthRings: number; // extra grid rings beyond the founding blocks
+  era2GrowthSpan: number; // tiles the grid grows beyond the founding grid on each side
   era2Industry: number; // industrial parcels on rail/water frontage
   industryFrontage: number; // an industrial footprint must be within this of rail/water
   era2Parking: number; // parking lots near the crossroads
@@ -123,7 +127,8 @@ export const DEFAULT_MOSES_PARAMS: MosesParams = {
   // which expand outward from a stable founding without disturbing site selection.
   foundingGridSpan: 24,
   foundingBlocks: 3,
-  blockSpacing: 4,
+  rowSpacing: 5,
+  colSpacing: 9,
   railLines: 2,
   railExtension: 10,
   railMinLength: 6,
@@ -131,7 +136,7 @@ export const DEFAULT_MOSES_PARAMS: MosesParams = {
   era1Commercial: 6,
   commercialRadius: 6,
   coreRadius: 8,
-  era2GrowthRings: 6,
+  era2GrowthSpan: 24, // = the old 6 rings × 4
   era2Industry: 8,
   industryFrontage: 2,
   era2Parking: 3,
@@ -164,7 +169,7 @@ export const DEFAULT_MOSES_PARAMS: MosesParams = {
   abandonThreshold: 40,
   craterChance: 0.5,
   satelliteCount: 4,
-  satelliteSpan: 16,
+  satelliteSpan: 18, // was 16: with 9-column blocks a 16 span laid no cross streets (Maddy 2026-10-07: grow the footprint)
   satelliteBlocks: 2,
   satelliteParcels: 600, // FILL-ALL: pack the whole exurb grid (else its lower half stays empty too)
   satelliteMinCoreDist: 34,
@@ -636,7 +641,7 @@ export function era1Founding(world: WorldState, rng: Rng, p: MosesParams, state:
   world.log.push(`era1: founded at (${siteX}, ${siteY})`);
 
   // Grid: two arterials grown from the crossroads, then parallel streets every
-  // blockSpacing tiles up to foundingBlocks each side (clipped to the arterial
+  // rowSpacing / colSpacing tiles apart (4×8 blocks), clipped to the arterial
   // reach so they never overshoot the grid).
   const half = p.foundingGridSpan >> 1;
   const bbox: BBox = { x0: siteX, y0: siteY, x1: siteX, y1: siteY };
@@ -646,8 +651,7 @@ export function era1Founding(world: WorldState, rng: Rng, p: MosesParams, state:
   const sCol = growArm(map, siteX, siteY, 0, 1, half, BuiltKind.RoadStreet, bbox);
   const nCol = growArm(map, siteX, siteY, 0, -1, half, BuiltKind.RoadStreet, bbox);
 
-  for (let k = 1; k <= p.foundingBlocks; k++) {
-    const off = k * p.blockSpacing;
+  for (let off = p.rowSpacing; off <= Math.max(nCol, sCol); off += p.rowSpacing) {
     if (off <= nCol) {
       roadAt(map, siteX, siteY - off, BuiltKind.RoadStreet, bbox);
       growArm(map, siteX, siteY - off, 1, 0, eRow, BuiltKind.RoadStreet, bbox);
@@ -658,6 +662,8 @@ export function era1Founding(world: WorldState, rng: Rng, p: MosesParams, state:
       growArm(map, siteX, siteY + off, 1, 0, eRow, BuiltKind.RoadStreet, bbox);
       growArm(map, siteX, siteY + off, -1, 0, wRow, BuiltKind.RoadStreet, bbox);
     }
+  }
+  for (let off = p.colSpacing; off <= Math.max(eRow, wRow); off += p.colSpacing) {
     if (off <= eRow) {
       roadAt(map, siteX + off, siteY, BuiltKind.RoadStreet, bbox);
       growArm(map, siteX + off, siteY, 0, 1, sCol, BuiltKind.RoadStreet, bbox);
@@ -776,7 +782,7 @@ function upgradeArterialCol(map: GameMap, x: number, y0: number, y1: number): nu
 
 /**
  * Era 2 — motor age. Upgrades the two founding arterials to avenues, extends the
- * grid outward by era2GrowthRings (clipped to land, blocked by the streetcar
+ * grid outward by era2GrowthSpan tiles (clipped to land, blocked by the streetcar
  * rail so the avenues grow in the non-rail directions), then adds the car-era
  * fabric: rail/water-frontage industry beyond the core, parking lots near the
  * crossroads, and more housing on the new frontage. No-ops if never founded.
@@ -806,7 +812,7 @@ export function era2MotorAge(world: WorldState, rng: Rng, p: MosesParams, state:
 
   // 2. Grid extension: extend the arterials (as avenue), then add parallel
   //    streets within the extended spans. Avenues stop at rail/water.
-  const ext = p.era2GrowthRings * p.blockSpacing;
+  const ext = p.era2GrowthSpan;
   growArm(map, state.gridX1, arterialRow, 1, 0, ext, BuiltKind.RoadAvenue, bbox);
   growArm(map, state.gridX0, arterialRow, -1, 0, ext, BuiltKind.RoadAvenue, bbox);
   growArm(map, arterialCol, state.gridY1, 0, 1, ext, BuiltKind.RoadAvenue, bbox);
@@ -815,31 +821,21 @@ export function era2MotorAge(world: WorldState, rng: Rng, p: MosesParams, state:
   const X1 = bbox.x1;
   const Y0 = bbox.y0;
   const Y1 = bbox.y1;
-  for (let k = 1; k <= p.era2GrowthRings; k++) {
-    const off = (p.foundingBlocks + k) * p.blockSpacing;
-    const rs = arterialRow + off;
-    const rn = arterialRow - off;
-    const ce = arterialCol + off;
-    const cw = arterialCol - off;
-    if (rs <= Y1) {
-      roadAt(map, arterialCol, rs, BuiltKind.RoadStreet, bbox);
-      growArm(map, arterialCol, rs, 1, 0, X1 - arterialCol, BuiltKind.RoadStreet, bbox);
-      growArm(map, arterialCol, rs, -1, 0, arterialCol - X0, BuiltKind.RoadStreet, bbox);
+  // every street of the grown grid, across its whole width/height (the founding ones extend out too)
+  for (let off = p.rowSpacing; arterialRow + off <= Y1 || arterialRow - off >= Y0; off += p.rowSpacing) {
+    for (const r of [arterialRow + off, arterialRow - off]) {
+      if (r < Y0 || r > Y1) continue;
+      roadAt(map, arterialCol, r, BuiltKind.RoadStreet, bbox);
+      growArm(map, arterialCol, r, 1, 0, X1 - arterialCol, BuiltKind.RoadStreet, bbox);
+      growArm(map, arterialCol, r, -1, 0, arterialCol - X0, BuiltKind.RoadStreet, bbox);
     }
-    if (rn >= Y0) {
-      roadAt(map, arterialCol, rn, BuiltKind.RoadStreet, bbox);
-      growArm(map, arterialCol, rn, 1, 0, X1 - arterialCol, BuiltKind.RoadStreet, bbox);
-      growArm(map, arterialCol, rn, -1, 0, arterialCol - X0, BuiltKind.RoadStreet, bbox);
-    }
-    if (ce <= X1) {
-      roadAt(map, ce, arterialRow, BuiltKind.RoadStreet, bbox);
-      growArm(map, ce, arterialRow, 0, 1, Y1 - arterialRow, BuiltKind.RoadStreet, bbox);
-      growArm(map, ce, arterialRow, 0, -1, arterialRow - Y0, BuiltKind.RoadStreet, bbox);
-    }
-    if (cw >= X0) {
-      roadAt(map, cw, arterialRow, BuiltKind.RoadStreet, bbox);
-      growArm(map, cw, arterialRow, 0, 1, Y1 - arterialRow, BuiltKind.RoadStreet, bbox);
-      growArm(map, cw, arterialRow, 0, -1, arterialRow - Y0, BuiltKind.RoadStreet, bbox);
+  }
+  for (let off = p.colSpacing; arterialCol + off <= X1 || arterialCol - off >= X0; off += p.colSpacing) {
+    for (const c of [arterialCol + off, arterialCol - off]) {
+      if (c < X0 || c > X1) continue;
+      roadAt(map, c, arterialRow, BuiltKind.RoadStreet, bbox);
+      growArm(map, c, arterialRow, 0, 1, Y1 - arterialRow, BuiltKind.RoadStreet, bbox);
+      growArm(map, c, arterialRow, 0, -1, arterialRow - Y0, BuiltKind.RoadStreet, bbox);
     }
   }
   state.gridX0 = bbox.x0;
@@ -863,14 +859,33 @@ export function era2MotorAge(world: WorldState, rng: Rng, p: MosesParams, state:
   const indCands = roadTiles
     .filter((i) => toCore(i) > p.coreRadius)
     .sort((a, b) => map.redline[b]! - map.redline[a]! || railWaterDist[a]! - railWaterDist[b]! || a - b);
-  let industry = 0;
+  // Rank every lot a works could take beside those roads by the grade of the LOT itself (not the road tile it
+  // fronts — a deep block can put the lot on better-graded ground than its kerb), worst-graded first, then
+  // nearest the freight/water spine: the works go where the redlining is worst, by construction.
+  const lots: { ax: number; ay: number; grade: number; dist: number }[] = [];
+  const seen = new Set<number>();
   for (const i of indCands) {
-    if (industry >= p.era2Industry) break;
     const x = i % map.width;
     const y = (i - x) / map.width;
-    const accept = (ax: number, ay: number): boolean =>
-      footprintMin(map, railWaterDist, ax, ay, 3, 3) <= p.industryFrontage;
-    if (placeAdjacent(map, parcels, x, y, 3, 3, BuiltKind.Industrial, fabRng, accept) !== -1) industry++;
+    for (const [ax, ay] of [[x, y - 3], [x, y + 1], [x - 3, y], [x + 1, y]] as const) {
+      if (!map.inBounds(ax, ay) || seen.has(map.idx(ax, ay))) continue;
+      seen.add(map.idx(ax, ay));
+      if (!canPlaceParcel(map, ax, ay, 3, 3)) continue;
+      const dist = footprintMin(map, railWaterDist, ax, ay, 3, 3);
+      if (dist > p.industryFrontage) continue;
+      let g = 0;
+      for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) g += map.redline[map.idx(ax + dx, ay + dy)]!;
+      lots.push({ ax, ay, grade: g, dist });
+    }
+  }
+  lots.sort((a, b) => b.grade - a.grade || a.dist - b.dist || map.idx(a.ax, a.ay) - map.idx(b.ax, b.ay));
+  let industry = 0;
+  for (const l of lots) {
+    if (industry >= p.era2Industry) break;
+    if (!canPlaceParcel(map, l.ax, l.ay, 3, 3)) continue; // an earlier works took part of it
+    const { density, condition } = HEALTHY_ATTRS(fabRng);
+    placeParcel(map, parcels, { x: l.ax, y: l.ay, width: 3, height: 3, kind: BuiltKind.Industrial, density, condition });
+    industry++;
   }
 
   // 4. Parking near the crossroads.
@@ -904,7 +919,7 @@ export function era2MotorAge(world: WorldState, rng: Rng, p: MosesParams, state:
   );
 
   // 6. Parking FIELDS in the open fringe. The dense grid has no free 4x4 interior
-  //    (blockSpacing 4 → 3x3 interiors, mostly filled), so scan open land past the
+  //    (4×8 interiors, mostly filled), so scan open land past the
   //    grid's half-span, nearest-fringe first (deterministic), and lay full
   //    all-or-nothing fields there — up to era2ParkingFields.
   const parkRng = rng.fork('parkfield');
@@ -1485,7 +1500,7 @@ function laySatellite(map: GameMap, parcels: ParcelStore, sx: number, sy: number
   const sCol = growArm(map, sx, sy, 0, 1, half, BuiltKind.RoadStreet, bbox);
   const nCol = growArm(map, sx, sy, 0, -1, half, BuiltKind.RoadStreet, bbox);
   for (let k = 1; k <= p.satelliteBlocks; k++) {
-    const off = k * p.blockSpacing;
+    const off = k * p.rowSpacing;
     if (off <= nCol) {
       roadAt(map, sx, sy - off, BuiltKind.RoadStreet, bbox);
       growArm(map, sx, sy - off, 1, 0, eRow, BuiltKind.RoadStreet, bbox);
@@ -1496,6 +1511,9 @@ function laySatellite(map: GameMap, parcels: ParcelStore, sx: number, sy: number
       growArm(map, sx, sy + off, 1, 0, eRow, BuiltKind.RoadStreet, bbox);
       growArm(map, sx, sy + off, -1, 0, wRow, BuiltKind.RoadStreet, bbox);
     }
+  }
+  for (let k = 1; k <= p.satelliteBlocks; k++) {
+    const off = k * p.colSpacing;
     if (off <= eRow) {
       roadAt(map, sx + off, sy, BuiltKind.RoadStreet, bbox);
       growArm(map, sx + off, sy, 0, 1, sCol, BuiltKind.RoadStreet, bbox);
@@ -1507,6 +1525,7 @@ function laySatellite(map: GameMap, parcels: ParcelStore, sx: number, sy: number
       growArm(map, sx - off, sy, 0, -1, nCol, BuiltKind.RoadStreet, bbox);
     }
   }
+
   // Suburb fabric: mostly single houses, a scattered commercial strip, filled in RANDOM order so any
   // vacancy scatters across the exurb instead of leaving its lower half empty (row-major artefact).
   const roadTiles = collectRoadTiles(map, bbox.x0, bbox.y0, bbox.x1, bbox.y1);
@@ -1728,7 +1747,24 @@ export function eraSatellites(world: WorldState, rng: Rng, p: MosesParams, state
   // ramping deferred, founding stays byte-identical to the un-ramped world; ramps are a pure overlay.
   const crossingPaths: number[][] = [];
   // Each satellite is laid before the next is scored, so spacing + freeway routing see prior exurbs.
-  for (const s of scoreSites(map, p)) {
+  // White flight: the exurbs went where the FHA would underwrite — the GREENLINED land — so candidate sites
+  // are taken least-redlined first (the terrain score breaks ties), and the suburbs are the invested
+  // periphery the disinvested core is measured against.
+  const windowGrade = (x: number, y: number): number => {
+    let g = 0;
+    let n = 0;
+    for (let yy = y - half; yy <= y + half; yy++) {
+      for (let xx = x - half; xx <= x + half; xx++) {
+        if (!map.inBounds(xx, yy)) continue;
+        g += map.redline[map.idx(xx, yy)]!;
+        n++;
+      }
+    }
+    return n > 0 ? g / n : 255;
+  };
+  const sites = scoreSites(map, p).map((s, rank) => ({ s, rank, grade: windowGrade(s.x, s.y) }));
+  sites.sort((a, b) => a.grade - b.grade || a.rank - b.rank);
+  for (const { s } of sites) {
     if (state.satellites.length >= p.satelliteCount) break;
     if (dist(s.x, s.y, state.siteX, state.siteY) < p.satelliteMinCoreDist) continue; // a separate town
     if (state.satellites.some((c) => dist(c.x, c.y, s.x, s.y) < p.satelliteSpacing)) continue; // spaced
@@ -1824,7 +1860,7 @@ export function terminusOutward(
 
 /**
  * Grow one organic settlement cluster outward from a terminus at (sx,sy) in (dx,dy): a street stub
- * into the open land, perpendicular rungs every blockSpacing (the cluster's depth), then houses
+ * into the open land, perpendicular rungs every rowSpacing (the cluster's depth), then houses
  * filling the new frontage in random order (vacancy scatters). The stub roots adjacent to the seed
  * road so the cluster joins the existing network (connectivity preserved). growArm self-limits at the
  * first non-placeable tile, so rungs stop cleanly at terrain or the existing city. Returns the seed
@@ -1847,12 +1883,12 @@ function growOrganicCluster(
   const reach = growArm(map, startX, startY, dx, dy, p.organicReach, BuiltKind.RoadStreet, bbox);
   const px = -dy; // perpendicular unit (rungs)
   const py = dx;
-  for (let k = 0; k <= reach; k += p.blockSpacing) {
+  for (let k = 0; k <= reach; k += p.rowSpacing) {
     const rx = startX + dx * k;
     const ry = startY + dy * k;
     if (!map.inBounds(rx, ry) || !isRoadKind(map.built[map.idx(rx, ry)]!)) continue;
-    growArm(map, rx, ry, px, py, p.organicBlocks * p.blockSpacing, BuiltKind.RoadStreet, bbox);
-    growArm(map, rx, ry, -px, -py, p.organicBlocks * p.blockSpacing, BuiltKind.RoadStreet, bbox);
+    growArm(map, rx, ry, px, py, p.organicBlocks * (p.rowSpacing - 1), BuiltKind.RoadStreet, bbox);
+    growArm(map, rx, ry, -px, -py, p.organicBlocks * (p.rowSpacing - 1), BuiltKind.RoadStreet, bbox);
   }
   const roadTiles = collectRoadTiles(map, bbox.x0, bbox.y0, bbox.x1, bbox.y1);
   shuffleInPlace(roadTiles, rng.fork('order'));
@@ -2015,6 +2051,19 @@ export function era5Disinvestment(world: WorldState, rng: Rng, p: MosesParams, s
  * forking each era's rng stream by name. On an all-water map era 1 logs "no
  * viable site" and every later era no-ops on the empty state.
  */
+/** Lay a back yard behind every standing house that can have one; chronicles `back yards: +N lots behind houses`. */
+export function eraBackYards(world: WorldState): number {
+  const { map, parcels } = world;
+  const houses = parcels.aliveIndices().filter((i) => parcels.kindAt(i) === BuiltKind.HouseSingle);
+  let yards = 0;
+  for (const i of houses) {
+    const h = parcels.get(i);
+    if (layYardFor(map, parcels, h.x, h.y)) yards++;
+  }
+  world.log.push(`back yards: +${yards} lots behind houses`);
+  return yards;
+}
+
 export function mosesCenturyStage(params: Partial<MosesParams> = {}): WorldgenStage {
   const p: MosesParams = { ...DEFAULT_MOSES_PARAMS, ...params };
   return {
@@ -2033,6 +2082,9 @@ export function mosesCenturyStage(params: Partial<MosesParams> = {}): WorldgenSt
       // only OUTWARD into the fringe. It joins the world as its own chronicle term (the report's
       // store<->chronicle identity accounts for it) and leaves era-5's abandonment gradient intact.
       eraOrganicGrowth(world, rng.fork('organic'), p, state);
+      // Back yards (Maddy 2026-10-07): the lot behind every standing house that faces one street, laid last so
+      // they belong to the houses that survived the century. Its own chronicle term (the report's identity).
+      eraBackYards(world);
     },
   };
 }

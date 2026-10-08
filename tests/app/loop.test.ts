@@ -34,6 +34,7 @@ function simSetup(startTick = 0, withHome = true) {
       revivalRng: createRng('loop-test').fork('revival'),
       refreshParkingLots: () => log.push('lots'),
       refreshHouseholds: () => log.push('households'),
+      publishWelcome: (voiceAt) => log.push(`welcome:${voiceAt(0)}`),
     },
     overlays: { onSimTick: (r) => log.push(r.civicTicked ? 'overlay:civic' : 'overlay') },
     pulse: { tick: () => log.push('pulse') },
@@ -65,7 +66,8 @@ describe('createSimTick', () => {
   it('runs the civic seams on the civic cadence: pulse, restoration, grid, revival, refreshes', () => {
     const h = simSetup(CIVIC_CADENCE, false);
     h.ticker.advance(SIM_TICK_MS);
-    expect(h.log).toEqual(['overlay:civic', 'pulse', 'restore', 'power', 'lots', 'households']); // nothing changed → clean
+    // nothing changed → clean; the fresh voice is published as each home's welcome (none organised yet: 0)
+    expect(h.log).toEqual(['overlay:civic', 'pulse', 'restore', 'power', 'lots', 'households', 'welcome:0']);
   });
 
   it('marks the base dirty on a real change: the grid, or a home that revived / decayed', () => {
