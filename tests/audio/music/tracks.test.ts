@@ -54,6 +54,14 @@ describe('music manifest', () => {
     }
   });
 
+  it('the classical pieces are arranged for the game too: the typesetter and the arranger both credited, ShareAlike kept', () => {
+    for (const t of sourced) {
+      expect(t.credit.arranger, t.id).toBe('Madeleine Muscari');
+      // an arrangement of a ShareAlike score stays ShareAlike; of a public-domain score, it goes with the game
+      expect(t.credit.arrangementLicence, t.id).toBe(t.credit.licence === 'cc-by-sa-4.0' ? 'cc-by-sa-4.0' : 'gpl-3.0-or-later');
+    }
+  });
+
   it('carries Chopin Op. 9 No. 3 (BY-SA 4.0) in place of Op. 9 No. 2 (BY-SA 3.0)', () => {
     const ids = MUSIC_TRACKS.map((t) => t.id);
     expect(ids).toContain('chopin-nocturne-op9-no3');

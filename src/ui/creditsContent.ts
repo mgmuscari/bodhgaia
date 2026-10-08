@@ -99,6 +99,10 @@ function openingCredits(): CreditsBlock {
 function trackLine(t: MusicTrack): string {
   const lic = LICENCES[t.credit.licence].name;
   if (t.credit.arranged) return `${t.title} — ${t.composer}. Arranged for ${GAME_NAME} by ${t.credit.typesetter}; ${lic}.`;
+  if (t.credit.arranger) {
+    const arr = LICENCES[t.credit.arrangementLicence ?? t.credit.licence].name;
+    return `${t.title} — ${t.composer}. MIDI typeset by ${t.credit.typesetter} for the Mutopia Project (${lic}); arranged for ${GAME_NAME} by ${t.credit.arranger}; ${arr}.`;
+  }
   return t.file
     ? `${t.title} — ${t.composer}. MIDI typeset by ${t.credit.typesetter} for the Mutopia Project; ${lic}.`
     : `${t.title} — ${t.composer}. A transcription of traditional recitation (not a recording) by ` +
@@ -116,8 +120,9 @@ function musicCredits(): CreditsBlock {
     paragraphs: [
       `${GAME_NAME} plays its music on its own small synthesizer, from MIDI scores. The classical pieces come ` +
         'from the Mutopia Project (mutopiaproject.org), volunteers typesetting public-domain music under open ' +
-        'licences; each is shipped unmodified alongside the game under its own licence. The ensemble pieces — ' +
-        'public-domain songs and traditional Buddhist melodies — were arranged for the game by ' + AUTHOR + '.',
+        'licences, and arranged for the game as ensembles by ' + AUTHOR + ' — an arrangement of a ShareAlike score ' +
+        'is ShareAlike too. The other ensemble pieces — public-domain songs and traditional Buddhist melodies — were ' +
+        'arranged for the game by ' + AUTHOR + '.',
       ...MUSIC_TRACKS.map(trackLine),
     ],
     links: [...MUSIC_TRACKS.map((t) => ({ label: `${t.title} (source)`, href: t.credit.source })), ...deeds],

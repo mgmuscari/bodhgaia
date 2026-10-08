@@ -26,6 +26,10 @@ export interface TrackCredit {
   source: string;
   /** Arranged for this game (the arranger is `typesetter`), not typeset from a score. */
   arranged?: boolean;
+  /** A typeset score arranged for the game as an ensemble (scripts/arrange.ts): who arranged it, and the licence the
+   *  arrangement carries — ShareAlike stays ShareAlike; a public-domain score's arrangement goes with the game. */
+  arranger?: string;
+  arrangementLicence?: LicenceId;
   /** The exact file fetched. */
   download?: string;
   licence: LicenceId;
@@ -59,7 +63,15 @@ function mutopia(
     title,
     composer,
     moods,
-    credit: { typesetter, source: page(pieceId), download: `${MUTOPIA}/ftp/${ftpPath}`, licence },
+    credit: {
+      typesetter,
+      source: page(pieceId),
+      download: `${MUTOPIA}/ftp/${ftpPath}`,
+      licence,
+      // arranged for the game as an ensemble (Maddy 2026-10-08) from the score kept in assets/music-originals/
+      arranger: 'Madeleine Muscari',
+      arrangementLicence: licence === 'cc-by-sa-4.0' ? 'cc-by-sa-4.0' : 'gpl-3.0-or-later',
+    },
   };
 }
 
