@@ -1080,6 +1080,21 @@ export class Renderer {
       ctx.restore();
     }
 
+    // A craft fair's stalls (community-events.md): set out on the ground round the bazaar, under the people.
+    for (const g of ambient.gatherings ?? []) {
+      if (g.kind !== 'craft-fair') continue;
+      const spots: [number, number][] = [
+        [g.site.x + 0.5, g.site.y + 0.55],
+        [g.site.x + g.site.w - 0.5, g.site.y + 0.55],
+        [g.site.x + 0.5, g.site.y + g.site.h - 0.45],
+        [g.site.x + g.site.w - 0.5, g.site.y + g.site.h - 0.45],
+      ];
+      spots.forEach(([sx, sy], k) => {
+        const img = this.sprites.get(`@sprite/stall/${(g.id + k) % 3}`);
+        if (img) this.drawArt(ctx, img, sx, sy, camera);
+      });
+    }
+
     // A wreck (live/accidents.ts) sits spun a frame round, glass on the road beside it, hazards flashing.
     const hazardOn = Math.floor(performance.now() / 400) % 2 === 0;
     for (const { m: c, pose } of poses.cars) {
@@ -1246,9 +1261,12 @@ export class Renderer {
         const Y0 = g.site.y * BASE_TILE;
         const X1 = (g.site.x + g.site.w) * BASE_TILE - 1;
         const Y1 = (g.site.y + g.site.h) * BASE_TILE - 1;
-        // strings run along the place's long axis; for a run down a street, across it at each tile
-        const strings: [number, number, number, number][] =
-          g.site.w >= g.site.h
+        // round a building (a fair, a festival): strung along the edges of the ground round it, never over the roof;
+        // a street (a party, a parade): along the place's long axis, or across it at each tile down a street
+        const round = g.kind === 'festival' || g.kind === 'craft-fair';
+        const strings: [number, number, number, number][] = round
+          ? [[X0 + 3, Y0 + 4, X1 - 3, Y0 + 4], [X0 + 3, Y1 - 7, X1 - 3, Y1 - 7], [X0 + 3, Y0 + 4, X0 + 3, Y1 - 7], [X1 - 3, Y0 + 4, X1 - 3, Y1 - 7]]
+          : g.site.w >= g.site.h
             ? [[X0, Y0 + 1, X1, Y0 + 1], [X0, Y1 - 4, X1, Y1 - 4], [X0, Y0 + 1, X1, Y1 - 4]]
             : Array.from({ length: g.site.h }, (_, k) => [X0 - 2, Y0 + k * BASE_TILE + 3, X1 + 2, Y0 + k * BASE_TILE + 3] as [number, number, number, number]);
         for (const [ax, ay, bx, by] of strings) {

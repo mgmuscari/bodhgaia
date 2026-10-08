@@ -61,6 +61,16 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     expect(opaque(tiles.get('@sprite/drop')!)).toBeGreaterThan(0);
   });
 
+  it('a craft fair sets out stalls: striped awnings over a table, a few colourways, smaller than a tile', () => {
+    for (let v = 0; v < 3; v++) {
+      const s = tiles.get(`@sprite/stall/${v}`)!;
+      expect(s).toBeDefined();
+      expect(Math.max(s.w, s.h)).toBeLessThanOrEqual(10);
+      expect(opaque(s)).toBeGreaterThan(15);
+    }
+    expect(tiles.get('@sprite/stall/0')!.data.join()).not.toBe(tiles.get('@sprite/stall/1')!.data.join());
+  });
+
   it('a crash leaves debris: a few pixels of glass and metal, smaller than a car', () => {
     const d = tiles.get('@sprite/debris')!;
     expect(d).toBeDefined();

@@ -456,6 +456,9 @@ export function main(save: SaveV1 | null = null): void {
     hour: () => gameClock(gameSec()).hour,
     on: () => !night?.active() && !tutorial?.active(),
     news: (t) => news.push(t),
+    practised: (id) => tech.unlocked.has(id),
+    approval: () => economy.run().state.approval,
+    cheer: (d) => economy.cheer(d),
   });
 
   // Fire (disasters.md): ignition from conditions once a game hour, trucks from the stations, burnt-out ruins. Nothing
@@ -482,15 +485,15 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
           ignite: (i) => fire.ignite(i),
           storm: (heavy) => weather.storm(heavy),
-          party: () => {
-            if (!community.hold('block-party')) return null;
-            const g = live.state.gatherings![live.state.gatherings!.length - 1]!;
+          party: (kind = 'block-party') => {
+            if (!community.hold(kind)) return null;
+            const g = live.state.gatherings!.find((x) => x.kind === kind)!;
             return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
           },
           view: (x, y) => {

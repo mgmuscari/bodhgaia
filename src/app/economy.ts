@@ -16,7 +16,7 @@ import { isPowerConsumer } from '../growth/power';
 import { TECH_TREE } from '../tech/tree';
 import { wellbeing } from '../tech/effort';
 import { TRUST_FLOOR } from '../civic/dynamics';
-import { createEconomy, effortCapacity, mourn, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
+import { createEconomy, effortCapacity, mourn, cheer, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
 import { homeProtections, readCity, type CityInputs } from '../economy/readings';
 import { economyHour, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
 import { projectProgress } from '../economy/projects';
@@ -103,6 +103,8 @@ export interface EconomyController {
   projectProgress(id: string): number | undefined;
   /** The city mourns `deaths` residents: approval, goodwill and effort fall at once. */
   mourn(deaths: number): void;
+  /** Something the city did together moves it (community events): approval, goodwill, money. */
+  cheer(d: { approval?: number; goodwill?: number; funds?: number }): void;
 }
 
 export function createEconomyController(deps: EconomyDeps): EconomyController {
@@ -249,6 +251,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       econ = { ...econ, state: { ...econ.state, funds: econ.state.funds - upfront }, projects: [...econ.projects, practiceProject(node)] };
       return true;
     },
+    cheer: (d) => setState(cheer(econ.state, d)),
     mourn: (deaths) => {
       if (deaths <= 0) return;
       setState(mourn(econ.state, deaths));

@@ -20,7 +20,7 @@ export interface FlagPixel {
 /** The pixels of a string of flags from (ax, ay) to (bx, by), art pixels; `frame` 0/1 flutters them. */
 export function prayerFlagPixels(ax: number, ay: number, bx: number, by: number, frame: number): FlagPixel[] {
   const n = Math.max(1, Math.max(Math.abs(bx - ax), Math.abs(by - ay)));
-  const sag = Math.max(1, Math.floor(n / 8)); // a gentle droop: an eighth of the span
+  const sag = Math.min(4, Math.max(1, Math.floor(n / 8))); // a gentle droop: an eighth of the span, at most 4 px
   const out: FlagPixel[] = [];
   let flag = 0;
   for (let i = 0; i <= n; i++) {
