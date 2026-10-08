@@ -13,6 +13,11 @@ import { syncTrainLegs } from './poses';
 /** Cars per vehicle: a tram is short. */
 export const TRAM_LEN = 2;
 
+/** Tiles a substep: trams at street pace, trains fast between their few stations (Maddy 2026-10-08). */
+export function vehicleSpeed(family: 'tram' | 'rail'): number {
+  return family === 'tram' ? TRAIN_SPEED : TRAIN_SPEED * 2.5;
+}
+
 /** Can a vehicle of `family` ride the tile at (x, y)? */
 export function trackTraversable(map: GameMap, x: number, y: number, family: LineFamily): boolean {
   return map.inBounds(x, y) && familyOf(map.built[map.idx(x, y)]!) === family;
@@ -58,6 +63,7 @@ export const spawnTrains = spawnTransit;
  *  → shuttles back). */
 export function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
   const family = t.family ?? 'rail';
+  const speed = vehicleSpeed(family);
   if (!trackTraversable(map, Math.round(t.hx), Math.round(t.hy), family)) return false;
   if ((t.dwell ?? 0) > 0) {
     t.dwell!--; // halted at a stop
@@ -65,7 +71,7 @@ export function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
     return true;
   }
   const dist = Math.abs(t.tx - t.hx) + Math.abs(t.ty - t.hy);
-  if (dist <= TRAIN_SPEED) {
+  if (dist <= speed) {
     t.hx = t.tx;
     t.hy = t.ty;
     const head = map.idx(t.tx, t.ty);
@@ -85,8 +91,8 @@ export function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
       t.dwell = DWELL;
     }
   } else {
-    t.hx += DIR_DX[t.dir]! * TRAIN_SPEED;
-    t.hy += DIR_DY[t.dir]! * TRAIN_SPEED;
+    t.hx += DIR_DX[t.dir]! * speed;
+    t.hy += DIR_DY[t.dir]! * speed;
   }
   syncTrainLegs(t, map.width);
   return true;

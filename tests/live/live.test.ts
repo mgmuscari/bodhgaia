@@ -2761,7 +2761,8 @@ describe('mode choice (close → walk; car-dependent until calm/transit infra; t
   it('rides elevated rail when a line serves both ends — even far (transit beats driving)', () => {
     const map = new GameMap(60, 10);
     for (let x = 0; x < 60; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet; // roads exist too
-    for (let x = 4; x <= 50; x++) map.built[map.idx(x, 4)] = BuiltKind.ElevatedRail; // one line, stops near both ends
+    for (let x = 4; x <= 50; x++) map.built[map.idx(x, 4)] = BuiltKind.ElevatedRail; // one line…
+    for (const x of [5, 49]) map.built[map.idx(x, 3)] = BuiltKind.RoadStreet; // …stations where streets pass under it
     expect(chooseMode(map, 3, 6, 50, 6)).toBe(TravelMode.ElevatedRail);
   });
 
