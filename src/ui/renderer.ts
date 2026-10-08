@@ -538,6 +538,18 @@ export class Renderer {
         const terrain =
           (murk > 0 ? this.atlas.get(`${picked}~m${murk}`) : undefined) ?? this.atlas.get(picked) ?? this.atlas.get(terrainKey)!;
         ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+        // murkier water next door bleeds a dithered band across the shared edge, so a narrow creek's murk eases
+        // from tile to tile instead of stepping in blocks (snesTileset murkEdge)
+        if (isWater && ambient) {
+          for (let d = 0; d < 4; d++) {
+            const nx = tx + DIR_DX[d]!;
+            const ny = ty + DIR_DY[d]!;
+            if (!map.inBounds(nx, ny) || map.water[map.idx(nx, ny)] === 0) continue;
+            const n = washLevel(murkAt(map, ambient.waterPollution, nx, ny));
+            const edge = n > murk ? this.atlas.get(`${picked}~m${n}~e${d}`) : undefined;
+            if (edge) ctx.drawImage(edge, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+          }
+        }
 
         // ASPHALT GROUND: redlined OPEN ground reads as paved-over disinvestment (env-justice arc);
         // the player DE-PAVES it back to living ground by greening/rewilding nearby (depaveAsphalt
@@ -838,7 +850,11 @@ export class Renderer {
       if (k !== 'ocean' && k !== 'lake' && k !== 'river') return;
       const level = washLevel(murkAt(map, ambient.waterPollution, x, y));
       murk.set(j, level);
-      if (level !== (this.bakedMurk.get(j) ?? 0)) dirty.add(j);
+      if (level !== (this.bakedMurk.get(j) ?? 0)) {
+        dirty.add(j);
+        // its neighbours' edges blend toward it (murkEdge): they redraw too
+        for (let d = 0; d < 4; d++) if (map.inBounds(x + DIR_DX[d]!, y + DIR_DY[d]!)) dirty.add(map.idx(x + DIR_DX[d]!, y + DIR_DY[d]!));
+      }
     };
     for (const tile of ambient.waterPollution.keys()) {
       const x = tile % map.width;

@@ -378,8 +378,28 @@ function murkTiles(out: Map<string, Pixels>): void {
         if (to) m.data.set(to, o);
       }
       out.set(`${k}~m${i + 1}`, m);
+      for (let d = 0; d < 4; d++) out.set(`${k}~m${i + 1}~e${d}`, murkEdge(m, d));
     });
   }
+}
+
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** Bayer thresholds (of 16) by distance from the edge: dense at it, gone six pixels in. */
+const EDGE_FADE = [14, 11, 8, 5, 3, 1];
+
+/** A murk tile kept only in an ordered-dither band along edge `d` (N=0 E=1 S=2 W=3), the rest transparent: drawn
+ *  over a cleaner neighbour so murk eases across the tile edge instead of stepping (a 1-wide creek showed hard
+ *  2-tile blocks). */
+function murkEdge(m: Pixels, d: number): Pixels {
+  const e: Pixels = { w: m.w, h: m.h, data: new Uint8ClampedArray(m.data) };
+  for (let y = 0; y < m.h; y++) {
+    for (let x = 0; x < m.w; x++) {
+      const dist = d === 0 ? y : d === 1 ? m.w - 1 - x : d === 2 ? m.h - 1 - y : x;
+      const keep = dist < EDGE_FADE.length && BAYER4[(y & 3) * 4 + (x & 3)]! < EDGE_FADE[dist]!;
+      if (!keep) e.data[(y * m.w + x) * 4 + 3] = 0;
+    }
+  }
+  return e;
 }
 
 /** Flood water (disasters.md): the river's own tile in its murky recolour, two variants the renderer alternates for
