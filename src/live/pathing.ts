@@ -519,7 +519,7 @@ export function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode
  *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
  *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
  *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1): TravelMode {
+export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1, bikeStretch = 1): TravelMode {
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
   // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
   const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
@@ -529,7 +529,7 @@ export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy:
     if (mode === TravelMode.Bike) {
       // A medium leg cycles (you can bike a street); bike-friendly infra just makes it faster/nicer
       // via the routing cost. So cyclists appear from the start and grow as the player calms streets.
-      if (d <= BIKE_RANGE * stretch) return TravelMode.Bike;
+      if (d <= BIKE_RANGE * stretch * bikeStretch) return TravelMode.Bike;
       continue;
     }
     // rail / streetcar / drive: available when their network serves BOTH ends of the leg.
@@ -556,6 +556,13 @@ export function tripEvaporates(jam: number, hash: number): boolean {
   if (jam <= 0) return false;
   const u = (Math.imul((hash ^ 0x2545f491) >>> 0, 0x9e3779b1) >>> 0) % 1000;
   return u < jam * EVAPORATION * 1000;
+}
+
+/** Is this driven shopping trip delivered instead (Drone Deliveries)? A deterministic `share` of trips, by hash. */
+export function tripDelivered(share: number, hash: number): boolean {
+  if (share <= 0) return false;
+  const u = (Math.imul((hash ^ 0x5bd1e995) >>> 0, 0x9e3779b1) >>> 0) % 1000;
+  return u < share * 1000;
 }
 
 /** The nearest EMPTY tile (open land, unbuilt, non-water — {@link isWearable}) to (x, y) within

@@ -71,7 +71,7 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
   for (const h of homes) {
     const t = map.idx(h.x, h.y);
     const cap = capacityOf(map.built[t]!, h.count);
-    const floor = h.count * OCC_FLOOR; // a home never thins below this fraction of its seeded baseline
+    const floor = h.count * state.practices.occFloor; // a home never thins below this fraction of its baseline (Mutual Aid raises it)
     const cur = state.occupancy.get(t) ?? h.count; // seed lazily at the census baseline
     const raw = occupancySignal(
       sampleField(state.landValue, t),

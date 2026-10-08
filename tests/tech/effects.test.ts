@@ -3,6 +3,7 @@ import { NEUTRAL_EFFECTS, NODE_EFFECTS, resolveEffects } from '../../src/tech/ef
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { NEUTRAL_ECONOMY_PRACTICES } from '../../src/economy/readings';
+import { NEUTRAL_PRACTICES } from '../../src/live/types';
 
 const ids = new Set(TECH_TREE.map((n) => n.id));
 
@@ -41,6 +42,19 @@ describe('tech effects', () => {
     expect(e.landTrust).toBe(true);
     expect(e.burnoutHealMul).toBe(2);
     expect(e.craftInfra).toBe(2);
+  });
+
+  it('the live layer reads exactly its neutral practices from the neutral effects', () => {
+    for (const [k, v] of Object.entries(NEUTRAL_PRACTICES)) expect(NEUTRAL_EFFECTS[k as keyof typeof NEUTRAL_EFFECTS], k).toBe(v);
+  });
+
+  it('the live practices', () => {
+    const e = resolveEffects(['circles', 'bike-shares', 'drone-deliveries', 'mutual-aid', 'collective-ownership']);
+    expect(e.arrestRelease).toBe(0.5);
+    expect(e.bikeStretch).toBe(1.5);
+    expect(e.droneShopDrop).toBe(0.5);
+    expect(e.occFloor).toBe(0.5);
+    expect(e.industryVisit).toBe(-1);
   });
 
   it('the economy reads exactly its neutral practices from the neutral effects', () => {

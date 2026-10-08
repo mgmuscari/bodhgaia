@@ -99,7 +99,7 @@ describe('createLive', () => {
     expect(live.on).toBe(true); // ambient life is on by default
     live.step(1010);
     expect(live.state.accMs).toBe(10);
-    practices = { walkStretch: 1.5 };
+    practices = { ...NEUTRAL_PRACTICES, walkStretch: 1.5 };
     live.step(1030);
     expect(live.state.accMs).toBe(30);
     expect(live.state.practices.walkStretch).toBe(1.5);

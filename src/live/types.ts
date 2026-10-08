@@ -7,6 +7,9 @@ import type { StopCategory } from '../citizens/itinerary';
 import type { TravelMode } from '../citizens/modes';
 import type { Household } from '../citizens/census';
 import { prevailingWind } from './fields/pollution';
+import { OCC_FLOOR } from './tuning';
+import { visitValue } from '../citizens/plots';
+import { BuiltKind } from '../engine/fabric';
 
 /** A grid-following sprite: float world position + heading + committed target tile. */
 export interface Mover {
@@ -178,10 +181,27 @@ export interface ParkingLotInfo {
 export interface LivePractices {
   /** Walk-range multiplier for mode choice (Walkable Streets). */
   walkStretch: number;
+  /** Cycling-range multiplier for mode choice (Bike Shares). */
+  bikeStretch: number;
+  /** Share of police stops that go to a circle instead of an arrest (Circles). */
+  arrestRelease: number;
+  /** Share of driven shopping trips that are delivered instead (Drone Deliveries). */
+  droneShopDrop: number;
+  /** The fraction of a home's baseline it never thins below (Mutual Aid). */
+  occFloor: number;
+  /** The wellbeing a citizen brings home from a day at industry (Collective Ownership). */
+  industryVisit: number;
 }
 
 /** No practices: the coefficients the live layer runs on before any tech. */
-export const NEUTRAL_PRACTICES: Readonly<LivePractices> = Object.freeze({ walkStretch: 1 });
+export const NEUTRAL_PRACTICES: Readonly<LivePractices> = Object.freeze({
+  walkStretch: 1,
+  bikeStretch: 1,
+  arrestRelease: 0,
+  droneShopDrop: 0,
+  occFloor: OCC_FLOOR,
+  industryVisit: visitValue(BuiltKind.Industrial),
+});
 
 export interface AmbientState {
   cars: Car[];

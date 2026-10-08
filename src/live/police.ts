@@ -236,6 +236,9 @@ export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: 
       }
     }
     if (victim < 0) continue;
+    // Circles: the stop goes to a circle instead — nobody taken, no violence (no draw at all when neutral)
+    const release = state.practices.arrestRelease;
+    if (release > 0 && rng.chance(release)) continue;
     const taken = state.peds[victim]!;
     if (taken.homeTile !== undefined) {
       const cur = state.occupancy.get(taken.homeTile);

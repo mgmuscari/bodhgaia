@@ -30,6 +30,16 @@ export interface TechEffects {
   taxPainMul: number;
   /** Multiplier on burnout's recovery (Shared Table). */
   burnoutHealMul: number;
+  /** Cycling-range multiplier for mode choice (Bike Shares). */
+  bikeStretch: number;
+  /** Share of police stops that go to a circle instead of an arrest (Circles). */
+  arrestRelease: number;
+  /** Share of driven shopping trips delivered instead (Drone Deliveries). */
+  droneShopDrop: number;
+  /** The fraction of a home's baseline it never thins below (Mutual Aid). */
+  occFloor: number;
+  /** The wellbeing a citizen brings home from a day at industry (Collective Ownership). */
+  industryVisit: number;
 }
 
 export type EffectKey = keyof TechEffects;
@@ -49,6 +59,11 @@ export const NEUTRAL_EFFECTS: Readonly<TechEffects> = Object.freeze({
   craftInfra: 0,
   taxPainMul: 1,
   burnoutHealMul: 1,
+  bikeStretch: 1,
+  arrestRelease: 0,
+  droneShopDrop: 0,
+  occFloor: 0.4, // = live OCC_FLOOR (pinned by tests/tech/effects.test.ts)
+  industryVisit: -4, // = visitValue(Industrial) (pinned likewise)
 });
 
 /** Each practice's effects, by node id. */
@@ -56,6 +71,7 @@ export const NODE_EFFECTS: Readonly<Record<string, readonly Effect[]>> = {
   'walkable-streets': [{ key: 'walkStretch', op: 'mul', value: 1.5 }],
   'road-diets': [{ key: 'roadConversions', op: 'set', value: true }],
   circles: [
+    { key: 'arrestRelease', op: 'set', value: 0.5 },
     { key: 'voicePerTick', op: 'add', value: 1 },
     { key: 'socialInfra', op: 'add', value: 2 },
   ],
@@ -71,6 +87,10 @@ export const NODE_EFFECTS: Readonly<Record<string, readonly Effect[]>> = {
   'community-land-trust': [{ key: 'landTrust', op: 'set', value: true }],
   'shared-table': [{ key: 'burnoutHealMul', op: 'mul', value: 2 }],
   'craft-fairs': [{ key: 'craftInfra', op: 'add', value: 2 }],
+  'bike-shares': [{ key: 'bikeStretch', op: 'mul', value: 1.5 }],
+  'drone-deliveries': [{ key: 'droneShopDrop', op: 'set', value: 0.5 }],
+  'mutual-aid': [{ key: 'occFloor', op: 'set', value: 0.5 }],
+  'collective-ownership': [{ key: 'industryVisit', op: 'set', value: -1 }],
 };
 
 function apply(out: Record<string, number | boolean>, e: Effect): void {

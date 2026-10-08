@@ -19,6 +19,8 @@ import { visitValue } from '../citizens/plots';
 import { TravelMode, modeSpec } from '../citizens/modes';
 import {
   AMENITY_KINDS,
+  BIKE_RANGE,
+  OCC_FLOOR,
   COVERAGE_RADIUS,
   GREEN_HEAL_KINDS,
   GREEN_HEAL_RADIUS,
@@ -67,6 +69,16 @@ function practiceLine(e: Effect): string {
       return `Taxes cost ${pct(1 - (e.value as number))} less approval`;
     case 'burnoutHealMul':
       return `Burnout recovers ${num(e.value as number)}× as fast`;
+    case 'bikeStretch':
+      return `People cycle up to ${num(BIKE_RANGE * (e.value as number))} tiles before driving (was ${BIKE_RANGE})`;
+    case 'arrestRelease':
+      return `${pct(e.value as number)} of police stops go to a circle instead of an arrest`;
+    case 'droneShopDrop':
+      return `${pct(e.value as number)} of driven shopping trips are delivered instead`;
+    case 'occFloor':
+      return `Neighbours take people in: no home falls below ${pct(e.value as number)} of its residents (was ${pct(OCC_FLOOR)})`;
+    case 'industryVisit':
+      return `A day at worker-owned industry costs ${-(e.value as number)} wellbeing (was ${-visitValue(BuiltKind.Industrial)})`;
   }
 }
 
