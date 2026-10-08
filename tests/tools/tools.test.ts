@@ -263,13 +263,14 @@ describe('availableTools: rezone tools (building-target 3-way gate)', () => {
   });
 });
 
+// (a 1×1 lot on open land: a shop — a parklet goes on a road now)
 describe('previewTool never mutates', () => {
   it('leaves world hash + tech snapshot byte-equal on a VALID target', () => {
     const world = freshWorld();
     const tech = freshTech(1000);
     const h = hashWorld(world);
     const sb = tech.snapshotBytes();
-    const r = previewTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = previewTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.valid).toBe(true);
     expect(hashWorld(world)).toBe(h);
     expect(tech.snapshotBytes()).toEqual(sb);
@@ -281,7 +282,7 @@ describe('previewTool never mutates', () => {
     placeTransport(world.map, 3, 3, BuiltKind.RoadStreet); // occupy the tile
     const h = hashWorld(world);
     const sb = tech.snapshotBytes();
-    const r = previewTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = previewTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.valid).toBe(false);
     expect(hashWorld(world)).toBe(h);
     expect(tech.snapshotBytes()).toEqual(sb);
@@ -290,7 +291,7 @@ describe('previewTool never mutates', () => {
   it('reports effort as the blocker when geometry is valid but funds are short', () => {
     const world = freshWorld();
     const tech = freshTech(0);
-    const r = previewTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = previewTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.valid).toBe(false);
     expect(r.reason).toBe('effort');
   });
@@ -308,12 +309,12 @@ describe('applyTool spends + routes to single-writers', () => {
   it('debits exactly the tool cost and places the parcel', () => {
     const world = freshWorld();
     const tech = freshTech(1000);
-    const tool = toolDef('build-48')!;
+    const tool = toolDef(`build-${BuiltKind.CommercialStrip}`)!;
     const before = tech.effort;
     const r = applyTool(world, tech, tool, 3, 3);
     expect(r.ok).toBe(true);
     expect(tech.effort).toBe(before - tool.cost);
-    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Parklet);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.CommercialStrip);
     expect(world.parcels.aliveCount()).toBe(1);
   });
 
@@ -322,7 +323,7 @@ describe('applyTool spends + routes to single-writers', () => {
     const tech = freshTech(0);
     const h = hashWorld(world);
     const sb = tech.snapshotBytes();
-    const r = applyTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = applyTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.ok).toBe(false);
     expect(r.reason).toBe('effort');
     expect(hashWorld(world)).toBe(h);

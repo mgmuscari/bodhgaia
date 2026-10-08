@@ -170,6 +170,21 @@ function curb(mask: number): Pixels {
   return p;
 }
 
+/** A parklet (Maddy 2026-10-08): drawn in place of the kerb on each masked edge — the sidewalk slab, then a
+ *  timber deck out over the parking lane with a bench, edged on the traffic side by planters in flower. */
+function parklet(mask: number): Pixels {
+  const p = blank(T, T);
+  sides(mask, (set) => {
+    for (let a = 0; a < T; a++) {
+      set(a, 0, a % 4 === 0 ? C.pave : C.paveHi); // the sidewalk
+      for (let d = 1; d <= 3; d++) set(a, d, a % 3 === 0 ? C.roofBrown : C.roofBrownHi); // deck boards
+      set(a, 4, a % 5 < 3 ? (a % 7 === 2 ? C.flower : a & 1 ? C.leaf : C.leafHi) : C.roofBrownLo); // planters
+    }
+    for (let a = 6; a <= 9; a++) set(a, 2, C.roofBrownLo); // a bench
+  }, p);
+  return p;
+}
+
 /** A tram street's small kerb (Maddy 2026-10-08): a one-slab sidewalk and its gutter on each masked edge. */
 function kerb(mask: number): Pixels {
   const p = blank(T, T);
@@ -387,6 +402,7 @@ export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly numb
   for (let m = 1; m < 16; m++) {
     out.set(`@road/curb/${m}`, curb(m));
     out.set(`@road/kerb/${m}`, kerb(m));
+    out.set(`@road/parklet/${m}`, parklet(m));
     out.set(`@road/zebra/${m}`, zebra(m));
     out.set(`@road/divider/${m}`, divider(m));
     out.set(`@road/xing/${m}`, crossing(m));

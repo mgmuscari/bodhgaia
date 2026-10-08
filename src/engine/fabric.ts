@@ -974,7 +974,7 @@ export function depaveAsphalt(map: GameMap, x: number, y: number): number {
       const nx = x + dx;
       const ny = y + dy;
       if (!map.inBounds(nx, ny)) continue;
-      if (!DEPAVE_GREENS.has(map.getBuilt(nx, ny))) continue;
+      if (!DEPAVE_GREENS.has(map.getBuilt(nx, ny)) && !parkletAt(map, nx, ny)) continue;
       const cheb = Math.max(Math.abs(dx), Math.abs(dy));
       const g = 1 - cheb / (DEPAVE_RADIUS + 1); // adjacent → strongest de-pave, fading with distance
       if (g > near) near = g;
@@ -1211,6 +1211,34 @@ export function canPlaceOverpass(map: GameMap, x: number, y: number, kind: numbe
 export function placeOverpass(map: GameMap, x: number, y: number, kind: number): boolean {
   if (!canPlaceOverpass(map, x, y, kind)) return false;
   map.deck[map.idx(x, y)] = kind;
+  return true;
+}
+
+// --- Parklets (Maddy 2026-10-08) ---------------------------------------------------------------------
+// A parklet is plopped on a road in place of its kerb: seating and planters in the parking lane. It is not a lot
+// of its own — it sits in the road tile's DECK (the per-tile second layer), so bulldozing lifts it off the
+// street (removeOverpassAt) and the road beneath is untouched.
+
+/** Is there a parklet on the road at (x, y)? */
+export function parkletAt(map: GameMap, x: number, y: number): boolean {
+  return map.inBounds(x, y) && map.deck[map.idx(x, y)] === BuiltKind.Parklet;
+}
+
+/** Can a parklet go at (x, y): a street or avenue tile on dry land with a kerb, nothing decked over it. */
+export function canPlaceParklet(map: GameMap, x: number, y: number): boolean {
+  if (!map.inBounds(x, y)) return false;
+  const i = map.idx(x, y);
+  const k = map.built[i]!;
+  if (k !== BuiltKind.RoadStreet && k !== BuiltKind.RoadAvenue) return false;
+  if (map.deck[i] !== 0 || map.water[i] !== Water.None) return false;
+  return roadCurbMask(map, x, y) !== 0;
+}
+
+/** Plop a parklet on the road at (x, y), writing only the deck layer. False (writing nothing) unless
+ *  {@link canPlaceParklet} holds. */
+export function placeParklet(map: GameMap, x: number, y: number): boolean {
+  if (!canPlaceParklet(map, x, y)) return false;
+  map.deck[map.idx(x, y)] = BuiltKind.Parklet;
   return true;
 }
 

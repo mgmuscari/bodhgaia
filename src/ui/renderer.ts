@@ -667,7 +667,8 @@ export class Renderer {
             }
             const sig = signalCorners(map, tx, ty);
             if (sig !== 0) signals.push({ x: tx, y: ty, corners: sig });
-            if (curb !== 0) ink(`@road/curb/${curb}`, dx, dy);
+            // a parklet takes the kerb's place (Maddy 2026-10-08)
+            if (curb !== 0) ink(map.deck[i] === BuiltKind.Parklet ? `@road/parklet/${curb}` : `@road/curb/${curb}`, dx, dy);
             const kerbs = tramKerbMask(map, tx, ty);
             if (kerbs !== 0) ink(`@road/kerb/${kerbs}`, dx, dy); // a tram street's small kerbs
 
@@ -704,7 +705,7 @@ export class Renderer {
           // reads as grade-separated. Keys through the same atlas tiles as at-grade elev/promenade
           // (deckMask over the deck layer), so no new keyspace.
           const deck = map.deck[i]!;
-          if (deck !== 0) {
+          if (deck !== 0 && deck !== BuiltKind.Parklet) { // a parklet is at grade, drawn in the kerb (above)
             const deckTile = this.atlas.get(builtRenderKey(deck, deckMask(map, tx, ty), 'c', 0));
             if (deckTile) {
               // lift and shadow offset in whole art pixels, the shadow a half-tone dither

@@ -79,6 +79,8 @@ export function refusalText(reason: ToolReason | undefined): string | null {
       return null;
     case 'needs-yard':
       return 'An accessory dwelling goes in a house’s back yard.';
+    case 'needs-kerb':
+      return 'A parklet goes on a street or avenue, at its kerb.';
     case 'occupied':
       return 'Something is already there.';
     case 'funds':

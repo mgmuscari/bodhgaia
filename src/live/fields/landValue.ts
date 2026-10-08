@@ -98,7 +98,7 @@ export function landValueAt(
       if (!map.inBounds(nx, ny)) continue;
       const ni = map.idx(nx, ny);
       const falloff = 1 - dist / (LV_RADIUS + 1); // 1 on the tile → ~0 at the edge of the radius
-      if (AMENITY_KINDS.has(map.built[ni]!)) amenity += falloff;
+      if (AMENITY_KINDS.has(map.built[ni]!) || map.deck[ni] === BuiltKind.Parklet) amenity += falloff; // a kerb parklet too
       else if (map.built[ni] === BuiltKind.Ruin) ruins += falloff;
       // Nuisances felt by distance: the worst weighted road nearby sets the drag (one jam is enough).
       if (pollution) pollNear = Math.max(pollNear, sampleField(pollution, ni) * falloff);
