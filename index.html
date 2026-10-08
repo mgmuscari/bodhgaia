@@ -422,7 +422,18 @@
         top: 12vh;
       }
       .tutorial-box-in {
-        animation: night-in 0.5s ease both;
+        animation: tutorial-in 0.5s ease both;
+      }
+      @keyframes tutorial-in {
+        /* keeps the centring translate (night-in's transform would drop it) */
+        from {
+          opacity: 0;
+          transform: translate(-50%, 6px);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
       }
       .tutorial-text {
         margin: 0;

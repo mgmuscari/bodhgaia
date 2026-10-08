@@ -102,7 +102,7 @@ describe('the night opening (act one)', () => {
     h.opening.frame(0);
     h.opening.frame(OPENING_T_SKIP);
     h.skip();
-    expect(h.log.slice(-2)).toEqual(['remove', 'done']);
+    expect(h.log.slice(-3)).toEqual([`hour ${T.dawnHour}`, 'remove', 'done']); // skipped at night: the city still wakes
     expect(h.live.wanderer).toBeUndefined();
     expect(h.live.fallen ?? []).toEqual([]);
     expect(h.opening.active()).toBe(false);

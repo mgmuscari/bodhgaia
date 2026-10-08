@@ -35,7 +35,7 @@ export interface Tutorial {
 /** How long the camera takes to glide to a worst spot. */
 const SPOT_GLIDE_MS = 1800;
 
-type Step = Exclude<TutorialStep, { kind: 'spots' }> | { kind: 'spot'; spot: WorstSpot };
+type Step = TutorialStep | { kind: 'spot'; spot: WorstSpot };
 
 export function createTutorial(deps: TutorialDeps): Tutorial {
   const { ui } = deps;
@@ -60,6 +60,12 @@ export function createTutorial(deps: TutorialDeps): Tutorial {
     if (!s) return finish();
     glideFrom = null;
     switch (s.kind) {
+      case 'spots': {
+        // read the worst places now, when the tour reaches them (the live fields settle over the opening)
+        const spots = deps.spots().map((spot): Step => ({ kind: 'spot', spot }));
+        steps!.splice(k, 1, ...spots);
+        return show(k);
+      }
       case 'say':
         ui.spotlight(null);
         ui.say(s.text);
@@ -97,7 +103,7 @@ export function createTutorial(deps: TutorialDeps): Tutorial {
       if (done) return;
       lastNow = now;
       if (!steps) {
-        steps = TUTORIAL.flatMap((s): Step[] => (s.kind === 'spots' ? deps.spots().map((spot) => ({ kind: 'spot', spot })) : [s]));
+        steps = [...TUTORIAL];
         show(0);
         return;
       }

@@ -64,6 +64,9 @@ export function createNightOpening(deps: NightDeps): NightOpening {
 
   const finish = (): void => {
     live.wanderer = undefined;
+    // skipped in the night? the city still wakes: forward to dawn (never backwards in the day)
+    const h = deps.hour();
+    if (h < T.dawnHour || h >= 20) deps.setHour(T.dawnHour);
     ui.remove();
     phase = { kind: 'done' };
     deps.onDone();
