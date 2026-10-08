@@ -18,6 +18,8 @@ export interface PowerDeps {
   nowSec?: () => number;
   /** The tech practices' power effects, read at every solve (default: none). */
   practices?: () => PowerPractices;
+  /** A resumed city's energy-node battery charge (anchor → power-hours). */
+  storage?: Map<number, number>;
 }
 
 export interface PowerController {
@@ -36,7 +38,12 @@ export function createPowerController(deps: PowerDeps): PowerController {
   const nowSec = deps.nowSec ?? ((): number => performance.now() / 1000);
   const practices = deps.practices ?? ((): PowerPractices => NEUTRAL_POWER_PRACTICES);
   const clock0 = gameClock(nowSec());
-  let grid = computePowerGrid(map, parcels, clock0, practices());
+  // The batteries' charge at the START of the hour being solved: every solve within an hour works from it, and
+  // a new hour banks the last solve's end-of-hour charge — so re-solving (placement, the civic cadence) never
+  // charges or spends twice.
+  let banked = new Map(deps.storage ?? []);
+  let bankedSlot = clock0.slot;
+  let grid = computePowerGrid(map, parcels, clock0, practices(), banked);
   let sig = signature(grid);
   let slot = clock0.slot;
   publish(grid.poweredAnchors);
@@ -44,7 +51,11 @@ export function createPowerController(deps: PowerDeps): PowerController {
   const recompute = (): boolean => {
     const clock = gameClock(nowSec());
     slot = clock.slot;
-    grid = computePowerGrid(map, parcels, clock, practices());
+    if (clock.slot !== bankedSlot) {
+      banked = grid.storage;
+      bankedSlot = clock.slot;
+    }
+    grid = computePowerGrid(map, parcels, clock, practices(), banked);
     publish(grid.poweredAnchors);
     const next = signature(grid);
     const changed = next !== sig;

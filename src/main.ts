@@ -76,6 +76,7 @@ export function main(save: SaveV1 | null = null): void {
     parcels: world.parcels,
     publish: (a) => renderer.setPowerGrid(a),
     practices: () => tech.effects(), // Sun and Wire, Renewable Energy, Local Grids
+    storage: new Map(save?.power?.storage ?? []), // the energy nodes' batteries
   });
 
   // Sound: silent until the first click or key unlocks it; listens to the city through the camera.
@@ -275,6 +276,7 @@ export function main(save: SaveV1 | null = null): void {
       civic,
       econ: economy.run(),
       live: live.state,
+      power: { storage: power.grid().storage },
       tick: sim.tick(),
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
     }),
