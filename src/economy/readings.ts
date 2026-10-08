@@ -61,7 +61,7 @@ const RESIDENTIAL = new Set<number>([
 const COMMERCIAL = new Set<number>([BuiltKind.CommercialStrip, BuiltKind.Offices, BuiltKind.Bazaar, BuiltKind.MakerSpace]);
 const INDUSTRIAL = new Set<number>([BuiltKind.Industrial]);
 /** Homes on land held in common — rent can't chase land value there. */
-const PROTECTED = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune]);
+export const PROTECTED: ReadonlySet<number> = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune]);
 /** Places neighbours gather and organise (matches civic dynamics' gathering kinds). */
 const GATHERING = new Set<number>([
   BuiltKind.Bazaar,

@@ -110,11 +110,14 @@ describe('tech card content', () => {
     // a transit practice shows its track/road tile, not a (nonexistent) building cell
     expect(nodeViewOf(byId.get('streetcar-revival')!, byId, freshState()).art).toMatch(/^streetcar-/);
   });
-  it('lists what a node grants in words', () => {
+  it('names the buildings a node grants, and says exactly what it does', () => {
     const parklets = nodeViewOf(byId.get('parklets')!, byId, freshState());
-    expect(parklets.grants.join(' ')).toMatch(/Parklet/i);
+    expect(parklets.grants).toEqual(['Parklet']);
+    expect(parklets.effects).toContain('Heals ground pollution within 2 tiles');
+    expect(parklets.costs).toEqual(['Tending: 0.04 effort/hour']);
     const walk = nodeViewOf(byId.get('walkable-streets')!, byId, freshState());
-    expect(walk.grants.length).toBeGreaterThan(0);
+    expect(walk.grants).toEqual([]); // a practice builds nothing — its effect says what it does
+    expect(walk.effects).toEqual(['People walk up to 15 tiles before riding (was 10)']);
   });
   it('names its branch', () => {
     expect(nodeViewOf(byId.get('parklets')!, byId, freshState()).branchTitle).toBe('New Urbanism');

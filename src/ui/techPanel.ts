@@ -202,7 +202,19 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
       p.textContent = `${label}: ${text}`;
       detail.appendChild(p);
     };
-    if (v.grants.length > 0) line('Grants', v.grants.join(', '), 'tech-detail-grants');
+    if (v.grants.length > 0) line('Builds', v.grants.join(', '), 'tech-detail-grants');
+    const list = (items: string[], cls: string): void => {
+      const ul = document.createElement('ul');
+      ul.className = cls;
+      for (const t of items) {
+        const li = document.createElement('li');
+        li.textContent = t;
+        ul.appendChild(li);
+      }
+      detail.appendChild(ul);
+    };
+    list(v.effects.length > 0 ? v.effects : ['Not yet in the simulation'], 'tech-detail-effects');
+    if (v.costs.length > 0) list(v.costs, 'tech-detail-costs');
     if (v.missing.length > 0) line('Needs', v.missing.join(', '), 'tech-detail-needs');
     const act = document.createElement('button');
     act.className = 'tech-detail-unlock';

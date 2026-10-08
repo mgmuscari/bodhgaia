@@ -48,7 +48,7 @@ const RECENT_WINDOW = 100; // a repair counts as "recent" within this many ticks
 // Gathering places: a belonging bonus when ≥1 sits inside the neighborhood. Park
 // is a gathering place (a green commons where the neighborhood meets), so a
 // gathering→Park rezone keeps the bonus — RewildedLand stays OUT (wild, not social).
-const GATHERING_KINDS = new Set<number>([
+export const GATHERING_KINDS: ReadonlySet<number> = new Set<number>([
   BuiltKind.Bazaar,
   BuiltKind.MakerSpace,
   BuiltKind.HealingCommons,
