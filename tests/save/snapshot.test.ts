@@ -71,7 +71,7 @@ describe('a saved game restores to the same stocks', () => {
     expect(civic.getRing(2)).toEqual([77]);
     expect(save.econ).toEqual(JSON.parse(JSON.stringify(p.econ)));
     const live = createAmbientState();
-    restoreLive(live, save.live);
+    restoreLive(live, save.live, 4);
     expect(live.occupancy.get(5)).toBe(7.5);
     expect(live.occExpect.get(5)).toBe(-0.1);
     expect(live.occPasses).toBe(400);

@@ -16,6 +16,8 @@ import {
   OCC_POLL_W,
   OCC_RATE,
   OCC_SETTLE_PASSES,
+  REHOME_FRESH,
+  REHOME_WELCOME,
   POLL_MAX,
 } from '../tuning';
 import type { AmbientState } from '../types';
@@ -62,6 +64,7 @@ export function spawnTargetFor(totalOccupancy: number): number {
 export function stepOccupancy(state: AmbientState, map: GameMap): void {
   const homes = state.households;
   if (!homes || homes.length === 0) {
+    for (const v of state.occupancy.values()) state.unhoused += v; // every home gone: its people too
     state.occupancy.clear();
     return;
   }
@@ -72,7 +75,15 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     const t = map.idx(h.x, h.y);
     const cap = capacityOf(map.built[t]!, h.count);
     const floor = h.count * state.practices.occFloor; // a home never thins below this fraction of its baseline (Mutual Aid raises it)
-    const cur = state.occupancy.get(t) ?? h.count; // seed lazily at the census baseline
+    let cur = state.occupancy.get(t);
+    if (cur === undefined) {
+      // the opening census is seeded full; a home BUILT since opens empty and fills (rehoming.md)
+      if (state.occPasses === 0) cur = h.count;
+      else {
+        cur = 0;
+        (state.freshHomes ??= new Set()).add(t);
+      }
+    }
     const raw = occupancySignal(
       sampleField(state.landValue, t),
       sampleField(state.pollution, t),
@@ -80,12 +91,34 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     );
     // a new home (or the opening) takes its conditions as normal
     const was = settling ? raw : (state.occExpect.get(t) ?? raw);
-    next.set(t, occupancyStep(cur, floor, cap, raw - was));
+    let occ = moveFromPool(state, cur, occupancyStep(cur, floor, cap, raw - was));
+    // Re-homing into room below the home's baseline: a fresh home fills at REHOME_FRESH (from the pool,
+    // else from people moving to the city); any home is welcomed back at REHOME_WELCOME × its voice.
+    const room = h.count - occ;
+    if (room > 0) {
+      const welcome = state.welcome?.get(t) ?? 0;
+      const moved = state.freshHomes?.has(t)
+        ? Math.min(room, REHOME_FRESH * h.count)
+        : Math.min(room, state.unhoused, REHOME_WELCOME * welcome * h.count);
+      occ = moveFromPool(state, occ, occ + moved);
+    }
+    if (occ >= h.count) state.freshHomes?.delete(t);
+    next.set(t, occ);
     expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
   }
+  // a home torn down puts its residents out
+  for (const [t, v] of state.occupancy) if (!next.has(t)) state.unhoused += v;
   state.occupancy = next;
   state.occExpect = expect;
   state.occPasses += 1;
+}
+
+/** A home's occupancy moving `cur` → `to`: a loss goes to the unhoused; a gain is drawn from them first (the
+ *  rest are people moving to the city). Returns `to`. */
+function moveFromPool(state: AmbientState, cur: number, to: number): number {
+  if (to < cur) state.unhoused += cur - to;
+  else if (to > cur) state.unhoused = Math.max(0, state.unhoused - (to - cur));
+  return to;
 }
 
 /** The inherited housing crisis: open each home emptied by INHERITED_VACANCY × its redline grade, floored at
@@ -95,7 +128,9 @@ export function seedInheritedOccupancy(state: AmbientState, map: GameMap): void 
   for (const h of state.households ?? []) {
     const t = map.idx(h.x, h.y);
     const grade = map.redline[t]! / 255;
-    const left = h.count * (1 - INHERITED_VACANCY * grade);
-    state.occupancy.set(t, left < h.count * OCC_FLOOR ? h.count * OCC_FLOOR : left);
+    const raw = h.count * (1 - INHERITED_VACANCY * grade);
+    const left = raw < h.count * OCC_FLOOR ? h.count * OCC_FLOOR : raw;
+    state.occupancy.set(t, left);
+    state.unhoused += h.count - left; // the displaced are the opening's unhoused
   }
 }

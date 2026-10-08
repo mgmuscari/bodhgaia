@@ -289,6 +289,14 @@ export interface AmbientState {
   occExpect: Map<number, number>;
   /** Occupancy passes run so far (the opening settles for OCC_SETTLE_PASSES). */
   occPasses: number;
+  /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
+   *  people back from it; it never moves without a cause. */
+  unhoused: number;
+  /** Per home tile: how organised its neighbourhood is, 0..1 (civic voice ÷ 255), set by the host after
+   *  each civic tick — the welcome that re-homes people there. Absent ⇒ no welcome anywhere. */
+  welcome?: Map<number, number>;
+  /** Homes built since the opening that are still filling for the first time (they open empty). */
+  freshHomes?: Set<number>;
   /** Live ROAD DECAY (0..ROAD_DECAY_MAX), keyed by road tile: how crumbled the pavement is.
    *  Redlined roads crumble (the city won't maintain the disinvested districts); roads recover
    *  where the neighborhood is cared-for (high land value). Drags land value, never hashed. */
@@ -336,6 +344,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     practices: { ...NEUTRAL_PRACTICES },
     occExpect: new Map(),
     occPasses: 0,
+    unhoused: 0,
     roadDecay: new Map(),
     roadTick: 0,
   };
