@@ -176,9 +176,27 @@ export interface ParkingLotInfo {
 }
 
 /** The full ambient sprite state — renderer-side only, never part of the world. */
+/** A fire truck: where it is, the road route it follows, and what it's doing. */
+export interface Truck {
+  x: number;
+  y: number;
+  /** Heading (dx, dy) for the sprite. */
+  hx: number;
+  hy: number;
+  path: number[];
+  i: number;
+  phase: 'to-fire' | 'spraying' | 'home';
+  /** The burning parcel (store index) it was sent to. */
+  target: number;
+  /** Substeps left spraying. */
+  spray: number;
+  /** The road tile by its station, to drive home to. */
+  home: { x: number; y: number };
+}
+
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest';
+  kind: 'death' | 'arrest' | 'fire';
   x: number;
   y: number;
   w: number;
@@ -317,6 +335,12 @@ export interface AmbientState {
   /** The opening's night walker (bodhgaia-opening.md): one unhoused resident the camera follows until they die.
    *  Position in tiles; `path` is the current foot route (tile indices), `i` the next waypoint. */
   wanderer?: { x: number; y: number; path: number[]; i: number; age: number; life: number; seed: number };
+  /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
+  trucks?: Truck[];
+  /** Fires the trucks have put out (parcel store indices) — the host hands them to the fire step and clears it. */
+  quenched?: Set<number>;
+  /** Footprints burning now (published by the host from the fire step) — the renderer draws the flames. */
+  burning?: { x: number; y: number; w: number; h: number }[];
   /** Residents who have died so far (the news reads its change). */
   deaths?: number;
   /** The live event feed — deaths, arrests (disasters later) — for the host's CCTV inset, news and costs.
