@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind } from '../../src/engine/fabric';
 import { createAmbientState, setHouseholds, type AmbientState } from '../../src/live/types';
-import { stepOccupancy, seedInheritedOccupancy } from '../../src/live/fields/occupancy';
+import { stepOccupancy, seedInheritedOccupancy, displaceFromHomes } from '../../src/live/fields/occupancy';
 import { OCC_SETTLE_PASSES } from '../../src/live/tuning';
 import { captureLive, restoreLive, LIVE_MAPS, type SaveV1 } from '../../src/save/snapshot';
 
@@ -133,5 +133,33 @@ describe('the unhoused are saved', () => {
     const saved = { maps: { ...emptyMaps(), occupancy: [[c.t(2), 6], [c.t(5), 10]] }, occPasses: 300 } as unknown as SaveV1['live'];
     restoreLive(c.state, saved, c.map.width, 3);
     expect(c.state.unhoused).toBe(4 + 3);
+  });
+});
+
+describe('rent displaces people from real homes', () => {
+  const town = () => {
+    const c = street([{ x: 2, count: 10 }, { x: 5, count: 10 }, { x: 8, count: 10 }]);
+    settle(c);
+    c.state.landValue.set(c.t(2), 220); // prized
+    c.state.landValue.set(c.t(5), 60);
+    c.state.landValue.set(c.t(8), 220);
+    return c;
+  };
+
+  it('takes people out of unprotected homes on the most valuable land, into the unhoused', () => {
+    const c = town();
+    const before = occTotal(c.state) + c.state.unhoused;
+    const moved = displaceFromHomes(c.state, c.map, 3, (t) => (t === c.t(8) ? 1 : 0)); // (8,1) is a co-op
+    expect(moved).toBeCloseTo(3, 9);
+    expect(c.state.occupancy.get(c.t(8))).toBe(10); // protected
+    expect(10 - c.state.occupancy.get(c.t(2))!).toBeGreaterThan(10 - c.state.occupancy.get(c.t(5))!); // dearer land loses more
+    expect(occTotal(c.state) + c.state.unhoused).toBeCloseTo(before, 9);
+  });
+
+  it('never below a home’s floor; what cannot be displaced is not', () => {
+    const c = town();
+    const moved = displaceFromHomes(c.state, c.map, 1000, () => 0);
+    for (const x of [2, 5, 8]) expect(c.state.occupancy.get(c.t(x))!).toBeCloseTo(10 * c.state.practices.occFloor, 9);
+    expect(moved).toBeCloseTo(3 * 10 * (1 - c.state.practices.occFloor), 9);
   });
 });

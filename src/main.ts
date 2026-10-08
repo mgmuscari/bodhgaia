@@ -24,6 +24,8 @@ import { createPowerController } from './app/power';
 import { installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { createEconomyController } from './app/economy';
+import { neighborhoodVoice } from './civic/voice';
+import { displaceFromHomes } from './live/fields/occupancy';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
 import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/panels';
 import { createToolController } from './app/tools';
@@ -118,6 +120,9 @@ export function main(save: SaveV1 | null = null): void {
     live: live.state,
     powerGrid: power.grid,
     initial: save?.econ ?? null,
+    // tenant organising protects homes; rent's displaced leave real homes into the unhoused (rehoming.md)
+    voiceAt: (t) => neighborhoodVoice(civic, deps.partition, t),
+    displace: (amount, protectionAt) => displaceFromHomes(live.state, world.map, amount, protectionAt),
     autosave: () => saves.autosave(), // read at call time (loading a slot blanks autosave first)
     ui: {
       practiceGranted: () => {

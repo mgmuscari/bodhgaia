@@ -134,3 +134,33 @@ export function seedInheritedOccupancy(state: AmbientState, map: GameMap): void 
     state.unhoused += h.count - left; // the displaced are the opening's unhoused
   }
 }
+
+/** Rent displacement (rehoming.md): take `amount` people out of real homes into the unhoused — unprotected
+ *  homes on the dearest land first (weighted by land value × what the home can lose × its unprotected share),
+ *  never below a home's floor. `protectionAt` is each home's protection 0..1 (economy/readings
+ *  homeProtections). Returns how many were actually displaced (less than `amount` when homes are at their
+ *  floors or protected). */
+export function displaceFromHomes(state: AmbientState, map: GameMap, amount: number, protectionAt: (tile: number) => number): number {
+  if (!(amount > 0)) return 0;
+  const homes: { t: number; spare: number; w: number }[] = [];
+  let total = 0;
+  for (const h of state.households ?? []) {
+    const t = map.idx(h.x, h.y);
+    const occ = state.occupancy.get(t);
+    if (occ === undefined) continue;
+    const spare = occ - h.count * state.practices.occFloor;
+    const open = 1 - protectionAt(t);
+    if (spare <= 0 || open <= 0) continue;
+    const w = spare * open * (sampleField(state.landValue, t) + 1);
+    homes.push({ t, spare, w });
+    total += w;
+  }
+  let moved = 0;
+  for (const h of homes) {
+    const take = Math.min(h.spare, (amount * h.w) / total);
+    state.occupancy.set(h.t, state.occupancy.get(h.t)! - take);
+    moved += take;
+  }
+  state.unhoused += moved;
+  return moved;
+}

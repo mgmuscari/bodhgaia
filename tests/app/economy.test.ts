@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createEconomyController, AUTOSAVE_HOURS, type EconomyUi } from '../../src/app/economy';
+import { createEconomyController, AUTOSAVE_HOURS, type EconomyUi, type EconomyDeps } from '../../src/app/economy';
 import { GameMap } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
 import { createTechState } from '../../src/tech/state';
@@ -17,7 +17,7 @@ import { money } from '../../src/ui/moneyFormat';
 // what to refresh — through injected callbacks, never by reaching out.
 const HOUR_MS = ((2 * Math.PI) / (DAYSPEED * 24)) * 1000; // one in-game hour of wall-clock ms
 
-function setup(initial: EconomyRun | null = null, autosaveOverride?: () => void) {
+function setup(initial: EconomyRun | null = null, autosaveOverride?: () => void, extra: Partial<EconomyDeps> = {}) {
   const map = new GameMap(16, 8);
   const parcels = new ParcelStore();
   for (let x = 1; x <= 10; x++) placeTransport(map, x, 2, BuiltKind.RoadStreet); // upkeep > 0
@@ -58,6 +58,7 @@ function setup(initial: EconomyRun | null = null, autosaveOverride?: () => void)
       }),
     ui,
     nowSec: () => t / 1000,
+    ...extra,
   });
   return { map, parcels, tech, civic, sim, live, econ, log, autosaves: () => autosaves, setT: (ms: number) => (t = ms) };
 }
@@ -163,6 +164,29 @@ describe('createEconomyController', () => {
     expect(tech.unlocked.has('walkable-streets')).toBe(true);
     expect(log).toEqual(['granted', 'refreshed', 'pulse']);
     expect(econ.run().projects).toHaveLength(0);
+  });
+
+  it('the hour’s rent displacement empties real homes — sparing the ones their neighbourhood protects', () => {
+    const calls: { amount: number; house: number }[] = [];
+    const run = (voice: number) => {
+      calls.length = 0;
+      const priced: EconomyRun = { state: { ...createEconomy(1e6), rent: 1 }, projects: [], levers: DEFAULT_LEVERS };
+      const { econ, map } = setup(priced, undefined, {
+        voiceAt: () => voice,
+        displace: (amount, protectionAt) => {
+          calls.push({ amount, house: protectionAt(map.idx(4, 3)) });
+          return amount;
+        },
+      });
+      const before = econ.run().state.displaced;
+      econ.runHour();
+      return econ.run().state.displaced - before;
+    };
+    const displaced = run(0);
+    expect(displaced).toBeGreaterThan(0);
+    expect(calls).toEqual([{ amount: displaced, house: 0 }]);
+    run(1); // a fully organised neighbourhood: protected, nobody displaced
+    expect(calls.every((c) => c.amount === 0) || calls.length === 0).toBe(true);
   });
 
   it('beginning a practice pays its money up front, once — and is refused without it', () => {

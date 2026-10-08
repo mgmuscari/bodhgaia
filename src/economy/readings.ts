@@ -128,12 +128,22 @@ export interface CityInputs {
   repairs: number;
   /** The practices in force (absent ⇒ none). */
   practices?: EconomyPractices;
+  /** How organised the neighbourhood at a tile is, 0..1 (civic voice ÷ 255): tenant organising protects its
+   *  homes from displacement (rehoming.md). Absent ⇒ 0 everywhere. */
+  voiceAt?(tile: number): number;
 }
 
-export function readCity(inp: CityInputs): CityReading {
+/** How protected a home is from being priced out, 0..1: held in common (co-op, commune), on Land Trust land,
+ *  or organised — the best of the three. */
+export function homeProtection(kind: number, inTrust: boolean, voice: number): number {
+  if (PROTECTED.has(kind) || inTrust) return 1;
+  return voice < 0 ? 0 : voice > 1 ? 1 : voice;
+}
+
+/** Each home's protection by anchor tile — what readCity counts and what rent displacement spares. */
+export function homeProtections(inp: CityInputs): Map<number, number> {
   const { map, parcels } = inp;
   const pr = inp.practices ?? NEUTRAL_ECONOMY_PRACTICES;
-  // the trust's land: footprints of its anchors grown by the radius
   const trustBoxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
   if (pr.landTrust) {
     for (const i of parcels.aliveIndices()) {
@@ -143,7 +153,21 @@ export function readCity(inp: CityInputs): CityReading {
       trustBoxes.push({ x0: a.x - r, y0: a.y - r, x1: a.x + a.width - 1 + r, y1: a.y + a.height - 1 + r });
     }
   }
-  const inTrust = (x: number, y: number): boolean => trustBoxes.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1);
+  const out = new Map<number, number>();
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    if (!RESIDENTIAL.has(p.kind)) continue;
+    const anchor = map.idx(p.x, p.y);
+    const inTrust = trustBoxes.some((b) => p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1);
+    out.set(anchor, homeProtection(p.kind, inTrust, inp.voiceAt?.(anchor) ?? 0));
+  }
+  return out;
+}
+
+export function readCity(inp: CityInputs): CityReading {
+  const { map, parcels } = inp;
+  const pr = inp.practices ?? NEUTRAL_ECONOMY_PRACTICES;
+  const protection = homeProtections(inp);
   let crafts = 0;
   let households = 0;
   let protectedHouseholds = 0;
@@ -158,7 +182,7 @@ export function readCity(inp: CityInputs): CityReading {
     const lv = (inp.landValueAt(anchor) ?? 0) / 255;
     if (RESIDENTIAL.has(p.kind)) {
       households += occ;
-      if (PROTECTED.has(p.kind) || inTrust(p.x, p.y)) protectedHouseholds += occ;
+      protectedHouseholds += occ * (protection.get(anchor) ?? 0);
       base.r += occ * lv * BASE_PER_UNIT.r;
     } else if (COMMERCIAL.has(p.kind) || INDUSTRIAL.has(p.kind)) {
       // a workplace's tax base is its jobs: density, scaled by how well the building is kept
