@@ -239,6 +239,18 @@ describe('availableTools: rezone tools (building-target 3-way gate)', () => {
     expect(ids(tech)).toContain('convert-61');
   });
 
+  it('a park can be BUILT on open land too, not only rezoned from a lot (Maddy 2026-10-08)', () => {
+    const tech = freshTech(1000);
+    expect(ids(tech)).not.toContain('build-61');
+    for (const id of ['walkable-streets', 'road-diets', 'parklets', 'pocket-parks']) tech.unlock(id);
+    expect(ids(tech)).toContain('build-61');
+    expect(ids(tech)).toContain('convert-61'); // and rezoning stays
+    const world = freshWorld();
+    expect(applyTool(world, tech, toolDef('build-61')!, 3, 3).ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Park);
+    expect(world.parcels.aliveCount()).toBe(1);
+  });
+
   it('reveals convert-62 only after the rewilding chain (RewildedLand grant)', () => {
     const tech = freshTech(1000);
     tech.unlock('walkable-streets');

@@ -227,6 +227,7 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.Promenade]: { label: 'Promenade', cost: 4 },
   // Buildings (parcels)
   [BuiltKind.Parklet]: { label: 'Parklet', cost: 8, footprint: { w: 1, h: 1 } },
+  [BuiltKind.Park]: { label: 'Pocket Park', cost: 6, footprint: { w: 1, h: 1 } }, // built on open land, or rezoned from a lot
   [BuiltKind.CommunityGarden]: { label: 'Community Garden', cost: 14, footprint: { w: 2, h: 2 } },
   [BuiltKind.CompostHub]: { label: 'Compost Hub', cost: 10, footprint: { w: 1, h: 1 } },
   [BuiltKind.VerticalFarm]: { label: 'Vertical Farm', cost: 22, footprint: { w: 2, h: 2 } },
