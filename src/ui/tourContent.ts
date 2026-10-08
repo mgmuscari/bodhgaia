@@ -30,7 +30,7 @@ function bestWindow(map: GameMap, r: number, score: (i: number) => number): { x:
 }
 
 /** Four stops: the heart of the city (densest building), the greenest ground, the busiest waterfront, then the
- *  whole city, wide. A stop the map lacks falls back to the map's centre. */
+ *  whole city, wide (centred on everything built). A stop the map lacks falls back to the map's centre. */
 export function tourStops(map: GameMap, parcels: ParcelStore): TourStop[] {
   void parcels; // the parcel layer on the map carries the footprints
   const centre = { x: map.width >> 1, y: map.height >> 1 };
@@ -47,11 +47,26 @@ export function tourStops(map: GameMap, parcels: ParcelStore): TourStop[] {
     return 0;
   };
   const water = bestWindow(map, 4, shore) ?? centre;
+  // the whole city: the centre of everything built (the map's own middle may be open water)
+  let x0 = map.width;
+  let y0 = map.height;
+  let x1 = -1;
+  let y1 = -1;
+  for (let i = 0; i < map.parcel.length; i++) {
+    if (map.parcel[i] === 0) continue;
+    const x = i % map.width;
+    const y = (i - x) / map.width;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  const city = x1 >= 0 ? { x: (x0 + x1) >> 1, y: (y0 + y1) >> 1 } : centre;
   return [
     { ...heart, zoom: 2 },
     { ...green, zoom: 3 },
     { ...water, zoom: 2 },
-    { ...centre, zoom: 1 },
+    { ...city, zoom: 1 },
   ];
 }
 

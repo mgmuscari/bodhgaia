@@ -20,7 +20,8 @@ describe('tourStops: the heart, the green, the water, then the whole city', () =
     expect(Math.abs(heart!.x - 14) + Math.abs(heart!.y - 14)).toBeLessThanOrEqual(4);
     expect(Math.abs(green!.x - 55) + Math.abs(green!.y - 45)).toBeLessThanOrEqual(5);
     expect(Math.abs(water!.x - 74) + Math.abs(water!.y - 24)).toBeLessThanOrEqual(5);
-    expect(whole).toEqual({ x: 40, y: 30, zoom: 1 });
+    // the whole CITY, not the map's middle (lotus's middle is open ocean): the centre of everything built
+    expect(whole).toEqual({ x: 42, y: 18, zoom: 1 });
   });
 
   it('is deterministic', () => {
