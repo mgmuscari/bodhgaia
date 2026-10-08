@@ -96,6 +96,12 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     const poolOnly = map.built[t] === BuiltKind.TinyHomes;
     const floor = poolOnly ? 0 : h.count * state.practices.occFloor; // a home never thins below this share of its baseline (Mutual Aid raises it)
     let cur = state.occupancy.get(t);
+    if (state.flooded?.has(t)) {
+      // evacuated: it stands empty until the water goes (app/flood.ts brings its people home)
+      next.set(t, cur ?? 0);
+      expect.set(t, state.occExpect.get(t) ?? 0);
+      continue;
+    }
     if (cur === undefined) {
       // the opening census is seeded full; a home BUILT since opens empty and fills (rehoming.md)
       if (state.occPasses === 0) cur = h.count;
