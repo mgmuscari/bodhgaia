@@ -44,6 +44,8 @@ import {
   roadPath,
   tripEvaporates,
   tripDelivered,
+  homeDrives,
+  evaporationBoost,
   walkPath,
 } from './pathing';
 import { curbStallOffsets, isCarRoad, isParkable } from './network';
@@ -199,10 +201,13 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
     if (plot && stopReachable(state, map, cx, cy, plot)) {
       const jam = p.carId !== undefined ? 0 : Math.max(jamNear(map, state.traffic, cx, cy), jamNear(map, state.traffic, plot.x, plot.y));
       const pr = state.practices;
-      const chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, pr.walkStretch, pr.bikeStretch);
       const tripHash = Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0);
-      // a drive into gridlock may simply not happen — the errand is forgone or folded into another
-      if (chosen === TravelMode.Drive && tripEvaporates(jam, tripHash)) continue;
+      let chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, pr.walkStretch, pr.bikeStretch);
+      // a commune owns no cars; a parklet took this block's parking — those trips go on foot
+      if (chosen === TravelMode.Drive && p.carId === undefined && p.homeTile !== undefined && !homeDrives(map, p.homeTile, tripHash)) chosen = TravelMode.Walk;
+      // a drive into gridlock may simply not happen — the errand is forgone or folded into another (an AI node's
+      // scheduling makes that likelier)
+      if (chosen === TravelMode.Drive && tripEvaporates(Math.min(1, jam * evaporationBoost(map, cx, cy)), tripHash)) continue;
       // Drone Deliveries: a driven shopping errand is delivered instead
       if (chosen === TravelMode.Drive && itin[step] === StopCategory.Shop && tripDelivered(pr.droneShopDrop, tripHash)) continue;
       p.itinStep = step;

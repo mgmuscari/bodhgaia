@@ -5,6 +5,7 @@
 import type { GameMap } from '../../engine/map';
 import { BuiltKind } from '../../engine/fabric';
 import { sampleField } from '../../citizens/field';
+import { nearKind } from '../pathing';
 import { liveCaps } from '../caps';
 import {
   INHERITED_VACANCY,
@@ -18,6 +19,9 @@ import {
   OCC_RATE,
   OCC_SETTLE_PASSES,
   REHOME_FRESH,
+  ADU_HOUSE_HEADROOM,
+  FRESH_FOOD_PULL,
+  FRESH_FOOD_RADIUS,
   REHOME_WELCOME,
   POLL_MAX,
 } from '../tuning';
@@ -29,6 +33,17 @@ import type { AmbientState } from '../types';
  *  is fixed); a derelict (zero baseline) holds nobody. */
 export function capacityOf(kind: number, baseCount: number): number {
   return baseCount * (OCC_HEADROOM.get(kind) ?? 1.5);
+}
+
+/** A home's ceiling on the map: its kind's headroom, except a house beside an accessory dwelling (8-neighbour),
+ *  which can hold ADU_HOUSE_HEADROOM× — densifying without demolition. */
+export function homeCapacity(map: GameMap, tile: number, baseCount: number): number {
+  const kind = map.built[tile]!;
+  if (kind === BuiltKind.HouseSingle) {
+    const x = tile % map.width;
+    if (nearKind(map, x, (tile - x) / map.width, BuiltKind.ADU, 1)) return baseCount * ADU_HOUSE_HEADROOM;
+  }
+  return capacityOf(kind, baseCount);
 }
 
 /** The pull on a home's population (pure): land value above OCC_LV_NEUTRAL attracts residents, below
@@ -74,7 +89,7 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
   const settling = state.occPasses < OCC_SETTLE_PASSES;
   for (const h of homes) {
     const t = map.idx(h.x, h.y);
-    const cap = capacityOf(map.built[t]!, h.count);
+    const cap = homeCapacity(map, t, h.count);
     // a tiny-home village shelters only the city's unhoused: it fills from the pool alone and may stand empty
     const poolOnly = map.built[t] === BuiltKind.TinyHomes;
     const floor = poolOnly ? 0 : h.count * state.practices.occFloor; // a home never thins below this share of its baseline (Mutual Aid raises it)
@@ -87,11 +102,10 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
         (state.freshHomes ??= new Set()).add(t);
       }
     }
-    const raw = occupancySignal(
-      sampleField(state.landValue, t),
-      sampleField(state.pollution, t),
-      state.buildingHealth.get(t) ?? 0,
-    );
+    const raw =
+      occupancySignal(sampleField(state.landValue, t), sampleField(state.pollution, t), state.buildingHealth.get(t) ?? 0) +
+      // fresh food in reach holds residents (a vertical farm)
+      (nearKind(map, h.x, h.y, BuiltKind.VerticalFarm, FRESH_FOOD_RADIUS) ? FRESH_FOOD_PULL : 0);
     // a new home (or the opening) takes its conditions as normal
     const was = settling ? raw : (state.occExpect.get(t) ?? raw);
     let to = occupancyStep(cur, floor, cap, raw - was);
