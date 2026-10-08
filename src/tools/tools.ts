@@ -341,7 +341,7 @@ export function availableTools(tech: TechState): ToolDef[] {
       ? tech.grantedKinds().has(to as BuiltKind) // rezoning green (61/62): kind-gated
       : isTechTarget(to)
         ? tech.grantedKinds().has(to as BuiltKind) // transit (5..9): kind-gated
-        : tech.hasCapability('road-diets'); // classic road (1..4): capability-gated
+        : tech.effects().roadConversions; // classic road (1..4): Road Diets
     if (ok) out.push(toolDef(`convert-${to}`)!);
   }
 

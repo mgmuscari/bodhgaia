@@ -431,8 +431,6 @@ export const STUCK_ESCAPE = 160;
  *  freeway's length, and classifies end tiles the same as mid tiles. */
 export const LANE_SCAN_CAP = 3;
 
-/** How much farther people walk once the city has Walkable Streets (the `walkability` capability). */
-export const WALKABLE_STRETCH = 1.5;
 /** How far (Manhattan) a trip end reads congestion. */
 export const JAM_RADIUS = 2;
 /** The share of driving trips that evaporate in a full jam. */

@@ -35,7 +35,6 @@ import {
   POLL_MAX,
   ROAD_PATH_MAX_ITERS,
   TRAFFIC_MAX,
-  WALKABLE_STRETCH,
   WALK_RANGE,
   WEAR_MAX,
 } from './tuning';
@@ -520,12 +519,12 @@ export function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode
  *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
  *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
  *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkable = false): TravelMode {
+export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1): TravelMode {
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
   // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
   const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
-  // Walkable Streets (crossings, shade, slower cars): people walk half as far again
-  if (d <= WALK_RANGE * stretch * (walkable ? WALKABLE_STRETCH : 1)) return TravelMode.Walk;
+  // Walkable Streets (crossings, shade, slower cars) stretches how far people will walk
+  if (d <= WALK_RANGE * stretch * walkStretch) return TravelMode.Walk;
   for (const mode of MODE_CHOICE_ORDER) {
     if (mode === TravelMode.Bike) {
       // A medium leg cycles (you can bike a street); bike-friendly infra just makes it faster/nicer

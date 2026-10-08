@@ -110,7 +110,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       occupancyAt: (t) => live.occupancy.get(t),
       landValueAt: (t) => live.landValue.get(t),
       wellbeing: wellbeing01(),
-      extraInfra: (tech.hasCapability('circles') ? 2 : 0) + (tech.hasCapability('participatory-budgeting') ? 2 : 0),
+      extraInfra: tech.effects().socialInfra,
       harms,
       repairs: 0, // civic trust already earns repairs itself
     });

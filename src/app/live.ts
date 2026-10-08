@@ -12,7 +12,7 @@ import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
 import { stepAmbient } from '../live/step';
 import { applyLiveCaps, type LiveCaps } from '../live/caps';
-import { createAmbientState, setParkingLots, setHouseholds, setPlantEmitters, type AmbientState } from '../live/types';
+import { createAmbientState, setParkingLots, setHouseholds, setPlantEmitters, type AmbientState, type LivePractices } from '../live/types';
 import { seedDecay } from '../live/fields/pollution';
 import { parkingLots, parkingStalls } from '../ui/parkingContent';
 import { residentialCensus } from '../citizens/census';
@@ -53,8 +53,8 @@ export interface LiveDeps {
   caps: Partial<LiveCaps>;
   /** A resumed city's live stocks (put over the seeded decay), or null for a fresh one. */
   saved: SaveV1['live'] | null;
-  /** Walkable Streets: people walk farther (read each step). */
-  walkable(): boolean;
+  /** The tech practices' live coefficients (read each step). */
+  practices(): LivePractices;
   /** Wall-clock ms (default performance.now). */
   now?(): number;
 }
@@ -128,7 +128,7 @@ export function createLive(deps: LiveDeps): LiveLayer {
       if (next) lastStep = now();
     },
     step: (t) => {
-      state.walkable = deps.walkable();
+      state.practices = deps.practices();
       stepAmbient(state, map, ambientRng, t - lastStep);
       lastStep = t;
     },

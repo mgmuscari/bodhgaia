@@ -3,7 +3,7 @@ import { createLive, plantEmitters, PLUME_RADIUS } from '../../src/app/live';
 import { GameMap } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
 import { plantPollution } from '../../src/growth/power';
-import { createAmbientState } from '../../src/live/types';
+import { createAmbientState, NEUTRAL_PRACTICES, type LivePractices } from '../../src/live/types';
 import { liveCaps, applyLiveCaps } from '../../src/live/caps';
 import { seedDecay } from '../../src/live/fields/pollution';
 import { createRng } from '../../src/engine/rng';
@@ -55,7 +55,7 @@ describe('plantEmitters: each dirty plant smogs its footprint + a plume ring', (
 describe('createLive', () => {
   it('seeds the decay a century left, like seedDecay on a fresh state', () => {
     const { map, parcels } = city();
-    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved: null, walkable: () => false, now: () => 0 });
+    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved: null, practices: () => NEUTRAL_PRACTICES, now: () => 0 });
     const ref = createAmbientState(createRng('s').fork('ambient-wind'));
     seedDecay(ref, map);
     expect(live.state.wear.size).toBeGreaterThan(0);
@@ -67,14 +67,14 @@ describe('createLive', () => {
     const { map, parcels } = city();
     const empty = { occupancy: [], occExpect: [], wear: [[3, 7]], roadDecay: [], waterPollution: [], groundPollution: [], pollution: [], buildingHealth: [] };
     const saved = { maps: empty, occPasses: 9 } as unknown as SaveV1['live'];
-    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved, walkable: () => false, now: () => 0 });
+    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved, practices: () => NEUTRAL_PRACTICES, now: () => 0 });
     expect([...live.state.wear]).toEqual([[3, 7]]); // not the seeded trampling
     expect(live.state.occPasses).toBe(9);
   });
 
   it('applies the perf caps at creation and on change', () => {
     const { map, parcels } = city();
-    const live = createLive({ seed: 's', map, parcels, caps: CAP_PRESETS.low, saved: null, walkable: () => false, now: () => 0 });
+    const live = createLive({ seed: 's', map, parcels, caps: CAP_PRESETS.low, saved: null, practices: () => NEUTRAL_PRACTICES, now: () => 0 });
     expect(liveCaps.pedCap).toBe(CAP_PRESETS.low.pedCap);
     live.applyCaps(CAP_PRESETS.high);
     expect(liveCaps.pedCap).toBe(CAP_PRESETS.high.pedCap);
@@ -83,7 +83,7 @@ describe('createLive', () => {
   it('publishes the parking lots, households and plant emitters it derives from the city', () => {
     const { map, parcels } = city();
     placeParcel(map, parcels, { x: 16, y: 1, width: 1, height: 1, kind: BuiltKind.CoalPlant });
-    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved: null, walkable: () => false, now: () => 0 });
+    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved: null, practices: () => NEUTRAL_PRACTICES, now: () => 0 });
     expect(live.state.households!.length).toBeGreaterThan(0);
     expect(live.state.plantEmitters!.length).toBe(plantEmitters(map, parcels).length);
     placeParcel(map, parcels, { x: 1, y: 10, width: 1, height: 1, kind: BuiltKind.CoalPlant });
@@ -91,18 +91,18 @@ describe('createLive', () => {
     expect(live.state.plantEmitters!.length).toBe(plantEmitters(map, parcels).length);
   });
 
-  it('steps on its OWN clock: dt since the last step (or reset), carrying the walkability flag', () => {
+  it('steps on its OWN clock: dt since the last step (or reset), carrying the practices', () => {
     const { map, parcels } = city();
-    let walk = false;
+    let practices: LivePractices = NEUTRAL_PRACTICES;
     let t = 1000;
-    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved: null, walkable: () => walk, now: () => t });
+    const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved: null, practices: () => practices, now: () => t });
     expect(live.on).toBe(true); // ambient life is on by default
     live.step(1010);
     expect(live.state.accMs).toBe(10);
-    walk = true;
+    practices = { walkStretch: 1.5 };
     live.step(1030);
     expect(live.state.accMs).toBe(30);
-    expect(live.state.walkable).toBe(true);
+    expect(live.state.practices.walkStretch).toBe(1.5);
     // off for a long while, then back on: the clock restarts — no giant first dt
     live.on = false;
     t = 90_000;

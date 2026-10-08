@@ -60,8 +60,8 @@ export interface SimTickResult {
  *     and write `deps.ecoMeans`.
  *  2. CIVIC at tick>0 && %CIVIC_CADENCE: recompute the partition, REMAP the civic
  *     state onto it, run civicTick, THEN recompute civicReport and write
- *     `deps.civicMeans`. The capabilities are resolved from tech HERE (passed to
- *     dynamics as booleans, so civic never imports tech for the consume).
+ *     `deps.civicMeans`. The practices' effects are resolved from tech HERE (passed
+ *     to dynamics as plain numbers, so civic never imports tech for the consume).
  *
  * Returns the per-tick fire flags. Effort is untouched — the economy owns it.
  */
@@ -87,11 +87,7 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
     const newPartition = computeNeighborhoods(deps.world.map);
     deps.civic.remap(deps.partition, newPartition);
     deps.partition = newPartition;
-    const caps: CivicCaps = {
-      circles: deps.tech.hasCapability('circles'),
-      participatoryBudgeting: deps.tech.hasCapability('participatory-budgeting'),
-      giftCircles: deps.tech.hasCapability('gift-circles'),
-    };
+    const caps: CivicCaps = { voicePerTick: deps.tech.effects().voicePerTick };
     civicTick(deps.world.map, deps.world.parcels, deps.partition, deps.civic, caps, tick);
     const cr = civicReport(deps.civic, deps.partition);
     deps.civicMeans = {
