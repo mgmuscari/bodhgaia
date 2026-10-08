@@ -57,8 +57,9 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - ✅ **Map clicks dropped when a no-button move arrives between press and release** — `src/ui/input.ts`
   safety net (`e.buttons === 0` → end drag) swallows the pointerup, so a build click places nothing (seen
   driving the game from the Chrome extension). Fix: only apply the safety net when the pointer isn't captured.
-- 🟡 **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
-  cut off the top; the dock also runs off the bottom edge.
+- ✅ **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
+  cut off the top; the dock also runs off the bottom edge. — Cause: focusing the Continue button scrolled the
+  (88vh, scrolling) panel to its foot; it now focuses without scrolling. The dock sits in the top bar now.
 - ✅ **Tech tree cards overlap** — rebuilt as branch lanes of fixed-size cards with a detail pane.
 - ✅ **Settings typo** — the renderer note now describes what the GPU path does.
 - ✅ **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
