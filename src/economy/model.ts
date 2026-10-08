@@ -166,6 +166,18 @@ export function mourn(s: EconomyState, deaths: number): EconomyState {
   };
 }
 
+/** Something the city did together moves it (community events): approval and goodwill up (or down, for a protest
+ *  whose cause stands), money in from a fair. Clamped. Pure. */
+export function cheer(s: EconomyState, d: { approval?: number; goodwill?: number; funds?: number }): EconomyState {
+  if (!d.approval && !d.goodwill && !d.funds) return s;
+  return {
+    ...s,
+    approval: clamp(s.approval + (d.approval ?? 0), 0, 100),
+    goodwill: clamp(s.goodwill + (d.goodwill ?? 0), 0, 100),
+    funds: s.funds + (d.funds ?? 0),
+  };
+}
+
 export function createEconomy(funds = 2000): EconomyState {
   return { funds, loans: [], effort: 0, burnout: 0, goodwill: ECON.goodwillNeutral, approval: 50, rent: 0.3, displaced: 0, shock: 0, reliefTaken: false, tick: 0 };
 }

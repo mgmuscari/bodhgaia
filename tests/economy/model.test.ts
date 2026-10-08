@@ -166,3 +166,17 @@ describe('a death costs the city (Maddy 2026-10-07: enough to notice)', () => {
     expect(mourn(s, 0)).toEqual(s);
   });
 });
+
+describe('cheer (community events)', () => {
+  it('a celebration lifts approval and goodwill, and a fair brings in money — clamped like everything else', async () => {
+    const { cheer } = await import('../../src/economy/model');
+    const s = createEconomy(1000);
+    const after = cheer(s, { approval: 4, goodwill: 3, funds: 200 });
+    expect(after.approval).toBe(s.approval + 4);
+    expect(after.goodwill).toBe(s.goodwill + 3);
+    expect(after.funds).toBe(1200);
+    expect(cheer({ ...s, approval: 99 }, { approval: 5 }).approval).toBe(100);
+    expect(cheer(s, { approval: -3 }).approval).toBe(s.approval - 3); // a protest's cost goes through it too
+    expect(cheer(s, {})).toEqual(s);
+  });
+});
