@@ -12,6 +12,11 @@ import { buildVertexSource } from './satelliteShader';
 import { cameraToShaderView } from './gpuRenderer';
 import { ART_GRID_GLSL } from './artGrid';
 import type { Camera } from './camera';
+import { dayNightBrightness } from './lighting';
+import { gameSec } from './gameTime';
+
+/** The haze's light: the ground's day/night brightness, never quite black (a haze still catches the street lights). */
+const nightLight = (): number => Math.max(0.3, dayNightBrightness(gameSec()));
 
 function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLShader {
   const s = gl.createShader(type)!;
@@ -32,6 +37,7 @@ uniform vec2 u_origin;    // top-left visible world cell
 uniform vec2 u_view;      // visible window size in cells
 uniform float u_time;     // seconds
 uniform vec2 u_wind;      // prevailing wind (cells/sec-ish direction)
+uniform float u_light;    // the day/night light (1 at noon) — haze darkens at night like the ground under it
 in vec2 v_uv;
 out vec4 fragColor;
 ${ART_GRID_GLSL}
@@ -57,7 +63,8 @@ void main(){
   float ta = clamp(td * (0.62 + 0.45 * h), 0.0, 0.96);
   vec3 tcol = mix(vec3(0.66, 0.76, 0.20), vec3(0.86, 0.86, 0.30), h);
   float outA = ta + a * (1.0 - ta);
-  fragColor = outA > 0.0 ? vec4((tcol * ta + col * a * (1.0 - ta)) / outA, outA) : vec4(0.0);
+  vec3 lit = outA > 0.0 ? (tcol * ta + col * a * (1.0 - ta)) / outA * u_light : vec3(0.0);
+  fragColor = outA > 0.0 ? vec4(lit, outA) : vec4(0.0);
 }`;
 }
 
@@ -98,7 +105,7 @@ export class SmogOverlay {
     this.pollTex = gl.createTexture();
     gl.useProgram(program);
     gl.uniform1i(gl.getUniformLocation(program, 'u_poll'), 0);
-    for (const n of ['u_grid', 'u_origin', 'u_view', 'u_time', 'u_wind']) this.u[n] = gl.getUniformLocation(program, n);
+    for (const n of ['u_grid', 'u_origin', 'u_view', 'u_time', 'u_wind', 'u_light']) this.u[n] = gl.getUniformLocation(program, n);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     // R8 pollution texture (LINEAR so the haze gradients smoothly across tiles).
@@ -153,6 +160,7 @@ export class SmogOverlay {
     gl.uniform2f(this.u.u_view!, view[0], view[1]);
     gl.uniform1f(this.u.u_time!, timeSec);
     gl.uniform2f(this.u.u_wind!, wind.dx, wind.dy);
+    gl.uniform1f(this.u.u_light!, nightLight());
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -183,6 +191,7 @@ export class SmogOverlay {
     gl.uniform2f(this.u.u_view!, view[0], view[1]);
     gl.uniform1f(this.u.u_time!, timeSec);
     gl.uniform2f(this.u.u_wind!, wind.dx, wind.dy);
+    gl.uniform1f(this.u.u_light!, nightLight());
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.disable(gl.SCISSOR_TEST);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
