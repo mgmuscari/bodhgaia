@@ -130,7 +130,8 @@ export function createToolController(deps: ToolsDeps): ToolController {
       return;
     }
     if (!r.ok) {
-      deps.feedback?.denied();
+      // an empty tile in a bulldoze stroke isn't a refusal — only a real 'no' sounds
+      if (r.reason !== 'nothing-to-bulldoze') deps.feedback?.denied();
       return;
     }
     deps.feedback?.applied(def);

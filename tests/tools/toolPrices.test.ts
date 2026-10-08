@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
-import { BuiltKind, ParcelStore, isCommonsKind } from '../../src/engine/fabric';
+import { BuiltKind, ParcelStore, isCommonsKind, placeParcel } from '../../src/engine/fabric';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
-import { toolDef, toolPrice, previewTool, applyTool, FUNDS_PER_COST, type Wallet } from '../../src/tools/tools';
+import { toolDef, toolPrice, previewTool, applyTool, chargeFor, FUNDS_PER_COST, type Wallet } from '../../src/tools/tools';
 
 // The economy splits what things cost (Maddy 2026-09-30): the built fabric — roads, zones, plants,
 // services — is paid from the treasury; the commons (gardens, parklets…) is raised with communal effort.
@@ -101,5 +101,48 @@ describe('freeway removal pays (salvage, and the upkeep stops)', () => {
     const wallet: Wallet = { funds: 0 };
     expect(applyTool(w, tech, toolDef('bulldoze')!, 5, 5, wallet).ok).toBe(true);
     expect(tech.effort).toBeLessThan(50);
+  });
+});
+
+// Maddy 2026-10-07: "it should cost effort to bulldoze housing, civic services and commercial. half cost of effort
+// for industrial". Tearing down where people live, are cared for, or trade takes the community's effort (the
+// building's own build price, in effort); industry half that. Roads, lots and the precinct keep their ordinary price.
+describe('demolition costs effort', () => {
+  const site = (kind: BuiltKind, w = 1, h = 1) => {
+    const ww = world();
+    placeParcel(ww.map, ww.parcels, { x: 3, y: 3, width: w, height: h, kind });
+    return ww;
+  };
+  const charge = (ww: ReturnType<typeof world>, funds = 10_000) => chargeFor(ww, toolDef('bulldoze')!, 3, 3, { funds });
+
+  it('a home, a shop, a clinic: their build price in effort, no funds', () => {
+    expect(charge(site(BuiltKind.HouseSingle))).toEqual({ effort: toolDef(`build-${BuiltKind.HouseSingle}`)!.cost, funds: 0 });
+    expect(charge(site(BuiltKind.CommercialStrip))).toEqual({ effort: toolDef(`build-${BuiltKind.CommercialStrip}`)!.cost, funds: 0 });
+    expect(charge(site(BuiltKind.Clinic, 2, 2))).toEqual({ effort: toolDef(`build-${BuiltKind.Clinic}`)!.cost, funds: 0 });
+  });
+
+  it('industry costs half', () => {
+    expect(charge(site(BuiltKind.Industrial))).toEqual({ effort: toolDef(`build-${BuiltKind.Industrial}`)!.cost / 2, funds: 0 });
+  });
+
+  it('homes with no build tool (apartments, projects) still cost effort, by footprint', () => {
+    const c = charge(site(BuiltKind.Apartments, 2, 2));
+    expect(c.funds).toBe(0);
+    expect(c.effort).toBeGreaterThan(charge(site(BuiltKind.HouseSingle)).effort);
+  });
+
+  it('a road, a parking lot and the precinct keep their ordinary price', () => {
+    const road = world();
+    road.map.setBuilt(3, 3, BuiltKind.RoadStreet);
+    expect(charge(road)).toEqual(toolPrice(toolDef('bulldoze')!));
+    expect(charge(site(BuiltKind.ParkingLot))).toEqual(toolPrice(toolDef('bulldoze')!));
+    expect(charge(site(BuiltKind.Precinct, 2, 2))).toEqual(toolPrice(toolDef('bulldoze')!));
+  });
+
+  it('without the effort, the demolition is refused', () => {
+    const ww = site(BuiltKind.HouseSingle);
+    const tech = createTechState(TECH_TREE);
+    tech.effort = 1;
+    expect(previewTool(ww, tech, toolDef('bulldoze')!, 3, 3, { funds: 10_000 }).reason).toBe('effort');
   });
 });
