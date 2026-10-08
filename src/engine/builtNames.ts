@@ -55,6 +55,7 @@ const NAME_OF: ReadonlyMap<number, string> = new Map<number, string>([
   [BuiltKind.CoopHousing, 'Co-op Housing'],
   [BuiltKind.Commune, 'Commune'],
   [BuiltKind.TinyHomes, 'Tiny-Home Village'],
+  [BuiltKind.Yard, 'Back Yard'],
   [BuiltKind.Bazaar, 'Bazaar'],
   [BuiltKind.MakerSpace, 'Maker Space'],
   [BuiltKind.HealingCommons, 'Healing Commons'],
