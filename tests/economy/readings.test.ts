@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
-import { readCity, homeProtection, UPKEEP, TENDING, NEUTRAL_ECONOMY_PRACTICES, type EconomyPractices } from '../../src/economy/readings';
+import { RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, readCity, homeProtection, UPKEEP, TENDING, NEUTRAL_ECONOMY_PRACTICES, type EconomyPractices } from '../../src/economy/readings';
 
 // The economy reads the live city as a handful of aggregates (src/economy stays headless: the city hands
 // it plain accessors, like growth's occupancy accessor).
@@ -192,5 +192,16 @@ describe('readCity — building area effects (tech-tree batch 3)', () => {
     const r = base(c);
     expect(r.households).toBe(15);
     expect(r.regenHouseholds).toBe(20);
+  });
+});
+
+describe('readCity — elevated rail draws shoppers (Maddy 2026-10-07)', () => {
+  it(`shops within ${RAIL_COMMERCE_RADIUS} tiles of the line are assessed ${RAIL_COMMERCE_LIFT}×`, () => {
+    const read1 = (c: ReturnType<typeof city>) =>
+      readCity({ map: c.map, parcels: c.parcels, occupancyAt: (t) => c.occ.get(t), landValueAt: (t) => c.lv.get(t), wellbeing: 0.5, extraInfra: 0, harms: { blackouts: 0, policeViolence: 0, takings: 0 }, repairs: 0 });
+    const before = read1(city()).base.c;
+    const c = city(); // the strip at (3,1)
+    for (let x = 0; x < 8; x++) c.map.deck[c.map.idx(x, 3)] = BuiltKind.ElevatedRail; // over the street, 2 rows away
+    expect(read1(c).base.c).toBeCloseTo(before * RAIL_COMMERCE_LIFT, 9);
   });
 });

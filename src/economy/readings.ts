@@ -127,6 +127,21 @@ const COMPOSTED: ReadonlySet<number> = new Set<number>([BuiltKind.CommunityGarde
 /** Bazaar: the shops within this reach are assessed BAZAAR_LIFT × (the bazaar draws a crowd). */
 export const BAZAAR_RADIUS = 4;
 export const BAZAAR_LIFT = 1.25;
+/** Elevated Rail: shops within RAIL_COMMERCE_RADIUS (Chebyshev) of the line are assessed RAIL_COMMERCE_LIFT×. */
+export const RAIL_COMMERCE_RADIUS = 2;
+export const RAIL_COMMERCE_LIFT = 1.25;
+
+/** Is there elevated rail (ground or deck) within `r` of a parcel's footprint? */
+function nearElevatedRail(map: GameMap, p: { x: number; y: number; width: number; height: number }, r: number): boolean {
+  for (let y = Math.max(0, p.y - r); y <= Math.min(map.height - 1, p.y + p.height - 1 + r); y++) {
+    for (let x = Math.max(0, p.x - r); x <= Math.min(map.width - 1, p.x + p.width - 1 + r); x++) {
+      const i = map.idx(x, y);
+      if (map.built[i] === BuiltKind.ElevatedRail || map.deck[i] === BuiltKind.ElevatedRail) return true;
+    }
+  }
+  return false;
+}
+
 /** Commune: its households regenerate effort COMMUNE_REGEN × (pooled lives, pooled time). */
 export const COMMUNE_REGEN = 2;
 
@@ -215,7 +230,11 @@ export function readCity(inp: CityInputs): CityReading {
     } else if (COMMERCIAL.has(p.kind) || INDUSTRIAL.has(p.kind)) {
       // a workplace's tax base is its jobs: density, scaled by how well the building is kept
       const jobs = p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
-      if (COMMERCIAL.has(p.kind)) base.c += jobs * lv * BASE_PER_UNIT.c * (p.kind !== BuiltKind.Bazaar && nearBazaar(p) ? BAZAAR_LIFT : 1);
+      if (COMMERCIAL.has(p.kind)) {
+        const crowd = p.kind !== BuiltKind.Bazaar && nearBazaar(p) ? BAZAAR_LIFT : 1;
+        const line = nearElevatedRail(map, p, RAIL_COMMERCE_RADIUS) ? RAIL_COMMERCE_LIFT : 1;
+        base.c += jobs * lv * BASE_PER_UNIT.c * crowd * line;
+      }
       else base.i += jobs * BASE_PER_UNIT.i; // assessed on output: industry's land value is its own victim
     }
     upkeep += UPKEEP.get(p.kind) ?? 0;

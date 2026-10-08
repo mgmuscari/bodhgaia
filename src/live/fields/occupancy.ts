@@ -22,6 +22,8 @@ import {
   ADU_HOUSE_HEADROOM,
   FRESH_FOOD_PULL,
   FRESH_FOOD_RADIUS,
+  RAIL_NOISE,
+  RAIL_NOISE_RADIUS,
   REHOME_WELCOME,
   POLL_MAX,
 } from '../tuning';
@@ -105,7 +107,9 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     const raw =
       occupancySignal(sampleField(state.landValue, t), sampleField(state.pollution, t), state.buildingHealth.get(t) ?? 0) +
       // fresh food in reach holds residents (a vertical farm)
-      (nearKind(map, h.x, h.y, BuiltKind.VerticalFarm, FRESH_FOOD_RADIUS) ? FRESH_FOOD_PULL : 0);
+      (nearKind(map, h.x, h.y, BuiltKind.VerticalFarm, FRESH_FOOD_RADIUS) ? FRESH_FOOD_PULL : 0) -
+      // an elevated line roaring past the windows
+      (nearKind(map, h.x, h.y, BuiltKind.ElevatedRail, RAIL_NOISE_RADIUS) ? RAIL_NOISE : 0);
     // a new home (or the opening) takes its conditions as normal
     const was = settling ? raw : (state.occExpect.get(t) ?? raw);
     let to = occupancyStep(cur, floor, cap, raw - was);
