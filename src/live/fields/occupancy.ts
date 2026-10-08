@@ -119,7 +119,10 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     // else from people moving to the city); any home is welcomed back at REHOME_WELCOME × its voice.
     const room = h.count - occ;
     if (room > 0) {
-      const welcome = state.welcome?.get(t) ?? 0;
+      // a co-op or commune makes room for the unhoused whatever its neighbourhood (rehoming.md); elsewhere the
+      // welcome is how organised the neighbourhood is
+      const commons = map.built[t] === BuiltKind.CoopHousing || map.built[t] === BuiltKind.Commune;
+      const welcome = commons ? 1 : (state.welcome?.get(t) ?? 0);
       const fresh = state.freshHomes?.has(t) ?? false;
       const moved = fresh
         ? Math.min(room, REHOME_FRESH * h.count, poolOnly ? state.unhoused : Infinity)

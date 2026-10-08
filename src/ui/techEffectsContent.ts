@@ -165,6 +165,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   const headroom = OCC_HEADROOM.get(kind);
   if (headroom !== undefined && headroom > 1) effects.push(`Home: fills up to ${headroom}× its first residents`);
   if (PROTECTED.has(kind)) effects.push('Rent-protected: residents are never priced out by land value');
+  if (kind === BuiltKind.CoopHousing || kind === BuiltKind.Commune) effects.push('Makes room for the unhoused: re-homes them at the full rate, organised neighbourhood or not');
   const visit = visitValue(kind);
   if (visit > 0) effects.push(`Visitors bring home +${visit} wellbeing`);
   for (const m of RIDDEN_BY) {
