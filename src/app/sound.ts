@@ -12,6 +12,7 @@ import { createMusicPlayer, type Mood } from '../audio/music/player';
 import type { MusicControl } from '../ui/musicPickerContent';
 import { MUSIC_TRACKS } from '../audio/music/tracks';
 import type { AmbientState, Mover } from '../live/types';
+import { offStreet } from '../live/types';
 import { policePhase } from '../live/police';
 import type { Voice } from '../audio/contract';
 import type { AudioSettings } from '../ui/settings';
@@ -36,7 +37,7 @@ export function soundSnapshot(s: AmbientState, view: ViewRect, night: boolean): 
   let cars = 0;
   for (const c of s.cars) if (!c.parked && inView(view, c.x, c.y)) cars++;
   let peds = 0;
-  for (const p of s.peds) if (p.phase !== 'inside' && p.phase !== 'driving' && inView(view, p.x, p.y)) peds++;
+  for (const p of s.peds) if (!offStreet(p) && inView(view, p.x, p.y)) peds++;
   let flocks = 0;
   for (const f of s.birds) if (f.birds.some((b) => inView(view, b.x, b.y))) flocks++;
   return { traffic01: clamp01(cars / FULL.cars), peds01: clamp01(peds / FULL.peds), birds01: clamp01(flocks / FULL.flocks), rain: s.rain !== undefined, night };

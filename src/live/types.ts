@@ -86,7 +86,7 @@ export interface Mover {
    *  ('to-home'), depositing the visit at `homeTile` on arrival. `phase` tracks the leg;
    *  `building` is the destination plot (the wellbeing source); `dwellInside` times the visit. */
   carId?: number;
-  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving' | 'gathering';
+  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving' | 'gathering' | 'riding';
   /** At a gathering (live/gatherings.ts): which, where they are in it, and the kerb they walk home to. */
   gather?: { id: number; go: 'coming' | 'here' | 'milling' | 'going'; mill: number; home: { x: number; y: number } };
   building?: { x: number; y: number };
@@ -459,4 +459,10 @@ export function setPlantEmitters(
   emitters: ReadonlyArray<{ tile: number; amount: number }>,
 ): void {
   state.plantEmitters = emitters;
+}
+
+/** Is this person off the street — inside a building, driving their car, or riding a tram or train? Off the
+ *  street, nobody sees, arrests, hurts or hears them, and they aren't drawn. The one test every system uses. */
+export function offStreet(p: { phase?: Ped['phase'] }): boolean {
+  return p.phase === 'inside' || p.phase === 'driving' || p.phase === 'riding';
 }

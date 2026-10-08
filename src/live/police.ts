@@ -27,6 +27,7 @@ import {
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
 import type { AmbientState, Mover, Ped } from './types';
+import { offStreet } from './types';
 import { advanceMover, blockedAhead } from './motion';
 import { adjacentRoad, canDrive, carPassable } from './network';
 import { abandonOwnedCar, depositHealth } from './agents';
@@ -99,7 +100,7 @@ export function nearestPed(peds: readonly Ped[], x: number, y: number): Ped | nu
   let best = HUNT_RADIUS + 1;
   let found: Ped | null = null;
   for (const p of peds) {
-    if (p.phase === 'inside' || p.phase === 'driving') continue; // not on the street
+    if (offStreet(p)) continue; // not on the street
     const d = Math.abs(Math.round(p.x) - x) + Math.abs(Math.round(p.y) - y);
     if (d < best) {
       best = d;
@@ -228,7 +229,7 @@ export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: 
     let best = ARREST_RADIUS + 1;
     for (let i = 0; i < state.peds.length; i++) {
       const p = state.peds[i]!;
-      if (p.phase === 'inside' || p.phase === 'driving') continue;
+      if (offStreet(p)) continue;
       const d = Math.abs(Math.round(p.x) - cx) + Math.abs(Math.round(p.y) - cy);
       if (d < best) {
         best = d;

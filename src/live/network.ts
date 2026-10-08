@@ -10,6 +10,7 @@ import type { Rng } from '../engine/rng';
 import { CAR_STRAIGHT_WEIGHT, FAUNA_THRESHOLD, LANE_SCAN_CAP } from './tuning';
 import { DIR_DX, DIR_DY, KERB_PULL, STALL_ALONG, opposite } from './geometry';
 import type { Car, Ped } from './types';
+import { offStreet } from './types';
 
 // --- Pure decision helpers (unit-test seams) -----------------------------
 
@@ -533,7 +534,7 @@ export function adjacentRoad(map: GameMap, x: number, y: number): number {
  */
 export function pedDespawns(map: GameMap, p: Ped): boolean {
   // a gatherer walks a committed route to its gathering and home (live/gatherings.ts) — a routed walker too
-  return p.phase !== 'driving' && p.phase !== 'gathering' && p.walkTo === undefined && pedOffNetwork(map, p);
+  return !offStreet(p) && p.phase !== 'gathering' && p.walkTo === undefined && pedOffNetwork(map, p);
 }
 
 // --- Precomputed network masks (the A* hot loop) ---------------------------

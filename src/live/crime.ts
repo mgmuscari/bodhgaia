@@ -9,6 +9,7 @@ import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import { isBuildingKind, type ParcelStore } from '../engine/fabric';
 import type { AmbientState } from './types';
+import { offStreet } from './types';
 import { residentDies } from './death';
 import {
   CRIME_BASE,
@@ -71,7 +72,7 @@ export function drawCrime(state: AmbientState, world: World, rng: Rng, hour: num
   state.crimeHour = hour;
   const { map } = world;
   for (const p of state.peds) {
-    if (p.phase === 'inside' || p.phase === 'driving') continue;
+    if (offStreet(p)) continue;
     const x = Math.round(p.x);
     const y = Math.round(p.y);
     if (!map.inBounds(x, y)) continue;
