@@ -110,6 +110,8 @@ export const BuiltKind = {
   Yard: 64,
   // A ruin (Maddy 2026-10-08): a home lost to disinvestment, left standing as a shell — no one lives here.
   Ruin: 65,
+  // A retention pond (Maddy 2026-10-08): holds storm water, so the land around it doesn't flood.
+  RetentionPond: 66,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 

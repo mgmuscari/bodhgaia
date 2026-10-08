@@ -82,6 +82,7 @@ export const INFLUENCE: ReadonlyMap<BuiltKind, KindInfluence> = new Map<BuiltKin
   // is the stronger soil (still < garden). Magnitudes placeholder; signs the contract.
   [BuiltKind.Park, { soil: 2, flora: 2, fauna: 1, fragmenting: false }],
   [BuiltKind.RewildedLand, { soil: 3, flora: 2, fauna: 2, fragmenting: false }],
+  [BuiltKind.RetentionPond, { soil: 1, flora: 2, fauna: 2, fragmenting: false }], // reeds, frogs, herons
   // Suppressors
   [BuiltKind.RoadHighway, { soil: -5, flora: -4, fauna: -3, fragmenting: true }],
   [BuiltKind.RoadAvenue, { soil: -3, flora: -2, fauna: -2, fragmenting: true }],

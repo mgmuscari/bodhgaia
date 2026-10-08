@@ -83,3 +83,42 @@ describe('a flood', () => {
     expect(last.underWater).toContain(home);
   });
 });
+
+describe('retention ponds (Maddy 2026-10-08): no flooding within 8 tiles of one', () => {
+  function longShore() {
+    const map = new GameMap(30, 40);
+    for (let y = 0; y < 40; y++) {
+      for (let x = 0; x < 30; x++) {
+        const i = map.idx(x, y);
+        if (x < 3) {
+          map.water[i] = Water.Ocean;
+          map.elevation[i] = 0.34;
+        } else map.elevation[i] = 0.35 + (x - 3) * 0.003;
+      }
+    }
+    return { map, parcels: new ParcelStore() };
+  }
+  const storm = (world: ReturnType<typeof longShore>) => {
+    const f = createFloodState(world.map);
+    for (let h = 0; h < 12; h++) stepFlood(world, f, { hour: h, heavy: true });
+    return f;
+  };
+
+  it('keeps the plain dry within 8 tiles while the shore beyond it floods', () => {
+    const world = longShore();
+    placeParcel(world.map, world.parcels, { x: 5, y: 4, width: 2, height: 2, kind: BuiltKind.RetentionPond });
+    const f = storm(world);
+    for (let y = 0; y <= 12; y++) expect(f.flooded.has(world.map.idx(3, y)), `(3, ${y})`).toBe(false); // within 8 of (5..6, 4..5): 2² + 7² ≤ 64
+    expect(f.flooded.has(world.map.idx(3, 30))).toBe(true); // far down the shore
+  });
+
+  it('a pond built in a flood drains the water around it on the next hour', () => {
+    const world = longShore();
+    const f = storm(world);
+    expect(f.flooded.has(world.map.idx(3, 5))).toBe(true);
+    placeParcel(world.map, world.parcels, { x: 5, y: 4, width: 2, height: 2, kind: BuiltKind.RetentionPond });
+    const ev = stepFlood(world, f, { hour: 99, heavy: true });
+    expect(f.flooded.has(world.map.idx(3, 5))).toBe(false);
+    expect(ev.fell).toContain(world.map.idx(3, 5));
+  });
+});

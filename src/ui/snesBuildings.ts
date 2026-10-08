@@ -357,6 +357,35 @@ const wastewater: Painter = (W, H, v) => {
   return p;
 };
 
+/** A retention pond (Maddy 2026-10-08): open water in an oval basin, a shallow rim, a muddy bank with reeds,
+ *  and a concrete outfall where it lets the stored storm water out slowly. Calm water — no ripple marks. */
+const retentionPond: Painter = (W, H, v) => {
+  const p = lot(W, H, 'grass', 660 + v);
+  const cx = (W - 1) / 2;
+  const cy = (H - 1) / 2;
+  const rx = W / 2 - 3;
+  const ry = H / 2 - 4;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const d = ((x - cx) * (x - cx)) / (rx * rx) + ((y - cy) * (y - cy)) / (ry * ry);
+      if (d < 0.62) px(p, x, y, C.water);
+      else if (d < 1) px(p, x, y, C.waterShallow);
+      else if (d < 1.3) {
+        const h = hash2(x, y, 66 + v);
+        px(p, x, y, h % 3 === 0 ? C.dirt : C.dirtHi); // the bank
+        if (h % 7 === 0 && y > 1) {
+          px(p, x, y, C.leafLo); // a reed clump
+          px(p, x, y - 1, h & 8 ? C.leaf : C.leafHi);
+        }
+      }
+    }
+  }
+  rect(p, (W >> 1) - 2, H - 3, 4, 2, C.paveHi); // the outfall
+  hline(p, (W >> 1) - 1, (W >> 1), H - 3, C.slateLo);
+  px(p, Math.round(cx - rx / 2), Math.round(cy - ry / 3), C.glassHi); // a glint
+  return p;
+};
+
 const energyNode: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 530 + v);
   const L = blank(W, H);
@@ -610,6 +639,7 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [50, [compostHub, 1]],
   [51, [verticalFarm, 1]],
   [52, [wastewater, 1]],
+  [66, [retentionPond, 2]],
   [53, [energyNode, 1]],
   [54, [aiNode, 1]],
   [55, [adu, 2]],

@@ -11,6 +11,7 @@ import { GameMap } from '../engine/map';
 import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
 import { MAKER_RADIUS, MAKER_REPAIR } from '../growth/revival';
+import { POND_REACH } from '../growth/flood';
 import {
   BATTERY_CAPACITY,
   BATTERY_RATE,
@@ -145,6 +146,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (REFUGE_KINDS.has(kind)) effects.push(`Police won't patrol or arrest within ${SAFE_RADIUS} tiles`);
   if (GATHERING_KINDS.has(kind)) effects.push("Gathering place: its neighbourhood's belonging +1 per civic tick");
   if (kind === BuiltKind.WastewaterWorks) effects.push(`Cleans contaminated water within ${WATER_TREAT_RADIUS} tiles`);
+  if (kind === BuiltKind.RetentionPond) effects.push(`Keeps the land within ${POND_REACH} tiles from flooding`);
   if (GREEN_HEAL_KINDS.has(kind)) effects.push(`Heals ground pollution within ${GREEN_HEAL_RADIUS} tiles`);
   if (AMENITY_KINDS.has(kind)) effects.push("Raises its neighbours' land value");
   const eco = influenceOf(kind);
