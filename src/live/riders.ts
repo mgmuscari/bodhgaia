@@ -44,9 +44,16 @@ const manhattan = (map: GameMap, t: number, x: number, y: number): number => {
   return Math.abs(tx - x) + Math.abs(ty - y);
 };
 
+/** A ride: where to get on and off, and the walking it leaves (to the one stop and from the other). */
+export interface RidePlan {
+  board: Stop;
+  alight: Stop;
+  walk: number;
+}
+
 /** A ride from near (ox, oy) to near (dx, dy) on a line of `family`: the boarding and alighting stops — on the same
  *  line, each within STOP_WALK of its end, at least MIN_RIDE apart — with the least walking; or null. */
-export function planRide(map: GameMap, ox: number, oy: number, dx: number, dy: number, family: LineFamily): { board: Stop; alight: Stop } | null {
+export function planRide(map: GameMap, ox: number, oy: number, dx: number, dy: number, family: LineFamily): RidePlan | null {
   let best: { board: Stop; alight: Stop; walk: number } | null = null;
   for (const line of transitFor(map).lines) {
     if (line.family !== family || line.stops.length < 2) continue;
@@ -65,7 +72,7 @@ export function planRide(map: GameMap, ox: number, oy: number, dx: number, dy: n
     if (manhattan(map, board.track, ax, ay) < MIN_RIDE) continue;
     if (!best || wb + wa < best.walk) best = { board, alight, walk: wb + wa };
   }
-  return best ? { board: best.board, alight: best.alight } : null;
+  return best;
 }
 
 /** Set a citizen off on a ride: they walk to the boarding platform first. */

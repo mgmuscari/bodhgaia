@@ -56,6 +56,13 @@ describe('riding transit', () => {
     expect(chooseMode(bare, 3, 7, 44, 7)).not.toBe(TravelMode.Streetcar);
   });
 
+  it('a ride is the cheap way: taken even for a walk- or bike-length trip when the line runs from end to end (Maddy 2026-10-08)', () => {
+    const c = city();
+    expect(chooseMode(c.map, 10, 7, 24, 7)).toBe(TravelMode.Streetcar); // bike range, stops at both ends
+    expect(chooseMode(c.map, 10, 7, 20, 7)).toBe(TravelMode.Streetcar); // walk range too
+    expect(chooseMode(c.map, 10, 7, 12, 7)).toBe(TravelMode.Walk); // next door: just walk
+  });
+
   it('walks to the platform, waits in sight, boards, rides out of sight, gets off at the far stop, walks on', () => {
     const c = city();
     const plan = planRide(c.map, 3, 6, 44, 6, 'tram')!;

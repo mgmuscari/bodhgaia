@@ -530,6 +530,12 @@ export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy:
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
   // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
   const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
+  // A ride is the cheap way (Maddy 2026-10-08): whenever a line runs from end to end — the walk to and from its
+  // stops under half the trip — people take it, even for a trip they might have walked or biked
+  for (const family of ['tram', 'rail'] as const) {
+    const ride = planRide(map, ox, oy, dx, dy, family);
+    if (ride && 2 * ride.walk <= d) return family === 'tram' ? TravelMode.Streetcar : TravelMode.ElevatedRail;
+  }
   // Walkable Streets (crossings, shade, slower cars) stretches how far people will walk
   if (d <= WALK_RANGE * stretch * walkStretch) return TravelMode.Walk;
   for (const mode of MODE_CHOICE_ORDER) {
