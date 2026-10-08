@@ -66,7 +66,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - ✅ **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — trains (8-way loco + carriages),
   birds (flapping gulls), water pollution + redlined asphalt (clumped pixel patches), level crossings (road
   band over the rails), overpass shadow (half-tone, whole-art-pixel offsets) are all pixel art now.
-- 🟢 **Murky water still steps at tile edges in narrow creeks** — the 3×3-smoothed murk level reads fine
+- ✅ **Murky water still steps at tile edges in narrow creeks** (2026-10-08: murkier water bleeds an ordered-dither band across the shared edge — `murkEdge`) — the 3×3-smoothed murk level reads fine
   across bays and ponds, but a 1-tile-wide creek can still show a 2-tile murk rectangle. Consider letting
   murk fade across a tile (shore-style edge overlay keyed on neighbour level) rather than per-tile only.
 - ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
