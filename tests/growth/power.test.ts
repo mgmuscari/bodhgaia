@@ -14,6 +14,11 @@ import {
   NEUTRAL_POWER_PRACTICES,
   solarFactor,
   windFactor,
+  smartGridFactor,
+  SMART_GRID_RADIUS,
+  SMART_GRID_CUT,
+  SMART_GRID_FROM,
+  SMART_GRID_TO,
 } from '../../src/growth/power';
 import { ZoneType } from '../../src/engine/zone';
 import { GameMap } from '../../src/engine/map';
@@ -352,5 +357,33 @@ describe('wind and sun (tech-tree batch 3)', () => {
   it('without a clock (worldgen, static solves) plants run at their nameplate', () => {
     expect(cap(BuiltKind.SolarPlant)).toBe(plantOutput(BuiltKind.SolarPlant));
     expect(cap(BuiltKind.WindTurbine)).toBe(plantOutput(BuiltKind.WindTurbine));
+  });
+});
+
+describe('Community AI Node: the smart grid (Maddy 2026-10-07)', () => {
+  const town = (withNode: boolean) => {
+    const map = new GameMap(40, 4);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind: BuiltKind.FusionPlant });
+    for (let x = 1; x < 40; x++) placeParcel(map, parcels, { x, y: 1, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 1 });
+    if (withNode) placeParcel(map, parcels, { x: 5, y: 2, width: 1, height: 1, kind: BuiltKind.AINode });
+    return { map, parcels };
+  };
+  const homeDemand = (withNode: boolean, hour: number, x: number) => {
+    const { map } = town(withNode);
+    const c = clock(hour);
+    return demandAt(BuiltKind.HouseSingle, 1, map.idx(x, 1), c) * smartGridFactor(map, map.idx(x, 1), c);
+  };
+
+  it(`homes within ${SMART_GRID_RADIUS} tiles draw ${SMART_GRID_CUT * 100}% less ${SMART_GRID_FROM}:00–${SMART_GRID_TO}:00`, () => {
+    expect(homeDemand(true, 19, 9)).toBeCloseTo(homeDemand(false, 19, 9) * (1 - SMART_GRID_CUT), 9);
+    expect(homeDemand(true, 12, 9)).toBeCloseTo(homeDemand(false, 12, 9), 9); // not the peak
+    expect(homeDemand(true, 19, 30)).toBeCloseTo(homeDemand(false, 19, 30), 9); // out of reach
+  });
+
+  it('the solve uses it', () => {
+    const a = town(false);
+    const b = town(true);
+    expect(computePowerGrid(b.map, b.parcels, clock(19)).demand).toBeLessThan(computePowerGrid(a.map, a.parcels, clock(19)).demand);
   });
 });

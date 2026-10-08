@@ -11,7 +11,17 @@ import { GameMap } from '../engine/map';
 import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
 import { MAKER_RADIUS, MAKER_REPAIR } from '../growth/revival';
-import { LOCAL_GRID_RADIUS, ROOF_SOLAR_FROM, ROOF_SOLAR_TO, plantOutput, plantPollution } from '../growth/power';
+import {
+  LOCAL_GRID_RADIUS,
+  ROOF_SOLAR_FROM,
+  ROOF_SOLAR_TO,
+  SMART_GRID_CUT,
+  SMART_GRID_FROM,
+  SMART_GRID_RADIUS,
+  SMART_GRID_TO,
+  plantOutput,
+  plantPollution,
+} from '../growth/power';
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
@@ -22,8 +32,6 @@ import { VILLAGE_RESIDENTS } from '../citizens/census';
 import { TravelMode, modeSpec } from '../citizens/modes';
 import {
   ADU_HOUSE_HEADROOM,
-  AI_EVAPORATION_BOOST,
-  AI_NODE_RADIUS,
   AMENITY_KINDS,
   FRESH_FOOD_PULL,
   FRESH_FOOD_RADIUS,
@@ -141,7 +149,9 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (kind === BuiltKind.Parklet) effects.push(`Takes the curb's parking: homes within ${PARKLET_RADIUS} tiles drive ${pct(PARKLET_SHIFT)} fewer trips`);
   if (kind === BuiltKind.VerticalFarm) effects.push(`Fresh food: homes within ${FRESH_FOOD_RADIUS} tiles hold their residents (+${FRESH_FOOD_PULL} pull)`);
   if (kind === BuiltKind.ADU) effects.push(`Built beside a house: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
-  if (kind === BuiltKind.AINode) effects.push(`Schedules trips: car trips within ${AI_NODE_RADIUS} tiles evaporate ${AI_EVAPORATION_BOOST}× as readily in a jam`);
+  if (kind === BuiltKind.AINode) {
+    effects.push(`Smart grid: homes within ${SMART_GRID_RADIUS} tiles draw ${pct(SMART_GRID_CUT)} less power ${SMART_GRID_FROM}:00–${SMART_GRID_TO}:00`);
+  }
   if (kind === BuiltKind.Commune) effects.push('Its residents own no cars');
   if (kind === BuiltKind.MakerSpace) effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
   if (kind === BuiltKind.ElevatedRail) effects.push(`Stations: plots within ${STATION_RADIUS} tiles of the line gain ${LV_STATION} land value`);
