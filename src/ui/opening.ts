@@ -84,5 +84,5 @@ export function mountOpening(
 
   button.addEventListener('click', dismiss);
   window.addEventListener('keydown', onKey);
-  button.focus();
+  button.focus({ preventScroll: true }); // keyboard-ready, but read from the top: the city name, then its story
 }
