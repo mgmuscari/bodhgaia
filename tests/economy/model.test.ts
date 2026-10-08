@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createEconomy, stepEconomy, effortCapacity, effortRegen, taxRevenue, type CityReading, type Levers } from '../../src/economy/model';
+import { createEconomy, stepEconomy, effortCapacity, effortRegen, taxRevenue, mourn, ECON, type CityReading, type Levers } from '../../src/economy/model';
 
 // The economy's loops, pinned by direction (magnitudes are tuning data). Maddy 2026-09-30: model it on
 // Donella Meadows / dynamical systems, not an effort counter that ticks up forever.
@@ -152,5 +152,17 @@ describe('effort regeneration counts the communes twice', () => {
   it('regen follows regenHouseholds when given', () => {
     const s = createEconomy();
     expect(effortRegen(city({ regenHouseholds: 800 }), s)).toBeCloseTo(2 * effortRegen(city(), s), 9);
+  });
+});
+
+describe('a death costs the city (Maddy 2026-10-07: enough to notice)', () => {
+  it('mourn takes approval, goodwill and effort for each death', () => {
+    const s = { ...createEconomy(), effort: 100, approval: 50, goodwill: 50 };
+    const after = mourn(s, 2);
+    expect(after.approval).toBeCloseTo(50 - 2 * ECON.deathApproval, 9);
+    expect(after.goodwill).toBeCloseTo(50 - 2 * ECON.deathGoodwill, 9);
+    expect(after.effort).toBeCloseTo(100 - 2 * ECON.deathEffort, 9);
+    expect(mourn({ ...s, effort: 3 }, 1).effort).toBe(0);
+    expect(mourn(s, 0)).toEqual(s);
   });
 });

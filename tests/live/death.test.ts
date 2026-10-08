@@ -7,6 +7,7 @@ import { BuiltKind } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState } from '../../src/live/types';
 import { residentDies, stepDeaths, stepExposure, exposureDeathsPerHour } from '../../src/live/death';
+import { stepArrests } from '../../src/live/police';
 import { FALL_SUBSTEPS, MEMORIAL_SUBSTEPS, SHELTER_RADIUS, ENCAMPMENT_WEAR } from '../../src/live/tuning';
 
 describe('a death', () => {
@@ -81,5 +82,32 @@ describe('exposure', () => {
       hour = (hour + 1) % 24;
     }
     expect(state.deaths ?? 0).toBe(0);
+  });
+});
+
+describe('the live event feed (CCTV, news, costs)', () => {
+  it('a death is an event once the host listens; nothing is collected before', () => {
+    const quiet = createAmbientState();
+    residentDies(quiet, 1, 1);
+    expect(quiet.events).toBeUndefined();
+    const state = createAmbientState();
+    state.events = [];
+    residentDies(state, 4, 7);
+    expect(state.events).toEqual([{ kind: 'death', x: 4, y: 7, w: 1, h: 1 }]);
+  });
+});
+
+describe('an arrest is an event framed around the cruiser and the person taken', () => {
+  it('records the box covering both', () => {
+    const map = new GameMap(12, 12);
+    map.redline.fill(255);
+    for (let x = 0; x < 12; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet;
+    const state = createAmbientState();
+    state.events = [];
+    state.cruisers.push({ x: 4, y: 5, dir: 1, tx: 4, ty: 5, recent: [] });
+    state.peds.push({ x: 7, y: 5, dir: 1, tx: 7, ty: 5, phase: 'to-building' });
+    const rng = createRng('arrest-event').fork('a');
+    for (let n = 0; n < 60 && state.peds.length > 0; n++) stepArrests(state, map, rng);
+    expect(state.events).toEqual([{ kind: 'arrest', x: 4, y: 5, w: 4, h: 1 }]);
   });
 });

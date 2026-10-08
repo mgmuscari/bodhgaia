@@ -71,6 +71,7 @@ export function main(save: SaveV1 | null = null): void {
     saved: save?.live ?? null,
     legacyDisplaced: save?.econ.state.displaced ?? 0,
     practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
+    hour: () => gameClock(performance.now() / 1000).hour, // exposure deaths happen at night
   });
   const power = createPowerController({
     map: world.map,

@@ -176,6 +176,15 @@ export interface ParkingLotInfo {
 }
 
 /** The full ambient sprite state — renderer-side only, never part of the world. */
+/** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
+export interface LiveEvent {
+  kind: 'death' | 'arrest';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The tech practices' coefficients the live layer reads. The host fills it from the tech tree's resolved
  *  effects (tech/effects.ts) — structurally, so the live layer never imports tech. */
 export interface LivePractices {
@@ -307,6 +316,9 @@ export interface AmbientState {
   memorials?: { x: number; y: number; age: number }[];
   /** Residents who have died so far (the news reads its change). */
   deaths?: number;
+  /** The live event feed — deaths, arrests (disasters later) — for the host's CCTV inset, news and costs.
+   *  Collected only once the host creates it (absent ⇒ nothing recorded); the host drains it. */
+  events?: LiveEvent[];
   /** Live ROAD DECAY (0..ROAD_DECAY_MAX), keyed by road tile: how crumbled the pavement is.
    *  Redlined roads crumble (the city won't maintain the disinvested districts); roads recover
    *  where the neighborhood is cared-for (high land value). Drags land value, never hashed. */
