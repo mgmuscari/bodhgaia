@@ -256,7 +256,10 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
     renderDetail(layout.nodes.find((n) => n.view.id === selected));
   }
 
+  /** Whether the chosen practice showed "Needs $X to begin" at the last render (refreshHeader watches it flip). */
+  let shownBlocked = false;
   function render(): void {
+    shownBlocked = selected !== null && !!deps.cost?.(selected)?.blocked;
     const content = deps.getContent();
     effortText.textContent = content.effort;
     applyTree(content.layout);
@@ -291,7 +294,11 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
   return {
     ...handle,
     refreshHeader: () => {
-      if (handle.isOpen()) effortText.textContent = deps.getEffort ? deps.getEffort() : deps.getContent().effort;
+      if (!handle.isOpen()) return;
+      effortText.textContent = deps.getEffort ? deps.getEffort() : deps.getContent().effort;
+      // money can arrive between hours (a loan): re-render when the chosen practice's "Needs $X" flips
+      const blocked = selected !== null && !!deps.cost?.(selected)?.blocked;
+      if (blocked !== shownBlocked) render();
     },
   };
 }
