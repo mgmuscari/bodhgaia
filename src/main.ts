@@ -38,7 +38,10 @@ import { createNews } from './app/news';
 import { isPowerConsumer } from './growth/power';
 import { placeCategoryOf } from './audio/sfx';
 import { gameClock } from './ui/lighting';
-import { gameSec } from './ui/gameTime';
+import { gameSec, setGameHour } from './ui/gameTime';
+import { OPENING_TIMING } from './ui/openingScript';
+import { mountNightOverlay } from './ui/openingNight';
+import { createNightOpening } from './app/openingNight';
 import { BuiltKind } from './engine/fabric';
 
 // The default world's seed — its identity, so it keeps the pre-rename name (Bodhgaia was Bodhitropolis).
@@ -62,6 +65,8 @@ export function main(save: SaveV1 | null = null): void {
 
   // The opening is up unless `?nointro=1` or a resumed city; while it is, the key table swallows every game key.
   let openingUp = params.get('nointro') !== '1' && !save;
+  // A new city opens at night (bodhgaia-opening.md): set the clock before power and the economy read it.
+  if (openingUp) setGameHour(OPENING_TIMING.startHour);
 
   const view = createView({ canvas, map: world.map, camera: save?.camera, mode: settings.current().renderer });
   const { camera, renderer, markDirty, markPreviewDirty } = view;
@@ -107,12 +112,6 @@ export function main(save: SaveV1 | null = null): void {
       power: power.grid,
       markDirty,
       gpu: { isOn: () => view.gpu() !== null, mount: view.mountGpu, unmount: view.unmountGpu },
-    });
-  }
-  if (openingUp) {
-    mountOpeningFor(world, seed, () => {
-      openingUp = false;
-      markDirty();
     });
   }
 
@@ -305,6 +304,28 @@ export function main(save: SaveV1 | null = null): void {
   // The two clocks: the fixed-tick sim (a resumed game keeps its clock — repair rings are stamped in ticks) and
   // the rAF frame (the live layer steps on its own clock inside it).
   const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
+  // The opening's first act — the night: epigraphs, a walk to a death, the mantra, the dawn — then the city's
+  // indictment (the statistics + chronicle overlay), then play.
+  const night = openingUp
+    ? createNightOpening({
+        live: live.state,
+        map: world.map,
+        rng: createRng(seed).fork('opening-night'),
+        ui: mountNightOverlay(document.body),
+        follow: (x, y) => {
+          camera.centerOn(x, y, OPENING_TIMING.followZoom);
+          markDirty();
+        },
+        hour: () => gameClock(gameSec()).hour,
+        setHour: (h) => setGameHour(h),
+        onDone: () =>
+          mountOpeningFor(world, seed, () => {
+            openingUp = false;
+            markDirty();
+          }),
+      })
+    : null;
+
   // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
   const events = createEventsController({
     map: world.map,
@@ -315,6 +336,7 @@ export function main(save: SaveV1 | null = null): void {
     mourn: (n) => economy.mourn(n),
     news: (t) => news.push(t),
     skin: view.skin,
+    cctvOn: () => !night?.active(), // the opening's camera is already on the walk
     powered: () => power.grid().poweredAnchors,
     clock: () => {
       const h = gameClock(gameSec()).hour;
@@ -331,7 +353,10 @@ export function main(save: SaveV1 | null = null): void {
     world,
     hidden: () => document.hidden,
     syncDock: tools.syncDock,
-    afterRender: (now) => events.frame(now),
+    afterRender: (now) => {
+      night?.frame(now);
+      events.frame(now);
+    },
   });
   runFrames(frame, (cb) => window.requestAnimationFrame(cb));
 }

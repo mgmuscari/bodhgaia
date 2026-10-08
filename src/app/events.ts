@@ -51,6 +51,8 @@ export interface EventsDeps extends EventCostDeps {
   powered(): ReadonlySet<number>;
   /** The in-game time for the caption. */
   clock(): string;
+  /** Whether the feed may show now (the opening keeps it off). Default on. */
+  cctvOn?(): boolean;
 }
 
 export interface EventsController {
@@ -70,9 +72,9 @@ export function createEventsController(deps: EventsDeps): EventsController {
       const events = deps.live.events!.splice(0);
       if (events.length > 0) {
         handleEvents(events, deps);
-        queue.push(events, now);
+        if (deps.cctvOn?.() !== false) queue.push(events, now); // the opening's own death isn't replayed after
       }
-      const ev = queue.current(now);
+      const ev = deps.cctvOn?.() === false ? null : queue.current(now);
       if (!ev) {
         if (shown) cctv.hide();
         shown = null;
