@@ -72,7 +72,7 @@ function probe(): { jumps: number; worstSide: number; worstAlong: number; fastes
 
   for (let f = 0; f < 10; f++) stepAmbient(state, world.map, ambientRng, 1000); // settle
   const onRoad = (x: number, y: number) => world.map.inBounds(x, y) && isRoadKind(world.map.built[world.map.idx(x, y)]!);
-  const last = new Map<object, { x: number; y: number; px: number; py: number; mode: number; st: string }>();
+  const last = new Map<object, { x: number; y: number; px: number; py: number; mode: number; st: string; path?: readonly number[] }>();
   const details: string[] = [];
   let fastCase = '';
   const hits = new Map<string, number>();
@@ -102,7 +102,8 @@ function probe(): { jumps: number; worstSide: number; worstAlong: number; fastes
         const mx = p.x - prev.px;
         const my = p.y - prev.py;
         const forward = mx * DIR_DX[p.dir]! + my * DIR_DY[p.dir]!; // moving the leg's own way, not hopping back
-        const onLeg = (horizontal ? Math.abs(prev.py - p.ty) < 1e-9 : Math.abs(prev.px - p.tx) < 1e-9) && forward >= 0;
+        const replanned = p.path !== prev.path; // a fresh route this substep: the re-plan hop (backlog), not a pace
+        const onLeg = !replanned && (horizontal ? Math.abs(prev.py - p.ty) < 1e-9 : Math.abs(prev.px - p.tx) < 1e-9) && forward >= 0;
         if (p.mode === 0 && prev.mode === 0 && onLeg) {
           const v = Math.abs(p.x - prev.px) + Math.abs(p.y - prev.py);
           if (v > fastest) fastCase = `v=${v.toFixed(3)} was ${prev.st} | now x${p.x.toFixed(2)} y${p.y.toFixed(2)} t(${p.tx},${p.ty}) dir${p.dir} prev${p.prevDir} ph:${p.phase ?? '-'} walkTo:${p.walkTo ? p.walkTo.x + ',' + p.walkTo.y : '-'} path:${p.path ? p.path.length : '-'} leg:${p.leg}`;
@@ -112,7 +113,7 @@ function probe(): { jumps: number; worstSide: number; worstAlong: number; fastes
         if (d > LEAP && details.length < 12) details.push(`d=${d.toFixed(2)} from(${prev.x.toFixed(2)},${prev.y.toFixed(2)}) to(${pose.x.toFixed(2)},${pose.y.toFixed(2)}) | was ${prev.st} | now x${p.x.toFixed(2)} y${p.y.toFixed(2)} t(${p.tx},${p.ty}) dir${p.dir} prev${p.prevDir} ph:${p.phase ?? '-'} mode:${p.mode} walkTo:${p.walkTo ? p.walkTo.x + ',' + p.walkTo.y : '-'} snapDir:${p.snap?.dir} snap(${p.snap?.x.toFixed(2)},${p.snap?.y.toFixed(2)})`);
         if (d > LEAP) { jumps++; const k = `${Math.floor(pose.x)},${Math.floor(pose.y)} ${world.map.built[world.map.idx(Math.floor(pose.x), Math.floor(pose.y))]}`; hits.set(k, (hits.get(k) ?? 0) + 1); }
       }
-      last.set(p, { x: pose.x, y: pose.y, px: p.x, py: p.y, mode: p.mode ?? 0, st: `x${p.x.toFixed(2)} y${p.y.toFixed(2)} t(${p.tx},${p.ty}) dir${p.dir} prev${p.prevDir} ph:${p.phase ?? '-'}` });
+      last.set(p, { x: pose.x, y: pose.y, px: p.x, py: p.y, mode: p.mode ?? 0, path: p.path, st: `x${p.x.toFixed(2)} y${p.y.toFixed(2)} t(${p.tx},${p.ty}) dir${p.dir} prev${p.prevDir} ph:${p.phase ?? '-'}` });
     }
   }
   const top = [...hits].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, n]) => `${k}×${n}`).join('  ');

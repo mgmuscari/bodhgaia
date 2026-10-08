@@ -1,10 +1,11 @@
 // Transit lines and stops (docs/design/transit.md). A line is a connected run of track of one family — trams on
-// Streetcar track, trains on Rail and ElevatedRail — and stops sit along it every STOP_SPACING tiles, at a track
-// tile with a walkable neighbour off the track: the platform people wait on. Pure reads of the map, deterministic,
+// Streetcar track, trains on Rail and ElevatedRail. Trams stop every STOP_SPACING tiles; trains run long and stop
+// only where a road crosses the line or lines join (Maddy 2026-10-08). A stop is a track tile with a walkable
+// neighbour off the track: the platform people wait on. Pure reads of the map, deterministic,
 // never hashed; the live layer recomputes them when the fabric changes.
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind } from '../engine/fabric';
+import { BuiltKind, isRoadKind, railCrossingMask } from '../engine/fabric';
 import { isWalkable } from './network';
 import { DIR_DX, DIR_DY } from './geometry';
 
@@ -50,6 +51,17 @@ function platformBeside(map: GameMap, x: number, y: number): number {
   return -1;
 }
 
+/** Where a train stops: a road crossing the line (at grade, or passing under the viaduct) or a junction of lines. */
+function railStation(map: GameMap, x: number, y: number): boolean {
+  const kindAt = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.built[map.idx(x + dx, y + dy)]! : BuiltKind.None);
+  let track = 0;
+  for (let d = 0; d < 4; d++) if (familyOf(kindAt(DIR_DX[d]!, DIR_DY[d]!)) === 'rail') track++;
+  if (track >= 3) return true;
+  if (map.built[map.idx(x, y)] === BuiltKind.Rail) return railCrossingMask(map, x, y) !== 0;
+  const road = (dx: number, dy: number): boolean => isRoadKind(kindAt(dx, dy));
+  return (road(0, -1) && road(0, 1)) || (road(-1, 0) && road(1, 0));
+}
+
 /** Every transit line on the map, with its stops. */
 export function transitLines(map: GameMap): Line[] {
   const seen = new Uint8Array(map.width * map.height);
@@ -85,7 +97,7 @@ export function transitLines(map: GameMap): Line[] {
         const sx = s.track % map.width;
         return Math.abs(sx - x) + Math.abs((s.track - sx) / map.width - y) < STOP_SPACING;
       });
-      if (near) continue;
+      if (near || (family === 'rail' && !railStation(map, x, y))) continue;
       const platform = platformBeside(map, x, y);
       if (platform >= 0) stops.push({ line: id, family, track: t, platform });
     }

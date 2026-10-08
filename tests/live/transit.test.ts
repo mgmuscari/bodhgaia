@@ -58,6 +58,19 @@ describe('transit lines and stops', () => {
     expect(transitLines(map)[0]!.stops).toHaveLength(0);
   });
 
+  it('trains stop only where a road crosses the line or lines join (Maddy 2026-10-08: too many stops)', () => {
+    const map = new GameMap(60, 12);
+    for (let x = 1; x <= 50; x++) map.setBuilt(x, 5, BuiltKind.Rail);
+    for (let x = 1; x <= 50; x++) if (x !== 20) placeTransport(map, x, 6, BuiltKind.RoadStreet); // a street alongside
+    for (let y = 0; y <= 4; y++) placeTransport(map, 20, y, BuiltKind.RoadStreet); // a street crossing at x=20
+    placeTransport(map, 20, 6, BuiltKind.RoadStreet);
+    for (let y = 6; y <= 11; y++) map.setBuilt(35, y, BuiltKind.Rail); // a branch joining at x=35
+    const rail = transitLines(map).find((l) => l.family === 'rail')!;
+    const at = rail.stops.map((s) => [s.track % map.width, Math.floor(s.track / map.width)]);
+    expect(at).toEqual(expect.arrayContaining([[20, 5]]));
+    for (const [x, y] of at) expect([20, 35]).toContain(x), expect(y).toBe(5);
+  });
+
   it('is deterministic', () => {
     expect(JSON.stringify(transitLines(lineWithStreet(30)))).toBe(JSON.stringify(transitLines(lineWithStreet(30))));
   });

@@ -138,7 +138,8 @@ describe('live layer golden determinism', () => {
   });
 
   it('matches the pinned digest (a pure refactor must leave this byte-identical)', () => {
-    expect(first).toBe('cars=6 peds=124 cruisers=4 trains=4 flocks=8 #1709e37a');
+    // 2026-10-08: trains stop only at crossings/junctions and run 2.5× — vehicle timing shifts the shared rng
+    expect(first).toBe('cars=7 peds=124 cruisers=4 trains=4 flocks=4 #9c0ee98b');
   });
 });
 

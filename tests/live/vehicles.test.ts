@@ -5,10 +5,10 @@ import { GameMap } from '../../src/engine/map';
 import { BuiltKind, placeTransport } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState } from '../../src/live/types';
-import { spawnTransit, stepTrain } from '../../src/live/trains';
+import { spawnTransit, stepTrain, vehicleSpeed } from '../../src/live/trains';
 import { transitFor, DWELL } from '../../src/live/transit';
 import { syncTrainLegs } from '../../src/live/poses';
-import { TRAIN_SPEED } from '../../src/live/tuning';
+
 
 function city() {
   const map = new GameMap(40, 12);
@@ -45,13 +45,27 @@ describe('transit vehicles', () => {
         last.set(t, cars);
       }
     });
-    expect(worst).toBeLessThanOrEqual(TRAIN_SPEED + 1e-6);
+    expect(worst).toBeLessThanOrEqual(Math.max(vehicleSpeed('tram'), vehicleSpeed('rail')) + 1e-6);
   });
 
   it('every line runs a vehicle: a tram on the streetcar line, a train on the elevated', () => {
     const c = city();
     run(c, 5);
     expect(c.state.trains.map((t) => t.family).sort()).toEqual(['rail', 'tram']);
+  });
+
+  it('trains run long distances fast — well over twice a tram\'s pace (Maddy 2026-10-08: too slow)', () => {
+    const c = city();
+    const moved = { tram: 0, rail: 0 };
+    const last = new Map<object, [number, number]>();
+    run(c, 400, () => {
+      for (const t of c.state.trains) {
+        const b = last.get(t);
+        if (b) moved[t.family!] += Math.abs(t.hx - b[0]) + Math.abs(t.hy - b[1]);
+        last.set(t, [t.hx, t.hy]);
+      }
+    });
+    expect(moved.rail).toBeGreaterThan(2 * moved.tram);
   });
 
   it('trams keep to streetcar track, trains to rail', () => {
