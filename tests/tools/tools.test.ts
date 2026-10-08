@@ -631,3 +631,14 @@ describe('overpass placement: an elevated kind built over a road decks it (grade
     expect(world.map.getBuilt(5, 5)).toBe(0); // a second bulldoze clears the road
   });
 });
+
+describe('Accessory Dwellings go beside a house (tech-tree batch 3)', () => {
+  it('is refused on open land and placed next to a house', () => {
+    const world = freshWorld();
+    const tech = freshTech(1000);
+    expect(previewTool(world, tech, toolDef(`build-${BuiltKind.ADU}`)!, 10, 10)).toEqual({ valid: false, reason: 'needs-house' });
+    expect(applyTool(world, tech, toolDef('build-16')!, 12, 12).ok).toBe(true);
+    expect(previewTool(world, tech, toolDef(`build-${BuiltKind.ADU}`)!, 13, 13).valid).toBe(true); // diagonal counts
+    expect(applyTool(world, tech, toolDef(`build-${BuiltKind.ADU}`)!, 12, 13).ok).toBe(true);
+  });
+});
