@@ -560,14 +560,17 @@ export function tripEvaporates(jam: number, hash: number): boolean {
   return u < jam * EVAPORATION * 1000;
 }
 
-/** Is there a tile of `kind` within Chebyshev `r` of (x, y)? A bounded box scan. */
+/** Is there a tile of `kind` (on the ground or an overpass deck) within Chebyshev `r` of (x, y)? A bounded box scan. */
 export function nearKind(map: GameMap, x: number, y: number, kind: number, r: number): boolean {
   const x0 = Math.max(0, x - r);
   const x1 = Math.min(map.width - 1, x + r);
   const y0 = Math.max(0, y - r);
   const y1 = Math.min(map.height - 1, y + r);
   for (let yy = y0; yy <= y1; yy++) {
-    for (let xx = x0; xx <= x1; xx++) if (map.built[yy * map.width + xx] === kind) return true;
+    for (let xx = x0; xx <= x1; xx++) {
+      const i = yy * map.width + xx;
+      if (map.built[i] === kind || map.deck[i] === kind) return true;
+    }
   }
   return false;
 }

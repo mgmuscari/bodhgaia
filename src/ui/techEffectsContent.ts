@@ -25,7 +25,7 @@ import {
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
-import { BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
+import { RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
 import { VILLAGE_RESIDENTS } from '../citizens/census';
@@ -45,8 +45,8 @@ import {
   OCC_HEADROOM,
   REFUGE_KINDS,
   SAFE_RADIUS,
-  STATION_RADIUS,
-  LV_STATION,
+  RAIL_NOISE,
+  RAIL_NOISE_RADIUS,
   TRAFFIC_MAX,
   WALK_RANGE,
   WATER_TREAT_RADIUS,
@@ -154,7 +154,10 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   }
   if (kind === BuiltKind.Commune) effects.push('Its residents own no cars');
   if (kind === BuiltKind.MakerSpace) effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
-  if (kind === BuiltKind.ElevatedRail) effects.push(`Stations: plots within ${STATION_RADIUS} tiles of the line gain ${LV_STATION} land value`);
+  if (kind === BuiltKind.ElevatedRail) {
+    effects.push(`Stations: shops within ${RAIL_COMMERCE_RADIUS} tiles of the line pay ${pct(RAIL_COMMERCE_LIFT - 1)} more tax`);
+    effects.push(`Noise: homes within ${RAIL_NOISE_RADIUS} tiles of the line lose ${RAIL_NOISE} pull`);
+  }
   if (kind === BuiltKind.CompostHub) effects.push(`Gardens and vertical farms within ${COMPOST_RADIUS} tiles need ${pct(1 - COMPOST_TENDING)} less tending`);
   if (kind === BuiltKind.Bazaar) effects.push(`Draws a crowd: shops within ${BAZAAR_RADIUS} tiles pay ${pct(BAZAAR_LIFT - 1)} more tax`);
   if (kind === BuiltKind.Commune) effects.push(`Pooled lives: its households give ${COMMUNE_REGEN}× the effort`);

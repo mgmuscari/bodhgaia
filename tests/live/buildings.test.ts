@@ -5,8 +5,7 @@ import { BuiltKind } from '../../src/engine/fabric';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
 import { homeDrives, nearKind } from '../../src/live/pathing';
 import { stepOccupancy, homeCapacity } from '../../src/live/fields/occupancy';
-import { landValueAt } from '../../src/live/fields/landValue';
-import { STATION_RADIUS, LV_STATION, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
+import { RAIL_NOISE_RADIUS, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
 
 describe('nearKind', () => {
   it('finds a kind within a Chebyshev radius', () => {
@@ -72,17 +71,20 @@ describe('Accessory Dwellings: densify without demolition', () => {
   });
 });
 
-describe('Elevated Rail: the stations lift the land around the line', () => {
-  it(`a plot within ${STATION_RADIUS} tiles of the line gains ${LV_STATION}; once, however much line is near`, () => {
-    const make = (railY: number | null, deck = false) => {
+describe('Elevated Rail: noise for the homes beside the line (Maddy 2026-10-07)', () => {
+  it(`a home within ${RAIL_NOISE_RADIUS} tiles of the line loses residents when it opens; one farther does not`, () => {
+    const run = (railY: number, deck = false) => {
       const map = new GameMap(20, 20);
-      map.built[map.idx(10, 10)] = BuiltKind.HouseSingle;
-      if (railY !== null) for (let x = 0; x < 20; x++) (deck ? map.deck : map.built)[map.idx(x, railY)] = BuiltKind.ElevatedRail;
-      return landValueAt(map, 10, 10);
+      map.built[map.idx(10, 10)] = BuiltKind.Apartments;
+      const state = createAmbientState();
+      setHouseholds(state, [{ x: 10, y: 10, count: 10 }]);
+      for (let i = 0; i < OCC_SETTLE_PASSES; i++) stepOccupancy(state, map);
+      for (let x = 0; x < 20; x++) (deck ? map.deck : map.built)[map.idx(x, railY)] = BuiltKind.ElevatedRail;
+      for (let i = 0; i < 60; i++) stepOccupancy(state, map);
+      return state.occupancy.get(map.idx(10, 10))!;
     };
-    const bare = make(null);
-    expect(make(12) - bare).toBeCloseTo(LV_STATION, 9);
-    expect(make(12, true) - bare).toBeCloseTo(LV_STATION, 9); // an overpass line counts too
-    expect(make(15)).toBeCloseTo(bare, 9);
+    expect(run(12)).toBeLessThan(10);
+    expect(run(12, true)).toBeLessThan(10); // an overpass line is as loud
+    expect(run(15)).toBe(10);
   });
 });
