@@ -362,6 +362,41 @@ function nearRailOrWater(map: GameMap, parcels: WorldState['parcels'], i: number
   return false;
 }
 
+/** Could a 3×3 works sit covering parcel `i`'s anchor — on dry land, off the roads and rails? (Ignores other
+ *  buildings: the works chose first, in era 2.) */
+function couldHoldWorks(map: GameMap, parcels: WorldState['parcels'], i: number): boolean {
+  const e = parcels.get(i);
+  for (let oy = e.y - 2; oy <= e.y; oy++) {
+    for (let ox = e.x - 2; ox <= e.x; ox++) {
+      let dry = true;
+      for (let dy = 0; dy < 3 && dry; dy++) {
+        for (let dx = 0; dx < 3 && dry; dx++) {
+          const j = map.idx(ox + dx, oy + dy);
+          if (!map.inBounds(ox + dx, oy + dy) || map.water[j] !== Water.None) dry = false;
+          else if (map.built[j]! >= 1 && map.built[j]! <= 15) dry = false; // a road, rail or transit line
+        }
+      }
+      if (dry) return true;
+    }
+  }
+  return false;
+}
+
+/** Does parcel `i`'s footprint touch a road (4-adjacent)? */
+function frontsRoad(map: GameMap, parcels: WorldState['parcels'], i: number): boolean {
+  const e = parcels.get(i);
+  for (let y = e.y - 1; y <= e.y + e.height; y++) {
+    for (let x = e.x - 1; x <= e.x + e.width; x++) {
+      const inside = x >= e.x && x < e.x + e.width && y >= e.y && y < e.y + e.height;
+      const corner = (x === e.x - 1 || x === e.x + e.width) && (y === e.y - 1 || y === e.y + e.height);
+      if (inside || corner || !map.inBounds(x, y)) continue;
+      const k = map.built[map.idx(x, y)]!;
+      if (k >= 1 && k <= 3) return true;
+    }
+  }
+  return false;
+}
+
 function avenueTileCount(map: GameMap): number {
   let n = 0;
   for (let i = 0; i < map.built.length; i++) if (map.built[i] === BuiltKind.RoadAvenue) n++;
@@ -502,8 +537,12 @@ describe('era2MotorAge — industry concentration by grade', () => {
   it('industry picks the worst-graded of the rail/water frontage cohort', () => {
     // Controls for the floodplain confound (rail/water frontage is near water, so
     // it already skews worse-graded): compare industry against OTHER parcels that
-    // are ALSO near rail/water. Industry is grade-sorted to pick the worst of that
-    // shared cohort, so its mean grade exceeds the rest. Aggregate across seeds.
+    // are ALSO near rail/water — and that industry could have taken instead: on a
+    // street, on a 3×3 of dry land (2026-10-07, 4×8 blocks: houses on 1-tile
+    // waterfront strips and parking fields in the open fringe sit on worse ground
+    // but were never in the works' choice set). Industry is grade-sorted to pick
+    // the worst of that shared cohort, so its mean grade exceeds the rest.
+    // Aggregate across seeds.
     let indSum = 0;
     let indN = 0;
     let cohortSum = 0;
@@ -513,6 +552,12 @@ describe('era2MotorAge — industry concentration by grade', () => {
       const { map, parcels } = world;
       for (const i of parcels.aliveIndices()) {
         if (!nearRailOrWater(map, parcels, i, P.industryFrontage)) continue;
+        // only land a works could have taken: a 3×3 of dry land covering the parcel (a house on a 1-tile
+        // waterfront strip sits on worse ground, but no works fits there — industry never passed it over)
+        if (!couldHoldWorks(map, parcels, i)) continue;
+        // ...and on a street: industry chooses among road-fronting lots (a parking field laid out in the open
+        // fringe beyond the grid was never in its choice set)
+        if (!frontsRoad(map, parcels, i)) continue;
         const g = parcelMeanGrade(world, i);
         if (parcels.kindAt(i) === BuiltKind.Industrial) {
           indSum += g;
@@ -1087,19 +1132,27 @@ function runEra5(seed: string) {
   return { world, state, redlined, greenlined, parkingBefore };
 }
 
+describe('era5Disinvestment: decay follows the redline grade, pooled across seeds (no survivorship bias)', () => {
+  it('redlined parcels end in worse condition (abandoned = 0) than greenlined ones', () => {
+    // Pooled (2026-10-07): on 4×8 blocks moses-3's era 1–4 city reaches only 2 fully redlined parcels, too few for
+    // a per-seed cohort; the pooled cohorts are non-vacuous and carry the claim.
+    const red: number[] = [];
+    const green: number[] = [];
+    for (const seed of SEEDS) {
+      const { world, redlined, greenlined } = runEra5(seed);
+      const outcome = (i: number) => (world.parcels.isAlive(i) ? world.parcels.conditionAt(i) : 0);
+      red.push(...redlined.map(outcome));
+      green.push(...greenlined.map(outcome));
+    }
+    expect(red.length).toBeGreaterThanOrEqual(5);
+    expect(green.length).toBeGreaterThanOrEqual(5);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    expect(mean(red)).toBeLessThan(mean(green));
+  });
+});
+
 describe('era5Disinvestment decay & abandonment', () => {
   for (const seed of SEEDS) {
-    it(`seed "${seed}": decay follows the redline grade (no survivorship bias)`, () => {
-      const { world, redlined, greenlined } = runEra5(seed);
-      const { parcels } = world;
-      expect(redlined.length).toBeGreaterThanOrEqual(5); // non-vacuous cohorts
-      expect(greenlined.length).toBeGreaterThanOrEqual(5);
-      // Outcome: surviving condition, or 0 for an abandoned (demolished) parcel.
-      const outcome = (i: number) => (parcels.isAlive(i) ? parcels.conditionAt(i) : 0);
-      const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-      expect(mean(redlined.map(outcome))).toBeLessThan(mean(greenlined.map(outcome)));
-    });
-
     it(`seed "${seed}": >= 10% of the standing city is abandoned (chronicle matches store)`, () => {
       const { world, state } = runEra5(seed);
       const line = world.log.find((l) => /disinvestment/.test(l))!;
