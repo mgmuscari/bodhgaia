@@ -60,6 +60,12 @@ function railStation(map: GameMap, x: number, y: number): boolean {
   return railCrossing(map, x, y);
 }
 
+/** Is a stop's platform still a walkable tile beside the line (not built over)? */
+function platformOk(map: GameMap, t: number): boolean {
+  const x = t % map.width;
+  return isWalkable(map, x, (t - x) / map.width) && familyOf(map.built[t]!) === null;
+}
+
 /** Every transit line on the map, with its stops. */
 export function transitLines(map: GameMap): Line[] {
   const seen = new Uint8Array(map.width * map.height);
@@ -137,7 +143,8 @@ export function transitFor(map: GameMap): Transit {
   let c = CACHE.get(map);
   if (c && ++c.calls % RECHECK !== 0) return c;
   const sig = trackSignature(map);
-  if (c && c.sig === sig) return c;
+  // the track is unchanged — but a platform built over (Maddy 2026-10-08: an AI node on one) moves its stop too
+  if (c && c.sig === sig && c.lines.every((l) => l.stops.every((s) => platformOk(map, s.platform)))) return c;
   const lines = transitLines(map);
   const stopAt = new Map<number, Stop>();
   const lineOf = new Int32Array(map.width * map.height).fill(-1);
