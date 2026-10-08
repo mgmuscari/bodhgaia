@@ -324,12 +324,14 @@ export function createCommunity(deps: CommunityDeps): Community {
   const holdParty = (part: NeighborhoodMap, hood: number): boolean => {
     const site = partySite(map, parcels, part, hood);
     if (!site || !holdAt('block-party', site, hood, PARTY_LIFE, homesIn(part, hood), PARTY_CROWD, true)) return false;
+    live.events?.push({ kind: 'party', x: site.x, y: site.y, w: site.w, h: site.h });
     deps.news('A block party — the neighbours have closed their street to cars');
     return true;
   };
   const holdFair = (part: NeighborhoodMap, hood: number): boolean => {
     const site = findParcel(map, parcels, part, hood, [BuiltKind.Bazaar, BuiltKind.MakerSpace]);
     if (!site || !holdAt('craft-fair', site, hood, FAIR_LIFE, homesIn(part, hood), FAIR_CROWD, false)) return false;
+    live.events?.push({ kind: 'fair', x: site.x, y: site.y, w: site.w, h: site.h });
     deps.news('A craft fair — stalls out round the bazaar');
     return true;
   };
@@ -349,6 +351,7 @@ export function createCommunity(deps: CommunityDeps): Community {
   const holdFestival = (part: NeighborhoodMap): boolean => {
     const site = findParcel(map, parcels, part, 0, [BuiltKind.Park, BuiltKind.Civic]);
     if (!site || !holdAt('festival', site, 0, FEST_LIFE, homesIn(part, 0), FEST_CROWD, false)) return false;
+    live.events?.push({ kind: 'festival', x: site.x, y: site.y, w: site.w, h: site.h });
     const route = paradeRoute(map, site.x + site.w / 2, site.y + site.h / 2);
     if (route) holdAt('parade', route, 0, FEST_LIFE, homesIn(part, 0), PARADE_CROWD, true);
     deps.news(route ? 'A festival in the park — and a parade down the avenue' : 'A festival in the park');

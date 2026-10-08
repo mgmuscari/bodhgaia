@@ -39,10 +39,25 @@ export function cctvGoTo(ev: LiveEvent): { x: number; y: number; zoom: number } 
 
 /** The caption under the feed. */
 export function cctvLabel(ev: LiveEvent): string {
-  return ev.kind === 'death' ? 'A resident has died' : ev.kind === 'fire' ? 'Fire' : ev.kind === 'spill' ? 'Toxic spill' : ev.kind === 'flood' ? 'Flood' : ev.kind === 'crash' ? 'Crash' : ev.kind === 'protest' ? 'Protest' : ev.kind === 'uprising' ? 'Uprising' : 'Arrest';
+  return LABELS[ev.kind];
 }
 
-const RANK: Record<LiveEvent['kind'], number> = { death: 0, fire: 1, spill: 1, flood: 1, crash: 1, protest: 1, uprising: 1, arrest: 2 };
+const LABELS: Record<LiveEvent['kind'], string> = {
+  death: 'A resident has died',
+  fire: 'Fire',
+  spill: 'Toxic spill',
+  flood: 'Flood',
+  crash: 'Crash',
+  protest: 'Protest',
+  uprising: 'Uprising',
+  arrest: 'Arrest',
+  party: 'Block party',
+  fair: 'Craft fair',
+  festival: 'Festival',
+};
+
+/** Deaths first, then disasters and protest; arrests and celebrations give way to everything else. */
+const RANK: Record<LiveEvent['kind'], number> = { death: 0, fire: 1, spill: 1, flood: 1, crash: 1, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2 };
 
 /** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
  *  only a few wait. */
