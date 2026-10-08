@@ -84,6 +84,8 @@ export const TECH_TREE: readonly TechNode[] = [
     'Greens climb the walls; a warehouse becomes an acre stacked toward the sun.'),
   node('wastewater-recycling', GreenDevelopment, 'Wastewater Recycling', ['soil-and-soul'], 30, kind(BuiltKind.WastewaterWorks),
     'Greywater is too precious to flush away; reclaim it and let the reeds work.'),
+  node('retention-ponds', GreenDevelopment, 'Retention Ponds', ['soil-and-soul'], 20, kind(BuiltKind.RetentionPond),
+    'Give the storm somewhere to go — a pond of reeds, and dry streets downhill.'),
   node('rewilding', GreenDevelopment, 'Rewilding', ['community-gardens'], 30, kind(BuiltKind.RewildedLand),
     'Let the lot go feral — bramble, milkweed, fox; the city makes room for the wild.'),
 

@@ -129,7 +129,7 @@ describe('snes tileset — buildings', () => {
   });
 
   it('structures are ink-outlined (the SNES look) — every 1×1 non-green kind has ink', () => {
-    const greens = new Set([11, 48, 49, 61, 62]);
+    const greens = new Set([11, 48, 49, 61, 62, 66]); // … and the retention pond: open water, no walls
     for (const kind of buildingKinds.filter((k) => !greens.has(k))) {
       expect(hasInk(tiles.get(footprintCellKey(kind, 1, 1, 0, 0, 0))!), `kind ${kind}`).toBe(true);
     }

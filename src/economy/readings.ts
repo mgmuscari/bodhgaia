@@ -33,6 +33,7 @@ export const UPKEEP: ReadonlyMap<number, number> = new Map<number, number>([
   [BuiltKind.SolarPlant, 2],
   [BuiltKind.FusionPlant, 8],
   [BuiltKind.WastewaterWorks, 2],
+  [BuiltKind.RetentionPond, 0.6],
   [BuiltKind.EnergyNode, 0.8],
   [BuiltKind.AINode, 1.5],
 ]);

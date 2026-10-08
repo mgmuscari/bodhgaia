@@ -69,7 +69,7 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: 'ecology',
     title: 'Soil, plants and animals',
-    techs: ['soil-and-soul', 'urban-composting', 'community-gardens', 'rewilding', 'pocket-parks', 'wastewater-recycling', 'vertical-farming'],
+    techs: ['soil-and-soul', 'urban-composting', 'community-gardens', 'rewilding', 'pocket-parks', 'wastewater-recycling', 'retention-ponds', 'vertical-farming'],
     steps: [
       point('[data-meta-id="eco"]', 'The Eco overlay: soil, plants and animals. Pavement seals the soil; busy roads cut animals off from each other.'),
       say('Greens heal the ground around them, and quiet streets and bike paths let wildlife cross. Rewilded land tends itself.'),

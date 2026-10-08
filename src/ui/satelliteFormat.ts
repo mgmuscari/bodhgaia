@@ -76,6 +76,7 @@ export const BUILDING_TYPE: Readonly<Record<number, SatType>> = {
   [B.Parklet]: SatType.Green,
   [B.CommunityGarden]: SatType.Green,
   [B.Park]: SatType.Green,
+  [B.RetentionPond]: SatType.Green,
   [B.RewildedLand]: SatType.Green,
   // PlantedMedian (11) is a transport-range kind but reads as a green amenity — handled in satTypeAt.
 };
@@ -118,6 +119,7 @@ const HEIGHT: Readonly<Record<number, number>> = {
   [B.Parklet]: 8,
   [B.CommunityGarden]: 8,
   [B.Park]: 6,
+  [B.RetentionPond]: 2,
   [B.RewildedLand]: 12,
   [B.PlantedMedian]: 6,
 };
