@@ -62,7 +62,7 @@ describe('the flood controller', () => {
     for (let h = 0; h < 30; h++) t.hourPasses(false);
     expect(t.live.flooded!.size).toBe(0);
     const { closedTiles } = await import('../../src/live/network');
-    expect(closedTiles(t.map)).toBeUndefined(); // the roads open again
+    expect(closedTiles(t.map, false)).toBeUndefined(); // the roads open again
     expect(t.live.occupancy.get(t.map.idx(3, 4))).toBe(10);
     expect(t.live.unhoused).toBe(5);
   });
@@ -112,11 +112,31 @@ describe('roads under water are closed', () => {
     for (const x of [1, 20]) for (let y = 6; y <= 7; y++) placeTransport(map, x, y, BuiltKind.RoadStreet);
     const through = (p: number[] | null) => p !== null && p.includes(map.idx(10, 5));
     expect(through(roadPath(map, 3, 5, 18, 5))).toBe(true);
-    closeTiles(map, new Set([map.idx(10, 5)]));
+    closeTiles(map, 'flood', new Set([map.idx(10, 5)]));
     const detour = roadPath(map, 3, 5, 18, 5);
     expect(detour).not.toBeNull();
     expect(through(detour)).toBe(false);
-    closeTiles(map, null);
+    closeTiles(map, 'flood', null);
     expect(through(roadPath(map, 3, 5, 18, 5))).toBe(true);
+  });
+
+  it('closures are kept per source, and a street closed to cars is still open to people', async () => {
+    const { roadPath, walkPath } = await import('../../src/live/pathing');
+    const { closeTiles } = await import('../../src/live/network');
+    const { placeTransport } = await import('../../src/engine/fabric');
+    const map = new GameMap(24, 12);
+    for (let x = 1; x <= 20; x++) {
+      placeTransport(map, x, 5, BuiltKind.RoadStreet);
+      placeTransport(map, x, 8, BuiltKind.RoadStreet);
+    }
+    for (const x of [1, 20]) for (let y = 6; y <= 7; y++) placeTransport(map, x, y, BuiltKind.RoadStreet);
+    const t = map.idx(10, 5);
+    closeTiles(map, 'party:1', new Set([t]), 'cars');
+    expect(roadPath(map, 3, 5, 18, 5)!.includes(t)).toBe(false); // cars go round the party
+    expect(walkPath(map, 9, 5, 11, 5)!.includes(t)).toBe(true); // people walk through it
+    closeTiles(map, 'flood', new Set([map.idx(12, 5)]));
+    closeTiles(map, 'party:1', null);
+    expect(roadPath(map, 3, 5, 11, 5)!.includes(t)).toBe(true); // the party's over: its street is open again
+    expect(roadPath(map, 3, 5, 18, 5)!.includes(map.idx(12, 5))).toBe(false); // the flood still closes its tile
   });
 });

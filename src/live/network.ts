@@ -662,16 +662,34 @@ export function networkMasks(map: GameMap): NetworkMasks {
   return c;
 }
 
-/** Tiles closed to every route on a map — under flood water (app/flood.ts). Per map, so maps never share them. */
-const CLOSED = new WeakMap<GameMap, ReadonlySet<number>>();
+/** Tiles closed to routing on a map, kept per source (the flood, a block party…): a source closes its tiles to
+ *  everyone ('all' — flood water) or to cars only ('cars' — a street given over to people). Per map, so maps never
+ *  share them; the unions are rebuilt when a source changes. */
+interface Closures {
+  sources: Map<string, { tiles: ReadonlySet<number>; who: 'all' | 'cars' }>;
+  all: Set<number>;
+  cars: Set<number>;
+}
+const CLOSED = new WeakMap<GameMap, Closures>();
 
-/** Close these tiles of `map` to routing (null reopens them all). New routes go round them. */
-export function closeTiles(map: GameMap, tiles: ReadonlySet<number> | null): void {
-  if (tiles && tiles.size > 0) CLOSED.set(map, tiles);
-  else CLOSED.delete(map);
+/** Close `tiles` of `map` to routing on behalf of `key` (null reopens that source's tiles). New routes go round. */
+export function closeTiles(map: GameMap, key: string, tiles: ReadonlySet<number> | null, who: 'all' | 'cars' = 'all'): void {
+  const c = CLOSED.get(map) ?? { sources: new Map(), all: new Set<number>(), cars: new Set<number>() };
+  if (tiles && tiles.size > 0) c.sources.set(key, { tiles, who });
+  else c.sources.delete(key);
+  c.all = new Set();
+  c.cars = new Set();
+  for (const s of c.sources.values()) for (const t of s.tiles) (s.who === 'all' ? c.all : c.cars).add(t);
+  if (c.sources.size === 0) CLOSED.delete(map);
+  else CLOSED.set(map, c);
 }
 
-/** The tiles of `map` closed to routing, if any. */
-export function closedTiles(map: GameMap): ReadonlySet<number> | undefined {
-  return CLOSED.get(map);
+/** The tiles of `map` closed to a route on foot (`walk`) or by car, if any. */
+export function closedTiles(map: GameMap, walk: boolean): ReadonlySet<number> | undefined {
+  const c = CLOSED.get(map);
+  if (!c) return undefined;
+  if (walk) return c.all.size > 0 ? c.all : undefined;
+  if (c.cars.size === 0) return c.all.size > 0 ? c.all : undefined;
+  if (c.all.size === 0) return c.cars;
+  return new Set([...c.all, ...c.cars]);
 }
