@@ -36,6 +36,8 @@ import {
   OCC_HEADROOM,
   REFUGE_KINDS,
   SAFE_RADIUS,
+  STATION_RADIUS,
+  LV_STATION,
   TRAFFIC_MAX,
   WALK_RANGE,
   WATER_TREAT_RADIUS,
@@ -140,6 +142,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (kind === BuiltKind.ADU) effects.push(`Built beside a house: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
   if (kind === BuiltKind.AINode) effects.push(`Schedules trips: car trips within ${AI_NODE_RADIUS} tiles evaporate ${AI_EVAPORATION_BOOST}× as readily in a jam`);
   if (kind === BuiltKind.Commune) effects.push('Its residents own no cars');
+  if (kind === BuiltKind.ElevatedRail) effects.push(`Stations: plots within ${STATION_RADIUS} tiles of the line gain ${LV_STATION} land value`);
   if (kind === BuiltKind.CompostHub) effects.push(`Gardens and vertical farms within ${COMPOST_RADIUS} tiles need ${pct(1 - COMPOST_TENDING)} less tending`);
   if (kind === BuiltKind.Bazaar) effects.push(`Draws a crowd: shops within ${BAZAAR_RADIUS} tiles pay ${pct(BAZAAR_LIFT - 1)} more tax`);
   if (kind === BuiltKind.Commune) effects.push(`Pooled lives: its households give ${COMMUNE_REGEN}× the effort`);

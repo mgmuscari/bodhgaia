@@ -5,7 +5,8 @@ import { BuiltKind } from '../../src/engine/fabric';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
 import { homeDrives, evaporationBoost, nearKind } from '../../src/live/pathing';
 import { stepOccupancy, homeCapacity } from '../../src/live/fields/occupancy';
-import { OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, AI_NODE_RADIUS, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
+import { landValueAt } from '../../src/live/fields/landValue';
+import { STATION_RADIUS, LV_STATION, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, AI_NODE_RADIUS, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
 
 describe('nearKind', () => {
   it('finds a kind within a Chebyshev radius', () => {
@@ -77,5 +78,20 @@ describe('Accessory Dwellings: densify without demolition', () => {
     expect(homeCapacity(map, map.idx(7, 7), 3)).toBe(3 * OCC_HEADROOM.get(BuiltKind.HouseSingle)!);
     expect(homeCapacity(map, map.idx(4, 3), 3)).toBe(3 * OCC_HEADROOM.get(BuiltKind.ADU)!);
     expect(OCC_HEADROOM.get(BuiltKind.ADU)).toBe(ADU_HOUSE_HEADROOM);
+  });
+});
+
+describe('Elevated Rail: the stations lift the land around the line', () => {
+  it(`a plot within ${STATION_RADIUS} tiles of the line gains ${LV_STATION}; once, however much line is near`, () => {
+    const make = (railY: number | null, deck = false) => {
+      const map = new GameMap(20, 20);
+      map.built[map.idx(10, 10)] = BuiltKind.HouseSingle;
+      if (railY !== null) for (let x = 0; x < 20; x++) (deck ? map.deck : map.built)[map.idx(x, railY)] = BuiltKind.ElevatedRail;
+      return landValueAt(map, 10, 10);
+    };
+    const bare = make(null);
+    expect(make(12) - bare).toBeCloseTo(LV_STATION, 9);
+    expect(make(12, true) - bare).toBeCloseTo(LV_STATION, 9); // an overpass line counts too
+    expect(make(15)).toBeCloseTo(bare, 9);
   });
 });
