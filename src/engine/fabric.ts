@@ -807,14 +807,17 @@ const MASK_DIRS: ReadonlyArray<readonly [number, number, number]> = [
  * are unset.
  */
 export function transportMask(map: GameMap, x: number, y: number): number {
-  const selfCat = transportCategory(map.getBuilt(x, y));
+  const self = map.getBuilt(x, y);
+  const selfCat = transportCategory(self);
   if (selfCat === 0) return 0;
   let mask = 0;
   for (const [dx, dy, bit] of MASK_DIRS) {
     const nx = x + dx;
     const ny = y + dy;
     if (!map.inBounds(nx, ny)) continue;
-    if (transportCategory(map.getBuilt(nx, ny)) === selfCat) mask |= bit;
+    const k = map.getBuilt(nx, ny);
+    // tracks join only their own: streetcar to streetcar, rail to rail (or elevated) — never one to the other
+    if (transportCategory(k) === selfCat && (self !== BuiltKind.Streetcar) === (k !== BuiltKind.Streetcar)) mask |= bit;
   }
   return mask;
 }

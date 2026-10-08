@@ -831,12 +831,13 @@ describe('transportMask: transit category connections', () => {
   // The placement fence blocks placeTransport for kinds 5..9, so these category
   // fixtures are injected directly via map.setBuilt — the mask only reads the
   // built layer through transportCategory and must connect by shared category.
-  it('connects a streetcar to a rail neighbour (shared rail category)', () => {
+  it('a streetcar does not join a rail neighbour, though they share the rail category (Maddy 2026-10-08)', () => {
     const map = new GameMap(5, 5);
     map.setBuilt(2, 2, BuiltKind.Streetcar); // category rail
-    map.setBuilt(2, 1, BuiltKind.Rail); // north rail — connects
+    map.setBuilt(2, 1, BuiltKind.Rail); // north rail — a different line, no join
+    map.setBuilt(2, 3, BuiltKind.Streetcar); // south streetcar — joins
     map.setBuilt(3, 2, BuiltKind.RoadStreet); // east road — different category
-    expect(transportMask(map, 2, 2)).toBe(N);
+    expect(transportMask(map, 2, 2)).toBe(S);
   });
 
   it('connects a bike path only to another bike path', () => {
