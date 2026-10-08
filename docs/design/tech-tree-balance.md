@@ -159,3 +159,20 @@ capabilities are wired nowhere, and the panel can't say what any of them do.
 - **Effects that write the hashed world** (Soil and Soul via ecology, Maker Space via condition)
   are player-driven, like tools. Determinism holds because the effects are a pure function of the
   saved tech state.
+
+## Revisions after play-review (Maddy, 2026-10-07)
+
+- **Energy Node**: a battery that banks up to 672 power-hours (4 h of its output) from the grid's
+  surplus and gives back up to 168 an hour when power runs short. Saved with the city.
+- **Community AI Node**: a smart grid, not trip-dropping (dropped trips were a wellbeing debuff).
+  Homes within 8 tiles draw 20% less 17:00–21:00.
+- **Elevated Rail**: shops within 2 tiles pay 25% more tax; homes within 2 tiles get noise
+  (−0.05 occupancy pull). The land-value station bonus is gone.
+- **Co-op vs Commune**: both make room for the unhoused at the full rate.
+  - Co-op residents keep their cars and commute.
+  - Commune residents work at home, own no cars, and give 2× effort. A commune doubles as a market,
+    taxed at 50% of a shop its size.
+- **Back yards**: worldgen lays a yard behind every house that faces one street (none on corners or
+  where the tile behind is taken), and a built house gets one too. An ADU goes *in* a yard.
+- **4×8 blocks**: built on `wip/4x8-blocks`, **not merged**. Every new city ends up 10–30% smaller,
+  and four redlining-gradient fixtures fail, so it needs a call on compensating.
