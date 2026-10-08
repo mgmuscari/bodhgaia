@@ -24,6 +24,9 @@ export interface Mover {
   /** The mover's leg state as it stood BEFORE the latest substep (snapshotMovers) — cosmetic, read only
    *  by the pose functions to interpolate between 50 ms substeps at the display's frame rate. */
   snap?: { x: number; y: number; dir: number; prevDir?: number; tx: number; ty: number };
+  /** A drawn pose this mover is easing in from, and the substeps left (poses.ts easeFrom) — a car pulling into a
+   *  stall or out of one, a driver stepping out to the kerb — so it slides rather than snaps. Cosmetic only. */
+  ease?: { x: number; y: number; hx: number; hy: number; n: number };
   /** Consecutive substeps this vehicle has been held by the space-ahead rule. Drives gridlock relief:
    *  a re-plan at STUCK_REPATH, a one-off pass-through at STUCK_ESCAPE. Reset whenever it moves. */
   stuck?: number;

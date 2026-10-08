@@ -195,6 +195,7 @@ export function snapPose(m: Mover, lateral: number | ((leg: LegState) => Lateral
 export function snapshotMovers(state: AmbientState): void {
   for (const list of [state.cars, state.cruisers, state.peds, state.trains.flatMap((t) => t.cars ?? []), state.trucks ?? []]) {
     for (const m of list) {
+      if (m.ease && --m.ease.n <= 0) m.ease = undefined; // an ease runs down a substep at a time
       const sn = (m.snap ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 });
       sn.x = m.x;
       sn.y = m.y;
@@ -218,6 +219,24 @@ export function streetAt(map: GameMap): (x: number, y: number) => boolean {
     const k = map.built[map.idx(x, y)]!;
     return isRoadKind(k) || k === BuiltKind.Streetcar;
   };
+}
+
+/** Substeps a park, an unpark or a step out of a car eases over (~0.5 s). */
+export const EASE_SUBSTEPS = 10;
+
+/** Start `m` easing in from `from` — the pose it is drawn at now — so a jump in its position (into a stall, out of
+ *  one, out of a car) is drawn as a slide (Maddy 2026-10-08: parking snapped to the side of the road). */
+export function easeFrom(m: Mover, from: Pose): void {
+  m.ease = { x: from.x, y: from.y, hx: from.hx, hy: from.hy, n: EASE_SUBSTEPS };
+}
+
+/** `pose`, eased in from where the mover was (if it is easing): smoothstep over the substeps left, `alpha` between. */
+function eased(m: Mover, pose: Pose, alpha: number): Pose {
+  const e = m.ease;
+  if (!e) return pose;
+  const t0 = (EASE_SUBSTEPS - e.n - 1 + alpha) / EASE_SUBSTEPS;
+  const t = t0 <= 0 ? 0 : t0 >= 1 ? 1 : t0;
+  return blendPose(e, pose, t * t * (3 - 2 * t));
 }
 
 /** A car's lane on a tram street: out past the rails, by the kerb (Maddy 2026-10-08: cars drive alongside trams). */
@@ -249,9 +268,9 @@ export function carPose(c: Car, alpha = 1, laneAt?: (x: number, y: number) => nu
   if (c.parked) {
     // kerb-parked: parallel to the kerb; in a lot bay: east-west, the way the bays are laid out
     const hd = c.curbDir !== undefined ? (c.curbDir % 2 === 0 ? 1 : 0) : c.lotIdx !== undefined ? 1 : c.dir;
-    return { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! };
+    return eased(c, { x: c.x + 0.5, y: c.y + 0.5, hx: DIR_DX[hd]!, hy: DIR_DY[hd]! }, alpha);
   }
-  return movingPose(c, laneAt ? laneProfile(laneAt) : LANE, alpha);
+  return eased(c, movingPose(c, laneAt ? laneProfile(laneAt) : LANE, alpha), alpha);
 }
 
 /** A moving mover's draw pose: moverPose now, blended `alpha` of the way from its pose before the latest
@@ -310,6 +329,6 @@ function walkPose(m: LegState, side: number, onRoadAt: (x: number, y: number) =>
 export function pedPose(p: Ped, onRoadAt: (x: number, y: number) => boolean, alpha = 1): Pose {
   const side = sidewalkOf(p);
   const now = walkPose(p, side, onRoadAt);
-  if (alpha >= 1 || !p.snap) return now;
-  return blendPose(walkPose(p.snap, side, onRoadAt), now, alpha); // (a teleport isn't blended: it lands)
+  if (alpha >= 1 || !p.snap) return eased(p, now, alpha);
+  return eased(p, blendPose(walkPose(p.snap, side, onRoadAt), now, alpha), alpha); // (a teleport isn't blended: it lands)
 }
