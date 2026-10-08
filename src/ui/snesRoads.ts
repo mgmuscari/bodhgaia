@@ -170,6 +170,18 @@ function curb(mask: number): Pixels {
   return p;
 }
 
+/** A tram street's small kerb (Maddy 2026-10-08): a one-slab sidewalk and its gutter on each masked edge. */
+function kerb(mask: number): Pixels {
+  const p = blank(T, T);
+  sides(mask, (set) => {
+    for (let a = 0; a < T; a++) {
+      set(a, 0, a % 4 === 0 ? C.pave : C.paveHi);
+      set(a, 1, C.asphaltLo); // gutter
+    }
+  }, p);
+  return p;
+}
+
 /** The inner block corner at each masked diagonal (NE=16 SE=32 SW=64 NW=128): the two sidewalks of the
  *  neighbouring road tiles meet here, so the corner gets a small quarter-round of pavement. */
 /** Zebra crossing on each masked side — the approach edge into a junction: a 4-px band of bars running
@@ -374,6 +386,7 @@ export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly numb
   out.set('@road/pole/nw', pole('nw'));
   for (let m = 1; m < 16; m++) {
     out.set(`@road/curb/${m}`, curb(m));
+    out.set(`@road/kerb/${m}`, kerb(m));
     out.set(`@road/zebra/${m}`, zebra(m));
     out.set(`@road/divider/${m}`, divider(m));
     out.set(`@road/xing/${m}`, crossing(m));

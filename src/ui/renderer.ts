@@ -5,7 +5,7 @@
 // only draws.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isBuildingKind, isTransportKind, transportMask, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
+import { BuiltKind, isBuildingKind, isTransportKind, transportMask, deckMask, roadDividerMask, roadCurbMask, tramKerbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import { C } from './snesPalette';
@@ -654,6 +654,8 @@ export class Renderer {
             const sig = signalCorners(map, tx, ty);
             if (sig !== 0) signals.push({ x: tx, y: ty, corners: sig });
             if (curb !== 0) ink(`@road/curb/${curb}`, dx, dy);
+            const kerbs = tramKerbMask(map, tx, ty);
+            if (kerbs !== 0) ink(`@road/kerb/${kerbs}`, dx, dy); // a tram street's small kerbs
 
             // Level-crossing PAINT: the white stop line a road has at a rail/tram crossing, on each
             // road-approach edge (the asphalt band + rails are already laid below/in the rail tile).

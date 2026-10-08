@@ -890,7 +890,23 @@ export function roadCurbMask(map: GameMap, x: number, y: number): number {
     const nx = x + dx;
     const ny = y + dy;
     if (!map.inBounds(nx, ny)) continue; // map edge: no curb
-    if (transportCategory(map.getBuilt(nx, ny)) !== 1) mask |= bit; // non-road neighbour → curb
+    if (!streetish(map.getBuilt(nx, ny))) mask |= bit; // non-road neighbour → curb
+  }
+  return mask;
+}
+
+/** A road, or a streetcar line (a tram street, Maddy 2026-10-08): no kerb runs between two of these. */
+function streetish(kind: number): boolean {
+  return transportCategory(kind) === 1 || kind === BuiltKind.Streetcar;
+}
+
+/** Render-only: the edges of a streetcar tile with a small kerb — each in-bounds neighbour that isn't street
+ *  (N=1 E=2 S=4 W=8). Where the line carries on or meets a road, none. */
+export function tramKerbMask(map: GameMap, x: number, y: number): number {
+  if (map.getBuilt(x, y) !== BuiltKind.Streetcar) return 0;
+  let mask = 0;
+  for (const [dx, dy, bit] of MASK_DIRS) {
+    if (map.inBounds(x + dx, y + dy) && !streetish(map.getBuilt(x + dx, y + dy))) mask |= bit;
   }
   return mask;
 }
