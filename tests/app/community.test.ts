@@ -33,6 +33,7 @@ function town(belongs: boolean, o: TownOpts = {}) {
   }
   o.extras?.(map, parcels);
   const live = createAmbientState();
+  live.events = []; // the camera's feed
   setHouseholds(live, residentialCensus(parcels));
   const partition = computeNeighborhoods(map);
   const civic = createCivicState(partition);
@@ -41,6 +42,7 @@ function town(belongs: boolean, o: TownOpts = {}) {
   let hour = 12;
   const news: string[] = [];
   const cheers: { approval?: number; goodwill?: number; funds?: number }[] = [];
+  const ignited: number[] = [];
   const community = createCommunity({
     world: { map, parcels },
     live,
@@ -53,6 +55,7 @@ function town(belongs: boolean, o: TownOpts = {}) {
     practised: (id) => id === 'craft-fairs' && o.craft === true,
     approval: () => o.approval ?? 50,
     cheer: (d) => cheers.push(d),
+    ignite: (i) => ignited.push(i),
   });
   let now = 0;
   const liveRng = createRng('l').fork('l');
@@ -68,7 +71,7 @@ function town(belongs: boolean, o: TownOpts = {}) {
     now += COMMUNITY_STEP_MS;
     community.frame(now);
   };
-  return { map, live, civic, hood, news, cheers, hourPasses, tick, community, setHour: (h: number) => (hour = h) };
+  return { map, parcels, live, civic, hood, news, cheers, ignited, hourPasses, tick, community, setHour: (h: number) => (hour = h) };
 }
 
 describe('a demo', () => {
@@ -184,5 +187,91 @@ describe('festivals and parades', () => {
     t.tick(Math.max(...t.live.gatherings!.map((g) => g.life)) + 800);
     t.hourPasses(14);
     expect(t.cheers.some((c) => (c.approval ?? 0) > 0 && (c.goodwill ?? 0) > 0)).toBe(true);
+  });
+});
+
+describe('protests and uprisings (conditions, not cops)', () => {
+  /** A harmed neighbourhood: police violence on its streets, a precinct and shops on it. */
+  const harmed = (map: GameMap, parcels: ParcelStore) => {
+    placeParcel(map, parcels, { x: 13, y: 6, width: 1, height: 1, kind: BuiltKind.Precinct });
+    placeParcel(map, parcels, { x: 15, y: 6, width: 1, height: 1, kind: BuiltKind.CommercialStrip });
+  };
+  const wound = (t: ReturnType<typeof town>) => {
+    for (let x = 0; x < 30; x++) for (const y of [4, 5, 6]) t.live.policeViolence.set(t.map.idx(x, y), 220);
+  };
+  const organise = (t: ReturnType<typeof town>, voice: number) => t.civic.setValues(t.hood, { ...t.civic.getValues(t.hood), voice });
+  const endAll = (t: ReturnType<typeof town>) => {
+    t.tick(Math.max(0, ...(t.live.gatherings ?? []).map((g) => g.life - g.age)) + 800);
+    t.hourPasses(14);
+  };
+
+  it('a harmed neighbourhood with a voice protests — on camera, placards and all; one with no voice cannot', () => {
+    const silent = town(false, { extras: harmed });
+    wound(silent);
+    drawFor(silent, (k) => k.includes('protest'));
+    expect(kinds(silent)).not.toContain('protest');
+
+    const t = town(false, { extras: harmed });
+    wound(t);
+    organise(t, 160);
+    drawFor(t, (k) => k.includes('protest'));
+    expect(kinds(t)).toContain('protest');
+    expect(t.live.events?.some((e) => e.kind === 'protest')).toBe(true);
+  });
+
+  it('a protest raises its voice; while the cause stands, approval falls', () => {
+    const t = town(false, { extras: harmed });
+    wound(t);
+    organise(t, 160);
+    drawFor(t, (k) => k.includes('protest'));
+    const before = t.civic.getValues(t.hood).voice;
+    endAll(t);
+    expect(t.civic.getValues(t.hood).voice).toBeGreaterThan(before);
+    expect(t.cheers.some((c) => (c.approval ?? 0) < 0)).toBe(true);
+  });
+
+  it('when protest goes unheard and the violence goes on, an uprising: fires — never at homes', () => {
+    const t = town(false, { extras: harmed });
+    wound(t);
+    organise(t, 160);
+    for (let round = 0; round < 6 && !kinds(t).includes('uprising'); round++) {
+      drawFor(t, (k) => k.includes('protest') || k.includes('uprising'));
+      if (!kinds(t).includes('uprising')) endAll(t);
+      wound(t); // nothing changed
+    }
+    expect(kinds(t)).toContain('uprising');
+    expect(t.live.events?.some((e) => e.kind === 'uprising')).toBe(true);
+    expect(t.ignited.length).toBeGreaterThan(0);
+    for (const i of t.ignited) expect(t.parcels.kindAt(i)).not.toBe(BuiltKind.HouseSingle);
+  });
+
+  it('cruisers sent to an uprising make it worse; a refuge in reach calms it', () => {
+    const escalate = (cruise: boolean, refuge: boolean) => {
+      const t = town(false, { extras: (m, p) => { harmed(m, p); if (refuge) placeParcel(m, p, { x: 11, y: 6, width: 1, height: 1, kind: BuiltKind.HealingCommons }); } });
+      wound(t);
+      organise(t, 100); // a voice, but not yet enough to calm an uprising
+      for (let round = 0; round < 6 && !kinds(t).includes('uprising'); round++) {
+        drawFor(t, (k) => k.includes('protest') || k.includes('uprising'));
+        if (!kinds(t).includes('uprising')) endAll(t);
+        wound(t);
+      }
+      const g = t.live.gatherings!.find((x) => x.kind === 'uprising')!;
+      const lit = t.ignited.length;
+      if (cruise) t.live.cruisers.push({ x: g.site.x, y: g.site.y, dir: 1, tx: g.site.x + 1, ty: g.site.y });
+      for (let h = 0; h < 4; h++) t.hourPasses(12 + h);
+      return { more: t.ignited.length - lit, leaving: g.leaving, life: g.life };
+    };
+    expect(escalate(true, false).more).toBeGreaterThan(escalate(false, false).more);
+    expect(escalate(false, true).leaving).toBe(true);
+  });
+});
+
+describe('a demo of protest', () => {
+  it('can hold a protest, or an uprising, in the neighbourhood the police have harmed most', () => {
+    const t = town(false, { extras: (m, p) => placeParcel(m, p, { x: 13, y: 6, width: 1, height: 1, kind: BuiltKind.Precinct }) });
+    for (let x = 0; x < 30; x++) t.live.policeViolence.set(t.map.idx(x, 5), 200);
+    expect(t.community.hold('protest')).toBe(true);
+    expect(t.community.hold('uprising')).toBe(false); // that neighbourhood is already out
+    expect(kinds(t)).toEqual(['protest']);
   });
 });

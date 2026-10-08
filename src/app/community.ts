@@ -10,9 +10,10 @@ import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { Rng } from '../engine/rng';
 import type { AmbientState } from '../live/types';
 import type { CivicState } from '../civic/state';
-import { SEED_BELONGING, SEED_TRUST } from '../civic/state';
+import { SEED_BELONGING, SEED_TRUST, SEED_VOICE } from '../civic/state';
+import { ENCAMPMENT_WEAR, POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS } from '../live/tuning';
 import type { NeighborhoodMap } from '../civic/neighborhoods';
-import { startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
+import { GATHER_LEAVE, startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
 import { closeTiles } from '../live/network';
 
 /** Wall ms between community steps (events are drawn once a game hour). */
@@ -44,6 +45,30 @@ export const FEST_CROWD = 24;
 export const PARADE_CROWD = 12;
 export const FEST_CHEER = { approval: 4, goodwill: 4 } as const;
 export const FEST_BELONGING_GAIN = 4;
+/** Protests (conditions, not cops): a neighbourhood's grievance — police violence on its streets, encampments, the
+ *  memorials of its dead — and the voice to speak with (0..1 above the opening). It gathers at its civic hall, else
+ *  its precinct, else in the street; its voice rises after, and approval falls while the cause stands. */
+export const PROTEST_VOICE = 0.1;
+export const PROTEST_CHANCE = 0.12;
+export const PROTEST_LIFE = 1400;
+export const PROTEST_CROWD = 14;
+export const PROTEST_VOICE_GAIN = 12;
+export const PROTEST_APPROVAL = -2;
+/** A protest is unheard if the grievance hasn't eased by this much since the last one. After UPRISING_AFTER unheard
+ *  protests, with police violence still at UPRISING_VIOLENCE, an uprising: fires at the precinct and businesses
+ *  (never homes); cruisers within ESCALATE_RADIUS light another and lengthen it; voice or a refuge in reach calms it. */
+export const UNHEARD_EASE = 0.05;
+export const UPRISING_AFTER = 2;
+export const UPRISING_VIOLENCE = 0.5;
+export const UPRISING_CHANCE = 0.25;
+export const UPRISING_LIFE = 1600;
+export const UPRISING_CROWD = 20;
+export const ESCALATE_RADIUS = 8;
+export const ESCALATE_LIFE = 300;
+export const UPRISING_MAX_LIFE = 3200;
+export const CALM_VOICE = 0.6;
+export const UPRISING_AFTERMATH = { trust: -10, voice: 20 } as const;
+export const UPRISING_APPROVAL = -4;
 /** At most this many gatherings at once, city-wide. */
 export const MAX_GATHERINGS = 4;
 
@@ -64,6 +89,8 @@ export interface CommunityDeps {
   approval(): number;
   /** Move the city's approval, goodwill and money (economy). */
   cheer(d: { approval?: number; goodwill?: number; funds?: number }): void;
+  /** Set a building alight (the fire controller). */
+  ignite(parcel: number): void;
 }
 
 const above = (v: number, seed: number): number => (v <= seed ? 0 : (v - seed) / (255 - seed));
@@ -163,7 +190,7 @@ export interface Community {
   frame(now: number): void;
   /** Hold a gathering now, whatever the conditions (demos, live checks): in the neighbourhood with the most homes.
    *  False if there's nowhere to hold it. */
-  hold(kind: 'block-party' | 'craft-fair' | 'festival'): boolean;
+  hold(kind: 'block-party' | 'craft-fair' | 'festival' | 'protest' | 'uprising'): boolean;
 }
 
 export function createCommunity(deps: CommunityDeps): Community {
@@ -188,7 +215,100 @@ export function createCommunity(deps: CommunityDeps): Community {
     } else if (g.kind === 'festival') {
       deps.cheer(FEST_CHEER);
       for (let hood = 1; hood <= civic.count(); hood++) lift(hood, { belonging: FEST_BELONGING_GAIN });
+    } else if (g.kind === 'protest') {
+      lift(g.hood, { voice: PROTEST_VOICE_GAIN });
+      deps.cheer({ approval: PROTEST_APPROVAL });
+      const now = harmOf(deps.partition(), g.hood).grievance;
+      const m = unheard.get(g.hood) ?? { count: 0, last: 0 };
+      unheard.set(g.hood, now >= m.last - UNHEARD_EASE ? { count: m.count + 1, last: now } : { count: 0, last: now });
+    } else if (g.kind === 'uprising') {
+      lift(g.hood, UPRISING_AFTERMATH);
+      deps.cheer({ approval: UPRISING_APPROVAL });
+      unheard.delete(g.hood);
+      lit.delete(g.id);
     }
+  };
+
+  /** Per neighbourhood: how many protests in a row went unheard, and the grievance at the last one. */
+  const unheard = new Map<number, { count: number; last: number }>();
+
+  /** A neighbourhood's police violence (0..1) and its grievance (0..1): that violence, its encampments, the
+   *  memorials of its dead. */
+  const harmOf = (part: NeighborhoodMap, hood: number): { violence: number; grievance: number } => {
+    const rec = part.neighborhoods[hood - 1];
+    const tiles = Math.max(1, rec?.tileCount ?? 1);
+    let pv = 0;
+    for (const [t, v] of live.policeViolence) if (part.tileToNeighborhood[t] === hood) pv += v;
+    let camps = 0;
+    for (const [t, w] of live.wear) if (w >= ENCAMPMENT_WEAR && part.tileToNeighborhood[t] === hood) camps++;
+    let mourned = 0;
+    for (const m of [...(live.memorials ?? []), ...(live.fallen ?? [])]) if (part.tileToNeighborhood[map.idx(m.x, m.y)] === hood) mourned++;
+    const violence = Math.min(1, pv / tiles / (POLICE_VIOLENCE_MAX / 2));
+    return { violence, grievance: Math.min(1, (violence + Math.min(1, camps / 8) + Math.min(1, mourned / 3)) / 1.5) };
+  };
+
+  /** Where a neighbourhood speaks: its civic hall, else its precinct, else its busiest street. */
+  const protestSite = (part: NeighborhoodMap, hood: number): { site: Gathering['site']; street: boolean } | null => {
+    const hall = findParcel(map, parcels, part, hood, [BuiltKind.Civic]) ?? findParcel(map, parcels, part, hood, [BuiltKind.Precinct]);
+    if (hall) return { site: hall, street: false };
+    const st = partySite(map, parcels, part, hood);
+    return st ? { site: st, street: true } : null;
+  };
+
+  /** The buildings an uprising sets alight, nearest the place first: the precinct, then businesses — never homes. */
+  const targets = (g: Gathering): number[] => {
+    const cx = g.site.x + g.site.w / 2;
+    const cy = g.site.y + g.site.h / 2;
+    const out: { i: number; d: number }[] = [];
+    for (const i of parcels.aliveIndices()) {
+      const p = parcels.get(i);
+      const zone = zoneTypeOf(p.kind);
+      if (p.kind !== BuiltKind.Precinct && zone !== ZoneType.Commercial && zone !== ZoneType.Industrial) continue;
+      const d = Math.abs(p.x + p.width / 2 - cx) + Math.abs(p.y + p.height / 2 - cy) - (p.kind === BuiltKind.Precinct ? 100 : 0);
+      if (d - (p.kind === BuiltKind.Precinct ? -100 : 0) <= 6) out.push({ i, d });
+    }
+    return out.sort((a, b) => a.d - b.d || a.i - b.i).map((o) => o.i);
+  };
+  /** Per uprising: the buildings it has set alight. */
+  const lit = new Map<number, Set<number>>();
+  const lightNext = (g: Gathering): void => {
+    const done = lit.get(g.id) ?? new Set<number>();
+    const next = targets(g).find((i) => !done.has(i));
+    if (next === undefined) return;
+    done.add(next);
+    lit.set(g.id, done);
+    deps.ignite(next);
+  };
+
+  /** Each hour of an uprising: cruisers in reach escalate it; voice or a refuge in reach calms it. */
+  const tendUprisings = (part: NeighborhoodMap): void => {
+    for (const g of live.gatherings ?? []) {
+      if (g.kind !== 'uprising' || g.leaving) continue;
+      const cx = g.site.x + g.site.w / 2;
+      const cy = g.site.y + g.site.h / 2;
+      let refuge = false;
+      for (let dy = -SAFE_RADIUS; dy <= SAFE_RADIUS && !refuge; dy++) {
+        for (let dx = -SAFE_RADIUS; dx <= SAFE_RADIUS; dx++) {
+          const x = Math.round(cx) + dx;
+          const y = Math.round(cy) + dy;
+          if (map.inBounds(x, y) && REFUGE_KINDS.has(map.built[map.idx(x, y)]!) && map.built[map.idx(x, y)] !== BuiltKind.Civic) {
+            refuge = true;
+            break;
+          }
+        }
+      }
+      const voice = g.hood > 0 && g.hood <= civic.count() ? above(civic.getValues(g.hood).voice, SEED_VOICE) : 0;
+      if (refuge || voice >= CALM_VOICE) {
+        g.leaving = true; // calmed: people go home
+        g.life = Math.min(g.life, g.age + GATHER_LEAVE);
+        continue;
+      }
+      if (live.cruisers.some((c) => Math.abs(c.x - cx) + Math.abs(c.y - cy) <= ESCALATE_RADIUS)) {
+        lightNext(g); // police sent in: it gets worse
+        g.life = Math.min(UPRISING_MAX_LIFE, g.life + ESCALATE_LIFE);
+      }
+    }
+    void part;
   };
 
   const homesIn = (part: NeighborhoodMap, hood: number): number[] =>
@@ -211,6 +331,19 @@ export function createCommunity(deps: CommunityDeps): Community {
     const site = findParcel(map, parcels, part, hood, [BuiltKind.Bazaar, BuiltKind.MakerSpace]);
     if (!site || !holdAt('craft-fair', site, hood, FAIR_LIFE, homesIn(part, hood), FAIR_CROWD, false)) return false;
     deps.news('A craft fair — stalls out round the bazaar');
+    return true;
+  };
+  const holdProtest = (part: NeighborhoodMap, hood: number, uprising: boolean): boolean => {
+    const at = protestSite(part, hood);
+    if (!at) return false;
+    const kind = uprising ? 'uprising' : 'protest';
+    const g = holdAt(kind, at.site, hood, uprising ? UPRISING_LIFE : PROTEST_LIFE, homesIn(part, hood), uprising ? UPRISING_CROWD : PROTEST_CROWD, at.street);
+    if (!g) return false;
+    live.events?.push({ kind, x: at.site.x, y: at.site.y, w: at.site.w, h: at.site.h });
+    if (uprising) {
+      lightNext(g);
+      deps.news('An uprising — protest went unheard, and the police violence went on');
+    } else deps.news('A protest — the neighbours are speaking out');
     return true;
   };
   const holdFestival = (part: NeighborhoodMap): boolean => {
@@ -238,6 +371,20 @@ export function createCommunity(deps: CommunityDeps): Community {
       if ((live.gatherings?.length ?? 0) >= MAX_GATHERINGS) return;
       if (busy.has(hood)) continue;
       const v = civic.getValues(hood);
+      // grievance first: a harmed neighbourhood with a voice speaks out; unheard, it rises up
+      const voice = above(v.voice, SEED_VOICE);
+      if (voice >= PROTEST_VOICE) {
+        const { violence, grievance } = harmOf(part, hood);
+        const unheardCount = unheard.get(hood)?.count ?? 0;
+        if (unheardCount >= UPRISING_AFTER && violence >= UPRISING_VIOLENCE && rng.next() < UPRISING_CHANCE && holdProtest(part, hood, true)) {
+          busy.add(hood);
+          continue;
+        }
+        if (grievance > 0 && rng.next() < PROTEST_CHANCE * grievance * (0.5 + voice) && holdProtest(part, hood, false)) {
+          busy.add(hood);
+          continue;
+        }
+      }
       const belonging = above(v.belonging, SEED_BELONGING);
       if (fairs && belonging >= FAIR_BELONGING && rng.next() < FAIR_CHANCE && holdFair(part, hood)) {
         busy.add(hood);
@@ -253,6 +400,20 @@ export function createCommunity(deps: CommunityDeps): Community {
     hold(kind) {
       const part = deps.partition();
       if (kind === 'festival') return holdFestival(part);
+      if (kind === 'protest' || kind === 'uprising') {
+        // the neighbourhood the police have harmed most, if it isn't already out
+        let best = 0;
+        let worst = -1;
+        for (let hood = 1; hood <= civic.count(); hood++) {
+          const v = harmOf(part, hood).violence;
+          if (v > worst) {
+            worst = v;
+            best = hood;
+          }
+        }
+        if (best === 0 || (live.gatherings ?? []).some((g) => g.hood === best)) return false;
+        return holdProtest(part, best, kind === 'uprising');
+      }
       if (kind === 'craft-fair') {
         for (let hood = 1; hood <= civic.count(); hood++) if (holdFair(part, hood)) return true;
         return false;
@@ -272,6 +433,7 @@ export function createCommunity(deps: CommunityDeps): Community {
       const hour = deps.hour();
       if (hour === undefined || hour === lastHour) return;
       lastHour = hour;
+      tendUprisings(deps.partition());
       if (deps.on()) draw(hour);
     },
   };

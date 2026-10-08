@@ -1,6 +1,6 @@
 # Community events
 
-Status: **decided, 2026-10-08; queued after the disasters** (floods, accidents, crime). Source: Maddy's list —
+Status: **built, 2026-10-08** (after the disasters). Tuning numbers live in `src/app/community.ts`. Source: Maddy's list —
 craft fairs, block parties, festivals, parades, protests, riots.
 
 ## Decisions (Maddy, 2026-10-08)
@@ -32,3 +32,20 @@ craft fairs, block parties, festivals, parades, protests, riots.
 - `LiveEvent` kinds for the camera and the news; the CCTV inset shows a protest or an uprising, not a party.
 - Art: prayer-flag strings, stalls, tables, placards — palette sprites in `snesAgents`/a sibling module; crowds are
   `@sprite/ped`; an uprising's fires and smoke are the fire module's.
+
+## As built (2026-10-08)
+
+- `live/gatherings.ts`: crowds are real people in a `gathering` ped phase — walking committed foot routes from
+  their homes' kerbs, milling in the place, walking home; the gathering ends once all have gone. They can be
+  arrested, caught in a cloud or killed like anyone on the street.
+- `app/community.ts`, hourly per neighbourhood, by day: block party (belonging + trust above the opening; the
+  busiest home street, closed to cars), craft fair (a bazaar/maker space, Craft Fairs, some belonging; +$150),
+  festival with a parade (approval ≥ 65, trust; biggest park or civic hall; the nearest avenue closed to cars).
+  Protest (grievance — police violence, encampments, the memorials of the dead — and a voice to speak with; at the
+  civic hall, else the precinct, else the street; on camera; voice up, approval down while the cause stands).
+  Uprising after two unheard protests while the violence goes on: fires at the precinct and businesses, never
+  homes; cruisers in reach light another and lengthen it; voice or a refuge in reach calms it; voice rises after,
+  trust and approval fall.
+- Road closures are kept per source and scope (`closeTiles(map, key, tiles, 'all' | 'cars')`).
+- Art: prayer flags (`ui/prayerFlags.ts`), stalls, placards — palette sprites; ?demo=party|fair|festival|protest|uprising.
+- Nothing happens at the opening's levels: a city earns its parties and finds its voice.
