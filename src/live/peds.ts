@@ -43,7 +43,6 @@ import { layPollution, layTraffic } from './fields/pollution';
 import { advanceMover, commitHeading, pathStep, rerouteIfStuck, spaceClear, uTurnIfStuck } from './motion';
 import { fuelBurn, nearestWalkable, nextStepToward, refuelFor, usesCommittedPath, walkPath } from './pathing';
 import { isWalkable, reachedPlot } from './network';
-import { pedLegLateral } from './poses';
 import { carSpeed, type VehicleCtx } from './cars';
 
 type Phase = NonNullable<Ped['phase']>;
@@ -233,7 +232,9 @@ function advanceLeg(state: AmbientState, map: GameMap, p: Ped, tgtx: number, tgt
   const speed = PED_SPEED * modeSpeedMult(mode, hereKind);
   if (usesCommittedPath(mode)) {
     commitWalkRoute(state, map, p, tgtx, tgty);
-    return p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y), undefined, pedLegLateral(map, p));
+    // walkers keep their own pace round corners (Maddy 2026-10-08: the vehicles' arc pacing, at the kerb's tight
+    // radius, shot them round at up to 13× a walk)
+    return p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y), undefined, 0, false);
   }
   // Transit legs (streetcar/elevated) hug their OWN line via the greedy mode-cost step (walkPath
   // doesn't know a tram network; a rider must prefer its rails). Dithering is rare on open lines.
@@ -243,7 +244,8 @@ function advanceLeg(state: AmbientState, map: GameMap, p: Ped, tgtx: number, tgt
     map,
     (x, y, _fromDir, recent) => nextStepToward(map, x, y, tgtx, tgty, recent, state.wear, mode, state.traffic, state.pollution),
     undefined,
-    pedLegLateral(map, p),
+    0,
+    false, // their own pace (see above)
   );
 }
 

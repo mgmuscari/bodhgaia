@@ -25,7 +25,13 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 ### 1 — Live-game bugs (playtest loop, do first)
 - **Walkers warp across tiles** (Maddy 2026-10-08, her (106, 37)) — measured on a 96² lotus: 803 jumps > 0.2 tile in a
   50 ms step before the avenue-kerb change, 1,699 after (worst 0.9). Cause: the drawn pose is heading-relative
-  (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. In progress.
+  (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. ✅ map-fixed sidewalks; and
+  the real "warp" (Maddy: gliding extremely fast) — the vehicles' arc pacing at the kerb's radius sped walkers round
+  corners up to 13× a walk — ✅ walkers keep their own pace.
+- Walkers hop when re-planning mid-leg (up to 0.2 tile, once) and when stepping back onto the grid from a parked
+  car's off-grid spot (up to 0.6, once). Smooth these.
+- **The toxic cloud glows at night** (Maddy 2026-10-08) — the smog overlay draws it after the night dimming.
+- **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — fast riders show the walking animation.
 - **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
   - rail running beside a road is drawn with at-grade crossings though there's road on one side only;
   - pedestrians walk on train tracks (and streetcar tracks);

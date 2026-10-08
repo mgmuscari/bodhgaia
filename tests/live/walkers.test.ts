@@ -24,7 +24,7 @@ describe('avenues', () => {
   const map = new GameMap(20, 12);
   for (let x = 0; x < 20; x++) for (const y of [5, 6]) placeTransport(map, x, y, BuiltKind.RoadAvenue);
   const onRoad = (x: number, y: number) => map.inBounds(x, y) && isRoadKind(map.built[map.idx(x, y)]!);
-  const walker = (y: number, dir: number) => ({ x: 8, y, dir, tx: 8 + (dir === 1 ? 1 : -1), ty: y });
+  const walker = (y: number, dir: number) => ({ x: 8, y, dir, tx: 8 + (dir === 1 ? 1 : -1), ty: y, homeTile: 3 });
 
   it('walkers keep to the kerb of the lane they are on — never the middle of the road', () => {
     // walking east (right = south): on the north lane they keep north, on the south lane south
@@ -35,11 +35,18 @@ describe('avenues', () => {
     expect(pedPose(walker(6, 3) as never, onRoad).y).toBeGreaterThan(6.5);
   });
 
-  it('on a one-lane street they still walk on their right', () => {
+  it('on a one-lane street each walker keeps to their own sidewalk, whichever way they face — and people use both', () => {
     const street = new GameMap(20, 12);
     for (let x = 0; x < 20; x++) placeTransport(street, x, 5, BuiltKind.RoadStreet);
     const on = (x: number, y: number) => street.inBounds(x, y) && isRoadKind(street.built[street.idx(x, y)]!);
-    expect(pedPose(walker(5, 1) as never, on).y).toBeGreaterThan(5.5); // east: right is south
-    expect(pedPose(walker(5, 3) as never, on).y).toBeLessThan(5.5); // west: right is north
+    const sides = new Set<boolean>();
+    for (let home = 0; home < 8; home++) {
+      const east = pedPose({ ...walker(5, 1), homeTile: home } as never, on).y;
+      const west = pedPose({ ...walker(5, 3), homeTile: home } as never, on).y;
+      expect(Math.abs(east - 5.5), `home ${home}`).toBeGreaterThan(0.2); // on a sidewalk, not the middle
+      expect(east > 5.5, `home ${home} keeps its side`).toBe(west > 5.5);
+      sides.add(east > 5.5);
+    }
+    expect(sides.size).toBe(2);
   });
 });
