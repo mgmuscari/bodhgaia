@@ -23,6 +23,7 @@ import { nearKind } from './pathing';
 export function residentDies(state: AmbientState, x: number, y: number): void {
   (state.fallen ??= []).push({ x, y, t: 0 });
   state.deaths = (state.deaths ?? 0) + 1;
+  state.events?.push({ kind: 'death', x, y, w: 1, h: 1 });
 }
 
 /** Advance the fallen (lying → memorial) and the memorials (→ gone), one substep. */
