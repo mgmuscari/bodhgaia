@@ -5,10 +5,10 @@ import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
-import { createAmbientState } from '../../src/live/types';
-import { residentDies, stepDeaths, stepExposure, exposureDeathsPerHour } from '../../src/live/death';
+import { createAmbientState, setHouseholds } from '../../src/live/types';
+import { residentDies, stepDeaths, stepExposure, exposureDeathsPerHour, griefAround } from '../../src/live/death';
 import { stepArrests } from '../../src/live/police';
-import { FALL_SUBSTEPS, MEMORIAL_SUBSTEPS, SHELTER_RADIUS, ENCAMPMENT_WEAR } from '../../src/live/tuning';
+import { FALL_SUBSTEPS, MEMORIAL_SUBSTEPS, SHELTER_RADIUS, ENCAMPMENT_WEAR, GRIEF_RADIUS, GRIEF_HEALTH } from '../../src/live/tuning';
 
 describe('a death', () => {
   it('lies down, then leaves a memorial that stays a while, then is gone', () => {
@@ -109,5 +109,16 @@ describe('an arrest is an event framed around the cruiser and the person taken',
     const rng = createRng('arrest-event').fork('a');
     for (let n = 0; n < 60 && state.peds.length > 0; n++) stepArrests(state, map, rng);
     expect(state.events).toEqual([{ kind: 'arrest', x: 4, y: 5, w: 4, h: 1 }]);
+  });
+});
+
+describe('grief', () => {
+  it(`homes within ${GRIEF_RADIUS} tiles of a death lose ${GRIEF_HEALTH} wellbeing; farther ones do not`, () => {
+    const map = new GameMap(20, 20);
+    const state = createAmbientState();
+    setHouseholds(state, [{ x: 5, y: 5, count: 4 }, { x: 15, y: 15, count: 4 }]);
+    griefAround(state, map, 6, 7);
+    expect(state.buildingHealth.get(map.idx(5, 5))).toBe(-GRIEF_HEALTH);
+    expect(state.buildingHealth.get(map.idx(15, 15))).toBeUndefined();
   });
 });

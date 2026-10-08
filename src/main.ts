@@ -24,6 +24,7 @@ import { createPowerController } from './app/power';
 import { installDevHandle } from './app/devHandle';
 import { mountOpeningFor } from './app/opening';
 import { createEconomyController } from './app/economy';
+import { createEventsController } from './app/events';
 import { neighborhoodVoice } from './civic/voice';
 import { displaceFromHomes } from './live/fields/occupancy';
 import { createOverlayController, mountOverlayLegend } from './app/overlays';
@@ -303,7 +304,34 @@ export function main(save: SaveV1 | null = null): void {
   // The two clocks: the fixed-tick sim (a resumed game keeps its clock — repair rings are stamped in ticks) and
   // the rAF frame (the live layer steps on its own clock inside it).
   const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
-  const frame = createFrame({ start: performance.now(), power, economy, sim, view, live, world, hidden: () => document.hidden, syncDock: tools.syncDock });
+  // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
+  const events = createEventsController({
+    map: world.map,
+    world,
+    live: live.state,
+    civic,
+    partition: () => deps.partition,
+    mourn: (n) => economy.mourn(n),
+    news: (t) => news.push(t),
+    skin: view.skin,
+    powered: () => power.grid().poweredAnchors,
+    clock: () => {
+      const h = gameClock(performance.now() / 1000).hour;
+      return `${String(h).padStart(2, '0')}:00`;
+    },
+  });
+  const frame = createFrame({
+    start: performance.now(),
+    power,
+    economy,
+    sim,
+    view,
+    live,
+    world,
+    hidden: () => document.hidden,
+    syncDock: tools.syncDock,
+    afterRender: (now) => events.frame(now),
+  });
   runFrames(frame, (cb) => window.requestAnimationFrame(cb));
 }
 

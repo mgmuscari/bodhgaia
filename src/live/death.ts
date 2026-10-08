@@ -11,6 +11,9 @@ import {
   ENCAMPMENT_WEAR,
   EXPOSURE_PER_PERSON_HOUR,
   FALL_SUBSTEPS,
+  GRIEF_HEALTH,
+  GRIEF_RADIUS,
+  HEALTH_MAX,
   MEMORIAL_SUBSTEPS,
   NIGHT_FROM,
   NIGHT_TO,
@@ -77,5 +80,15 @@ export function stepExposure(state: AmbientState, map: GameMap, rng: Rng): void 
     const x = t % map.width;
     state.unhoused -= 1;
     residentDies(state, x, (t - x) / map.width);
+  }
+}
+
+/** The homes near a death grieve: within GRIEF_RADIUS each loses GRIEF_HEALTH of its wellbeing. */
+export function griefAround(state: AmbientState, map: GameMap, x: number, y: number): void {
+  for (const h of state.households ?? []) {
+    if (Math.abs(h.x - x) > GRIEF_RADIUS || Math.abs(h.y - y) > GRIEF_RADIUS) continue;
+    const t = map.idx(h.x, h.y);
+    const cur = state.buildingHealth.get(t) ?? 0;
+    state.buildingHealth.set(t, Math.max(-HEALTH_MAX, cur - GRIEF_HEALTH));
   }
 }
