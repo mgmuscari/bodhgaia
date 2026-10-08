@@ -66,3 +66,21 @@ industrial works may spill (decay, redline grade, Collective Ownership ×0.25); 
 water pollution fields (a wastewater works near the water halves it) and sends a `ToxicCloud` along `state.wind`
 that lays smog and kills a few people outdoors (one roll each, at most 3). Rate measured 2026-10-08: lotus's
 one works spills about once in half an hour of play.
+
+## Architecture note: floods (2026-10-08)
+
+There is no visible rain yet: the "rain" is an invisible smog→ground→water wash every ~28 s (`applyRain`), and the
+audio's rain bed is never on. Floods need weather first.
+
+1. **Storms** (live): a seeded schedule from the ambient stream — a storm every couple of game days, lasting a few
+   game hours, some of them heavy. While one lasts, rain falls on screen (pixel streaks on the art grid, palette
+   glass colours, after the lighting pass like other weather), the sky dims a little, and the rain bed plays. The
+   28 s wash stays as it is (it is the smog balance); a storm adds washes.
+2. **The flood** (sim-side, `growth/flood.ts`, like fire — it damages buildings): the flood plain is the land
+   connected to water and lying low (elevation within FLOOD_RISE of the sea level). During a heavy storm the water
+   climbs the plain hour by hour, faster where the ground is paved and slower where greens, gardens, rewilded land
+   and forest soak it up; after the storm it recedes. A building under water loses condition each hour; its people
+   leave for the duration (into the unhoused, re-homed as the water goes).
+3. **Roads under water are impassable:** new routes for cars, trucks and walkers go round flooded tiles.
+4. **Art:** flooded tiles are drawn with the skin's own shallow-water art (murky), translucent over what they
+   cover, with the water's wave pixels; the camera shows the flood; the news says so.
