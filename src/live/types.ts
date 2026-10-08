@@ -204,7 +204,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest' | 'fire' | 'spill';
+  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood';
   x: number;
   y: number;
   w: number;
@@ -350,6 +350,8 @@ export interface AmbientState {
   trucks?: Truck[];
   /** A storm, while one lasts (app/weather.ts): rain on screen and in the ears; a heavy one floods the low land. */
   rain?: { heavy: boolean };
+  /** Tiles under flood water now (app/flood.ts): drawn as water, and routes go round them. */
+  flooded?: ReadonlySet<number>;
   /** Toxic clouds drifting downwind from a spill (live/spills.ts). */
   clouds?: ToxicCloud[];
   /** The toxic smog the clouds lay: drifts and spreads like smog, drawn greenish-yellow by the smog overlay.

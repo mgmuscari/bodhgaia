@@ -52,6 +52,7 @@ import { createLessons } from './app/lessons';
 import { createFireController } from './app/fire';
 import { drawSpills } from './live/spills';
 import { createWeather } from './app/weather';
+import { createFloodController } from './app/flood';
 import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
@@ -421,6 +422,9 @@ export function main(save: SaveV1 | null = null): void {
   // Weather: storms on their own seeded schedule — rain seen and heard, the air washed; heavy ones flood.
   const weather = createWeather({ live: live.state, map: world.map, rng: createRng(seed).fork('weather'), wash: () => applyRain(live.state, world.map) });
 
+  // Floods: heavy rain lifts the water over the low land by it; homes under water are evacuated until it goes.
+  const flood = createFloodController({ world, live: live.state, hour: () => gameClock(gameSec()).hour, disastersOn, markDirty, news: (t) => news.push(t) });
+
   // Fire (disasters.md): ignition from conditions once a game hour, trucks from the stations, burnt-out ruins. Nothing
   // new ignites while Disasters is off, or during the opening's night and tutorial.
   const fire = createFireController({
@@ -490,6 +494,7 @@ export function main(save: SaveV1 | null = null): void {
       lessons.frame(now);
       if (!night?.active() && !tutorial?.active()) weather.frame(now);
       demo?.frame(now);
+      flood.frame(now);
       fire.frame(now);
       drawSpillsNow();
       events.frame(now);
