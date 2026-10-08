@@ -46,6 +46,10 @@ export interface TechEffects {
   renewableOutput: number;
   /** Homes around an energy node are served first in a blackout (Local Grids). */
   localGrids: boolean;
+  /** Multiplier on soil's per-tick recovery (Soil and Soul). */
+  soilRecovery: number;
+  /** The soil ceiling on sealed tiles (Soil and Soul raises it). */
+  pavedSoilCap: number;
 }
 
 export type EffectKey = keyof TechEffects;
@@ -73,6 +77,8 @@ export const NEUTRAL_EFFECTS: Readonly<TechEffects> = Object.freeze({
   homeDayDemand: 1,
   renewableOutput: 1,
   localGrids: false,
+  soilRecovery: 1,
+  pavedSoilCap: 40, // = ecology PAVED_CAP (pinned by tests/tech/effects.test.ts)
 });
 
 /** Each practice's effects, by node id. */
@@ -103,6 +109,10 @@ export const NODE_EFFECTS: Readonly<Record<string, readonly Effect[]>> = {
   'sun-and-wire': [{ key: 'homeDayDemand', op: 'mul', value: 0.75 }],
   'renewable-energy': [{ key: 'renewableOutput', op: 'mul', value: 1.25 }],
   'local-grids': [{ key: 'localGrids', op: 'set', value: true }],
+  'soil-and-soul': [
+    { key: 'soilRecovery', op: 'mul', value: 2 },
+    { key: 'pavedSoilCap', op: 'set', value: 60 },
+  ],
 };
 
 function apply(out: Record<string, number | boolean>, e: Effect): void {

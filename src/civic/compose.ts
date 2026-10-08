@@ -75,7 +75,7 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
   // 1. Ecology cadence → tick + recompute means.
   let ecoTicked = false;
   if (tick > 0 && tick % ECO_CADENCE === 0) {
-    ecologyTick(deps.world.map);
+    ecologyTick(deps.world.map, deps.tech.effects()); // Soil and Soul
     const r = ecologyReport(deps.world);
     deps.ecoMeans = { soil: r.soilMean, flora: r.floraMean, fauna: r.faunaMean };
     ecoTicked = true;

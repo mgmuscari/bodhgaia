@@ -3,12 +3,6 @@ import { TECH_TREE } from '../../src/tech/tree';
 import { BuiltKind } from '../../src/engine/fabric';
 import { kindEffectLines, nodeEffectLines, practiceEffectLines } from '../../src/ui/techEffectsContent';
 
-/** Nodes whose mechanic (docs/design/tech-tree-balance.md) is not built yet. Batches 2–3 empty this; the
- *  test below fails the moment a listed node gains its effect, so the list can only shrink. */
-const PENDING_PRACTICES = new Set([
-  'soil-and-soul',
-]);
-
 /** Building pairs that still read the same (the design splits them in batch 3). */
 const PENDING_DUPLICATES: readonly [string, string][] = [
   ['urban-bazaars', 'maker-spaces'],
@@ -17,15 +11,9 @@ const PENDING_DUPLICATES: readonly [string, string][] = [
 
 describe('every tech says exactly what it does', () => {
   for (const n of TECH_TREE) {
-    if (PENDING_PRACTICES.has(n.id)) {
-      it(`${n.id} is pending — and still has no effect (else drop it from the pending list)`, () => {
-        expect(nodeEffectLines(n).effects).toEqual([]);
-      });
-    } else {
-      it(`${n.id} names at least one effect`, () => {
-        expect(nodeEffectLines(n).effects.length).toBeGreaterThan(0);
-      });
-    }
+    it(`${n.id} names at least one effect`, () => {
+      expect(nodeEffectLines(n).effects.length).toBeGreaterThan(0);
+    });
   }
 
   it('no two building techs read the same, except the pairs still to be split', () => {

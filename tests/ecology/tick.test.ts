@@ -4,7 +4,7 @@ import { ParcelStore, BuiltKind } from '../../src/engine/fabric';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { applyTool, toolDef } from '../../src/tools/tools';
-import { ecologyTick } from '../../src/ecology/tick';
+import { ecologyTick, NEUTRAL_ECOLOGY_PRACTICES } from '../../src/ecology/tick';
 
 // ecologyTick(map) is the composite ecology step: a STRICT double-buffered pass
 // (every sub-step reads the tick-entry "prev" layers, writes persistent scratch,
@@ -309,5 +309,55 @@ describe('ecologyTick: layer isolation (ecology writes ONLY soil/flora/fauna)', 
     expect(fabricFingerprint(map, parcels)).toEqual(fabricBefore);
     expect(Array.from(tech.snapshotBytes())).toEqual(techBefore);
     expect(Array.from(map.soilHealth)).not.toEqual(soilBefore);
+  });
+});
+
+describe('Soil and Soul (docs/design/tech-tree-balance.md)', () => {
+  const ground = () => {
+    const map = new GameMap(4, 1);
+    map.soilHealth.fill(100);
+    map.built[3] = BuiltKind.RoadStreet; // sealed
+    map.soilHealth[3] = 30;
+    return map;
+  };
+
+  it('neutral practices tick exactly as before', () => {
+    const a = ground();
+    const b = ground();
+    ecologyTick(a);
+    ecologyTick(b, NEUTRAL_ECOLOGY_PRACTICES);
+    expect([...b.soilHealth]).toEqual([...a.soilHealth]);
+  });
+
+  it('open soil recovers twice as fast, and sealed soil can heal higher', () => {
+    const open = () => {
+      const map = new GameMap(3, 3);
+      map.soilHealth.fill(100);
+      return map;
+    };
+    const plain = open();
+    const cared = open();
+    const care = { soilRecovery: 2, pavedSoilCap: 60 };
+    for (let i = 0; i < 30; i++) {
+      ecologyTick(plain);
+      ecologyTick(cared, care);
+    }
+    expect(plain.soilHealth[4]).toBe(130);
+    expect(cared.soilHealth[4]).toBe(160);
+    // a street, healing toward the sealed ceiling (its own soil −2 outweighs recovery, so start it above)
+    const sealed = () => {
+      const map = new GameMap(1, 1);
+      map.built[0] = BuiltKind.QuietStreet; // sealed transport, no soil penalty
+      map.soilHealth[0] = 30;
+      return map;
+    };
+    const a = sealed();
+    const b = sealed();
+    for (let i = 0; i < 60; i++) {
+      ecologyTick(a);
+      ecologyTick(b, care);
+    }
+    expect(a.soilHealth[0]).toBe(40);
+    expect(b.soilHealth[0]).toBe(60);
   });
 });

@@ -61,11 +61,24 @@ function getScratch(n: number): EcologyScratch {
   return scratch;
 }
 
+/** The practices' ecology effects (resolved tech-side, tech/effects.ts — passed as plain values). */
+export interface EcologyPractices {
+  /** Multiplier on soil's per-tick recovery (Soil and Soul). */
+  soilRecovery: number;
+  /** The soil ceiling on sealed tiles (Soil and Soul raises it). */
+  pavedSoilCap: number;
+}
+
+export const NEUTRAL_ECOLOGY_PRACTICES: Readonly<EcologyPractices> = Object.freeze({ soilRecovery: 1, pavedSoilCap: PAVED_CAP });
+
+/** Soil's per-tick recovery on open land, and the sealed-tile ceiling, before any practice. */
+export { BASE_RECOVERY as SOIL_RECOVERY, PAVED_CAP };
+
 /**
  * Advance the ecology layers of `map` by one tick. Reads built/parcel/water +
  * the three ecology layers; writes ONLY soilHealth/floraVitality/faunaPresence.
  */
-export function ecologyTick(map: GameMap): void {
+export function ecologyTick(map: GameMap, practices: EcologyPractices = NEUTRAL_ECOLOGY_PRACTICES): void {
   const { width, height } = map;
   const n = width * height;
   const next = getScratch(n);
@@ -111,8 +124,8 @@ export function ecologyTick(map: GameMap): void {
       water[i] !== Water.None ||
       isTransportKind(built[i]!) ||
       (parcel[i] !== 0 && !isUnsealed(built[i]!));
-    let v = clampByte(soil[i]! + BASE_RECOVERY + next.soilInf[i]!);
-    if (sealed && v > PAVED_CAP) v = PAVED_CAP;
+    let v = clampByte(soil[i]! + BASE_RECOVERY * practices.soilRecovery + next.soilInf[i]!);
+    if (sealed && v > practices.pavedSoilCap) v = practices.pavedSoilCap;
     next.soil[i] = v;
   }
 
