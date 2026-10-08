@@ -7,6 +7,8 @@ export interface CctvHandle {
   readonly canvas: HTMLCanvasElement;
   show(caption: string, time: string): void;
   hide(): void;
+  /** GPU mode: the feed's ground shows through from the GPU map beneath; only the sprites are on this canvas. */
+  setTransparent(on: boolean): void;
 }
 
 export function mountCctv(container: HTMLElement): CctvHandle {
@@ -37,6 +39,9 @@ export function mountCctv(container: HTMLElement): CctvHandle {
     },
     hide() {
       root.hidden = true;
+    },
+    setTransparent(on) {
+      root.classList.toggle('cctv-gpu', on);
     },
   };
 }

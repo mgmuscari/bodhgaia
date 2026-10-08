@@ -14,6 +14,10 @@ import { Camera } from '../ui/camera';
 import { Renderer } from '../ui/renderer';
 import type { SkinImages } from '../ui/tilesetLoader';
 import { mountCctv } from '../ui/cctv';
+import { toGlRect } from '../ui/glRect';
+import { gameSec } from '../ui/gameTime';
+import type { GpuRenderer } from '../ui/gpuRenderer';
+import type { SmogOverlay } from '../ui/smogOverlay';
 
 /** Belonging a neighbourhood loses when one of its people dies on its streets. */
 export const DEATH_BELONGING = 10;
@@ -53,11 +57,21 @@ export interface EventsDeps extends EventCostDeps {
   clock(): string;
   /** Whether the feed may show now (the opening keeps it off). Default on. */
   cctvOn?(): boolean;
+  /** The main view: its 2D canvas (the map pane's box), its renderer (to keep its sprites out of the inset), and
+   *  the GPU map + smog when the GPU path is on (the inset then draws as a second GPU viewport). */
+  main?: {
+    canvas: HTMLCanvasElement;
+    renderer: Pick<Renderer, 'setHole'>;
+    gpu(): GpuRenderer | null;
+    smog(): SmogOverlay | null;
+  };
 }
 
 export interface EventsController {
   /** Drain the feed and draw the inset (call once per frame, after the main render). */
   frame(now: number): void;
+  /** The inset's GPU viewport (call after the main GPU map, glow and smog). */
+  gpuPass(now: number): void;
 }
 
 export function createEventsController(deps: EventsDeps): EventsController {
@@ -67,6 +81,28 @@ export function createEventsController(deps: EventsDeps): EventsController {
   let renderer: Renderer | null = null;
   let camera: Camera | null = null;
   let shown: LiveEvent | null = null;
+  let gpuOn = false;
+  /** The inset's rect on the main pane: CSS px (the 2D hole) and GL device px (the GPU viewport). */
+  let hole: { css: { x: number; y: number; w: number; h: number }; gl: { x: number; y: number; w: number; h: number } } | null = null;
+
+  const placeHole = (): void => {
+    const main = deps.main;
+    if (!main) return;
+    const pane = main.canvas.getBoundingClientRect();
+    const box = cctv.canvas.getBoundingClientRect();
+    hole = {
+      css: { x: box.left - pane.left, y: box.top - pane.top, w: box.width, h: box.height },
+      gl: toGlRect(box, pane, window.devicePixelRatio || 1),
+    };
+    main.renderer.setHole(gpuOn ? hole.css : null);
+  };
+  const close = (): void => {
+    if (shown) cctv.hide();
+    shown = null;
+    hole = null;
+    deps.main?.renderer.setHole(null);
+  };
+
   return {
     frame(now) {
       const events = deps.live.events!.splice(0);
@@ -75,15 +111,20 @@ export function createEventsController(deps: EventsDeps): EventsController {
         if (deps.cctvOn?.() !== false) queue.push(events, now); // the opening's own death isn't replayed after
       }
       const ev = deps.cctvOn?.() === false ? null : queue.current(now);
-      if (!ev) {
-        if (shown) cctv.hide();
-        shown = null;
-        return;
-      }
+      if (!ev) return close();
       if (!renderer) {
         renderer = new Renderer(cctv.canvas, deps.skin);
         renderer.resize(CCTV_W, CCTV_H, window.devicePixelRatio || 1);
         camera = new Camera({ mapWidth: deps.map.width, mapHeight: deps.map.height, viewportWidth: CCTV_W, viewportHeight: CCTV_H });
+      }
+      // GPU on: the inset's 2D layer draws only the sprites; its ground is a second viewport on the GPU map
+      const wantGpu = !!deps.main?.gpu();
+      if (wantGpu !== gpuOn) {
+        gpuOn = wantGpu;
+        renderer.setGpuMode(gpuOn);
+        renderer.invalidateBase();
+        cctv.setTransparent(gpuOn);
+        if (shown) placeHole();
       }
       if (ev !== shown) {
         const f = cctvFrame(ev, CCTV_W, CCTV_H);
@@ -92,8 +133,17 @@ export function createEventsController(deps: EventsDeps): EventsController {
         renderer.setPowerGrid(new Set(deps.powered()));
         cctv.show(cctvLabel(ev), deps.clock());
         shown = ev;
+        placeHole();
       }
       renderer.renderFrame(deps.world, camera!, deps.live);
+    },
+    gpuPass(now) {
+      const main = deps.main;
+      const gpu = main?.gpu();
+      if (!shown || !gpuOn || !gpu || !renderer || !camera || !hole) return;
+      const t = gameSec(now);
+      gpu.renderInset(hole.gl, camera, CCTV_W, CCTV_H, t, renderer.baseCanvas(), renderer.baseVersion(), deps.live, renderer.emissiveBuildingList(), renderer.headlightBeams());
+      main!.smog()?.renderInset(hole.gl, camera, CCTV_W, CCTV_H, now / 1000, deps.live.wind);
     },
   };
 }
