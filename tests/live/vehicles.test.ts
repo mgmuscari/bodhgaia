@@ -52,7 +52,7 @@ describe('transit vehicles', () => {
   it('every line runs a vehicle: a tram on the streetcar line, a train on the elevated', () => {
     const c = city();
     run(c, 5);
-    expect(c.state.trains.map((t) => t.family).sort()).toEqual(['rail', 'tram']);
+    expect([...new Set(c.state.trains.map((t) => t.family))].sort()).toEqual(['rail', 'tram']);
   });
 
   it('trains run long distances fast — well over twice a tram\'s pace (Maddy 2026-10-08: too slow)', () => {
@@ -67,6 +67,16 @@ describe('transit vehicles', () => {
       }
     });
     expect(moved.rail).toBeGreaterThan(2 * moved.tram);
+  });
+
+  it('runs a vehicle every few tiles — a tram every 8, a train every 12 (Maddy 2026-10-08: two trams on a long line, hundreds waiting)', () => {
+    const map = new GameMap(90, 12);
+    for (let x = 2; x <= 73; x++) map.setBuilt(x, 2, BuiltKind.Streetcar); // 72 tiles
+    for (let x = 2; x <= 49; x++) map.setBuilt(x, 8, BuiltKind.ElevatedRail); // 48 tiles
+    const c = { map, state: createAmbientState() };
+    run(c, 60);
+    expect(c.state.trains.filter((t) => t.family === 'tram')).toHaveLength(9);
+    expect(c.state.trains.filter((t) => t.family === 'rail')).toHaveLength(4);
   });
 
   it('trams keep to streetcar track, trains to rail', () => {

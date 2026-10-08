@@ -3,7 +3,7 @@
 
 import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
-import { CAR_STRAIGHT_WEIGHT, TRAIN_CAP, TRAIN_LEN, TRAIN_RAIL_PER, TRAIN_SPEED } from './tuning';
+import { CAR_STRAIGHT_WEIGHT, TRAIN_CAP, TRAIN_EVERY, TRAIN_LEN, TRAIN_SPEED, TRAM_EVERY } from './tuning';
 import { DIR_DX, DIR_DY, opposite } from './geometry';
 import type { AmbientState, Train } from './types';
 import { pickStep } from './network';
@@ -23,19 +23,19 @@ export function trackTraversable(map: GameMap, x: number, y: number, family: Lin
   return map.inBounds(x, y) && familyOf(map.built[map.idx(x, y)]!) === family;
 }
 
-/** Top every line's fleet up (docs/design/transit.md): at least one vehicle per line, one per TRAIN_RAIL_PER
- *  tiles on a long one, TRAIN_CAP in all — trams on streetcar track, trains on rail and elevated rail. A new
+/** Top every line's fleet up (docs/design/transit.md): at least one vehicle per line, one per TRAM_EVERY (trams) or
+ *  TRAIN_EVERY (trains) of its tiles, TRAIN_CAP in all — trams on streetcar track, trains on rail and elevated rail. A new
  *  vehicle starts stacked on a line tile it can roll on from, and stretches out as it rides. */
 export function spawnTransit(state: AmbientState, map: GameMap, rng: Rng): void {
   const { lines, lineOf } = transitFor(map);
-  if (lines.length === 0 || state.trains.length >= TRAIN_CAP + lines.length) return;
+  if (lines.length === 0 || state.trains.length >= TRAIN_CAP) return;
   const running = new Map<number, number>();
   for (const t of state.trains) {
     const l = lineOf[map.idx(Math.round(t.hx), Math.round(t.hy))] ?? -1;
     if (l >= 0) running.set(l, (running.get(l) ?? 0) + 1);
   }
   for (const line of lines) {
-    const want = Math.max(1, Math.floor(line.tiles.length / TRAIN_RAIL_PER));
+    const want = Math.max(1, Math.floor(line.tiles.length / (line.family === 'tram' ? TRAM_EVERY : TRAIN_EVERY)));
     if ((running.get(line.id) ?? 0) >= want) continue;
     const starts = line.tiles.filter((t) => {
       const x = t % map.width;

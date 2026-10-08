@@ -32,7 +32,7 @@ import {
 import type { AmbientState, Car, ParkingLotInfo, Ped } from './types';
 import { spawnTargetFor } from './fields/occupancy';
 import { commitHeading } from './motion';
-import { planRide, startRide } from './riders';
+import { planRide, rideCrowded, startRide } from './riders';
 import {
   chooseMode,
   jamNear,
@@ -122,11 +122,15 @@ export function parkInPlace(state: AmbientState, map: GameMap, car: Car): void {
   car.stuck = 0;
 }
 
-/** The ride a transit mode means for a leg, or null (not a transit mode, or no line serves it). */
-function rideFor(map: GameMap, cx: number, cy: number, to: { x: number; y: number }, mode: TravelMode) {
+/** The ride a transit mode means for a leg, or null (not a transit mode, no line serves it, or its stop is already
+ *  crowded past a vehicle-load — then the trip goes another way). */
+function rideFor(state: AmbientState, map: GameMap, cx: number, cy: number, to: { x: number; y: number }, mode: TravelMode) {
   if (mode !== TravelMode.Streetcar && mode !== TravelMode.ElevatedRail) return null;
-  return planRide(map, cx, cy, to.x, to.y, mode === TravelMode.Streetcar ? 'tram' : 'rail');
+  const plan = planRide(map, cx, cy, to.x, to.y, mode === TravelMode.Streetcar ? 'tram' : 'rail');
+  return plan && !rideCrowded(state, plan.board) ? plan : null;
 }
+
+const isTransit = (m: TravelMode): boolean => m === TravelMode.Streetcar || m === TravelMode.ElevatedRail;
 
 /** Send a citizen home: drive its owned car home to park it if it has one out, else walk. */
 export function headHome(state: AmbientState, p: Ped, map: GameMap): void {
@@ -137,7 +141,7 @@ export function headHome(state: AmbientState, p: Ped, map: GameMap): void {
   // carless and far: the line home, if one serves both ends
   const cx = Math.round(p.x);
   const cy = Math.round(p.y);
-  const ride = car ? null : rideFor(map, cx, cy, { x: hx, y: hy }, chooseMode(map, cx, cy, hx, hy, 0, state.practices.walkStretch, state.practices.bikeStretch));
+  const ride = car ? null : rideFor(state, map, cx, cy, { x: hx, y: hy }, chooseMode(map, cx, cy, hx, hy, 0, state.practices.walkStretch, state.practices.bikeStretch));
   if (ride) {
     p.building = undefined;
     startRide(p, ride, { x: hx, y: hy }, 'to-home');
@@ -235,14 +239,16 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
       p.roadSteps = undefined; // a fresh leg — its tolls accrue anew
       p.wornSteps = undefined;
       // A LINE: walk to the stop, wait, ride, walk on (riders.ts)
-      const ride = rideFor(map, cx, cy, plot, mode);
+      const ride = rideFor(state, map, cx, cy, plot, mode);
       if (ride) {
         startRide(p, ride, { x: plot.x, y: plot.y }, 'to-building');
         return true;
       }
       p.phase = 'to-building';
       p.walkTo = { x: plot.x, y: plot.y };
-      p.mode = mode === TravelMode.Drive ? TravelMode.Walk : mode; // drive unavailable → walk
+      // no ride to be had (a crowded stop): the way they'd go without the line — never "walking the tram line fast"
+      const other = isTransit(mode) ? chooseMode(map, cx, cy, plot.x, plot.y, jam, pr.walkStretch, pr.bikeStretch, false) : mode;
+      p.mode = other === TravelMode.Drive || isTransit(other) ? TravelMode.Walk : other; // drive unavailable → walk
       return true;
     }
   }
