@@ -28,8 +28,10 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. ✅ map-fixed sidewalks; and
   the real "warp" (Maddy: gliding extremely fast) — the vehicles' arc pacing at the kerb's radius sped walkers round
   corners up to 13× a walk — ✅ walkers keep their own pace.
-- Walkers hop when re-planning mid-leg (up to 0.2 tile, once) and when stepping back onto the grid from a parked
-  car's off-grid spot (up to 0.6, once). Smooth these.
+- ✅ Walkers hop when re-planning mid-leg (up to 0.2 tile, once) and when stepping back onto the grid from a parked
+  car's off-grid spot (up to 0.6, once). Smooth these. — Not visible any more (Maddy 2026-10-08: hasn't seen one):
+  measured over a live minute, 0 drawn leaps > 0.25 tile in 90,802 walker-steps, worst 0.06. The sim position still
+  hops on a re-plan; the drawing blends across it (blendPose).
 - ✅ **The toxic cloud glows at night** (Maddy 2026-10-08) — the smog overlay now darkens with the night.
 - ✅ **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — real bicycles now.
 - ✅ **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
