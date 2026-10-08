@@ -19,7 +19,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
 ### 0 — Active direction (2026-10-08)
 - **Disasters** (`docs/design/disasters.md`): ✅ fire, ✅ spills, ✅ weather + floods, ✅ traffic accidents, ✅ violent crime (conditions, not cops). Next: merge `bodhgaia` → main when Maddy says.
-- **Then community events** (`docs/design/community-events.md`): craft fairs, block parties, festivals, parades,
+- ✅ **Community events** (`docs/design/community-events.md`): craft fairs, block parties, festivals, parades,
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)

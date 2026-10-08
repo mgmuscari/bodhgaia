@@ -26,6 +26,8 @@ describe('cctvLabel', () => {
     expect(cctvLabel({ kind: 'spill', x: 0, y: 0, w: 1, h: 1 })).toBe('Toxic spill');
     expect(cctvLabel({ kind: 'flood', x: 0, y: 0, w: 1, h: 1 })).toBe('Flood');
     expect(cctvLabel({ kind: 'crash', x: 0, y: 0, w: 1, h: 1 })).toBe('Crash');
+    expect(cctvLabel({ kind: 'protest', x: 0, y: 0, w: 1, h: 1 })).toBe('Protest');
+    expect(cctvLabel({ kind: 'uprising', x: 0, y: 0, w: 1, h: 1 })).toBe('Uprising');
   });
 });
 

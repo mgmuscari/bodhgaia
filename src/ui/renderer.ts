@@ -9,6 +9,7 @@ import { BuiltKind, isBuildingKind, isTransportKind, transportMask, isRoadKind, 
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import { C } from './snesPalette';
+import { FLAG_COLOURS, FLAG_STRING, prayerFlagPixels } from './prayerFlags';
 import { DIR_DX, DIR_DY } from '../live/geometry';
 import {
   builtRenderKey,
@@ -74,6 +75,9 @@ function dirVector8(d: number): [number, number] {
   const D = Math.SQRT1_2;
   return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
 }
+
+/** The gatherings that hang prayer flags. */
+const FESTIVE: ReadonlySet<string> = new Set(['block-party', 'craft-fair', 'festival', 'parade']);
 
 /** The palette's foam, for the flood's waterline. */
 const FOAM_CSS = `rgb(${C.foam[0]}, ${C.foam[1]}, ${C.foam[2]})`;
@@ -1076,6 +1080,21 @@ export class Renderer {
       ctx.restore();
     }
 
+    // A craft fair's stalls (community-events.md): set out on the ground round the bazaar, under the people.
+    for (const g of ambient.gatherings ?? []) {
+      if (g.kind !== 'craft-fair') continue;
+      const spots: [number, number][] = [
+        [g.site.x + 0.5, g.site.y + 0.55],
+        [g.site.x + g.site.w - 0.5, g.site.y + 0.55],
+        [g.site.x + 0.5, g.site.y + g.site.h - 0.45],
+        [g.site.x + g.site.w - 0.5, g.site.y + g.site.h - 0.45],
+      ];
+      spots.forEach(([sx, sy], k) => {
+        const img = this.sprites.get(`@sprite/stall/${(g.id + k) % 3}`);
+        if (img) this.drawArt(ctx, img, sx, sy, camera);
+      });
+    }
+
     // A wreck (live/accidents.ts) sits spun a frame round, glass on the road beside it, hazards flashing.
     const hazardOn = Math.floor(performance.now() / 400) % 2 === 0;
     for (const { m: c, pose } of poses.cars) {
@@ -1163,6 +1182,8 @@ export class Renderer {
     // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a
     // demand path) it stays centred. The person is FIXED per citizen (a stable hash of its identity —
     // skin tone + shirt), with a two-frame walk while it moves. (Drivers are CARS, drawn above.)
+    // protesters (and those rising up) carry placards above their heads
+    const marching = new Set((ambient.gatherings ?? []).filter((g) => g.kind === 'protest' || g.kind === 'uprising').map((g) => g.id));
     for (const { m: p, pose } of poses.peds) { // (not those inside a building, or riding their car)
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
@@ -1172,6 +1193,10 @@ export class Renderer {
       const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
       const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame));
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      if (p.gather && marching.has(p.gather.id)) {
+        const sign = this.sprites.get(`@sprite/placard/${seed & 1}`);
+        if (sign) this.drawArt(ctx, sign, pose.x + 0.06, pose.y - 0.22, camera);
+      }
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
@@ -1224,6 +1249,38 @@ export class Renderer {
         if (img) this.drawArt(ctx, img, b.x + 0.5, b.y + 0.5, camera);
       });
     });
+
+    // Prayer flags over festive gatherings (community-events.md): single art pixels from the palette — strings along
+    // both kerbs of the place and one across it, a pole at each end, fluttering. Overhead, so above the people.
+    if (ambient.gatherings?.length) {
+      const ap = camera.tileSize / BASE_TILE;
+      const frame = Math.floor(performance.now() / 500) % 2;
+      const dot = (x: number, y: number, c: readonly number[]): void => {
+        const { sx, sy } = camera.worldToScreen(x / BASE_TILE, y / BASE_TILE);
+        if (sx < -ap || sy < -ap || sx > w || sy > h) return;
+        ctx.fillStyle = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+        ctx.fillRect(Math.round(sx), Math.round(sy), Math.ceil(ap), Math.ceil(ap));
+      };
+      for (const g of ambient.gatherings) {
+        if (!FESTIVE.has(g.kind)) continue;
+        const X0 = g.site.x * BASE_TILE;
+        const Y0 = g.site.y * BASE_TILE;
+        const X1 = (g.site.x + g.site.w) * BASE_TILE - 1;
+        const Y1 = (g.site.y + g.site.h) * BASE_TILE - 1;
+        // round a building (a fair, a festival): strung along the edges of the ground round it, never over the roof;
+        // a street (a party, a parade): along the place's long axis, or across it at each tile down a street
+        const round = g.kind === 'festival' || g.kind === 'craft-fair';
+        const strings: [number, number, number, number][] = round
+          ? [[X0 + 3, Y0 + 4, X1 - 3, Y0 + 4], [X0 + 3, Y1 - 7, X1 - 3, Y1 - 7], [X0 + 3, Y0 + 4, X0 + 3, Y1 - 7], [X1 - 3, Y0 + 4, X1 - 3, Y1 - 7]]
+          : g.site.w >= g.site.h
+            ? [[X0, Y0 + 1, X1, Y0 + 1], [X0, Y1 - 4, X1, Y1 - 4], [X0, Y0 + 1, X1, Y1 - 4]]
+            : Array.from({ length: g.site.h }, (_, k) => [X0 - 2, Y0 + k * BASE_TILE + 3, X1 + 2, Y0 + k * BASE_TILE + 3] as [number, number, number, number]);
+        for (const [ax, ay, bx, by] of strings) {
+          for (const [px, py] of [[ax, ay], [bx, by]]) for (let k = 0; k < 4; k++) dot(px!, py! - k, FLAG_STRING); // poles
+          for (const p of prayerFlagPixels(ax, ay, bx, by, frame)) dot(p.x, p.y, p.kind === 'flag' ? FLAG_COLOURS[p.colour]! : FLAG_STRING);
+        }
+      }
+    }
 
     // Smog plumes — TOP layer (above cars/peds, Maddy): translucent puffs over polluted tiles, streaming
     // downwind along the prevailing wind (loop + triangle fade so they don't pop), billowing as they go.

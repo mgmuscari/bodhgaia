@@ -9,7 +9,7 @@
 // @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame},
 // @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant},
 // @sprite/firetruck/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant},
-// @sprite/rain/{0 light|1 heavy}, @sprite/debris.
+// @sprite/rain/{0 light|1 heavy}, @sprite/debris, @sprite/stall/{0..2}, @sprite/placard/{0|1}.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
@@ -230,6 +230,14 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   }
   for (let f = 0; f < FIRE_FRAMES; f++) out.set(`@sprite/fire/${f}`, flame(f));
   out.set('@sprite/drop', glyph(['w'], { w: C.foam }));
+  // a craft fair's stalls: a striped awning (a colour and cream) over a wooden table on two legs
+  const STALL = ['asasasas', 'sasasasa', '.d....d.', 'tttttttt', '.l....l.'];
+  [C.signal, C.roofBlue, C.leaf].forEach((stripe, v) =>
+    out.set(`@sprite/stall/${v}`, glyph(STALL, { a: stripe, s: C.cream, d: C.roofBrownLo, t: C.roofBrown, l: C.roofBrownLo })),
+  );
+  // protest placards: a cream sign (one with a red word) held up on a pole
+  out.set('@sprite/placard/0', glyph(['ccc', 'ccc', '.p.'], { c: C.cream, p: C.roofBrownLo }));
+  out.set('@sprite/placard/1', glyph(['ccc', 'crc', '.p.'], { c: C.cream, r: C.signal, p: C.roofBrownLo }));
   // a crash's debris: broken glass and a bit of trim on the road
   out.set('@sprite/debris', glyph(['g.p.g', '.g.p.'], { g: C.glassHi, p: C.paveHi }));
   // rain: a streak one art pixel wide, a pale head over a glassier tail; a heavy storm's is longer
