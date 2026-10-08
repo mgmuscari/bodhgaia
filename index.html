@@ -388,7 +388,10 @@
       #cctv canvas {
         display: block;
         image-rendering: pixelated;
-        filter: saturate(0.55) contrast(1.1);
+      }
+      #cctv.cctv-gpu {
+        /* the feed's ground is drawn by the GPU map beneath; only the frame and caption bar are opaque */
+        background: transparent;
       }
       #cctv::after {
         /* scanlines over the feed */

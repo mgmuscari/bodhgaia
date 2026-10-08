@@ -44,6 +44,7 @@ export class GpuRenderer {
   private canvas: HTMLCanvasElement | null = null;
   private lastBaseVersion = -1;
   private lastPatchVersion = -1;
+  private lastInsetVersion = -1;
   private readonly bridge: GridTextureBridge;
   private glow: GlowBatch | null = null;
   private glowData = new Float32Array(0);
@@ -220,6 +221,41 @@ export class GpuRenderer {
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
     this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED });
+  }
+
+  /** The CCTV inset: a second viewport drawn into `rect` (device px, GL bottom-left origin) of this canvas, AFTER
+   *  the main render + glow — its own camera, its own baked base (the inset's sprite-only 2D renderer bakes it),
+   *  and its own light. Scissored, so the main view is untouched outside the rect. */
+  renderInset(
+    rect: { x: number; y: number; w: number; h: number },
+    camera: Camera,
+    cssWidth: number,
+    cssHeight: number,
+    timeSec: number,
+    base: TexImageSource,
+    baseVersion: number,
+    ambient: AmbientState,
+    buildings: readonly EmissiveBuilding[] = [],
+    beams: readonly HeadlightBeam[] = [],
+  ): void {
+    const gl = this.gl;
+    if (!this.shader || !gl || !this.canvas) return;
+    if (baseVersion !== this.lastInsetVersion) {
+      this.shader.uploadBase(base, 'inset');
+      this.lastInsetVersion = baseVersion;
+    }
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(rect.x, rect.y, rect.w, rect.h);
+    gl.viewport(rect.x, rect.y, rect.w, rect.h);
+    gl.clearColor(0.078, 0.071, 0.122, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED, slot: 'inset' });
+    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
+    this.renderGlow(ambient, origin, view, timeSec, night, buildings, beams);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
   /** Force a base re-upload on the next render (e.g. after a resize changes the base canvas size). */

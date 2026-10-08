@@ -141,6 +141,38 @@ export class SmogOverlay {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
+  /** The CCTV inset's haze: redraw the smog in `rect` (device px, GL bottom-left origin) through the inset's
+   *  camera, reusing the pollution texture the main render() just uploaded. Call right after render(). */
+  renderInset(
+    rect: { x: number; y: number; w: number; h: number },
+    camera: Camera,
+    cssWidth: number,
+    cssHeight: number,
+    timeSec: number,
+    wind: { dx: number; dy: number },
+  ): void {
+    const gl = this.gl;
+    if (!gl || !this.program || !this.canvas) return;
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(rect.x, rect.y, rect.w, rect.h);
+    gl.viewport(rect.x, rect.y, rect.w, rect.h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(this.program);
+    gl.bindVertexArray(this.vao);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.pollTex);
+    const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
+    gl.uniform2f(this.u.u_grid!, this.mapW, this.mapH);
+    gl.uniform2f(this.u.u_origin!, origin[0], origin[1]);
+    gl.uniform2f(this.u.u_view!, view[0], view[1]);
+    gl.uniform1f(this.u.u_time!, timeSec);
+    gl.uniform2f(this.u.u_wind!, wind.dx, wind.dy);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+  }
+
   dispose(): void {
     const gl = this.gl;
     if (gl) {

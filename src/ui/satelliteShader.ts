@@ -135,6 +135,8 @@ export class SatelliteShader {
   private readonly vao: WebGLVertexArrayObject;
   private readonly tex: WebGLTexture;
   private readonly baseTex: WebGLTexture;
+  /** A second albedo for a second viewport (the CCTV inset) — its own camera, its own baked base. */
+  private readonly insetBaseTex: WebGLTexture;
   private readonly uGrid: WebGLUniformLocation | null;
   private readonly uOrigin: WebGLUniformLocation | null;
   private readonly uView: WebGLUniformLocation | null;
@@ -162,6 +164,7 @@ export class SatelliteShader {
     this.vao = gl.createVertexArray()!;
     this.tex = gl.createTexture()!;
     this.baseTex = gl.createTexture()!;
+    this.insetBaseTex = gl.createTexture()!;
     gl.useProgram(program);
     gl.uniform1i(gl.getUniformLocation(program, 'u_data'), 0);
     gl.uniform1i(gl.getUniformLocation(program, 'u_base'), 1); // the CPU base albedo on texture unit 1
@@ -208,10 +211,10 @@ export class SatelliteShader {
   /** Upload the CPU base canvas (the baked per-cell tiles) as the albedo texture (unit 1). Call only
    *  when the base changed (camera move / built edit) — not every frame. Canvas row 0 (top) → texture
    *  row 0, matching v_uv.y=0=top (no Y-flip). LINEAR so the water affine-displacement samples smooth. */
-  uploadBase(src: TexImageSource): void {
+  uploadBase(src: TexImageSource, slot: 'main' | 'inset' = 'main'): void {
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.baseTex);
+    gl.bindTexture(gl.TEXTURE_2D, slot === 'inset' ? this.insetBaseTex : this.baseTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -245,6 +248,8 @@ export class SatelliteShader {
     origin?: readonly [number, number];
     view?: readonly [number, number];
     dayspeed?: number;
+    /** Which baked base to sample: the main view's (default) or the CCTV inset's. */
+    slot?: 'main' | 'inset';
     /** 1 = photographic life (default), 0 = still pixel art. */
   }): void {
     const gl = this.gl;
@@ -253,7 +258,7 @@ export class SatelliteShader {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.baseTex);
+    gl.bindTexture(gl.TEXTURE_2D, opts.slot === 'inset' ? this.insetBaseTex : this.baseTex);
     if (this.uGrid) gl.uniform2f(this.uGrid, this.gridW, this.gridH);
     if (this.uOrigin) gl.uniform2f(this.uOrigin, opts.origin?.[0] ?? 0, opts.origin?.[1] ?? 0);
     if (this.uView) gl.uniform2f(this.uView, opts.view?.[0] ?? this.gridW, opts.view?.[1] ?? this.gridH);
@@ -267,6 +272,8 @@ export class SatelliteShader {
   dispose(): void {
     const gl = this.gl;
     gl.deleteTexture(this.tex);
+    gl.deleteTexture(this.baseTex);
+    gl.deleteTexture(this.insetBaseTex);
     gl.deleteVertexArray(this.vao);
     gl.deleteProgram(this.program);
   }

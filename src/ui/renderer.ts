@@ -233,6 +233,7 @@ export class Renderer {
   private readonly baseCtx: CanvasRenderingContext2D;
   private baseDirty = true;
   private dpr = 1;
+  private hole: { x: number; y: number; w: number; h: number } | null = null;
   private cssWidth = 0;
   private cssHeight = 0;
   private preview: readonly PreviewTile[] | null = null;
@@ -934,6 +935,17 @@ export class Renderer {
     }
     this.composite(world, camera, ambient); // ambient → drawBase bakes wear/junk/tents under the agents
     this.drawSprites(world, camera, ambient);
+    if (this.hole) {
+      // the CCTV inset is drawn by the GPU in this corner of the map: keep this view's sprites out of it
+      const h = this.hole;
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.clearRect(Math.floor(h.x * this.dpr), Math.floor(h.y * this.dpr), Math.ceil(h.w * this.dpr), Math.ceil(h.h * this.dpr));
+    }
+  }
+
+  /** A rect (CSS px, this canvas's space) to leave clear of this view — the GPU CCTV inset; null for none. */
+  setHole(rect: { x: number; y: number; w: number; h: number } | null): void {
+    this.hole = rect;
   }
 
   /** Draw the ambient sprites (cars / pedestrians / bird flocks) + the live building-health

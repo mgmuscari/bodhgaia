@@ -127,6 +127,8 @@ export interface FrameCtx {
   syncDock: () => void;
   /** After the map is drawn: the live event feed's CCTV inset. Optional. */
   afterRender?: (now: number) => void;
+  /** After the GPU map, glow and smog: the CCTV inset's own GPU viewport. Optional. */
+  afterGpu?: (now: number) => void;
 }
 
 /** The rAF frame body (the caller re-requests the next frame after it). */
@@ -175,6 +177,7 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     // GPU smog overlay (z2, above sprites): the atmospheric haze.
     const smog = view.smog();
     if (smog && live.on) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind);
+    ctx.afterGpu?.(now);
     // Sim-gated (Y5): re-derive the dock/panel signatures ONLY when a sim tick has run since the last sync.
     if (ctx.sim.takeChanged()) ctx.syncDock();
   };

@@ -337,6 +337,7 @@ export function main(save: SaveV1 | null = null): void {
     news: (t) => news.push(t),
     skin: view.skin,
     cctvOn: () => !night?.active(), // the opening's camera is already on the walk
+    main: { canvas, renderer, gpu: view.gpu, smog: view.smog },
     powered: () => power.grid().poweredAnchors,
     clock: () => {
       const h = gameClock(gameSec()).hour;
@@ -357,6 +358,7 @@ export function main(save: SaveV1 | null = null): void {
       night?.frame(now);
       events.frame(now);
     },
+    afterGpu: (now) => events.gpuPass(now),
   });
   runFrames(frame, (cb) => window.requestAnimationFrame(cb));
 }
