@@ -12,6 +12,8 @@ import {
   feederOf,
   type GridClock,
   NEUTRAL_POWER_PRACTICES,
+  solarFactor,
+  windFactor,
 } from '../../src/growth/power';
 import { ZoneType } from '../../src/engine/zone';
 import { GameMap } from '../../src/engine/map';
@@ -310,5 +312,45 @@ describe('the power practices (docs/design/tech-tree-balance.md)', () => {
       darkWithout += near.filter((h) => !plain.poweredAnchors.has(h)).length;
     }
     expect(darkWithout).toBeGreaterThan(0); // without the practice they take their turn in the dark
+  });
+});
+
+describe('wind and sun (tech-tree batch 3)', () => {
+  const plant = (kind: BuiltKind) => {
+    const map = new GameMap(8, 8);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind });
+    return { map, parcels };
+  };
+  const cap = (kind: BuiltKind, c?: GridClock) => {
+    const { map, parcels } = plant(kind);
+    return computePowerGrid(map, parcels, c).capacity;
+  };
+
+  it('solar follows the sun: full at noon, nothing at night, half at 9:00', () => {
+    expect(cap(BuiltKind.SolarPlant, clock(12))).toBe(plantOutput(BuiltKind.SolarPlant));
+    expect(cap(BuiltKind.SolarPlant, clock(23))).toBe(0);
+    expect(cap(BuiltKind.SolarPlant, clock(3))).toBe(0);
+    expect(cap(BuiltKind.SolarPlant, clock(9))).toBeCloseTo(plantOutput(BuiltKind.SolarPlant) / 2, 9);
+    expect(solarFactor(12)).toBe(1);
+  });
+
+  it('wind gusts hour to hour between 0.4× and 1.6×, and blows harder by night', () => {
+    let day = 0;
+    let night = 0;
+    for (let slot = 0; slot < 24 * 30; slot++) {
+      const f = windFactor({ hour: slot % 24, slot });
+      expect(f).toBeGreaterThanOrEqual(0.4);
+      expect(f).toBeLessThanOrEqual(1.6);
+      if (slot % 24 >= 8 && slot % 24 < 18) day += f;
+      else if (slot % 24 >= 20 || slot % 24 < 6) night += f;
+    }
+    expect(night / (30 * 10)).toBeGreaterThan(day / (30 * 10));
+    expect(cap(BuiltKind.WindTurbine, clock(2, 50))).toBeCloseTo(plantOutput(BuiltKind.WindTurbine) * windFactor(clock(2, 50)), 9);
+  });
+
+  it('without a clock (worldgen, static solves) plants run at their nameplate', () => {
+    expect(cap(BuiltKind.SolarPlant)).toBe(plantOutput(BuiltKind.SolarPlant));
+    expect(cap(BuiltKind.WindTurbine)).toBe(plantOutput(BuiltKind.WindTurbine));
   });
 });

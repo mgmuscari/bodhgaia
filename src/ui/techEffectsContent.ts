@@ -116,6 +116,8 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   const effects: string[] = [];
   const out = plantOutput(kind);
   if (out > 0) effects.push(`Generates ${out} power${plantPollution(kind) > 0 ? ', with smoke' : ', no smoke'}`);
+  if (kind === BuiltKind.SolarPlant) effects.push('Follows the sun: full at noon, half at 09:00 and 15:00, nothing 18:00–06:00');
+  if (kind === BuiltKind.WindTurbine) effects.push('Gusts hour to hour (0.4–1.6× its rating), blowing harder 20:00–06:00');
   if (isServiceStation(kind)) effects.push(`Fire & health cover within ${COVERAGE_RADIUS} tiles`);
   if (REFUGE_KINDS.has(kind)) effects.push(`Police won't patrol or arrest within ${SAFE_RADIUS} tiles`);
   if (GATHERING_KINDS.has(kind)) effects.push("Gathering place: its neighbourhood's belonging +1 per civic tick");

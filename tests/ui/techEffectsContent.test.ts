@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TECH_TREE } from '../../src/tech/tree';
 import { BuiltKind } from '../../src/engine/fabric';
+import { solarFactor } from '../../src/growth/power';
 import { kindEffectLines, nodeEffectLines, practiceEffectLines } from '../../src/ui/techEffectsContent';
 
 /** Building pairs that still read the same (the design splits them in batch 3). */
@@ -63,5 +64,15 @@ describe('the tiny-home village', () => {
     expect(l.effects[0]).toBe("Shelters 12 of the city's unhoused — and only them");
     expect(l.effects).toContain('Rent-protected: residents are never priced out by land value');
     expect(l.costs).toEqual(['Tending: 0.1 effort/hour']);
+  });
+});
+
+describe('wind and sun text', () => {
+  it('names the curves', () => {
+    expect(kindEffectLines(BuiltKind.SolarPlant).effects).toContain('Follows the sun: full at noon, half at 09:00 and 15:00, nothing 18:00–06:00');
+    expect(kindEffectLines(BuiltKind.WindTurbine).effects).toContain('Gusts hour to hour (0.4–1.6× its rating), blowing harder 20:00–06:00');
+    expect(solarFactor(9)).toBe(0.5); // the text's numbers are the sim's
+    expect(solarFactor(15)).toBe(0.5);
+    expect(solarFactor(18)).toBe(0);
   });
 });

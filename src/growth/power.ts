@@ -169,6 +169,35 @@ function localGridAnchors(map: GameMap, parcels: ParcelStore): Set<number> {
   return out;
 }
 
+// ── Wind and sun ──────────────────────────────────────────────────────────────────────────────────
+// With a clock (the live game), solar follows the sun and wind gusts hour to hour, blowing harder by night —
+// so the evening peak needs wind, energy nodes or steady plants, not just panels. Without one (worldgen,
+// static solves) every plant runs at its nameplate.
+
+/** Share of nameplate a solar plant makes at `hour`: full at noon, falling linearly to 0 at 06:00 and 18:00. */
+export function solarFactor(hour: number): number {
+  const h = ((hour % 24) + 24) % 24;
+  const f = 1 - Math.abs(h - 12) / 6;
+  return f > 0 ? f : 0;
+}
+
+/** Share of nameplate a wind turbine makes this hour: a gust re-drawn each in-game hour (0.6..1.4) × a night
+ *  bias (×1.15 from 20:00 to 06:00, ×0.85 by day), held to 0.4..1.6. Deterministic in the clock. */
+export function windFactor(clock: GridClock): number {
+  const h = ((clock.hour % 24) + 24) % 24;
+  const night = h >= 20 || h < 6;
+  const gust = 0.6 + (mix(clock.slot, 0, 21) % 81) / 100;
+  const f = (night ? 1.15 : 0.85) * gust;
+  return f < 0.4 ? 0.4 : f > 1.6 ? 1.6 : f;
+}
+
+function weatherFactor(kind: number, clock: GridClock | undefined): number {
+  if (!clock) return 1;
+  if (kind === BuiltKind.SolarPlant) return solarFactor(clock.hour);
+  if (kind === BuiltKind.WindTurbine) return windFactor(clock);
+  return 1;
+}
+
 // ── Rolling blackouts ─────────────────────────────────────────────────────────────────────────────
 // A short grid sheds whole FEEDERS (FEEDER×FEEDER-tile blocks), never scattered single homes, and the
 // order feeders are served in is re-drawn every ROTATION_HOURS — so the dark patch moves around the
@@ -256,7 +285,7 @@ export function computePowerGrid(
     const anchor = map.idx(p.x, p.y);
     const c = comp[anchor]!;
     if (c < 0) continue;
-    const out = plantOutput(p.kind) * (RENEWABLE_KINDS.has(p.kind) ? practices.renewableOutput : 1);
+    const out = plantOutput(p.kind) * (RENEWABLE_KINDS.has(p.kind) ? practices.renewableOutput : 1) * weatherFactor(p.kind, clock);
     if (out > 0) {
       capByComp[c] = capByComp[c]! + out;
       capacity += out;
