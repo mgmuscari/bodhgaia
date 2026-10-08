@@ -242,21 +242,30 @@ export function movingPose(m: Mover, lateral: number, alpha: number): Pose {
  * jumping as it steps between a road and a lot.
  */
 export function pedLateral(m: LegState, onRoadAt: (x: number, y: number) => boolean): LateralProfile {
-  const lat = (x: number, y: number): number => (onRoadAt(x, y) ? PED_CURB : 0);
+  // on a road, the kerb: the walker's right as a rule — but where their right is more road and their left
+  // is not (the near lane of an avenue), the kerb is on their left (Maddy 2026-10-08: not the middle of the road)
+  const lat = (x: number, y: number, dir: number): number => {
+    if (!onRoadAt(x, y)) return 0;
+    const r = (dir + 1) & 3;
+    const l = (dir + 3) & 3;
+    const roadRight = onRoadAt(x + DIR_DX[r]!, y + DIR_DY[r]!);
+    const roadLeft = onRoadAt(x + DIR_DX[l]!, y + DIR_DY[l]!);
+    return roadRight && !roadLeft ? -PED_CURB : PED_CURB;
+  };
   const onLeg = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y) <= 1 + 1e-9 && (m.tx !== m.x || m.ty !== m.y);
   if (!onLeg) {
-    const here = lat(Math.round(m.x), Math.round(m.y));
+    const here = lat(Math.round(m.x), Math.round(m.y), m.dir);
     return { entry: here, mid: here, exit: here };
   }
   const d = m.dir;
   const pd = m.prevDir ?? d;
   const tx = m.tx - DIR_DX[d]!;
   const ty = m.ty - DIR_DY[d]!;
-  const mid = lat(tx, ty);
+  const mid = lat(tx, ty, d);
   return {
-    entry: (lat(tx - DIR_DX[pd]!, ty - DIR_DY[pd]!) + mid) / 2,
+    entry: (lat(tx - DIR_DX[pd]!, ty - DIR_DY[pd]!, pd) + mid) / 2,
     mid,
-    exit: (mid + lat(m.tx, m.ty)) / 2,
+    exit: (mid + lat(m.tx, m.ty, d)) / 2,
   };
 }
 
