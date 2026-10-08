@@ -46,6 +46,7 @@ export function createSettingsController(deps: SettingsDeps): SettingsController
         update({ audio: { ...audio } });
         deps.applyAudio?.(settings.audio);
       },
+      onDisastersChange: (on) => update({ disasters: on }),
     },
   };
 }

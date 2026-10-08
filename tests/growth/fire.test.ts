@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
-import { createFireState, stepFire, igniteChance, BURN_STEPS, QUENCH_DAMAGE } from '../../src/growth/fire';
+import { createFireState, stepFire, igniteChance, BURN_STEPS, QUENCH_DAMAGE, DISTRESS_FACTOR, ABANDON_FACTOR } from '../../src/growth/fire';
 
 function block(condition: number, kind: BuiltKind = BuiltKind.HouseSingle, n = 40) {
   const map = new GameMap(60, 10);
@@ -12,6 +12,31 @@ function block(condition: number, kind: BuiltKind = BuiltKind.HouseSingle, n = 4
 }
 
 describe('fire: ignition', () => {
+  it('distressed (redlined) and abandoned (emptied) buildings burn more readily (Maddy 2026-10-08)', () => {
+    const base = igniteChance(BuiltKind.HouseSingle, 128);
+    expect(igniteChance(BuiltKind.HouseSingle, 128, 255)).toBeCloseTo(base * (1 + DISTRESS_FACTOR));
+    expect(igniteChance(BuiltKind.HouseSingle, 128, 0, 1)).toBeCloseTo(base * (1 + ABANDON_FACTOR));
+    expect(igniteChance(BuiltKind.HouseSingle, 128, 255, 1)).toBeGreaterThan(igniteChance(BuiltKind.HouseSingle, 128, 255, 0.3));
+    expect(igniteChance(BuiltKind.Park, 0, 255, 1)).toBe(0); // greens still don't burn
+  });
+
+  it('stepFire reads distress from the redline layer and abandonment from the host', () => {
+    const count = (grade: number, vacant: number): number => {
+      const { world } = block(128, BuiltKind.HouseSingle, 40);
+      world.map.redline.fill(grade);
+      const vacancy = new Map(world.parcels.aliveIndices().map((i) => [i, vacant] as [number, number]));
+      const fires = createFireState();
+      const rng = createRng('fire').fork('distress');
+      for (let h = 0; h < 24 * 200; h++) {
+        stepFire(world, fires, rng, { hour: h % 24, vacancy });
+        fires.burning.clear();
+      }
+      return fires.started;
+    };
+    expect(count(255, 0)).toBeGreaterThan(count(0, 0));
+    expect(count(0, 1)).toBeGreaterThan(count(0, 0));
+  });
+
   it('decay, ruins and industry burn more readily than a well-kept house', () => {
     expect(igniteChance(BuiltKind.HouseSingle, 30)).toBeGreaterThan(igniteChance(BuiltKind.HouseSingle, 250));
     expect(igniteChance(BuiltKind.Ruin, 0)).toBeGreaterThan(igniteChance(BuiltKind.HouseSingle, 0));
