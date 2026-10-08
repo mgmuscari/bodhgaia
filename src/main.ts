@@ -42,6 +42,7 @@ import { gameSec, setGameHour } from './ui/gameTime';
 import { OPENING_TIMING } from './ui/openingScript';
 import { mountNightOverlay } from './ui/openingNight';
 import { createNightOpening } from './app/openingNight';
+import { tourStops } from './ui/tourContent';
 import { BuiltKind } from './engine/fabric';
 
 // The default world's seed — its identity, so it keeps the pre-rename name (Bodhgaia was Bodhitropolis).
@@ -312,10 +313,15 @@ export function main(save: SaveV1 | null = null): void {
         map: world.map,
         rng: createRng(seed).fork('opening-night'),
         ui: mountNightOverlay(document.body),
-        follow: (x, y) => {
-          camera.centerOn(x, y, OPENING_TIMING.followZoom);
+        follow: (x, y, zoom) => {
+          camera.centerOn(x, y, zoom ?? OPENING_TIMING.followZoom);
           markDirty();
         },
+        centre: () => ({
+          x: camera.x + camera.viewportWidth / camera.tileSize / 2,
+          y: camera.y + camera.viewportHeight / camera.tileSize / 2,
+        }),
+        stops: () => tourStops(world.map, world.parcels),
         hour: () => gameClock(gameSec()).hour,
         setHour: (h) => setGameHour(h),
         onDone: () =>
