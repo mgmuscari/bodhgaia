@@ -331,12 +331,17 @@ function pedTile(mask: number): Pixels {
 
 /** A level crossing: the road's asphalt band across the track, with the rails (on the rail tile's own
  *  rows) running through it. `axis` is the ROAD's direction; drawn over the rail tile. */
-function crossingBand(axis: 'v' | 'h'): Pixels {
+function crossingBand(axis: 'v' | 'h', surface: 'asphalt' | 'bike' | 'pavers' = 'asphalt'): Pixels {
   const p = blank(T, T);
   for (let a = 0; a < T; a++) {
     for (let b = 4; b <= 11; b++) {
       const [x, y] = axis === 'v' ? [b, a] : [a, b];
-      px(p, x, y, hash2(x, y, 6400) % 7 === 0 ? C.asphaltLo : C.asphalt);
+      // the crossing's own surface: asphalt, a bike path's green lane, a promenade's pavers
+      const c =
+        surface === 'bike' ? (b === 4 || b === 11 ? C.grass : C.leafLo)
+        : surface === 'pavers' ? ((x + y) % 2 === 0 ? C.paveHi : C.pave)
+        : hash2(x, y, 6400) % 7 === 0 ? C.asphaltLo : C.asphalt;
+      px(p, x, y, c);
     }
   }
   for (const r of [5, 10]) {
@@ -466,6 +471,10 @@ function washTiles(out: Map<string, Pixels>): void {
 function transportTiles(out: Map<string, Pixels>): void {
   out.set('@road/xband/v', crossingBand('v'));
   out.set('@road/xband/h', crossingBand('h'));
+  for (const a of ['v', 'h'] as const) {
+    out.set(`@road/xband-bike/${a}`, crossingBand(a, 'bike'));
+    out.set(`@road/xband-ped/${a}`, crossingBand(a, 'pavers'));
+  }
   // full road tiles (lane paint in the palette) + the per-tile street furniture overlays
   snesRoadTiles(out, [1, 2, 3, 7, 10], [1, 2, 3]);
   for (let m = 0; m < 16; m++) {

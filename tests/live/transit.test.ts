@@ -110,3 +110,24 @@ describe('what people walk through (Maddy 2026-10-08: walkers cut through the ga
       expect(walkableKind(k), String(k)).toBe(true);
   });
 });
+
+describe('rail is crossed by more than streets (Maddy 2026-10-08: bike lanes, quiet streets, promenades)', () => {
+  for (const kind of [BuiltKind.BikePath, BuiltKind.QuietStreet, BuiltKind.Promenade]) {
+    it(`a ${kind} crosses rail at grade, and people walk across there`, async () => {
+      const { railCrossingMask, railCrossingKind } = await import('../../src/engine/fabric');
+      const map = new GameMap(20, 10);
+      for (let x = 1; x <= 18; x++) map.setBuilt(x, 5, BuiltKind.Rail);
+      for (const y of [3, 4, 6, 7]) placeTransport(map, 10, y, kind);
+      expect(railCrossingMask(map, 10, 5)).toBe(1 | 4); // N and S
+      expect(railCrossingKind(map, 10, 5)).toBe(kind);
+      expect(isWalkable(map, 10, 5)).toBe(true);
+      expect(isWalkable(map, 9, 5)).toBe(false);
+    });
+  }
+
+  it('each crossing is drawn in its own surface', async () => {
+    const { paintSnesTileset } = await import('../../src/ui/snesTileset');
+    const t = paintSnesTileset();
+    for (const k of ['@road/xband/v', '@road/xband-bike/v', '@road/xband-ped/h']) expect(t.get(k), k).toBeDefined();
+  });
+});
