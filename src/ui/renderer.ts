@@ -31,7 +31,7 @@ import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH } from '../live/geometry';
-import { ENCAMPMENT_WEAR } from '../live/tuning';
+import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
 import type { AmbientState } from '../live/types';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
@@ -1066,6 +1066,41 @@ export class Renderer {
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
+    // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
+    // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
+    const psx = camera.tileSize / BASE_TILE;
+    for (const f of ambient.fallen ?? []) {
+      const { sx, sy } = camera.worldToScreen(f.x + 0.5, f.y + 0.5);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(personKey('ped', (f.x * 131 + f.y) >>> 0, 0));
+      if (!img) continue;
+      const w = (img as HTMLCanvasElement).width * psx;
+      const h = (img as HTMLCanvasElement).height * psx;
+      ctx.save();
+      ctx.globalAlpha = 1 - Math.max(0, f.t / FALL_SUBSTEPS - 0.6) / 0.4; // fades over the last stretch
+      ctx.translate(sx, sy + h * 0.2);
+      ctx.rotate(Math.PI / 2); // lying down
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+    const flicker = Math.floor(performance.now() / 180);
+    for (const m of ambient.memorials ?? []) {
+      const o = camera.tileOrigin(m.x, m.y);
+      if (!onScreen(o.dx + psx * 8, o.dy + psx * 8)) continue;
+      const px = (x: number, y: number, c: string): void => {
+        ctx.fillStyle = c;
+        ctx.fillRect(o.dx + x * psx, o.dy + y * psx, psx, psx);
+      };
+      // flowers laid at the foot of a candle
+      for (const [x, y, c] of [[5, 11, '#f8d858'], [6, 12, '#e86048'], [10, 11, '#f8f8e8'], [11, 12, '#c060c0'], [8, 13, '#e86048']] as const) {
+        px(x, y, c);
+        px(x, y + 1, '#407838');
+      }
+      for (let y = 8; y <= 11; y++) px(8, y, '#f0e0b8'); // the candle
+      px(8, 7, (flicker + m.x + m.y) % 3 === 0 ? '#f8f8c0' : '#f8c040'); // its flame
+      px(8, 6, '#f89830');
+    }
+
     // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).
     const cast = castHeadlights(world.map, bodies);
     this.beams = cast.beams.map((b) => ({ ...b, mul: bodyMul[b.source]! }));
