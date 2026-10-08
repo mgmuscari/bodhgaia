@@ -58,6 +58,24 @@ describe('disaster demos', () => {
     expect(live.clouds).toHaveLength(1);
   });
 
+  it('a flood demo calls a heavy storm and looks at the low land by the water', async () => {
+    const { Water } = await import('../../src/engine/map');
+    const c = city();
+    for (let y = 0; y < 20; y++) for (let x = 0; x < 3; x++) {
+      c.map.water[c.map.idx(x, y)] = Water.Ocean;
+      c.map.elevation[c.map.idx(x, y)] = 0.34;
+    }
+    for (let y = 0; y < 20; y++) for (let x = 0; x < 60; x++) if (!c.map.water[c.map.idx(x, y)]) c.map.elevation[c.map.idx(x, y)] = 0.36 + (x - 3) * 0.005;
+    const live = createAmbientState();
+    const storms: boolean[] = [];
+    const views: number[][] = [];
+    const demo = createDemo('flood', { world: { map: c.map, parcels: c.parcels }, live, ignite: () => {}, view: (x, y) => views.push([x, y]), storm: (h) => storms.push(h) });
+    demo.frame(0);
+    demo.frame(4000);
+    expect(storms).toEqual([true]);
+    expect(views[0]![0]).toBeLessThan(12); // by the water
+  });
+
   it('a single-disaster demo runs only that one, at once', () => {
     const c = city();
     const live = createAmbientState();

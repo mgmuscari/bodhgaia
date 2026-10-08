@@ -8,8 +8,9 @@ import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { AmbientState } from '../live/types';
 import { startSpill } from '../live/spills';
+import { floodPlain } from '../growth/flood';
 
-export type DemoKind = 'fire' | 'spill' | 'disasters';
+export type DemoKind = 'fire' | 'spill' | 'flood' | 'disasters';
 
 type World = { map: GameMap; parcels: ParcelStore };
 
@@ -57,6 +58,8 @@ export interface DemoDeps {
   ignite(parcel: number): void;
   /** Put the camera on (x, y). */
   view(x: number, y: number): void;
+  /** Start a storm now (app/weather.ts). */
+  storm?(heavy: boolean): void;
 }
 
 /** Ms after the first frame before the first disaster (the city settles), and between a fire and the spill (the
@@ -81,10 +84,30 @@ export function createDemo(kind: DemoKind, deps: DemoDeps): { frame(now: number)
     // look a little downwind, where the cloud is going
     deps.view(p.x + p.width / 2 + live.wind.dx * 3, p.y + p.height / 2 + live.wind.dy * 3);
   };
+  const flood = (): void => {
+    deps.storm?.(true);
+    // look at the plain where the most buildings stand in it
+    const plain = floodPlain(world.map);
+    let best: { x: number; y: number } | null = null;
+    let bestN = -1;
+    for (const [t, d] of plain) {
+      if (d < 2 || d > 4) continue;
+      const x = t % world.map.width;
+      const y = (t - x) / world.map.width;
+      let n = 0;
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (world.map.inBounds(x + dx, y + dy) && world.map.parcel[world.map.idx(x + dx, y + dy)] !== 0) n++;
+      if (n > bestN) {
+        bestN = n;
+        best = { x, y };
+      }
+    }
+    if (best) deps.view(best.x, best.y);
+  };
   const steps: { at: number; run: () => void }[] =
     kind === 'fire' ? [{ at: SETTLE_MS, run: fire }]
     : kind === 'spill' ? [{ at: SETTLE_MS, run: spill }]
-    : [{ at: SETTLE_MS, run: fire }, { at: SETTLE_MS + FIRE_TO_SPILL_MS, run: spill }];
+    : kind === 'flood' ? [{ at: SETTLE_MS, run: flood }]
+    : [{ at: SETTLE_MS, run: fire }, { at: SETTLE_MS + FIRE_TO_SPILL_MS, run: spill }, { at: SETTLE_MS + 2 * FIRE_TO_SPILL_MS, run: flood }];
   let start: number | undefined;
   return {
     frame(now) {

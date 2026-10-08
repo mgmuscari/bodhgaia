@@ -5,9 +5,11 @@
 // only draws.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
+import { BuiltKind, isBuildingKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
+import { C } from './snesPalette';
+import { DIR_DX, DIR_DY } from '../live/geometry';
 import {
   builtRenderKey,
   footprintCellKey,
@@ -72,6 +74,9 @@ function dirVector8(d: number): [number, number] {
   const D = Math.SQRT1_2;
   return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
 }
+
+/** The palette's foam, for the flood's waterline. */
+const FOAM_CSS = `rgb(${C.foam[0]}, ${C.foam[1]}, ${C.foam[2]})`;
 
 /** The centre of the burning footprint nearest (x, y) — where a spraying truck aims. */
 function nearestBurning(burning: readonly { x: number; y: number; w: number; h: number }[], x: number, y: number): { x: number; y: number } | null {
@@ -1031,6 +1036,46 @@ export class Renderer {
       bodyArt.push({ img, x, y });
       bodyMul.push(mul);
     };
+    // Flood water (disasters.md): the river's murky tile over every flooded tile that isn't a building — ground,
+    // roads, yards and greens go under; buildings stand in it. On the tile grid, under the vehicles and people,
+    // two variants alternating for the wave.
+    if (ambient.flooded?.size) {
+      const wave = Math.floor(performance.now() / 700) & 1;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = 0.85;
+      const fl = ambient.flooded;
+      const m = world.map;
+      // trees and buildings stand in the water: it shows round them, not over them
+      const standsIn = (t: number): boolean => isBuildingKind(m.built[t]!) || (m.built[t] === BuiltKind.None && m.landCover[t] === LandCover.Forest);
+      const ap = ts / BASE_TILE; // one art pixel
+      for (const t of fl) {
+        if (standsIn(t)) continue;
+        const fx = t % mapW;
+        const fy = (t - fx) / mapW;
+        const { dx, dy } = camera.tileOrigin(fx, fy);
+        if (!onScreen(dx + ts / 2, dy + ts / 2)) continue;
+        const img = this.sprites.get(`@sprite/flood/${((fx + fy) & 1) ^ wave}`);
+        if (img) ctx.drawImage(img, dx, dy, ts, ts);
+        // the waterline: a broken foam edge, one art pixel, where the water meets dry ground
+        ctx.fillStyle = FOAM_CSS;
+        for (let d = 0; d < 4; d++) {
+          const nx = fx + DIR_DX[d]!;
+          const ny = fy + DIR_DY[d]!;
+          if (!m.inBounds(nx, ny)) continue;
+          const n = m.idx(nx, ny);
+          if (fl.has(n) || m.water[n] !== 0) continue;
+          for (let k = 0; k < BASE_TILE; k++) {
+            if (((t * 31 + d * 7 + k * 13 + wave * 5) & 7) < 3) continue; // broken, shifting with the wave
+            const ex = d === 1 ? dx + ts - ap : d === 3 ? dx : dx + k * ap;
+            const ey = d === 2 ? dy + ts - ap : d === 0 ? dy : dy + k * ap;
+            ctx.fillRect(ex, ey, ap, ap);
+          }
+        }
+      }
+      ctx.restore();
+    }
+
     for (const { m: c, pose } of poses.cars) {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;

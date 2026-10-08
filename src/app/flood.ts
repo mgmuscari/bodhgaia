@@ -23,7 +23,13 @@ export interface FloodDeps {
   news(text: string): void;
 }
 
-export function createFloodController(deps: FloodDeps): { frame(now: number): void } {
+export interface FloodController {
+  frame(now: number): void;
+  /** Homes evacuated now (anchor tile → people out). */
+  evacuated(): ReadonlyMap<number, number>;
+}
+
+export function createFloodController(deps: FloodDeps): FloodController {
   const { world, live } = deps;
   const { map, parcels } = world;
   const f = createFloodState(map);
@@ -33,11 +39,13 @@ export function createFloodController(deps: FloodDeps): { frame(now: number): vo
   live.flooded = f.flooded;
 
   return {
+    evacuated: () => evacuated,
     frame(now) {
       if (now - last < FLOOD_STEP_MS) return;
       last = now;
       const wasDry = f.flooded.size === 0;
       const ev = stepFlood(world, f, { hour: deps.hour(), heavy: deps.disastersOn() && live.rain?.heavy === true });
+      if (!ev.stepped) return; // the flood moves once an hour; between, nothing has changed
       const under = new Set<number>();
       for (const i of ev.underWater) {
         const p = parcels.get(i);

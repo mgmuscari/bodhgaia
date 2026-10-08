@@ -14,7 +14,7 @@ export const STORM_GAP_MS: readonly [number, number] = [180_000, 420_000];
 export const STORM_MS = 26_000;
 export const HEAVY_STORM_MS = 52_000;
 /** The share of storms that are heavy (the ones that flood). */
-export const HEAVY_SHARE = 1 / 3;
+export const HEAVY_SHARE = 1 / 4;
 /** A storm washes the air (smog → ground → water) this often. */
 export const STORM_WASH_MS = 5_000;
 
