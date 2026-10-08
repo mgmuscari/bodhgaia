@@ -50,6 +50,7 @@ import { mountTutorial } from './ui/tutorial';
 import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
 import { createFireController } from './app/fire';
+import { drawSpills } from './live/spills';
 import { BuiltKind } from './engine/fabric';
 
 
@@ -405,6 +406,15 @@ export function main(save: SaveV1 | null = null): void {
     if (handle) handle.lessons = lessons; // live checks: offer a lesson without waiting out a practice
   }
 
+  // Disasters (disasters.md) start only with the setting on, and never during the opening's night or tutorial.
+  const disastersOn = (): boolean => settings.current().disasters && !night?.active() && !tutorial?.active();
+  // Industrial spills: drawn once a game hour from the works' conditions; the cloud is stepped by the live layer.
+  const spillRng = createRng(seed).fork('spill');
+  const drawSpillsNow = (): void => {
+    if (!disastersOn()) return;
+    for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
+  };
+
   // Fire (disasters.md): ignition from conditions once a game hour, trucks from the stations, burnt-out ruins. Nothing
   // new ignites while Disasters is off, or during the opening's night and tutorial.
   const fire = createFireController({
@@ -412,14 +422,14 @@ export function main(save: SaveV1 | null = null): void {
     live: live.state,
     rng: createRng(seed).fork('fire'),
     hour: () => gameClock(gameSec()).hour,
-    disastersOn: () => settings.current().disasters && !night?.active() && !tutorial?.active(),
+    disastersOn,
     markDirty,
     refreshHouseholds: () => live.refreshHouseholds(),
     news: (t) => news.push(t),
   });
   if (import.meta.env.DEV) {
     const handle = (window as unknown as { bodhgaia?: Record<string, unknown> }).bodhgaia;
-    if (handle) handle.fire = fire; // live checks: light a building
+    if (handle) handle.fire = fire; // live checks: light a building (and live/spills.ts startSpill for a spill)
   }
 
   // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
@@ -455,6 +465,7 @@ export function main(save: SaveV1 | null = null): void {
       tutorial?.frame(now);
       lessons.frame(now);
       fire.frame(now);
+      drawSpillsNow();
       events.frame(now);
     },
     afterGpu: (now) => events.gpuPass(now),

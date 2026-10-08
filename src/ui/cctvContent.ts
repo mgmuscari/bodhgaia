@@ -31,10 +31,10 @@ export function cctvFrame(ev: LiveEvent, vw: number, vh: number): { zoom: number
 
 /** The caption under the feed. */
 export function cctvLabel(ev: LiveEvent): string {
-  return ev.kind === 'death' ? 'A resident has died' : ev.kind === 'fire' ? 'Fire' : 'Arrest';
+  return ev.kind === 'death' ? 'A resident has died' : ev.kind === 'fire' ? 'Fire' : ev.kind === 'spill' ? 'Toxic spill' : 'Arrest';
 }
 
-const RANK: Record<LiveEvent['kind'], number> = { death: 0, fire: 1, arrest: 2 };
+const RANK: Record<LiveEvent['kind'], number> = { death: 0, fire: 1, spill: 1, arrest: 2 };
 
 /** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
  *  only a few wait. */

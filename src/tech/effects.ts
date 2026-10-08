@@ -40,6 +40,8 @@ export interface TechEffects {
   occFloor: number;
   /** The wellbeing a citizen brings home from a day at industry (Collective Ownership). */
   industryVisit: number;
+  /** Multiplier on how often an industrial works spills (Collective Ownership). */
+  spillRate: number;
   /** Multiplier on home power demand by day (Sun and Wire). */
   homeDayDemand: number;
   /** Multiplier on hydro, wind and solar output (Renewable Energy). */
@@ -74,6 +76,7 @@ export const NEUTRAL_EFFECTS: Readonly<TechEffects> = Object.freeze({
   droneShopDrop: 0,
   occFloor: 0.4, // = live OCC_FLOOR (pinned by tests/tech/effects.test.ts)
   industryVisit: -4, // = visitValue(Industrial) (pinned likewise)
+  spillRate: 1,
   homeDayDemand: 1,
   renewableOutput: 1,
   localGrids: false,
@@ -105,7 +108,10 @@ export const NODE_EFFECTS: Readonly<Record<string, readonly Effect[]>> = {
   'bike-shares': [{ key: 'bikeStretch', op: 'mul', value: 1.5 }],
   'drone-deliveries': [{ key: 'droneShopDrop', op: 'set', value: 0.5 }],
   'mutual-aid': [{ key: 'occFloor', op: 'set', value: 0.5 }],
-  'collective-ownership': [{ key: 'industryVisit', op: 'set', value: -1 }],
+  'collective-ownership': [
+    { key: 'industryVisit', op: 'set', value: -1 },
+    { key: 'spillRate', op: 'mul', value: 0.25 },
+  ],
   'sun-and-wire': [{ key: 'homeDayDemand', op: 'mul', value: 0.75 }],
   'renewable-energy': [{ key: 'renewableOutput', op: 'mul', value: 1.25 }],
   'local-grids': [{ key: 'localGrids', op: 'set', value: true }],
