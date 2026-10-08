@@ -147,3 +147,10 @@ describe('the practices in the model', () => {
     expect(0.5 - b.burnout).toBeCloseTo(2 * (0.5 - a.burnout), 9);
   });
 });
+
+describe('effort regeneration counts the communes twice', () => {
+  it('regen follows regenHouseholds when given', () => {
+    const s = createEconomy();
+    expect(effortRegen(city({ regenHouseholds: 800 }), s)).toBeCloseTo(2 * effortRegen(city(), s), 9);
+  });
+});
