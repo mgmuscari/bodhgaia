@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
-import { createFireState, stepFire, igniteChance, BURN_STEPS, QUENCH_DAMAGE, DISTRESS_FACTOR, ABANDON_FACTOR } from '../../src/growth/fire';
+import { createFireState, stepFire, igniteChance, BURN_STEPS, QUENCH_DAMAGE, SPREAD_CHANCE, DISTRESS_FACTOR, ABANDON_FACTOR } from '../../src/growth/fire';
 
 function block(condition: number, kind: BuiltKind = BuiltKind.HouseSingle, n = 40) {
-  const map = new GameMap(60, 10);
+  const map = new GameMap(60, 30);
   const parcels = new ParcelStore();
-  for (let x = 0; x < n; x++) placeParcel(map, parcels, { x: x + 2, y: 2, width: 1, height: 1, kind, condition });
+  for (let k = 0; k < n; k++) placeParcel(map, parcels, { x: 2 + (k % 50), y: 2 + 2 * Math.floor(k / 50), width: 1, height: 1, kind, condition });
   return { world: { map, parcels } };
 }
 
@@ -22,12 +22,12 @@ describe('fire: ignition', () => {
 
   it('stepFire reads distress from the redline layer and abandonment from the host', () => {
     const count = (grade: number, vacant: number): number => {
-      const { world } = block(128, BuiltKind.HouseSingle, 40);
+      const { world } = block(128, BuiltKind.HouseSingle, 400);
       world.map.redline.fill(grade);
       const vacancy = new Map(world.parcels.aliveIndices().map((i) => [i, vacant] as [number, number]));
       const fires = createFireState();
       const rng = createRng('fire').fork('distress');
-      for (let h = 0; h < 24 * 200; h++) {
+      for (let h = 0; h < 24 * 500; h++) {
         stepFire(world, fires, rng, { hour: h % 24, vacancy });
         fires.burning.clear();
       }
@@ -47,11 +47,11 @@ describe('fire: ignition', () => {
 
   it('draws once per in-game hour, never without a clock — and a decayed street burns more often', () => {
     const count = (cond: number): number => {
-      const { world } = block(cond, BuiltKind.HouseSingle, 40);
+      const { world } = block(cond, BuiltKind.HouseSingle, 400);
       const fires = createFireState();
       const rng = createRng('fire').fork('ignite');
       let started = 0;
-      for (let h = 0; h < 24 * 200; h++) {
+      for (let h = 0; h < 24 * 500; h++) {
         stepFire(world, fires, rng, { hour: h % 24 }); // ignition
         stepFire(world, fires, rng, { hour: h % 24 }); // same hour: no second draw
         started += fires.started;
@@ -69,18 +69,25 @@ describe('fire: ignition', () => {
 });
 
 describe('fire: spread, burnout, quenching', () => {
-  it('spreads to a building beside it, not to one across open ground', () => {
-    const map = new GameMap(30, 10);
-    const parcels = new ParcelStore();
-    const a = placeParcel(map, parcels, { x: 2, y: 2, width: 1, height: 1, kind: BuiltKind.HouseSingle });
-    const b = placeParcel(map, parcels, { x: 3, y: 2, width: 1, height: 1, kind: BuiltKind.HouseSingle });
-    const far = placeParcel(map, parcels, { x: 20, y: 2, width: 1, height: 1, kind: BuiltKind.HouseSingle });
-    const fires = createFireState();
-    fires.burning.set(a, { age: 0 });
+  it('spreads to a building beside it at the expected rate, never to one across open ground', () => {
+    const trials = 400;
+    let caught = 0;
     const rng = createRng('spread').fork('s');
-    for (let i = 0; i < BURN_STEPS - 1; i++) stepFire({ map, parcels }, fires, rng, {});
-    expect(fires.burning.has(b) || parcels.kindAt(b) === BuiltKind.Ruin).toBe(true);
-    expect(fires.burning.has(far)).toBe(false);
+    for (let t = 0; t < trials; t++) {
+      const map = new GameMap(30, 10);
+      const parcels = new ParcelStore();
+      const a = placeParcel(map, parcels, { x: 2, y: 2, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+      const b = placeParcel(map, parcels, { x: 3, y: 2, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+      const far = placeParcel(map, parcels, { x: 20, y: 2, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+      const fires = createFireState();
+      fires.burning.set(a, { age: 0 });
+      for (let i = 0; i < BURN_STEPS - 1; i++) stepFire({ map, parcels }, fires, rng, {});
+      if (fires.burning.has(b)) caught++;
+      expect(fires.burning.has(far)).toBe(false);
+    }
+    const expected = 1 - (1 - SPREAD_CHANCE) ** (BURN_STEPS - 1); // ~23%: contained more often than not
+    expect(caught / trials).toBeGreaterThan(expected - 0.07);
+    expect(caught / trials).toBeLessThan(expected + 0.07);
   });
 
   it('a fire left to burn leaves a ruin', () => {

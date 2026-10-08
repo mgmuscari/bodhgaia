@@ -44,8 +44,9 @@ The player's repairs are what make disasters rarer and smaller.
 ## Decisions (Maddy, 2026-10-08)
 
 - **Crime:** conditions, not cops (above).
-- **Frequency:** rare and driven by conditions. A typical city sees a fire or two a day, a spill or flood every few
-  days, and accidents in jams; a healing city sees fewer. A Disasters on/off setting.
+- **Frequency:** rare and driven by conditions, measured in real play time (a game day is ~2.6 min): the inherited
+  city sees a fire every ~10 minutes of play, a healing one far fewer; spills and floods rarer still, accidents in
+  jams. A Disasters on/off setting.
 - **Order:** fire, spills, floods, accidents, crime.
 - **The opening's toll stays** (the night's deaths cost approval and trust).
 

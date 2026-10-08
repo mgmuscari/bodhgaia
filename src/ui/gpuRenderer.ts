@@ -154,6 +154,12 @@ export class GpuRenderer {
       if (blue) radial(pose.x, pose.y, 0.75, 0.3, 0.45, 1.0, 0.5);
       else radial(pose.x, pose.y, 0.75, 1.0, 0.25, 0.2, 0.5);
     }
+    // Fire: a flickering orange firelight over every burning building, day and night; a fire truck's flashing red.
+    for (const b of ambient.burning ?? []) {
+      const fl = 0.8 + 0.2 * Math.sin(timeSec * 11 + b.x * 1.7 + b.y);
+      radial(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) * 0.9 + 1.2, 1.0, 0.5, 0.15, 0.45 * fl);
+    }
+    for (const tr of ambient.trucks ?? []) if (blue) radial(tr.x + 0.5, tr.y + 0.5, 0.75, 1.0, 0.2, 0.15, 0.55);
     // Buildings: RADIAL glow from the light map's actual lit pixels (windows / beacons), not the center.
     for (const bld of buildings) {
       const span = Math.max(bld.w, bld.h);
