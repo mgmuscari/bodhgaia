@@ -176,7 +176,9 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     if (gpu && live.on) gpu.renderAgents(live.state, camera, w, h, gameSec(now), renderer.emissiveBuildingList(), renderer.headlightBeams());
     // GPU smog overlay (z2, above sprites): the atmospheric haze.
     const smog = view.smog();
-    if (smog && live.on) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind);
+    // the haze is part of the map: drawn every frame so it follows the camera — with life off the pollution field
+    // simply holds still (Maddy 2026-10-08: it froze in place on screen and the map slid under it)
+    if (smog) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind);
     ctx.afterGpu?.(now);
     // Sim-gated (Y5): re-derive the dock/panel signatures ONLY when a sim tick has run since the last sync.
     if (ctx.sim.takeChanged()) ctx.syncDock();

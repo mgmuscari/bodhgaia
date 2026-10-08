@@ -168,7 +168,7 @@ describe('createFrame', () => {
     expect(h.log).not.toContain('live.step');
   });
 
-  it('drives the GPU passes every frame when mounted (agents + smog only with life on)', () => {
+  it('drives the GPU passes every frame when mounted — agent light only with life on; the smog always (Maddy 2026-10-08: with life off it froze and stopped following the map)', () => {
     const on = frameSetup({ gpu: true });
     on.frame(1016);
     expect(on.log.slice(-3)).toEqual(['gpu.render', 'gpu.agents', 'smog']);
@@ -176,7 +176,7 @@ describe('createFrame', () => {
     off.frame(1016);
     off.log.length = 0;
     off.frame(1032);
-    expect(off.log.slice(-1)).toEqual(['gpu.render']);
+    expect(off.log.slice(-2)).toEqual(['gpu.render', 'smog']);
   });
 
   it('syncs the dock once after a sim tick moved state, not every frame', () => {
