@@ -43,6 +43,9 @@ import { OPENING_TIMING } from './ui/openingScript';
 import { mountNightOverlay } from './ui/openingNight';
 import { createNightOpening } from './app/openingNight';
 import { tourStops } from './ui/tourContent';
+import { worstSpots } from './ui/tutorialContent';
+import { mountTutorial } from './ui/tutorial';
+import { createTutorial, type Tutorial } from './app/tutorial';
 import { BuiltKind } from './engine/fabric';
 
 // The default world's seed — its identity, so it keeps the pre-rename name (Bodhgaia was Bodhitropolis).
@@ -324,13 +327,29 @@ export function main(save: SaveV1 | null = null): void {
         stops: () => tourStops(world.map, world.parcels),
         hour: () => gameClock(gameSec()).hour,
         setHour: (h) => setGameHour(h),
-        onDone: () =>
-          mountOpeningFor(world, seed, () => {
-            openingUp = false;
-            markDirty();
-          }),
+        // act three: the tutorial — the worst places, the indictment, the interface
+        onDone: () => {
+          tutorial = createTutorial({
+            ui: mountTutorial(document.body),
+            follow: (x, y, zoom) => {
+              camera.centerOn(x, y, zoom ?? OPENING_TIMING.followZoom);
+              markDirty();
+            },
+            centre: () => ({
+              x: camera.x + camera.viewportWidth / camera.tileSize / 2,
+              y: camera.y + camera.viewportHeight / camera.tileSize / 2,
+            }),
+            spots: () => worstSpots(world.map, world.parcels, live.state),
+            indict: (onContinue) => mountOpeningFor(world, seed, onContinue, 'Continue'),
+            onDone: () => {
+              openingUp = false;
+              markDirty();
+            },
+          });
+        },
       })
     : null;
+  let tutorial: Tutorial | null = null;
 
   // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
   const events = createEventsController({
@@ -342,7 +361,7 @@ export function main(save: SaveV1 | null = null): void {
     mourn: (n) => economy.mourn(n),
     news: (t) => news.push(t),
     skin: view.skin,
-    cctvOn: () => !night?.active(), // the opening's camera is already on the walk
+    cctvOn: () => !night?.active() && !tutorial?.active(), // the opening's camera is its own
     main: { canvas, renderer, gpu: view.gpu, smog: view.smog },
     powered: () => power.grid().poweredAnchors,
     clock: () => {
@@ -362,6 +381,7 @@ export function main(save: SaveV1 | null = null): void {
     syncDock: tools.syncDock,
     afterRender: (now) => {
       night?.frame(now);
+      tutorial?.frame(now);
       events.frame(now);
     },
     afterGpu: (now) => events.gpuPass(now),

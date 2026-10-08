@@ -28,6 +28,6 @@ export function openingContentFor(world: WorldState, seed: string): OpeningConte
 }
 
 /** Mount the opening overlay over the live map; `onDone` runs once the player dismisses it. */
-export function mountOpeningFor(world: WorldState, seed: string, onDone: () => void): void {
-  mountOpening(document.body, openingContentFor(world, seed), onDone);
+export function mountOpeningFor(world: WorldState, seed: string, onDone: () => void, buttonLabel?: string): void {
+  mountOpening(document.body, openingContentFor(world, seed), onDone, buttonLabel);
 }
