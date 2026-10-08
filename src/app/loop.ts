@@ -6,6 +6,7 @@
 import { FixedTickLoop } from '../engine/loop';
 import type { Rng } from '../engine/rng';
 import { simTick, type SimDeps, type SimTickResult } from '../civic/compose';
+import { neighborhoodVoice } from '../civic/voice';
 import { stepRevival } from '../growth/revival';
 import type { Camera } from '../ui/camera';
 import type { Renderer } from '../ui/renderer';
@@ -28,6 +29,7 @@ export interface SimTickCtx {
     revivalRng: Rng;
     refreshParkingLots(): void;
     refreshHouseholds(): void;
+    publishWelcome(voiceAt: (tile: number) => number): void;
   };
   overlays: { onSimTick(r: SimTickResult): void };
   pulse: { tick(): void };
@@ -77,6 +79,8 @@ export function createSimTick(ctx: SimTickCtx): SimTicker {
       );
       live.refreshParkingLots(); // the player may have rezoned a lot → refresh the storage set
       live.refreshHouseholds(); // homes may have grown/decayed → refresh who's out living their day
+      // organised neighbourhoods welcome the unhoused back (rehoming.md): publish the fresh voice per home
+      live.publishWelcome((t) => neighborhoodVoice(sim.civic, sim.partition, t));
       if (revived > 0 || powerChanged) ctx.markDirty(); // stock/grid changed → rebuild base
     },
     { startTick: ctx.startTick },

@@ -77,6 +77,8 @@ export interface LiveLayer {
   refreshParkingLots(): void;
   /** The homes the daily-itinerary citizens spawn from — re-read as the city grows/decays. */
   refreshHouseholds(): void;
+  /** Publish each home's welcome (its neighbourhood's voice, 0..1) — the re-homing rate (rehoming.md). */
+  publishWelcome(voiceAt: (tile: number) => number): void;
   /** The dirty-plant smog sources — re-read when a plant is placed or bulldozed. */
   recomputePlantEmitters(): void;
 }
@@ -140,6 +142,14 @@ export function createLive(deps: LiveDeps): LiveLayer {
     applyCaps: (caps) => applyLiveCaps(caps),
     refreshParkingLots,
     refreshHouseholds,
+    publishWelcome: (voiceAt) => {
+      const welcome = new Map<number, number>();
+      for (const h of state.households ?? []) {
+        const t = map.idx(h.x, h.y);
+        welcome.set(t, voiceAt(t));
+      }
+      state.welcome = welcome;
+    },
     recomputePlantEmitters,
   };
 }

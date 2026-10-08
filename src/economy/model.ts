@@ -93,7 +93,8 @@ export interface EconomyState {
   goodwill: number;
   approval: number;
   rent: number;
-  /** Households displaced so far (feeds the unhoused count). */
+  /** Households rent has displaced so far — a running total; the people themselves leave real homes into the
+   *  live unhoused stock (rehoming.md). */
   displaced: number;
   /** This hour's goodwill SHOCK — repairs, harms, displacement, police — without the drift toward neutral.
    *  The running city applies it to civic trust, which owns goodwill's slower dynamics. */

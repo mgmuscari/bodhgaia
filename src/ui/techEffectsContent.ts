@@ -51,7 +51,7 @@ function practiceLine(e: Effect): string {
     case 'walkStretch':
       return `People walk up to ${num(WALK_RANGE * (e.value as number))} tiles before riding (was ${WALK_RANGE})`;
     case 'voicePerTick':
-      return `Neighbourhood voice +${e.value} per civic tick where people belong (+${(e.value as number) * 2} where belonging is strong)`;
+      return `Neighbourhood voice +${e.value} per civic tick where people belong (+${(e.value as number) * 2} where belonging is strong) — voice protects homes from rent and welcomes the unhoused back`;
     case 'socialInfra':
       return `Effort capacity +${pct(ECON.capPerInfra * (e.value as number))} (social infrastructure +${e.value})`;
     case 'roadConversions': {

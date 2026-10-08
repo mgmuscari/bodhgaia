@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
-import { readCity, UPKEEP, TENDING, NEUTRAL_ECONOMY_PRACTICES, type EconomyPractices } from '../../src/economy/readings';
+import { readCity, homeProtection, UPKEEP, TENDING, NEUTRAL_ECONOMY_PRACTICES, type EconomyPractices } from '../../src/economy/readings';
 
 // The economy reads the live city as a handful of aggregates (src/economy stays headless: the city hands
 // it plain accessors, like growth's occupancy accessor).
@@ -122,5 +122,34 @@ describe('readCity — the practices', () => {
     const r = withPractices(city(), { taxPainMul: 0.5, burnoutHealMul: 2 });
     expect(r.taxPainMul).toBe(0.5);
     expect(r.burnoutHealMul).toBe(2);
+  });
+});
+
+describe('readCity — voice protects (tenant organising, Maddy 2026-10-07)', () => {
+  it("a home's protection is its neighbourhood's voice when that beats its kind", () => {
+    const c = city();
+    const at = (voice: number) =>
+      readCity({
+        map: c.map,
+        parcels: c.parcels,
+        occupancyAt: (t) => c.occ.get(t),
+        landValueAt: (t) => c.lv.get(t),
+        wellbeing: 0.5,
+        extraInfra: 0,
+        harms: { blackouts: 0, policeViolence: 0, takings: 0 },
+        repairs: 0,
+        voiceAt: () => voice,
+      }).protectedShare;
+    // the house (4) and the co-op (6): the co-op is always protected; the house by half its households at voice ½
+    expect(at(0)).toBeCloseTo(6 / 10, 9);
+    expect(at(0.5)).toBeCloseTo((6 + 2) / 10, 9);
+    expect(at(1)).toBeCloseTo(1, 9);
+  });
+
+  it('homeProtection: the best of kind, land trust and voice', () => {
+    expect(homeProtection(BuiltKind.CoopHousing, false, 0)).toBe(1);
+    expect(homeProtection(BuiltKind.HouseSingle, true, 0)).toBe(1);
+    expect(homeProtection(BuiltKind.HouseSingle, false, 0.3)).toBe(0.3);
+    expect(homeProtection(BuiltKind.HouseSingle, false, 0)).toBe(0);
   });
 });
