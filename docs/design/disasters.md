@@ -84,3 +84,12 @@ audio's rain bed is never on. Floods need weather first.
 3. **Roads under water are impassable:** new routes for cars, trucks and walkers go round flooded tiles.
 4. **Art:** flooded tiles are drawn with the skin's own shallow-water art (murky), translucent over what they
    cover, with the water's wave pixels; the camera shows the flood; the news says so.
+
+## Architecture note: traffic accidents (2026-10-08)
+
+Live layer (`live/accidents.ts`), drawn hourly by the host with its own rng fork: each car on the move (in this
+city every moving car is driven by its owner) may crash on the jam under it — nothing below CRASH_JAM of
+TRAFFIC_MAX, likelier the worse it is. The car just ahead is wrecked too. A wreck is nobody's to drive: its driver
+gets out and walks on (or dies at the wheel); it blocks the lane ~30 s, then it's towed. A quarter of crashes
+kill someone — the driver, or a walker beside the road. Drawn spun a frame round with its hazards flashing, glass
+on the road, an amber pool on the GPU. Measured on lotus: one crash in ~5 minutes of play at the opening's jams.

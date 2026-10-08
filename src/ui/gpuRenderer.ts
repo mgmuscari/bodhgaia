@@ -159,6 +159,10 @@ export class GpuRenderer {
       const fl = 0.8 + 0.2 * Math.sin(timeSec * 11 + b.x * 1.7 + b.y);
       radial(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) * 0.9 + 1.2, 1.0, 0.5, 0.15, 0.45 * fl);
     }
+    // Wrecks: an amber hazard pool, flashing.
+    if (Math.floor((timeSec * 1000) / 400) % 2 === 0) {
+      for (const { m: c, pose } of fp ? fp.cars : posed(ambient.cars)) if (c.wreck !== undefined) radial(pose.x, pose.y, 0.7, 1.0, 0.7, 0.2, 0.45);
+    }
     // Fire trucks: taillights, and a red/white flashing pool in step with the cruisers', day and night.
     for (const { pose } of posed(ambient.trucks ?? [])) {
       tail(pose.x, pose.y, pose.hx, pose.hy, Math.max(night, 0.5));

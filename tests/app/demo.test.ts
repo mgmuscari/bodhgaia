@@ -76,6 +76,22 @@ describe('disaster demos', () => {
     expect(views[0]![0]).toBeLessThan(12); // by the water
   });
 
+  it('a crash demo wrecks the moving car on the most jammed road and looks at it', async () => {
+    const c = city();
+    const live = createAmbientState();
+    live.events = [];
+    live.cars.push({ x: 10, y: 15, dir: 1, tx: 11, ty: 15 }, { x: 40, y: 15, dir: 1, tx: 41, ty: 15 }, { x: 30, y: 15, dir: 1, tx: 31, ty: 15, parked: true });
+    live.traffic.set(c.map.idx(10, 15), 50);
+    live.traffic.set(c.map.idx(40, 15), 200);
+    live.traffic.set(c.map.idx(30, 15), 255);
+    const views: number[][] = [];
+    const demo = createDemo('crash', { world: { map: c.map, parcels: c.parcels }, live, ignite: () => {}, view: (x, y) => views.push([x, y]) });
+    demo.frame(0);
+    demo.frame(4000);
+    expect(live.cars.filter((k) => k.wreck !== undefined).map((k) => k.x)).toEqual([40]);
+    expect(views).toEqual([[40, 15]]);
+  });
+
   it('a single-disaster demo runs only that one, at once', () => {
     const c = city();
     const live = createAmbientState();

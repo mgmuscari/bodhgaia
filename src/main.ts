@@ -51,6 +51,7 @@ import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
 import { createFireController } from './app/fire';
 import { drawSpills } from './live/spills';
+import { drawCrashes } from './live/accidents';
 import { createWeather } from './app/weather';
 import { createFloodController } from './app/flood';
 import { applyRain } from './live/fields/pollution';
@@ -414,6 +415,13 @@ export function main(save: SaveV1 | null = null): void {
   const disastersOn = (): boolean => settings.current().disasters && !night?.active() && !tutorial?.active();
   // Industrial spills: drawn once a game hour from the works' conditions; the cloud is stepped by the live layer.
   const spillRng = createRng(seed).fork('spill');
+  // Traffic accidents: drawn once a game hour from the jams under moving cars.
+  const crashRng = createRng(seed).fork('crash');
+  const drawCrashesNow = (): void => {
+    if (!disastersOn()) return;
+    const n = drawCrashes(live.state, world.map, crashRng, gameClock(gameSec()).hour);
+    if (n > 0) news.push(n > 1 ? `${n} crashes on jammed roads` : 'A crash on a jammed road');
+  };
   const drawSpillsNow = (): void => {
     if (!disastersOn()) return;
     for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
@@ -449,7 +457,7 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
@@ -499,6 +507,7 @@ export function main(save: SaveV1 | null = null): void {
       flood.frame(now);
       fire.frame(now);
       drawSpillsNow();
+      drawCrashesNow();
       events.frame(now);
     },
     afterGpu: (now) => events.gpuPass(now),
