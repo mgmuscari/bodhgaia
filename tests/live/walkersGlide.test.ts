@@ -81,6 +81,9 @@ function probe(): { jumps: number; worstSide: number; worstAlong: number; fastes
     stepAmbient(state, world.map, ambientRng, 50);
     for (const p of state.peds) {
       if (p.phase === 'inside' || p.phase === 'driving') { last.delete(p); continue; }
+      // stepping out of a car eases the drawing from the car to the kerb while the walker's place has already moved —
+      // the drawing doesn't follow the walk then, by design (tests/live/parkEase.test.ts holds the ease to a slide)
+      if (p.ease) { last.delete(p); continue; }
       const pose = pedPose(p, onRoad, 1);
       const prev = last.get(p);
       if (prev) {

@@ -32,6 +32,7 @@ import {
 import type { AmbientState, Car, ParkingLotInfo, Ped } from './types';
 import { spawnTargetFor } from './fields/occupancy';
 import { commitHeading } from './motion';
+import { carPose, easeFrom, EASE_SUBSTEPS } from './poses';
 import { planRide, rideCrowded, startRide } from './riders';
 import {
   chooseMode,
@@ -62,7 +63,9 @@ export function boardOwnedCar(state: AmbientState, p: Ped, map: GameMap, car: Ca
   const spot = findParkingNear(state, map, dest.x, dest.y) ?? dest;
   const path = roadPath(map, Math.round(car.x), Math.round(car.y), spot.x, spot.y, state.traffic);
   if (!path || path.length < 2) return false;
-  // Board: snap onto the route's first tile and commit to following it (cars=committed paths).
+  // Board: snap onto the route's first tile and commit to following it (cars=committed paths) — drawn pulling out of
+  // the stall rather than jumping into the lane.
+  if (car.parked) easeFrom(car, carPose(car));
   const p0x = path[0]! % map.width;
   const p0y = (path[0]! - p0x) / map.width;
   const p1x = path[1]! % map.width;
@@ -424,6 +427,7 @@ export function applyParkSpot(
   car: Car,
   spot: { x: number; y: number; lotIdx?: number; stallIdx?: number; dir?: number; slot?: number },
 ): void {
+  easeFrom(car, carPose(car)); // it pulls into the stall from where it is, not in one frame
   car.x = spot.x - 0.5;
   car.y = spot.y - 0.5;
   car.tx = car.x;
@@ -724,7 +728,9 @@ export function spawnBoundPed(state: AmbientState, c: Car, building: { x: number
   // but the Manhattan router walks integer tiles, so the ped steps off from the tile centre.
   const sx = Math.round(c.x);
   const sy = Math.round(c.y);
+  const from = carPose(c);
   state.peds.push({
+    ease: { x: from.x, y: from.y, hx: from.hx, hy: from.hy, n: EASE_SUBSTEPS }, // out of the car, onto the kerb
     x: sx,
     y: sy,
     dir: 0,

@@ -11,6 +11,7 @@
 
 import { stepGatherer } from './gatherings';
 import { stepRider } from './riders';
+import { carPose, easeFrom } from './poses';
 import type { GameMap } from '../engine/map';
 import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import type { Rng } from '../engine/rng';
@@ -160,6 +161,7 @@ const stepDriving: PedStep = (state, map, _rng, ctx, p) => {
   p.x = car.x;
   p.y = car.y;
   finishOnFoot(p);
+  easeFrom(p, carPose(car)); // out of the car (drawn where it is pulling in), onto the kerb
   p.fuel = undefined; // fresh walking leg
   return true;
 };
