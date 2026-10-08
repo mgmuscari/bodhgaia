@@ -114,7 +114,7 @@ export function createSynthEngine(ctx: BaseAudioContext, opts: SynthOptions = {}
     const { s, buf } = sample(note.instrument);
     const plan = planVoice(s, note, ctx.currentTime);
     if (plan.peak <= 0) return null;
-    const adm = pool.admit(plan.velocity, plan.start, plan.end);
+    const adm = pool.admit(plan.velocity, plan.start, plan.end, note.bus);
     if (!adm) return null;
     if (adm.steal !== null) live.get(adm.steal)?.kill(plan.start);
 
