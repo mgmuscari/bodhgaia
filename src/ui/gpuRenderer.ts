@@ -11,7 +11,7 @@ import { GlowBatch, GLOW_FLOATS, extractLightPoints } from './glowBatch';
 import type { LightPoint } from './glowBatch';
 import { BEAM_REACH, type Beam } from './headlights';
 import { DAYSPEED, dayNightBrightness } from './lighting';
-import { carPose, ambientAlpha } from '../live/poses';
+import { carPose, ambientAlpha, laneOnTile } from '../live/poses';
 import { sharedFramePoses, type Posed } from './framePoses';
 import type { AmbientState, Mover } from '../live/types';
 import type { GameMap } from '../engine/map';
@@ -140,7 +140,8 @@ export class GpuRenderer {
     // The sprite pass's poses for this frame (every mover near the view — a glow from further out can't
     // reach it); posed here only if this pass runs on its own.
     const fp = sharedFramePoses(ambient, alpha);
-    const posed = (list: readonly Mover[]): Posed[] => list.map((m) => ({ m, pose: carPose(m, alpha) }));
+    const laneAt = laneOnTile(this.map);
+    const posed = (list: readonly Mover[]): Posed[] => list.map((m) => ({ m, pose: carPose(m, alpha, laneAt) }));
     if (night > 0.02) {
       for (const { m: c, pose } of fp ? fp.cars : posed(ambient.cars)) {
         if (c.parked) continue;

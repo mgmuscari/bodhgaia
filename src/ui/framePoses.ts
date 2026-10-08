@@ -58,12 +58,13 @@ export function computeFramePoses(
   view: WorldRect,
   alpha: number,
   onRoadAt: (x: number, y: number) => boolean,
+  laneAt?: (x: number, y: number) => number,
 ): FramePoses {
   const near: WorldRect = { x0: view.x0 - POSE_REACH, y0: view.y0 - POSE_REACH, x1: view.x1 + POSE_REACH, y1: view.y1 + POSE_REACH };
   const cars: Posed[] = [];
-  for (const m of ambient.cars) if (inRect(near, m.x, m.y)) cars.push({ m, pose: carPose(m, alpha) });
+  for (const m of ambient.cars) if (inRect(near, m.x, m.y)) cars.push({ m, pose: carPose(m, alpha, laneAt) });
   const cruisers: Posed[] = [];
-  for (const m of ambient.cruisers) if (inRect(near, m.x, m.y)) cruisers.push({ m, pose: carPose(m, alpha) });
+  for (const m of ambient.cruisers) if (inRect(near, m.x, m.y)) cruisers.push({ m, pose: carPose(m, alpha, laneAt) });
   const peds: Posed[] = [];
   for (const m of ambient.peds) {
     if (offStreet(m)) continue; // inside a building, driving its car, or riding a tram or train
