@@ -190,6 +190,8 @@ export interface Truck {
   target: number;
   /** Substeps left spraying. */
   spray: number;
+  /** Substeps left before it leaves the station (the crew turning out). */
+  turnout?: number;
   /** The road tile by its station, to drive home to. */
   home: { x: number; y: number };
 }

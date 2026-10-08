@@ -51,6 +51,7 @@ import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
 import { createFireController } from './app/fire';
 import { drawSpills } from './live/spills';
+import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
 
 
@@ -432,6 +433,21 @@ export function main(save: SaveV1 | null = null): void {
     if (handle) handle.fire = fire; // live checks: light a building (and live/spills.ts startSpill for a spill)
   }
 
+  // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
+  const demoKind = params.get('demo');
+  const demo =
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'disasters')
+      ? createDemo(demoKind as DemoKind, {
+          world,
+          live: live.state,
+          ignite: (i) => fire.ignite(i),
+          view: (x, y) => {
+            camera.centerOn(x, y, 3);
+            markDirty();
+          },
+        })
+      : null;
+
   // The live event feed: deaths are mourned (costs, belonging, grief, news); every event shows in the CCTV inset.
   const events = createEventsController({
     map: world.map,
@@ -464,6 +480,7 @@ export function main(save: SaveV1 | null = null): void {
       night?.frame(now);
       tutorial?.frame(now);
       lessons.frame(now);
+      demo?.frame(now);
       fire.frame(now);
       drawSpillsNow();
       events.frame(now);
