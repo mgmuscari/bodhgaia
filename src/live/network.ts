@@ -4,7 +4,7 @@
 // ui/ambientContent.ts; pure reads of the map (rng only where a step is chosen).
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind, isRoadKind } from '../engine/fabric';
+import { BuiltKind, isRoadKind, railCrossingMask } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { Rng } from '../engine/rng';
 import { CAR_STRAIGHT_WEIGHT, FAUNA_THRESHOLD, LANE_SCAN_CAP } from './tuning';
@@ -488,7 +488,18 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
   // never drive on/across it, and peds must not cut through it either (Maddy: travelers path through
   // dividers/medians). It's an amenity that lifts the corridor, never a foot route or a destination.
   if (k === BuiltKind.PlantedMedian) return false;
+  // Rail is crossed, never walked along (Maddy 2026-10-08: people walk on the tracks) — a streetcar line is a street
+  if (k === BuiltKind.Rail || k === BuiltKind.ElevatedRail) return railCrossing(map, x, y);
   return zoneTypeOf(k) === ZoneType.None;
+}
+
+/** A rail tile a road crosses: at grade (a level crossing), or a street passing under the viaduct. */
+export function railCrossing(map: GameMap, x: number, y: number): boolean {
+  const k = map.built[map.idx(x, y)]!;
+  if (k === BuiltKind.Rail) return railCrossingMask(map, x, y) !== 0;
+  if (k !== BuiltKind.ElevatedRail) return false;
+  const road = (dx: number, dy: number): boolean => map.inBounds(x + dx, y + dy) && isRoadKind(map.built[map.idx(x + dx, y + dy)]!);
+  return (road(0, -1) && road(0, 1)) || (road(-1, 0) && road(1, 0));
 }
 
 /** Has a ped at (px,py) reached its destination PLOT? Adjacent to the exact target tile, OR — for a
@@ -546,8 +557,8 @@ export function pedDespawns(map: GameMap, p: Ped): boolean {
 // is written directly (`map.built[i] = …`) all over, so the cache can't be told when to refresh: it
 // VALIDATES instead — each lookup compares built/water against a private copy, a word at a time (a
 // few µs on a 96² map, against a search of hundreds). A changed tile re-derives its own walk entry and
-// the drive edges of every tile within MASK_REACH (the furthest canDrive reads: a lane-run scan from
-// the far end of the edge); a large change rebuilds the whole table. Exact by construction — the masks
+// its neighbours' (a rail tile is walkable only where a road crosses it), and the drive edges of every
+// tile within MASK_REACH (the furthest canDrive reads: a lane-run scan from the far end of the edge); a large change rebuilds the whole table. Exact by construction — the masks
 // are the predicates, read through a table.
 
 /** How far (Chebyshev) from an edge's origin canDrive can read: the step, then a freewayLane run scan
@@ -598,7 +609,10 @@ function rebuildAround(map: GameMap, c: MaskCache, changed: readonly number[]): 
   for (const i of changed) {
     const cx = i % W;
     const cy = (i - cx) / W;
-    c.walk[i] = isWalkable(map, cx, cy) ? 1 : 0;
+    // a rail tile's walkability reads its 4-neighbours (is a road crossing it?), so re-derive the 3×3
+    for (let y = Math.max(0, cy - 1); y <= Math.min(H - 1, cy + 1); y++) {
+      for (let x = Math.max(0, cx - 1); x <= Math.min(W - 1, cx + 1); x++) c.walk[y * W + x] = isWalkable(map, x, y) ? 1 : 0;
+    }
     const y1 = Math.min(H - 1, cy + MASK_REACH);
     const x1 = Math.min(W - 1, cx + MASK_REACH);
     for (let y = Math.max(0, cy - MASK_REACH); y <= y1; y++) {

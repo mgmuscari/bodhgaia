@@ -5,8 +5,8 @@
 // never hashed; the live layer recomputes them when the fabric changes.
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind, isRoadKind, railCrossingMask } from '../engine/fabric';
-import { isWalkable } from './network';
+import { BuiltKind } from '../engine/fabric';
+import { isWalkable, railCrossing } from './network';
 import { DIR_DX, DIR_DY } from './geometry';
 
 export type LineFamily = 'tram' | 'rail';
@@ -57,9 +57,7 @@ function railStation(map: GameMap, x: number, y: number): boolean {
   let track = 0;
   for (let d = 0; d < 4; d++) if (familyOf(kindAt(DIR_DX[d]!, DIR_DY[d]!)) === 'rail') track++;
   if (track >= 3) return true;
-  if (map.built[map.idx(x, y)] === BuiltKind.Rail) return railCrossingMask(map, x, y) !== 0;
-  const road = (dx: number, dy: number): boolean => isRoadKind(kindAt(dx, dy));
-  return (road(0, -1) && road(0, 1)) || (road(-1, 0) && road(1, 0));
+  return railCrossing(map, x, y);
 }
 
 /** Every transit line on the map, with its stops. */
