@@ -350,6 +350,24 @@
       .night-title {
         animation: night-in 1.6s ease both;
       }
+      /* the opening's title cards: the byline small and spaced, the name large, tracked wide, in the accent */
+      .night-credit {
+        margin: 0;
+        font-size: 1.5rem;
+        letter-spacing: 0.14em;
+        padding-left: 0.14em; /* tracking trails the last letter: balance it so the line stays centred */
+        color: var(--ui-text);
+        opacity: 0.9;
+        animation: night-in 1.8s ease both;
+      }
+      .night-credit-name {
+        font-size: 4rem;
+        letter-spacing: 0.32em;
+        padding-left: 0.32em;
+        color: var(--ui-accent);
+        opacity: 1;
+        text-shadow: 3px 3px 0 var(--ui-ink);
+      }
       .night-line {
         margin: 0.35rem 0;
         font-size: 1.35rem;

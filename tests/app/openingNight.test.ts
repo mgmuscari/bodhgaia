@@ -4,7 +4,7 @@ import { BuiltKind, placeTransport } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState } from '../../src/live/types';
 import { createNightOpening, type NightUi } from '../../src/app/openingNight';
-import { EPIGRAPHS, MANTRA, AWAKENING, VOWS, OPENING_TIMING as T } from '../../src/ui/openingScript';
+import { EPIGRAPHS, MANTRA, AWAKENING, VOWS, TITLE_CARDS, OPENING_TIMING as T } from '../../src/ui/openingScript';
 
 const STOPS = [
   { x: 10, y: 10, zoom: 2 },
@@ -25,6 +25,7 @@ function harness() {
   let skip: () => void = () => {};
   const ui: NightUi = {
     card: (e) => log.push(`card ${e.source}`),
+    credit: (t) => log.push(`credit ${t}`),
     vow: (t) => log.push(`vow ${t.slice(0, 12)}`),
     words: (n) => log.push(`words ${n}`),
     title: (t) => log.push(`title ${t}`),
@@ -58,11 +59,27 @@ function harness() {
 }
 
 describe('the night opening (act one)', () => {
+  it('opens on the byline and the title (Maddy 2026-10-08), each alone on the dark', () => {
+    expect(TITLE_CARDS).toEqual(['a game by madeleine muscari', 'BODHGAIA']);
+    const h = harness();
+    h.opening.frame(0);
+    expect(h.log).toEqual(['credit a game by madeleine muscari']);
+    h.opening.frame(T.creditMs + 1); // it holds, then moves on
+    expect(h.log.at(-1)).toBe('credit BODHGAIA');
+    h.advance(); // a click moves on sooner
+    h.opening.frame(T.creditMs + 10);
+    expect(h.log.at(-1)).toBe(`card ${EPIGRAPHS[0]!.source}`);
+  });
+
   it('epigraphs, the walk to a death, the mantra, the awakening at dawn — then hands on', () => {
     const h = harness();
     let t = 0;
     h.opening.frame(t);
-    expect(h.log).toEqual([`card ${EPIGRAPHS[0]!.source}`]);
+    for (let i = 0; i < TITLE_CARDS.length; i++) {
+      h.advance();
+      h.opening.frame((t += 10));
+    }
+    expect(h.log).toEqual([...TITLE_CARDS.map((c) => `credit ${c}`), `card ${EPIGRAPHS[0]!.source}`]);
     h.advance(); // a click moves on
     h.opening.frame((t += 10));
     expect(h.log.at(-1)).toBe(`card ${EPIGRAPHS[1]!.source}`);
