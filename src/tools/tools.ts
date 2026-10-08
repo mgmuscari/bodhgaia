@@ -161,6 +161,7 @@ export type ToolReason =
   | 'funds'
   | 'not-an-interior-lane'
   | 'nothing-to-bulldoze'
+  | 'needs-house'
   | 'effort';
 
 export interface PreviewResult {
@@ -350,6 +351,16 @@ export function availableTools(tech: TechState): ToolDef[] {
   return out;
 }
 
+/** Is there a single house in the 8 tiles around (x, y)? */
+function besideHouse(map: ToolWorld['map'], x: number, y: number): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if ((dx || dy) && map.inBounds(x + dx, y + dy) && map.built[map.idx(x + dx, y + dy)] === BuiltKind.HouseSingle) return true;
+    }
+  }
+  return false;
+}
+
 /** Geometry-only validity of `tool` at (x, y) — the predicate, no effort, no mutation. */
 function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): PreviewResult {
   const { map } = world;
@@ -384,9 +395,10 @@ function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): P
   const kind = tool.kind!;
   if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
-    return canPlaceParcel(map, x, y, fp.w, fp.h)
-      ? { valid: true }
-      : { valid: false, reason: 'occupied' };
+    if (!canPlaceParcel(map, x, y, fp.w, fp.h)) return { valid: false, reason: 'occupied' };
+    // an accessory dwelling is a backyard cottage: it goes beside a house (8-neighbour) it densifies
+    if (kind === BuiltKind.ADU && !besideHouse(map, x, y)) return { valid: false, reason: 'needs-house' };
+    return { valid: true };
   }
   // transport build — an elevated kind (rail/promenade) targeting a road DECKS an overpass over it
   // (grade-separated); otherwise it places at grade on empty land.
