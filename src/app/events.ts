@@ -9,7 +9,7 @@ import type { CivicState } from '../civic/state';
 import type { NeighborhoodMap } from '../civic/neighborhoods';
 import type { AmbientState, LiveEvent } from '../live/types';
 import { griefAround } from '../live/death';
-import { CctvQueue, CCTV_W, CCTV_H, cctvFrame, cctvLabel } from '../ui/cctvContent';
+import { CctvQueue, CCTV_W, CCTV_H, cctvFrame, cctvLabel, cctvGoTo } from '../ui/cctvContent';
 import { Camera } from '../ui/camera';
 import { Renderer } from '../ui/renderer';
 import type { SkinImages } from '../ui/tilesetLoader';
@@ -57,6 +57,8 @@ export interface EventsDeps extends EventCostDeps {
   clock(): string;
   /** Whether the feed may show now (the opening keeps it off). Default on. */
   cctvOn?(): boolean;
+  /** Take the main view to (x, y) at `zoom` — clicking the feed. */
+  goTo?(x: number, y: number, zoom: number): void;
   /** The main view: its 2D canvas (the map pane's box), its renderer (to keep its sprites out of the inset), and
    *  the GPU map + smog when the GPU path is on (the inset then draws as a second GPU viewport). */
   main?: {
@@ -78,6 +80,11 @@ export function createEventsController(deps: EventsDeps): EventsController {
   deps.live.events = []; // start collecting
   const queue = new CctvQueue();
   const cctv = mountCctv(document.body);
+  cctv.onClick(() => {
+    if (!shown) return;
+    const g = cctvGoTo(shown);
+    deps.goTo?.(g.x, g.y, g.zoom);
+  });
   let renderer: Renderer | null = null;
   let camera: Camera | null = null;
   let shown: LiveEvent | null = null;

@@ -9,6 +9,8 @@ export interface CctvHandle {
   hide(): void;
   /** GPU mode: the feed's ground shows through from the GPU map beneath; only the sprites are on this canvas. */
   setTransparent(on: boolean): void;
+  /** Clicking the feed (it takes you there). */
+  onClick(cb: () => void): void;
 }
 
 export function mountCctv(container: HTMLElement): CctvHandle {
@@ -29,6 +31,12 @@ export function mountCctv(container: HTMLElement): CctvHandle {
   time.className = 'cctv-time';
   bar.append(rec, caption, time);
   root.append(canvas, bar);
+  root.title = 'Go there';
+  let click: (() => void) | null = null;
+  root.addEventListener('click', (e) => {
+    e.stopPropagation(); // the feed, not the map under it
+    click?.();
+  });
   container.appendChild(root);
   return {
     canvas,
@@ -42,6 +50,9 @@ export function mountCctv(container: HTMLElement): CctvHandle {
     },
     setTransparent(on) {
       root.classList.toggle('cctv-gpu', on);
+    },
+    onClick(cb) {
+      click = cb;
     },
   };
 }

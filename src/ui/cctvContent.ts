@@ -29,6 +29,14 @@ export function cctvFrame(ev: LiveEvent, vw: number, vh: number): { zoom: number
   return { zoom, cx: ev.x + ev.w / 2, cy: ev.y + ev.h / 2 };
 }
 
+/** The main view's zoom when the feed is clicked (the guided tour's close view). */
+export const GO_TO_ZOOM = 3;
+
+/** Where clicking the feed takes the main view: the event's centre, close up. */
+export function cctvGoTo(ev: LiveEvent): { x: number; y: number; zoom: number } {
+  return { x: ev.x + ev.w / 2, y: ev.y + ev.h / 2, zoom: GO_TO_ZOOM };
+}
+
 /** The caption under the feed. */
 export function cctvLabel(ev: LiveEvent): string {
   return ev.kind === 'death' ? 'A resident has died' : ev.kind === 'fire' ? 'Fire' : ev.kind === 'spill' ? 'Toxic spill' : ev.kind === 'flood' ? 'Flood' : ev.kind === 'crash' ? 'Crash' : ev.kind === 'protest' ? 'Protest' : ev.kind === 'uprising' ? 'Uprising' : 'Arrest';

@@ -517,6 +517,10 @@ export function main(save: SaveV1 | null = null): void {
     news: (t) => news.push(t),
     skin: view.skin,
     cctvOn: () => !night?.active() && !tutorial?.active(), // the opening's camera is its own
+    goTo: (x, y, zoom) => {
+      camera.centerOn(x, y, zoom);
+      markDirty();
+    },
     main: { canvas, renderer, gpu: view.gpu, smog: view.smog },
     powered: () => power.grid().poweredAnchors,
     clock: () => {
