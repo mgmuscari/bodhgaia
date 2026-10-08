@@ -9,6 +9,7 @@ import { BuiltKind, isTransportKind } from '../engine/fabric';
 import { builtKindName } from '../engine/builtNames';
 import { builtRenderKey, footprintCellKey } from './renderKey';
 import type { TechState } from '../tech/state';
+import { nodeEffectLines } from './techEffectsContent';
 
 export type NodeStatus = 'locked' | 'affordable' | 'unlocked';
 
@@ -22,8 +23,12 @@ export interface NodeView {
   missing: string[];
   /** The card's picture: the tile of the first building it grants, else its branch's icon. */
   art: string;
-  /** What unlocking it grants, in words (building names, then capabilities). */
+  /** The buildings unlocking it grants, by name. */
   grants: string[];
+  /** Exactly what it changes in the simulation, one sentence each (techEffectsContent). */
+  effects: string[];
+  /** What its buildings cost to keep (upkeep / tending). */
+  costs: string[];
   branchTitle: string;
 }
 
@@ -69,12 +74,6 @@ const BRANCH_ART: Record<Branch, string> = {
 /** A granted kind's picture: a transport kind as an east-west run of its own tile, a building as its 1×1 drawing. */
 const kindArt = (k: BuiltKind): string => (isTransportKind(k) ? builtRenderKey(k, 10, 'c', 0) : footprintCellKey(k, 1, 1, 0, 0, 0));
 
-/** `road-diets` → `Road diets`. */
-const capabilityLabel = (c: string): string => {
-  const words = c.replace(/-/g, ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
-
 export function branchTitle(b: Branch): string {
   return BRANCH_TITLES[b];
 }
@@ -103,7 +102,8 @@ export function nodeViewOf(
     status: statusOf(n, state),
     missing: n.prereqs.filter((p) => !state.unlocked.has(p)).map((p) => byId.get(p)?.name ?? p),
     art: n.grants.kinds?.length ? kindArt(n.grants.kinds[0]!) : BRANCH_ART[n.branch],
-    grants: [...(n.grants.kinds ?? []).map((k) => builtKindName(k)), ...(n.grants.capabilities ?? []).map(capabilityLabel)],
+    grants: (n.grants.kinds ?? []).map((k) => builtKindName(k)),
+    ...nodeEffectLines(n),
     branchTitle: BRANCH_TITLES[n.branch],
   };
 }
@@ -161,4 +161,22 @@ export function techNodeClass(node: NodeView): string {
   let cls = `tech-node tech-node-${node.status}`;
   if (node.status === 'affordable') cls += ' tech-node-clickable';
   return cls;
+}
+
+/** What beginning a practice costs, for the card, the detail button, and — when the treasury can't cover the
+ *  start — why it can't begin yet. Money is paid once to begin; effort is drawn over the days. */
+export interface PracticeCostView {
+  card: string;
+  detail: string;
+  blocked?: string;
+}
+
+export function practiceCost(terms: { upfront: number; effort: number; hours: number }, funds: number): PracticeCostView {
+  const money = `$${terms.upfront.toLocaleString('en-US')}`;
+  const days = Math.round((terms.hours / 24) * 10) / 10;
+  return {
+    card: `${money} · ${terms.effort} effort`,
+    detail: `${money} now, then ${terms.effort} effort over ${days} days`,
+    ...(funds < terms.upfront ? { blocked: `Needs ${money} to begin` } : {}),
+  };
 }

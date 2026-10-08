@@ -44,6 +44,8 @@ export interface BlightReport {
    *  era 5), so the store<->chronicle identity is preEra5Standing - abandoned + craters + organicAdded.
    *  Null if no organic-growth line. */
   organicAdded: number | null;
+  /** "back yards: +Y lots behind houses" — the yards laid last, behind the standing houses; null if absent. */
+  yardsAdded: number | null;
   conditionMean: number;
   conditionMedian: number;
   /** alive parcels with condition < 64, as a share of alive parcels. */
@@ -87,6 +89,7 @@ const ERA3_RAILS_RE = /era3: rails removed (\d+) \(peak (\d+)\)/;
 // organic-growth line: `organic growth: N clusters from transport termini, +M parcels`. Group
 // 1=parcels added (the post-disinvestment fringe accretion).
 const ORGANIC_RE = /organic growth: \d+ clusters from transport termini, \+(\d+) parcels/;
+const YARDS_RE = /back yards: \+(\d+) lots behind houses/;
 
 // Cohort thresholds (mirrors parcelHighwayDist in moses.test.ts:526-548).
 const CORE_MAX = 8;
@@ -165,12 +168,14 @@ export function buildReport(world: ReportableWorld): BlightReport {
   const preEra5Standing = era5 ? Number(era5[3]) : null;
   const organicMatch = firstMatch(log, ORGANIC_RE);
   const organicAdded = organicMatch ? Number(organicMatch[1]) : null;
+  const yardsMatch = firstMatch(log, YARDS_RE);
+  const yardsAdded = yardsMatch ? Number(yardsMatch[1]) : null;
 
   const era3 = firstMatch(log, ERA3_RAILS_RE);
   const railLost = era3 ? { removed: Number(era3[1]), peak: Number(era3[2]) } : null;
 
-  // --- Condition stats + shares over ALIVE parcels (divide guarded) ---
-  const alive = parcels.aliveIndices();
+  // --- Condition stats + shares over ALIVE parcels (divide guarded) — buildings, not their back yards ---
+  const alive = parcels.aliveIndices().filter((i) => parcels.kindAt(i) !== BuiltKind.Yard);
   let conditionMean = 0;
   let conditionMedian = 0;
   let shareDerelict = 0;
@@ -195,10 +200,10 @@ export function buildReport(world: ReportableWorld): BlightReport {
     shareStruggling = struggling / conditions.length;
   }
 
-  // --- projectsStanding + byKind over ALIVE parcels ---
+  // --- projectsStanding + byKind over ALIVE parcels (yards included: byKind sums to parcelsAlive) ---
   const byKind: Partial<Record<BuiltKind, number>> = {};
   let projectsStanding = 0;
-  for (const i of alive) {
+  for (const i of parcels.aliveIndices()) {
     const k = parcels.kindAt(i);
     byKind[k] = (byKind[k] ?? 0) + 1;
     if (k === BuiltKind.Projects) projectsStanding++;
@@ -219,7 +224,7 @@ export function buildReport(world: ReportableWorld): BlightReport {
   // those parcels are appended AFTER era 5 (the last `organicAdded` indices) and are pristine + sited
   // next to freeway termini, so counting them would dump healthy parcels into the highway-distance
   // "core" cohort and invert the gradient. Excluding them keeps the report about the inherited harm.
-  const historicalTotal = parcelsTotal - (organicAdded ?? 0);
+  const historicalTotal = parcelsTotal - (organicAdded ?? 0) - (yardsAdded ?? 0); // yards are appended last
   const highwayField = distanceField(map, (i) => map.built[i] === BuiltKind.RoadHighway);
   const core: number[] = [];
   const periphery: number[] = [];
@@ -238,6 +243,7 @@ export function buildReport(world: ReportableWorld): BlightReport {
     abandoned,
     craters,
     organicAdded,
+    yardsAdded,
     conditionMean,
     conditionMedian,
     shareDerelict,

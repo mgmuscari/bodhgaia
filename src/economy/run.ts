@@ -22,15 +22,21 @@ export function economyHour(run: EconomyRun, city: CityReading): { run: EconomyR
   return { run: { ...run, state, projects: adv.active }, completed: adv.completed };
 }
 
-/** A Commons practice as a project: effort AND funds (Maddy's decision), scaled with the node's cost, taking
- *  longer the deeper in the tree it sits. Tuning data. */
+/** What a Commons practice costs (Maddy 2026-10-07): money ONCE to begin it, then effort drawn over its days —
+ *  scaled with the node's cost, taking longer the deeper in the tree it sits. Tuning data. */
+export function practiceTerms(node: { cost: number }): { upfront: number; effort: number; hours: number } {
+  return { upfront: node.cost * 50, effort: node.cost * 12, hours: 12 + node.cost * 2 };
+}
+
+/** A begun practice as a project: its money was paid at the start, so the work draws effort only. */
 export function practiceProject(node: { id: string; name: string; cost: number }): Project {
+  const t = practiceTerms(node);
   return startProject({
     id: node.id,
     label: node.name,
-    effort: node.cost * 12,
-    funds: node.cost * 50,
-    hours: 12 + node.cost * 2,
+    effort: t.effort,
+    funds: 0,
+    hours: t.hours,
     payload: { practice: node.id },
   });
 }

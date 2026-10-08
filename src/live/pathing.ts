@@ -11,6 +11,8 @@ import { type StopCategory, stopCategoryOf } from '../citizens/itinerary';
 import { MODE_CHOICE_ORDER, TravelMode, modeRidesNetwork, modeSpec } from '../citizens/modes';
 import { sampleField } from '../citizens/field';
 import {
+  PARKLET_RADIUS,
+  PARKLET_SHIFT,
   BIKE_RANGE,
   CITIZEN_TRIP_RADIUS,
   CONGESTION_WEIGHT,
@@ -35,7 +37,6 @@ import {
   POLL_MAX,
   ROAD_PATH_MAX_ITERS,
   TRAFFIC_MAX,
-  WALKABLE_STRETCH,
   WALK_RANGE,
   WEAR_MAX,
 } from './tuning';
@@ -520,17 +521,17 @@ export function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode
  *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
  *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
  *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkable = false): TravelMode {
+export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1, bikeStretch = 1): TravelMode {
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
   // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
   const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
-  // Walkable Streets (crossings, shade, slower cars): people walk half as far again
-  if (d <= WALK_RANGE * stretch * (walkable ? WALKABLE_STRETCH : 1)) return TravelMode.Walk;
+  // Walkable Streets (crossings, shade, slower cars) stretches how far people will walk
+  if (d <= WALK_RANGE * stretch * walkStretch) return TravelMode.Walk;
   for (const mode of MODE_CHOICE_ORDER) {
     if (mode === TravelMode.Bike) {
       // A medium leg cycles (you can bike a street); bike-friendly infra just makes it faster/nicer
       // via the routing cost. So cyclists appear from the start and grow as the player calms streets.
-      if (d <= BIKE_RANGE * stretch) return TravelMode.Bike;
+      if (d <= BIKE_RANGE * stretch * bikeStretch) return TravelMode.Bike;
       continue;
     }
     // rail / streetcar / drive: available when their network serves BOTH ends of the leg.
@@ -557,6 +558,39 @@ export function tripEvaporates(jam: number, hash: number): boolean {
   if (jam <= 0) return false;
   const u = (Math.imul((hash ^ 0x2545f491) >>> 0, 0x9e3779b1) >>> 0) % 1000;
   return u < jam * EVAPORATION * 1000;
+}
+
+/** Is there a tile of `kind` (on the ground or an overpass deck) within Chebyshev `r` of (x, y)? A bounded box scan. */
+export function nearKind(map: GameMap, x: number, y: number, kind: number, r: number): boolean {
+  const x0 = Math.max(0, x - r);
+  const x1 = Math.min(map.width - 1, x + r);
+  const y0 = Math.max(0, y - r);
+  const y1 = Math.min(map.height - 1, y + r);
+  for (let yy = y0; yy <= y1; yy++) {
+    for (let xx = x0; xx <= x1; xx++) {
+      const i = yy * map.width + xx;
+      if (map.built[i] === kind || map.deck[i] === kind) return true;
+    }
+  }
+  return false;
+}
+
+/** May a household from `homeTile` drive this trip? Commune households own no cars; homes near a parklet (which
+ *  took their parking) drive PARKLET_SHIFT fewer trips, picked by `hash`. */
+export function homeDrives(map: GameMap, homeTile: number, hash: number): boolean {
+  if (map.built[homeTile] === BuiltKind.Commune) return false;
+  const x = homeTile % map.width;
+  const y = (homeTile - x) / map.width;
+  if (!nearKind(map, x, y, BuiltKind.Parklet, PARKLET_RADIUS)) return true;
+  const u = (Math.imul((hash ^ 0x27d4eb2f) >>> 0, 0x9e3779b1) >>> 0) % 1000;
+  return u >= PARKLET_SHIFT * 1000;
+}
+
+/** Is this driven shopping trip delivered instead (Drone Deliveries)? A deterministic `share` of trips, by hash. */
+export function tripDelivered(share: number, hash: number): boolean {
+  if (share <= 0) return false;
+  const u = (Math.imul((hash ^ 0x5bd1e995) >>> 0, 0x9e3779b1) >>> 0) % 1000;
+  return u < share * 1000;
 }
 
 /** The nearest EMPTY tile (open land, unbuilt, non-water — {@link isWearable}) to (x, y) within

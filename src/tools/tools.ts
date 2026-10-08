@@ -19,6 +19,8 @@ import {
   convertTransport,
   canConvertParcel,
   convertParcel,
+  buildOnYard,
+  layYardFor,
   demolishParcel,
   demolishTransportAt,
   isInteriorRoadLane,
@@ -86,6 +88,7 @@ const VOLUNTEER_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.CoopHousing,
   BuiltKind.ADU,
   BuiltKind.Commune,
+  BuiltKind.TinyHomes,
   BuiltKind.QuietStreet,
   BuiltKind.BikePath,
   BuiltKind.Promenade,
@@ -160,6 +163,7 @@ export type ToolReason =
   | 'funds'
   | 'not-an-interior-lane'
   | 'nothing-to-bulldoze'
+  | 'needs-yard'
   | 'effort';
 
 export interface PreviewResult {
@@ -231,6 +235,7 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.Bazaar]: { label: 'Bazaar', cost: 18, footprint: { w: 2, h: 2 } },
   [BuiltKind.MakerSpace]: { label: 'Maker Space', cost: 18, footprint: { w: 2, h: 2 } },
   [BuiltKind.HealingCommons]: { label: 'Healing Commons', cost: 28, footprint: { w: 3, h: 3 } },
+  [BuiltKind.TinyHomes]: { label: 'Tiny-Home Village', cost: 16, footprint: { w: 2, h: 2 } },
 };
 
 // Conversion tools keyed by TARGET kind. The transport targets are the union of
@@ -341,7 +346,7 @@ export function availableTools(tech: TechState): ToolDef[] {
       ? tech.grantedKinds().has(to as BuiltKind) // rezoning green (61/62): kind-gated
       : isTechTarget(to)
         ? tech.grantedKinds().has(to as BuiltKind) // transit (5..9): kind-gated
-        : tech.hasCapability('road-diets'); // classic road (1..4): capability-gated
+        : tech.effects().roadConversions; // classic road (1..4): Road Diets
     if (ok) out.push(toolDef(`convert-${to}`)!);
   }
 
@@ -381,10 +386,11 @@ function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): P
   // build-*
   const kind = tool.kind!;
   if (isBuildingKind(kind)) {
+    // an accessory dwelling is a backyard cottage: it goes IN a house's back yard, not on new land
+    if (kind === BuiltKind.ADU) return map.built[map.idx(x, y)] === BuiltKind.Yard ? { valid: true } : { valid: false, reason: 'needs-yard' };
     const fp = tool.footprint!;
-    return canPlaceParcel(map, x, y, fp.w, fp.h)
-      ? { valid: true }
-      : { valid: false, reason: 'occupied' };
+    if (!canPlaceParcel(map, x, y, fp.w, fp.h)) return { valid: false, reason: 'occupied' };
+    return { valid: true };
   }
   // transport build — an elevated kind (rail/promenade) targeting a road DECKS an overpass over it
   // (grade-separated); otherwise it places at grade on empty land.
@@ -504,9 +510,12 @@ export function applyTool(
   }
   // build-*
   const kind = tool.kind!;
-  if (isBuildingKind(kind)) {
+  if (kind === BuiltKind.ADU) {
+    buildOnYard(map, parcels, x, y, kind); // the yard's lot becomes the cottage's
+  } else if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
     placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });
+    if (kind === BuiltKind.HouseSingle) layYardFor(map, parcels, x, y); // a house comes with its back yard
   } else if (isOverpassKind(kind) && canPlaceOverpass(map, x, y, kind)) {
     placeOverpass(map, x, y, kind); // deck an overpass over the road below (grade-separated)
   } else {

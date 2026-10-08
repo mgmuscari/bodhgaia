@@ -3,7 +3,9 @@
 // it implies. Cut verbatim from ui/ambientContent.ts; the stepper sets the cadence.
 
 import type { GameMap } from '../../engine/map';
+import { BuiltKind } from '../../engine/fabric';
 import { sampleField } from '../../citizens/field';
+import { nearKind } from '../pathing';
 import { liveCaps } from '../caps';
 import {
   INHERITED_VACANCY,
@@ -16,6 +18,13 @@ import {
   OCC_POLL_W,
   OCC_RATE,
   OCC_SETTLE_PASSES,
+  REHOME_FRESH,
+  ADU_HOUSE_HEADROOM,
+  FRESH_FOOD_PULL,
+  FRESH_FOOD_RADIUS,
+  RAIL_NOISE,
+  RAIL_NOISE_RADIUS,
+  REHOME_WELCOME,
   POLL_MAX,
 } from '../tuning';
 import type { AmbientState } from '../types';
@@ -26,6 +35,17 @@ import type { AmbientState } from '../types';
  *  is fixed); a derelict (zero baseline) holds nobody. */
 export function capacityOf(kind: number, baseCount: number): number {
   return baseCount * (OCC_HEADROOM.get(kind) ?? 1.5);
+}
+
+/** A home's ceiling on the map: its kind's headroom, except a house beside an accessory dwelling (8-neighbour),
+ *  which can hold ADU_HOUSE_HEADROOM× — densifying without demolition. */
+export function homeCapacity(map: GameMap, tile: number, baseCount: number): number {
+  const kind = map.built[tile]!;
+  if (kind === BuiltKind.HouseSingle) {
+    const x = tile % map.width;
+    if (nearKind(map, x, (tile - x) / map.width, BuiltKind.ADU, 1)) return baseCount * ADU_HOUSE_HEADROOM;
+  }
+  return capacityOf(kind, baseCount);
 }
 
 /** The pull on a home's population (pure): land value above OCC_LV_NEUTRAL attracts residents, below
@@ -62,6 +82,7 @@ export function spawnTargetFor(totalOccupancy: number): number {
 export function stepOccupancy(state: AmbientState, map: GameMap): void {
   const homes = state.households;
   if (!homes || homes.length === 0) {
+    for (const v of state.occupancy.values()) state.unhoused += v; // every home gone: its people too
     state.occupancy.clear();
     return;
   }
@@ -70,22 +91,61 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
   const settling = state.occPasses < OCC_SETTLE_PASSES;
   for (const h of homes) {
     const t = map.idx(h.x, h.y);
-    const cap = capacityOf(map.built[t]!, h.count);
-    const floor = h.count * OCC_FLOOR; // a home never thins below this fraction of its seeded baseline
-    const cur = state.occupancy.get(t) ?? h.count; // seed lazily at the census baseline
-    const raw = occupancySignal(
-      sampleField(state.landValue, t),
-      sampleField(state.pollution, t),
-      state.buildingHealth.get(t) ?? 0,
-    );
+    const cap = homeCapacity(map, t, h.count);
+    // a tiny-home village shelters only the city's unhoused: it fills from the pool alone and may stand empty
+    const poolOnly = map.built[t] === BuiltKind.TinyHomes;
+    const floor = poolOnly ? 0 : h.count * state.practices.occFloor; // a home never thins below this share of its baseline (Mutual Aid raises it)
+    let cur = state.occupancy.get(t);
+    if (cur === undefined) {
+      // the opening census is seeded full; a home BUILT since opens empty and fills (rehoming.md)
+      if (state.occPasses === 0) cur = h.count;
+      else {
+        cur = 0;
+        (state.freshHomes ??= new Set()).add(t);
+      }
+    }
+    const raw =
+      occupancySignal(sampleField(state.landValue, t), sampleField(state.pollution, t), state.buildingHealth.get(t) ?? 0) +
+      // fresh food in reach holds residents (a vertical farm)
+      (nearKind(map, h.x, h.y, BuiltKind.VerticalFarm, FRESH_FOOD_RADIUS) ? FRESH_FOOD_PULL : 0) -
+      // an elevated line roaring past the windows
+      (nearKind(map, h.x, h.y, BuiltKind.ElevatedRail, RAIL_NOISE_RADIUS) ? RAIL_NOISE : 0);
     // a new home (or the opening) takes its conditions as normal
     const was = settling ? raw : (state.occExpect.get(t) ?? raw);
-    next.set(t, occupancyStep(cur, floor, cap, raw - was));
+    let to = occupancyStep(cur, floor, cap, raw - was);
+    if (poolOnly && to > cur) to = cur + Math.min(to - cur, state.unhoused);
+    let occ = moveFromPool(state, cur, to);
+    // Re-homing into room below the home's baseline: a fresh home fills at REHOME_FRESH (from the pool,
+    // else from people moving to the city); any home is welcomed back at REHOME_WELCOME × its voice.
+    const room = h.count - occ;
+    if (room > 0) {
+      // a co-op or commune makes room for the unhoused whatever its neighbourhood (rehoming.md); elsewhere the
+      // welcome is how organised the neighbourhood is
+      const commons = map.built[t] === BuiltKind.CoopHousing || map.built[t] === BuiltKind.Commune;
+      const welcome = commons ? 1 : (state.welcome?.get(t) ?? 0);
+      const fresh = state.freshHomes?.has(t) ?? false;
+      const moved = fresh
+        ? Math.min(room, REHOME_FRESH * h.count, poolOnly ? state.unhoused : Infinity)
+        : Math.min(room, state.unhoused, REHOME_WELCOME * welcome * h.count);
+      occ = moveFromPool(state, occ, occ + moved);
+    }
+    if (occ >= h.count) state.freshHomes?.delete(t);
+    next.set(t, occ);
     expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
   }
+  // a home torn down puts its residents out
+  for (const [t, v] of state.occupancy) if (!next.has(t)) state.unhoused += v;
   state.occupancy = next;
   state.occExpect = expect;
   state.occPasses += 1;
+}
+
+/** A home's occupancy moving `cur` → `to`: a loss goes to the unhoused; a gain is drawn from them first (the
+ *  rest are people moving to the city). Returns `to`. */
+function moveFromPool(state: AmbientState, cur: number, to: number): number {
+  if (to < cur) state.unhoused += cur - to;
+  else if (to > cur) state.unhoused = Math.max(0, state.unhoused - (to - cur));
+  return to;
 }
 
 /** The inherited housing crisis: open each home emptied by INHERITED_VACANCY × its redline grade, floored at
@@ -95,7 +155,39 @@ export function seedInheritedOccupancy(state: AmbientState, map: GameMap): void 
   for (const h of state.households ?? []) {
     const t = map.idx(h.x, h.y);
     const grade = map.redline[t]! / 255;
-    const left = h.count * (1 - INHERITED_VACANCY * grade);
-    state.occupancy.set(t, left < h.count * OCC_FLOOR ? h.count * OCC_FLOOR : left);
+    const raw = h.count * (1 - INHERITED_VACANCY * grade);
+    const left = raw < h.count * OCC_FLOOR ? h.count * OCC_FLOOR : raw;
+    state.occupancy.set(t, left);
+    state.unhoused += h.count - left; // the displaced are the opening's unhoused
   }
+}
+
+/** Rent displacement (rehoming.md): take `amount` people out of real homes into the unhoused — unprotected
+ *  homes on the dearest land first (weighted by land value × what the home can lose × its unprotected share),
+ *  never below a home's floor. `protectionAt` is each home's protection 0..1 (economy/readings
+ *  homeProtections). Returns how many were actually displaced (less than `amount` when homes are at their
+ *  floors or protected). */
+export function displaceFromHomes(state: AmbientState, map: GameMap, amount: number, protectionAt: (tile: number) => number): number {
+  if (!(amount > 0)) return 0;
+  const homes: { t: number; spare: number; w: number }[] = [];
+  let total = 0;
+  for (const h of state.households ?? []) {
+    const t = map.idx(h.x, h.y);
+    const occ = state.occupancy.get(t);
+    if (occ === undefined) continue;
+    const spare = occ - h.count * state.practices.occFloor;
+    const open = 1 - protectionAt(t);
+    if (spare <= 0 || open <= 0) continue;
+    const w = spare * open * (sampleField(state.landValue, t) + 1);
+    homes.push({ t, spare, w });
+    total += w;
+  }
+  let moved = 0;
+  for (const h of homes) {
+    const take = Math.min(h.spare, (amount * h.w) / total);
+    state.occupancy.set(h.t, state.occupancy.get(h.t)! - take);
+    moved += take;
+  }
+  state.unhoused += moved;
+  return moved;
 }

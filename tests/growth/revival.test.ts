@@ -8,6 +8,9 @@ import {
   revivalStep,
   stepRevival,
   DEFAULT_REVIVAL_PARAMS,
+  MAKER_RADIUS,
+  MAKER_REPAIR,
+  stepRepairShops,
   type RevivalWorld,
 } from '../../src/growth/revival';
 import { GameMap } from '../../src/engine/map';
@@ -162,5 +165,21 @@ describe('stepRevival (pass over the stock)', () => {
     // heal it back
     for (let i = 0; i < 20; i++) stepRevival(w, (t) => (t === homeTile ? 12 : undefined), createRng('y'), () => true, P);
     expect(w.parcels.conditionAt(0)).toBe(255);
+  });
+});
+
+describe('Maker Spaces repair what is near (tech-tree batch 3)', () => {
+  it(`buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition a pass; farther ones do not`, () => {
+    const map = new GameMap(20, 20);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 2, y: 2, width: 2, height: 2, kind: BuiltKind.MakerSpace });
+    const near = placeParcel(map, parcels, { x: 7, y: 2, width: 1, height: 1, kind: BuiltKind.HouseSingle, condition: 100 });
+    const far = placeParcel(map, parcels, { x: 15, y: 15, width: 1, height: 1, kind: BuiltKind.HouseSingle, condition: 100 });
+    const top = placeParcel(map, parcels, { x: 4, y: 5, width: 1, height: 1, kind: BuiltKind.HouseSingle, condition: 255 });
+    const fixedCount = stepRepairShops({ map, parcels });
+    expect(parcels.conditionAt(near)).toBe(100 + MAKER_REPAIR);
+    expect(parcels.conditionAt(far)).toBe(100);
+    expect(parcels.conditionAt(top)).toBe(255); // already pristine
+    expect(fixedCount).toBe(1);
   });
 });

@@ -49,6 +49,11 @@ export interface CityReading {
   harms: { blackouts: number; policeViolence: number; takings: number };
   /** Repairs this tick (things the government fixed or delivered), ≥ 0. */
   repairs: number;
+  /** Households counted for effort regeneration — communes count twice (absent ⇒ households). */
+  regenHouseholds?: number;
+  /** Practices: multipliers on how much taxes weigh on approval, and on burnout's recovery (absent ⇒ 1). */
+  taxPainMul?: number;
+  burnoutHealMul?: number;
 }
 
 /** The player's levers. */
@@ -90,7 +95,8 @@ export interface EconomyState {
   goodwill: number;
   approval: number;
   rent: number;
-  /** Households displaced so far (feeds the unhoused count). */
+  /** Households rent has displaced so far — a running total; the people themselves leave real homes into the
+   *  live unhoused stock (rehoming.md). */
   displaced: number;
   /** This hour's goodwill SHOCK — repairs, harms, displacement, police — without the drift toward neutral.
    *  The running city applies it to civic trust, which owns goodwill's slower dynamics. */
@@ -157,7 +163,7 @@ export function effortCapacity(city: CityReading): number {
 /** Effort regenerated this tick: households × wellbeing × trust × (1 − burnout). */
 export function effortRegen(city: CityReading, s: EconomyState): number {
   const trust = 0.4 + 0.6 * (s.goodwill / 100); // a distrusted government still gets some help
-  return city.households * ECON.regenPerHousehold * city.wellbeing * trust * (1 - s.burnout);
+  return (city.regenHouseholds ?? city.households) * ECON.regenPerHousehold * city.wellbeing * trust * (1 - s.burnout);
 }
 
 /** Money in this tick: each class's base × its rate. */
@@ -206,7 +212,7 @@ export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): Ec
   // buffer below a fifth of capacity) is what wears neighbours out; a healthy buffer lets them recover.
   const overdraw = Math.max(0, demand - regen);
   const stretched = effort < 0.2 * cap && overdraw > 0;
-  const burnout = clamp(s.burnout + (stretched ? ECON.burnoutGain * overdraw : -ECON.burnoutHeal), 0, 0.9);
+  const burnout = clamp(s.burnout + (stretched ? ECON.burnoutGain * overdraw : -ECON.burnoutHeal * (city.burnoutHealMul ?? 1)), 0, 0.9);
 
   // ── Rent and displacement: rent chases unprotected land value (+ the tax that landlords pass on)
   const avgTax = (lev.tax.r + lev.tax.c + lev.tax.i) / 3;
@@ -228,7 +234,7 @@ export function stepEconomy(s: EconomyState, city: CityReading, lev: Levers): Ec
   // ── Approval: perceived performance, a delayed read of wellbeing, goodwill, tax pain and the police bump
   // a neutral city (wellbeing ½, goodwill neutral, modest taxes) reads about 50
   const actual = clamp(
-    30 + 40 * city.wellbeing + 0.4 * (goodwill - ECON.goodwillNeutral) - 100 * ECON.taxPain * avgTax + Math.min(ECON.policeLiftCap, ECON.policeLift * lev.police * 100),
+    30 + 40 * city.wellbeing + 0.4 * (goodwill - ECON.goodwillNeutral) - 100 * ECON.taxPain * (city.taxPainMul ?? 1) * avgTax + Math.min(ECON.policeLiftCap, ECON.policeLift * lev.police * 100),
     0,
     100,
   );

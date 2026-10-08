@@ -42,6 +42,7 @@ export const ZERO_INFLUENCE: KindInfluence = { soil: 0, flora: 0, fauna: 0, frag
 export const UNSEALED_KINDS: ReadonlySet<BuiltKind> = new Set<BuiltKind>([
   BuiltKind.Park,
   BuiltKind.RewildedLand,
+  BuiltKind.Yard,
 ]);
 
 /** True iff `kind` is a depaved green (parcel-covered but unsealed — soil heals). */

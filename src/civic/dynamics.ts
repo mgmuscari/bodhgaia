@@ -2,8 +2,8 @@
 // and trust. Pure module — no DOM, no rng, no transcendental Math (the
 // architecture guard scans src/civic). It reads READ-ONLY fabric (the map's nine
 // layers + the parcel store) and the live partition, and writes ONLY CivicState
-// (an automated isolation test pins that). Capabilities arrive as plain booleans,
-// so dynamics never imports tech — the consume of hasCapability happens OUTSIDE.
+// (an automated isolation test pins that). The practices' effects arrive as plain
+// numbers, so dynamics never imports tech — they are resolved OUTSIDE.
 //
 // Read-prev / write-next: every neighborhood's deltas are computed from the
 // values it entered the tick with (voice scales by the belonging it was held at,
@@ -22,11 +22,10 @@ import type { CivicState } from './state';
 import { clampByte } from '../engine/clamp';
 import { DIRS4_NESW } from '../engine/dirs';
 
-/** The participatory capabilities civic dynamics consumes (resolved tech-side). */
+/** What the participatory practices give civic dynamics (resolved tech-side, see tech/effects.ts). */
 export interface CivicCaps {
-  circles: boolean;
-  participatoryBudgeting: boolean;
-  giftCircles: boolean;
+  /** Voice every neighbourhood gains per tick from the practices (Circles, Budgeting, Gift Circles). */
+  voicePerTick: number;
 }
 
 // --- Tuning constants (directional contract only) -------------------------
@@ -34,9 +33,6 @@ const COND_THRESHOLD = 128; // neighborhood condition mean for a belonging bonus
 const ECO_THRESHOLD = 96; // neighborhood eco mean (soil+flora+fauna)/3 bonus gate
 const ISOLATION_FRAGMENTS = 2; // distinct perimeter fragmenting tiles ⇒ isolated
 const ISOLATION_PENALTY = 2; // belonging lost per tick while isolated
-const VOICE_CIRCLES = 1; // per-tick voice base from `circles`
-const VOICE_PARTICIPATORY = 2; // from `participatory-budgeting`
-const VOICE_GIFT = 1; // from `gift-circles`
 const TRUST_GAIN = 2; // trust gained per tick with a recent repair
 const TRUST_DECAY = 1; // trust lost per tick without one (slow)
 /** Trust never falls below this floor — the PRD's design call, pinned. */
@@ -52,7 +48,7 @@ const RECENT_WINDOW = 100; // a repair counts as "recent" within this many ticks
 // Gathering places: a belonging bonus when ≥1 sits inside the neighborhood. Park
 // is a gathering place (a green commons where the neighborhood meets), so a
 // gathering→Park rezone keeps the bonus — RewildedLand stays OUT (wild, not social).
-const GATHERING_KINDS = new Set<number>([
+export const GATHERING_KINDS: ReadonlySet<number> = new Set<number>([
   BuiltKind.Bazaar,
   BuiltKind.MakerSpace,
   BuiltKind.HealingCommons,
@@ -134,10 +130,7 @@ export function civicTick(
   }
 
   // --- Apply deltas per neighborhood (read-prev / write-next).
-  const capBase =
-    (caps.circles ? VOICE_CIRCLES : 0) +
-    (caps.participatoryBudgeting ? VOICE_PARTICIPATORY : 0) +
-    (caps.giftCircles ? VOICE_GIFT : 0);
+  const capBase = caps.voicePerTick;
 
   for (let k = 0; k < count; k++) {
     const id = k + 1;

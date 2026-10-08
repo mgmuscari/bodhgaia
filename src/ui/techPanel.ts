@@ -8,7 +8,7 @@
 // the detail pane (description, needs, grants, Unlock); clicking a selected, affordable card — or Unlock —
 // unlocks it. Nodes and edges are built ONCE (the tree's shape is static) and re-applied on refresh.
 
-import { techNodeClass } from './techContent';
+import { techNodeClass, type PracticeCostView } from './techContent';
 import type { TechLayout, TechLayoutNode } from './techLayout';
 import { panelVisibility, type PanelHandle } from './panelHandle';
 
@@ -40,8 +40,8 @@ export interface TechPanelDeps {
   art(key: string): CanvasImageSource | undefined;
   /** A practice underway as a project: its progress 0..1 (undefined when not started). Optional. */
   progress?(id: string): number | undefined;
-  /** What beginning a practice costs, in words (effort, funds, time). Optional. */
-  costLine?(id: string): string;
+  /** What beginning a practice costs (money to begin, effort over days), and why it can't begin yet. Optional. */
+  cost?(id: string): PracticeCostView | undefined;
 }
 
 export interface TechPanelHandle extends PanelHandle {
@@ -202,7 +202,19 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
       p.textContent = `${label}: ${text}`;
       detail.appendChild(p);
     };
-    if (v.grants.length > 0) line('Grants', v.grants.join(', '), 'tech-detail-grants');
+    if (v.grants.length > 0) line('Builds', v.grants.join(', '), 'tech-detail-grants');
+    const list = (items: string[], cls: string): void => {
+      const ul = document.createElement('ul');
+      ul.className = cls;
+      for (const t of items) {
+        const li = document.createElement('li');
+        li.textContent = t;
+        ul.appendChild(li);
+      }
+      detail.appendChild(ul);
+    };
+    list(v.effects.length > 0 ? v.effects : ['Not yet in the simulation'], 'tech-detail-effects');
+    if (v.costs.length > 0) list(v.costs, 'tech-detail-costs');
     if (v.missing.length > 0) line('Needs', v.missing.join(', '), 'tech-detail-needs');
     const act = document.createElement('button');
     act.className = 'tech-detail-unlock';
@@ -215,8 +227,9 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
       act.textContent = `Underway · ${Math.round(prog * 100)}%`;
       act.disabled = true;
     } else {
-      act.textContent = deps.costLine ? `Begin · ${deps.costLine(v.id)}` : `Unlock · ${v.cost}`;
-      act.disabled = v.missing.length > 0;
+      const c = deps.cost?.(v.id);
+      act.textContent = !c ? `Unlock · ${v.cost}` : v.missing.length === 0 && c.blocked ? c.blocked : `Begin · ${c.detail}`;
+      act.disabled = v.missing.length > 0 || !!c?.blocked;
     }
     detail.appendChild(act);
   }
@@ -230,7 +243,11 @@ export function mountTechPanel(container: HTMLElement, deps: TechPanelDeps): Tec
       const prog = deps.progress?.(n.view.id);
       card.className = `tech-card ${techNodeClass(n.view)}${prog !== undefined ? ' tech-node-underway' : ''}${n.view.id === selected ? ' tech-card-selected' : ''}`;
       (card.querySelector('.tech-card-cost') as HTMLElement).textContent =
-        n.view.status === 'unlocked' ? 'in practice' : prog !== undefined ? `underway ${Math.round(prog * 100)}%` : `${n.view.cost} effort`;
+        n.view.status === 'unlocked'
+          ? 'in practice'
+          : prog !== undefined
+            ? `underway ${Math.round(prog * 100)}%`
+            : (deps.cost?.(n.view.id)?.card ?? `${n.view.cost} effort`);
     }
     for (const [key, line] of edgeMap) {
       const from = key.slice(0, key.indexOf('->'));

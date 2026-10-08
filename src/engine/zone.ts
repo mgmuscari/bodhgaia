@@ -26,6 +26,7 @@ const ZONE_OF: ReadonlyMap<number, ZoneType> = new Map<number, ZoneType>([
   [BuiltKind.ADU, ZoneType.Residential],
   [BuiltKind.CoopHousing, ZoneType.Residential],
   [BuiltKind.Commune, ZoneType.Residential],
+  [BuiltKind.TinyHomes, ZoneType.Residential],
   // Commercial — shops, offices, markets, makers.
   [BuiltKind.CommercialStrip, ZoneType.Commercial],
   [BuiltKind.Offices, ZoneType.Commercial],

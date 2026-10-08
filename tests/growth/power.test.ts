@@ -11,6 +11,16 @@ import {
   demandAt,
   feederOf,
   type GridClock,
+  NEUTRAL_POWER_PRACTICES,
+  solarFactor,
+  windFactor,
+  smartGridFactor,
+  BATTERY_RATE,
+  BATTERY_CAPACITY,
+  SMART_GRID_RADIUS,
+  SMART_GRID_CUT,
+  SMART_GRID_FROM,
+  SMART_GRID_TO,
 } from '../../src/growth/power';
 import { ZoneType } from '../../src/engine/zone';
 import { GameMap } from '../../src/engine/map';
@@ -252,5 +262,165 @@ describe('computePowerGrid with a clock — rolling blackouts', () => {
     let drawn = 0;
     for (const a of g.poweredAnchors) drawn += demandAt(BuiltKind.HouseSingle, 1, a, c);
     expect(drawn).toBeLessThanOrEqual(g.capacity + 1e-9);
+  });
+});
+
+describe('the power practices (docs/design/tech-tree-balance.md)', () => {
+  function town(plant: BuiltKind) {
+    const map = new GameMap(64, 24);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind: plant });
+    const homes: number[] = [];
+    for (let y = 0; y < 24; y++) {
+      for (let x = 1; x < 64; x++) {
+        if (x === 50 && y === 12) continue;
+        placeParcel(map, parcels, { x, y, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 1 });
+        homes.push(map.idx(x, y));
+      }
+    }
+    return { map, parcels, homes };
+  }
+
+  it('neutral practices solve exactly as before', () => {
+    const { map, parcels } = town(BuiltKind.NuclearPlant);
+    const a = computePowerGrid(map, parcels, clock(19, 3));
+    const b = computePowerGrid(map, parcels, clock(19, 3), NEUTRAL_POWER_PRACTICES);
+    expect([...b.poweredAnchors]).toEqual([...a.poweredAnchors]);
+    expect(b.capacity).toBe(a.capacity);
+    expect(b.demand).toBe(a.demand);
+  });
+
+  it('Sun and Wire: rooftop solar cuts home demand by day, not by night', () => {
+    const { map, parcels } = town(BuiltKind.NuclearPlant);
+    const roofs = { ...NEUTRAL_POWER_PRACTICES, homeDayDemand: 0.75 };
+    const noon = computePowerGrid(map, parcels, clock(12), NEUTRAL_POWER_PRACTICES).demand;
+    expect(computePowerGrid(map, parcels, clock(12), roofs).demand).toBeCloseTo(noon * 0.75, 6);
+    const night = computePowerGrid(map, parcels, clock(22), NEUTRAL_POWER_PRACTICES).demand;
+    expect(computePowerGrid(map, parcels, clock(22), roofs).demand).toBeCloseTo(night, 9);
+  });
+
+  it('Renewable Energy: hydro, wind and solar make a quarter more; coal does not', () => {
+    const more = { ...NEUTRAL_POWER_PRACTICES, renewableOutput: 1.25 };
+    expect(computePowerGrid(town(BuiltKind.SolarPlant).map, town(BuiltKind.SolarPlant).parcels, undefined, more).capacity).toBe(plantOutput(BuiltKind.SolarPlant) * 1.25);
+    const coal = town(BuiltKind.CoalPlant);
+    expect(computePowerGrid(coal.map, coal.parcels, undefined, more).capacity).toBe(plantOutput(BuiltKind.CoalPlant));
+  });
+
+  it('Local Grids: homes around an energy node stay lit through every rotation of a blackout', () => {
+    const { map, parcels } = town(BuiltKind.NuclearPlant);
+    placeParcel(map, parcels, { x: 50, y: 12, width: 1, height: 1, kind: BuiltKind.EnergyNode });
+    const near = [map.idx(47, 12), map.idx(54, 12), map.idx(50, 8), map.idx(50, 16)];
+    const grids = { ...NEUTRAL_POWER_PRACTICES, localGrids: true };
+    let darkWithout = 0;
+    for (const slot of [0, 3, 6, 9, 12, 15, 18, 21]) {
+      const g = computePowerGrid(map, parcels, clock(19, slot), grids);
+      for (const h of near) expect(g.poweredAnchors.has(h), `slot ${slot}`).toBe(true);
+      const plain = computePowerGrid(map, parcels, clock(19, slot));
+      darkWithout += near.filter((h) => !plain.poweredAnchors.has(h)).length;
+    }
+    expect(darkWithout).toBeGreaterThan(0); // without the practice they take their turn in the dark
+  });
+});
+
+describe('wind and sun (tech-tree batch 3)', () => {
+  const plant = (kind: BuiltKind) => {
+    const map = new GameMap(8, 8);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind });
+    return { map, parcels };
+  };
+  const cap = (kind: BuiltKind, c?: GridClock) => {
+    const { map, parcels } = plant(kind);
+    return computePowerGrid(map, parcels, c).capacity;
+  };
+
+  it('solar follows the sun: full at noon, nothing at night, half at 9:00', () => {
+    expect(cap(BuiltKind.SolarPlant, clock(12))).toBe(plantOutput(BuiltKind.SolarPlant));
+    expect(cap(BuiltKind.SolarPlant, clock(23))).toBe(0);
+    expect(cap(BuiltKind.SolarPlant, clock(3))).toBe(0);
+    expect(cap(BuiltKind.SolarPlant, clock(9))).toBeCloseTo(plantOutput(BuiltKind.SolarPlant) / 2, 9);
+    expect(solarFactor(12)).toBe(1);
+  });
+
+  it('wind gusts hour to hour between 0.4× and 1.6×, and blows harder by night', () => {
+    let day = 0;
+    let night = 0;
+    for (let slot = 0; slot < 24 * 30; slot++) {
+      const f = windFactor({ hour: slot % 24, slot });
+      expect(f).toBeGreaterThanOrEqual(0.4);
+      expect(f).toBeLessThanOrEqual(1.6);
+      if (slot % 24 >= 8 && slot % 24 < 18) day += f;
+      else if (slot % 24 >= 20 || slot % 24 < 6) night += f;
+    }
+    expect(night / (30 * 10)).toBeGreaterThan(day / (30 * 10));
+    expect(cap(BuiltKind.WindTurbine, clock(2, 50))).toBeCloseTo(plantOutput(BuiltKind.WindTurbine) * windFactor(clock(2, 50)), 9);
+  });
+
+  it('without a clock (worldgen, static solves) plants run at their nameplate', () => {
+    expect(cap(BuiltKind.SolarPlant)).toBe(plantOutput(BuiltKind.SolarPlant));
+    expect(cap(BuiltKind.WindTurbine)).toBe(plantOutput(BuiltKind.WindTurbine));
+  });
+});
+
+describe('Community AI Node: the smart grid (Maddy 2026-10-07)', () => {
+  const town = (withNode: boolean) => {
+    const map = new GameMap(40, 4);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind: BuiltKind.FusionPlant });
+    for (let x = 1; x < 40; x++) placeParcel(map, parcels, { x, y: 1, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 1 });
+    if (withNode) placeParcel(map, parcels, { x: 5, y: 2, width: 1, height: 1, kind: BuiltKind.AINode });
+    return { map, parcels };
+  };
+  const homeDemand = (withNode: boolean, hour: number, x: number) => {
+    const { map } = town(withNode);
+    const c = clock(hour);
+    return demandAt(BuiltKind.HouseSingle, 1, map.idx(x, 1), c) * smartGridFactor(map, map.idx(x, 1), c);
+  };
+
+  it(`homes within ${SMART_GRID_RADIUS} tiles draw ${SMART_GRID_CUT * 100}% less ${SMART_GRID_FROM}:00–${SMART_GRID_TO}:00`, () => {
+    expect(homeDemand(true, 19, 9)).toBeCloseTo(homeDemand(false, 19, 9) * (1 - SMART_GRID_CUT), 9);
+    expect(homeDemand(true, 12, 9)).toBeCloseTo(homeDemand(false, 12, 9), 9); // not the peak
+    expect(homeDemand(true, 19, 30)).toBeCloseTo(homeDemand(false, 19, 30), 9); // out of reach
+  });
+
+  it('the solve uses it', () => {
+    const a = town(false);
+    const b = town(true);
+    expect(computePowerGrid(b.map, b.parcels, clock(19)).demand).toBeLessThan(computePowerGrid(a.map, a.parcels, clock(19)).demand);
+  });
+});
+
+describe('energy node batteries (Maddy 2026-10-07: the solar problem)', () => {
+  // solar plus an energy node feeding a row of homes
+  const town = () => {
+    const map = new GameMap(40, 4);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 3, height: 3, kind: BuiltKind.SolarPlant });
+    placeParcel(map, parcels, { x: 3, y: 1, width: 1, height: 1, kind: BuiltKind.EnergyNode });
+    for (const y of [1, 2]) for (let x = 4; x < 40; x++) placeParcel(map, parcels, { x, y, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 3 });
+    return { map, parcels, node: map.idx(3, 1) };
+  };
+
+  it('charge from the noon surplus, up to its rate per hour and its capacity', () => {
+    const { map, parcels, node } = town();
+    const g = computePowerGrid(map, parcels, clock(12), NEUTRAL_POWER_PRACTICES, new Map());
+    expect(g.capacity).toBeGreaterThan(g.demand); // noon: the panels out-make the homes
+    expect(g.storage.get(node)).toBe(BATTERY_RATE);
+    const full = computePowerGrid(map, parcels, clock(12), NEUTRAL_POWER_PRACTICES, new Map([[node, BATTERY_CAPACITY - 10]]));
+    expect(full.storage.get(node)).toBe(BATTERY_CAPACITY);
+  });
+
+  it('discharge into the evening shortfall: more homes lit, the charge spent', () => {
+    const { map, parcels, node } = town();
+    const dark = computePowerGrid(map, parcels, clock(20), NEUTRAL_POWER_PRACTICES, new Map());
+    const stored = computePowerGrid(map, parcels, clock(20), NEUTRAL_POWER_PRACTICES, new Map([[node, BATTERY_CAPACITY]]));
+    expect(stored.poweredAnchors.size).toBeGreaterThan(dark.poweredAnchors.size);
+    expect(stored.storage.get(node)!).toBeLessThan(BATTERY_CAPACITY);
+    expect(BATTERY_CAPACITY - stored.storage.get(node)!).toBeLessThanOrEqual(BATTERY_RATE + 1e-9);
+  });
+
+  it('a static solve (no clock) neither charges nor spends', () => {
+    const { map, parcels, node } = town();
+    expect(computePowerGrid(map, parcels, undefined, NEUTRAL_POWER_PRACTICES, new Map([[node, 100]])).storage.get(node)).toBe(100);
   });
 });

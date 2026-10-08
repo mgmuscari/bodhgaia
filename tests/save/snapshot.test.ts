@@ -71,7 +71,7 @@ describe('a saved game restores to the same stocks', () => {
     expect(civic.getRing(2)).toEqual([77]);
     expect(save.econ).toEqual(JSON.parse(JSON.stringify(p.econ)));
     const live = createAmbientState();
-    restoreLive(live, save.live);
+    restoreLive(live, save.live, 4);
     expect(live.occupancy.get(5)).toBe(7.5);
     expect(live.occExpect.get(5)).toBe(-0.1);
     expect(live.occPasses).toBe(400);
@@ -122,5 +122,14 @@ describe('the format refuses what it cannot read', () => {
     expect(() => parseSave('{"hello":1}')).toThrow(/not a Bodhitropolis save/);
     const future = { ...captureGame(parts()), version: SAVE_VERSION + 1 };
     expect(() => parseSave(JSON.stringify(future))).toThrow(/newer/);
+  });
+});
+
+describe('the batteries are saved', () => {
+  it('captures each energy node’s charge, and an older save has none', () => {
+    const p = { ...parts(), power: { storage: new Map([[17, 300]]) } };
+    const save = parseSave(JSON.stringify(captureGame(p)));
+    expect(save.power?.storage).toEqual([[17, 300]]);
+    expect(captureGame(parts()).power).toEqual({ storage: [] });
   });
 });

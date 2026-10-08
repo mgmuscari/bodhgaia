@@ -103,6 +103,11 @@ export const BuiltKind = {
   // for Park, a gathering place (see civic dynamics).
   Park: 61,
   RewildedLand: 62,
+  // Re-homing (docs/design/rehoming.md): homes that shelter only the city's unhoused.
+  TinyHomes: 63,
+  // A house's back yard (Maddy 2026-10-07): the lot behind it, away from the street — open ground, and where an
+  // accessory dwelling goes.
+  Yard: 64,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -122,6 +127,7 @@ const COMMONS_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.Bazaar,
   BuiltKind.MakerSpace,
   BuiltKind.VerticalFarm,
+  BuiltKind.TinyHomes,
 ]);
 export const isCommonsKind = (k: number): boolean => COMMONS_KINDS.has(k);
 /** Elevated transit that can deck OVER a road as an overpass: elevated rail (8) or promenade (9). */
@@ -645,6 +651,48 @@ export function convertParcel(
   }
   store.setKind(i, to as BuiltKind);
   store.setCondition(i, 255);
+  return true;
+}
+
+// --- Back yards (Maddy 2026-10-07) ------------------------------------------
+//
+// A house fronts the street it sits beside; its yard is the tile directly behind it. A corner house (streets on
+// two or more sides) has no "behind" and gets no yard, and neither does a house whose back tile is taken.
+
+/** The tile behind the house at (x, y) — away from the one street it faces — if it is free to be a yard. */
+export function yardTileFor(map: GameMap, x: number, y: number): { x: number; y: number } | null {
+  let front: readonly [number, number] | null = null;
+  for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (!map.inBounds(nx, ny)) continue;
+    const k = map.built[map.idx(nx, ny)]!;
+    if (!isRoadKind(k) && k !== BuiltKind.QuietStreet) continue;
+    if (front) return null; // a corner: no back
+    front = [dx, dy];
+  }
+  if (!front) return null; // off any street
+  const bx = x - front[0];
+  const by = y - front[1];
+  return map.inBounds(bx, by) && canPlaceParcel(map, bx, by, 1, 1) ? { x: bx, y: by } : null;
+}
+
+/** Lay the yard behind the house at (x, y) as its own 1×1 lot. False when it can have none. */
+export function layYardFor(map: GameMap, store: ParcelStore, x: number, y: number): boolean {
+  const t = yardTileFor(map, x, y);
+  if (!t) return false;
+  return placeParcel(map, store, { x: t.x, y: t.y, width: 1, height: 1, kind: BuiltKind.Yard }) !== -1;
+}
+
+/** Build `to` (an accessory dwelling) on the yard at (x, y), in place: the yard's lot becomes the building's. */
+export function buildOnYard(map: GameMap, store: ParcelStore, x: number, y: number, to: BuiltKind): boolean {
+  if (!map.inBounds(x, y)) return false;
+  const idx = map.idx(x, y);
+  const pid = map.parcel[idx]!;
+  if (map.built[idx] !== BuiltKind.Yard || pid === 0) return false;
+  map.built[idx] = to;
+  store.setKind(pid - 1, to);
+  store.setCondition(pid - 1, 255);
   return true;
 }
 
