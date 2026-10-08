@@ -30,7 +30,9 @@ import { isPowerConsumer } from '../growth/power';
 import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
-import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey } from './snesAgents';
+import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, windowsLit } from './snesAgents';
+import { transitFor } from '../live/transit';
+import { ridersAboard } from '../live/riders';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
@@ -1172,12 +1174,32 @@ export class Renderer {
 
     // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
     // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
+    // A stop's sign stands on its platform, at the edge by the track — where people wait (docs/design/transit.md).
+    for (const s of transitFor(world.map).lines.flatMap((l) => l.stops)) {
+      const px = s.platform % mapW;
+      const py = (s.platform - px) / mapW;
+      const tx = s.track % mapW;
+      const ty = (s.track - tx) / mapW;
+      const wx = px + 0.5 + (tx - px) * 0.4;
+      const wy = py + 0.5 + (ty - py) * 0.4;
+      const { sx, sy } = camera.worldToScreen(wx, wy);
+      const img = onScreen(sx, sy) ? this.sprites.get(`@sprite/transit-stop/${s.family}`) : undefined;
+      if (img) this.drawArt(ctx, img, wx, wy - 0.15, camera);
+    }
+    // Riders aboard show in the windows, a head a window, more as a car fills (Maddy 2026-10-08: she couldn't tell
+    // whether anyone rode); a train's riders fill the cars behind its loco.
+    const aboard = ridersAboard(ambient);
     for (const tr of ambient.trains) {
+      const n = aboard.get(tr) ?? 0;
+      const seatedCars = tr.family === 'tram' ? tr.cells.length : Math.max(1, tr.cells.length - 1);
+      const lit = windowsLit(n / Math.max(1, seatedCars));
       trainPoses(tr, mapW, alpha).forEach((q, k) => {
         const { sx, sy } = camera.worldToScreen(q.x, q.y);
         if (!onScreen(sx, sy)) return;
         const img = this.sprites.get(
-          tr.family === 'tram' ? `@sprite/tram/${k === 0 ? 'head' : 'car'}/${heading8(q.hx, q.hy)}` : `@sprite/train/${k === 0 ? 'loco' : 'car'}/${heading8(q.hx, q.hy)}`,
+          tr.family === 'tram'
+            ? `@sprite/tram/${k === 0 ? 'head' : 'car'}/${heading8(q.hx, q.hy)}/${lit}`
+            : k === 0 ? `@sprite/train/loco/${heading8(q.hx, q.hy)}` : `@sprite/train/car/${heading8(q.hx, q.hy)}/${lit}`,
         );
         if (img) this.drawArt(ctx, img, q.x, q.y, camera);
         addBody(q.x, q.y, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too

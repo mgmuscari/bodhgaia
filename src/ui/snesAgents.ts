@@ -14,6 +14,7 @@
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
+import { PER_CAR } from '../live/riders';
 
 /** Car body colourways (hi, mid, lo). A car's `tint` picks one, modulo the count. */
 const BODIES: ReadonlyArray<readonly [RGB, RGB, RGB]> = [
@@ -148,6 +149,27 @@ const TRAIN_CAR_E = ['.kkkkkkkkkkk.', 'kbbbbbbbbbbbk', 'kbwbwbwbwbwbk', 'kbwbwbw
 // Trams (docs/design/transit.md): a cream car with a red band and a row of windows; the head has its windscreen.
 const TRAM_HEAD_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'kcwcwcwcwcwgk', 'kcwcwcwcwcwgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
 const TRAM_CAR_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrrk', 'kcwcwcwcwcwck', 'kcwcwcwcwcwck', 'krrrrrrrrrrrk', '.kkkkkkkkkkk.'];
+/** Window columns of a passenger car or tram (art x), filled centre-out as riders board. */
+const WINDOW_COLS = [6, 2, 10, 4, 8];
+export const WINDOWS = WINDOW_COLS.length;
+
+/** How many of a car's windows show a rider: none when empty, one for a single rider, all when full. */
+export function windowsLit(riders: number, perCar = PER_CAR): number {
+  if (riders <= 0) return 0;
+  return Math.min(WINDOWS, Math.max(1, Math.ceil((riders / perCar) * WINDOWS)));
+}
+
+/** A car's rows with `n` riders seen from above in its windows — a head in each, in turn, of three tones. */
+function seated(rows: readonly string[], n: number): string[] {
+  const out = [...rows];
+  WINDOW_COLS.slice(0, n).forEach((col, i) => {
+    const row = i % 2 === 0 ? 2 : 3; // staggered between the two window rows, so they read as people
+    out[row] = out[row]!.slice(0, col) + 'xyz'[i % 3] + out[row]!.slice(col + 1);
+  });
+  return out;
+}
+const HEADS = { x: C.roofBrown, y: C.ink, z: C.dirtHi };
+
 const TRAIN_LOCO_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'krmmmmmmmrrgk', 'krmmmmmmmrrgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
 
 /** The north-east frame of an east-facing body: the drawing laid along the diagonal, each target pixel
@@ -256,15 +278,25 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   out.set('@sprite/rain/1', glyph(['h', 'h', 'g', 'g', 'g'], { h: C.glassHi, g: C.glass }));
   const carCols = { k: C.slateLo, b: C.paveHi, w: C.glassLo };
   const locoCols = { k: C.roofRedLo, r: C.roofRed, m: C.slate, g: C.glass };
-  for (const [part, rows, cols] of [['car', TRAIN_CAR_E, carCols], ['loco', TRAIN_LOCO_E, locoCols]] as const) {
-    const east = glyph(rows, cols);
-    eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => out.set(`@sprite/train/${part}/${d}`, f));
-  }
+  // each passenger car in WINDOWS+1 loads (…/{d}/{n}: n windows with a rider; the bare key is the empty car)
+  const loads = (key: string, rows: readonly string[], cols: Record<string, RGB>, windows: boolean): void => {
+    for (let n = 0; n <= (windows ? WINDOWS : 0); n++) {
+      const east = glyph(seated(rows, n), { ...cols, ...HEADS });
+      eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => {
+        out.set(`${key}/${d}/${n}`, f);
+        if (n === 0) out.set(`${key}/${d}`, f);
+      });
+    }
+  };
+  loads('@sprite/train/car', TRAIN_CAR_E, carCols, true);
+  loads('@sprite/train/loco', TRAIN_LOCO_E, locoCols, false);
   const tramCols = { k: C.roofRedLo, r: C.roofRed, c: C.cream, w: C.glass, g: C.glassHi };
-  for (const [part, rows] of [['head', TRAM_HEAD_E], ['car', TRAM_CAR_E]] as const) {
-    const east = glyph(rows, tramCols);
-    eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => out.set(`@sprite/tram/${part}/${d}`, f));
-  }
+  loads('@sprite/tram/head', TRAM_HEAD_E, tramCols, true);
+  loads('@sprite/tram/car', TRAM_CAR_E, tramCols, true);
+  // a stop's sign at its platform: a plate on a post — green for the tram, blue for the train
+  const STOP = ['sss', 'sds', 'sss', '.p.', '.p.'];
+  out.set('@sprite/transit-stop/tram', glyph(STOP, { s: C.leaf, d: C.cream, p: C.slateLo }));
+  out.set('@sprite/transit-stop/rail', glyph(STOP, { s: C.roofBlue, d: C.cream, p: C.slateLo }));
   BIRD_FRAMES.forEach((rows, f) => out.set(`@sprite/bird/${f}`, glyph(rows, { k: C.ink })));
   SMOG_PX.forEach((size, i) => {
     for (const v of [0, 1]) {

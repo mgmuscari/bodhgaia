@@ -189,3 +189,13 @@ export function stepRider(state: AmbientState, map: GameMap, p: Ped): boolean {
   }
   return true;
 }
+
+/** Riders aboard each vehicle (those riding it, not waiting for it). */
+export function ridersAboard(state: AmbientState): Map<Train, number> {
+  const out = new Map<Train, number>();
+  for (const p of state.peds) {
+    const v = p.ride?.stage === 'riding' ? p.ride.vehicle : undefined;
+    if (v) out.set(v, (out.get(v) ?? 0) + 1);
+  }
+  return out;
+}
