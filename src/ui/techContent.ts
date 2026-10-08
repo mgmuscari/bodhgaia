@@ -162,3 +162,21 @@ export function techNodeClass(node: NodeView): string {
   if (node.status === 'affordable') cls += ' tech-node-clickable';
   return cls;
 }
+
+/** What beginning a practice costs, for the card, the detail button, and — when the treasury can't cover the
+ *  start — why it can't begin yet. Money is paid once to begin; effort is drawn over the days. */
+export interface PracticeCostView {
+  card: string;
+  detail: string;
+  blocked?: string;
+}
+
+export function practiceCost(terms: { upfront: number; effort: number; hours: number }, funds: number): PracticeCostView {
+  const money = `$${terms.upfront.toLocaleString('en-US')}`;
+  const days = Math.round((terms.hours / 24) * 10) / 10;
+  return {
+    card: `${money} · ${terms.effort} effort`,
+    detail: `${money} now, then ${terms.effort} effort over ${days} days`,
+    ...(funds < terms.upfront ? { blocked: `Needs ${money} to begin` } : {}),
+  };
+}

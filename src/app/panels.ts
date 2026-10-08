@@ -13,13 +13,13 @@ import { mountRestorationPanel } from '../ui/restorationPanel';
 import { mountSettingsPanel, type SettingsPanelCallbacks } from '../ui/settingsPanel';
 import { mountHelpPanel } from '../ui/helpPanel';
 import { restorationLines, type RestorationSample } from '../ui/restorationContent';
-import { effortLine } from '../ui/techContent';
+import { effortLine, practiceCost } from '../ui/techContent';
 import { techLayout } from '../ui/techLayout';
 import { pulseLine } from '../ui/pulseContent';
 import { unhousedSuffix } from '../ui/unhousedContent';
 import { TECH_TREE } from '../tech/tree';
 import type { TechState } from '../tech/state';
-import { practiceProject } from '../economy/run';
+import { practiceTerms } from '../economy/run';
 import type { EconomyController } from './economy';
 
 export const PANEL_IDS = ['budget', 'tech', 'restore', 'saves', 'settings', 'help'] as const;
@@ -73,7 +73,7 @@ export function trendReader<S>(sample: () => S, lines: (cur: S, prev: S | null) 
 
 export interface PanelsDeps {
   container: HTMLElement;
-  economy: Pick<EconomyController, 'budgetView' | 'setTax' | 'setPolice' | 'borrow' | 'beginPractice' | 'projectProgress'>;
+  economy: Pick<EconomyController, 'budgetView' | 'setTax' | 'setPolice' | 'borrow' | 'beginPractice' | 'projectProgress' | 'run'>;
   tech: TechState;
   /** The image for an art key (a game tile or `@ui/` icon). */
   art(key: string): CanvasImageSource | undefined;
@@ -120,11 +120,9 @@ export function mountPanels(deps: PanelsDeps): MountedPanels {
     getContent: () => ({ effort: effortLine(tech), layout: techLayout(TECH_TREE, tech) }),
     art: (key) => deps.art(key),
     progress: (id) => economy.projectProgress(id),
-    costLine: (id) => {
+    cost: (id) => {
       const node = TECH_TREE.find((n) => n.id === id);
-      if (!node) return '';
-      const p = practiceProject(node);
-      return `${p.effort} effort + $${p.funds.toLocaleString('en-US')} over ${Math.round(p.hours / 24 * 10) / 10} days`;
+      return node ? practiceCost(practiceTerms(node), economy.run().state.funds) : undefined;
     },
     // Cheap per-tick header source (no branchColumns derive) for refreshHeader (Y5).
     getEffort: () => effortLine(tech),

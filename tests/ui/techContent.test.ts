@@ -7,6 +7,7 @@ import {
   type BranchColumn,
   type NodeView,
   type NodeStatus,
+  practiceCost,
 } from '../../src/ui/techContent';
 import { Branch, TECH_TREE } from '../../src/tech/tree';
 import { createTechState, TechState } from '../../src/tech/state';
@@ -187,5 +188,18 @@ describe('purity / determinism', () => {
         expect(n.flavor.length).toBeLessThanOrEqual(90);
       }
     }
+  });
+});
+
+describe('practiceCost (Maddy 2026-10-07: money to begin, effort over days)', () => {
+  const terms = { upfront: 500, effort: 120, hours: 32 };
+  it('names the money to begin and the effort over the days', () => {
+    const c = practiceCost(terms, 2000);
+    expect(c.card).toBe('$500 · 120 effort');
+    expect(c.detail).toBe('$500 now, then 120 effort over 1.3 days');
+    expect(c.blocked).toBeUndefined();
+  });
+  it('says what is missing when the treasury cannot cover the start', () => {
+    expect(practiceCost(terms, 499).blocked).toBe('Needs $500 to begin');
   });
 });
