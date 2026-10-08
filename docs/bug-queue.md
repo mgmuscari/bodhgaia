@@ -34,9 +34,13 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - ✅ **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — real bicycles now.
 - **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
   - ✅ rail running beside a road is drawn with at-grade crossings though there's road on one side only;
-  - pedestrians walk on train tracks (and streetcar tracks);
-  - pedestrians don't walk to the line to wait for a train or streetcar to pick them up;
-  - there are no animated streetcars.
+  - ✅ pedestrians walk on train tracks — rail is crossed only where a road crosses it; a streetcar line is a
+    street: walkers on its kerbs, cars in its outer lanes;
+  - ✅ pedestrians don't walk to the line to wait — riders walk to the stop, wait, ride (32 a car), walk on;
+  - ✅ there are no animated streetcars;
+  - ✅ trains too slow and stopping too often — 2.5× a tram, stations only at crossings and junctions.
+- **"Convert to X" should work on any transit tile** (Maddy 2026-10-08) — whatever the underlying transport kind
+  (e.g. rail → street, streetcar → avenue), not only the pairs `fabric.ts` CONVERSIONS lists.
 - **Safari scrambles canvas readback** (Maddy 2026-10-08) — ✅ the UI frames (dark bars) now encode PNGs
   directly (`ui/pngEncode.ts`). The night glow and headlight rims still read back (`glowBatch.ts`, `renderer.ts`
   litSilhouette) but Maddy checked: they look right in Safari — left as they are.
