@@ -14,7 +14,7 @@
 // no DOM, no transcendental Math; occupancy arrives via an injected accessor so this
 // never imports ui.
 
-import { ParcelStore } from '../engine/fabric';
+import { BuiltKind, ParcelStore } from '../engine/fabric';
 import type { GameMap } from '../engine/map';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { citizensOf } from '../citizens/census';
@@ -141,4 +141,33 @@ export function stepRevival(
     }
   }
   return changed;
+}
+
+// ── Maker Spaces: the fix-it shop (tech-tree batch 3) ─────────────────────────────────────────────────────
+/** Every building whose footprint comes within MAKER_RADIUS (Chebyshev) of a maker space regains MAKER_REPAIR
+ *  condition each revival pass — tools held in common, mending what's near. */
+export const MAKER_RADIUS = 4;
+export const MAKER_REPAIR = 1;
+
+/** One pass of the maker spaces' repairs over the hashed stock. Deterministic (no rng); returns how many
+ *  buildings were mended. Runs beside stepRevival on the civic cadence. */
+export function stepRepairShops(world: RevivalWorld): number {
+  const { parcels } = world;
+  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  for (const i of parcels.aliveIndices()) {
+    const m = parcels.get(i);
+    if (m.kind !== BuiltKind.MakerSpace) continue;
+    boxes.push({ x0: m.x - MAKER_RADIUS, y0: m.y - MAKER_RADIUS, x1: m.x + m.width - 1 + MAKER_RADIUS, y1: m.y + m.height - 1 + MAKER_RADIUS });
+  }
+  if (boxes.length === 0) return 0;
+  let mended = 0;
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    if (p.kind === BuiltKind.MakerSpace || p.condition >= 255) continue;
+    const near = boxes.some((b) => p.x <= b.x1 && p.x + p.width - 1 >= b.x0 && p.y <= b.y1 && p.y + p.height - 1 >= b.y0);
+    if (!near) continue;
+    parcels.setCondition(i, p.condition + MAKER_REPAIR);
+    mended++;
+  }
+  return mended;
 }
