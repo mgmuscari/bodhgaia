@@ -672,6 +672,8 @@ export function derelict(src: Pixels, seed: number): Pixels {
         else if (h % 17 === 0) px(p, x, y, C.grassMid); // weeds through the cracks
       } else if (WALLS.has(k) && h % 5 === 0) {
         px(p, x, y, WALLS.get(k)!); // grime
+      } else if (k === key(C.dirt) && h % 6 === 0) {
+        px(p, x, y, C.grassLo); // bare ground going to weeds (a ruin's yard keeps decaying too)
       }
     }
   }
