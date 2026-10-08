@@ -128,12 +128,28 @@ function toPlatform(map: GameMap, x: number, y: number, platform: number): numbe
   return last === platform ? path : manhattan(map, last, px, py) === 1 ? [...path, platform] : null;
 }
 
+/** Is this stop still on the line, where it was? (A platform built over moves or drops its stop.) */
+function stopStands(map: GameMap, s: Stop): boolean {
+  return transitFor(map).stopAt.get(s.track)?.platform === s.platform;
+}
+
 /** A rider's step (the 'transit' and 'riding' ped phases). Always keeps the ped. */
 export function stepRider(state: AmbientState, map: GameMap, p: Ped): boolean {
   const ride = p.ride;
   if (!ride) {
     p.phase = 'to-building';
     return true;
+  }
+  // the stop they were walking to or waiting at is gone (built over): ride from another, or walk
+  if (ride.stage !== 'riding' && !(stopStands(map, ride.board) && stopStands(map, ride.alight))) {
+    const plan = planRide(map, Math.round(p.x), Math.round(p.y), ride.dest.x, ride.dest.y, ride.family);
+    if (!plan) {
+      walkOn(p);
+      return true;
+    }
+    Object.assign(ride, { board: plan.board, alight: plan.alight, stage: 'to-stop', waited: 0 });
+    p.path = undefined;
+    p.leg = undefined;
   }
   const [px, py] = tileXY(map, ride.board.platform);
   if (ride.stage === 'to-stop') {
@@ -181,8 +197,10 @@ export function stepRider(state: AmbientState, map: GameMap, p: Ped): boolean {
   p.x = t.hx;
   p.y = t.hy;
   p.fuel = Math.min(FUEL_TANK, (p.fuel ?? FUEL_TANK) + RIDE_REST);
-  if ((t.dwell ?? 0) > 0 && headTile(map, t) === ride.alight.track) {
-    const [ax, ay] = tileXY(map, ride.alight.platform);
+  const here = (t.dwell ?? 0) > 0 ? transitFor(map).stopAt.get(headTile(map, t)) : undefined;
+  // off at their stop — or, if theirs is gone, at the next the vehicle halts at
+  if (here && (here.track === ride.alight.track || !stopStands(map, ride.alight))) {
+    const [ax, ay] = tileXY(map, here.platform);
     p.x = ax;
     p.y = ay;
     walkOn(p);

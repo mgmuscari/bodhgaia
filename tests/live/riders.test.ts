@@ -123,3 +123,47 @@ describe('riding transit', () => {
     expect(alighted!).toBeLessThanOrEqual(FUEL_TANK);
   });
 });
+
+describe('a stop built over (Maddy 2026-10-08: an AI node on a platform — riders walked into it, were snapped out, walked in again, forever)', () => {
+  /** A tram line along row 5 with open ground either side: its platforms are open land, which can be built on. */
+  const openLine = () => {
+    const map = new GameMap(50, 12);
+    for (let x = 2; x <= 45; x++) map.setBuilt(x, 5, BuiltKind.Streetcar);
+    return { map, state: createAmbientState() };
+  };
+  it('the line drops (or moves) a stop whose platform is built over', async () => {
+    const { transitFor } = await import('../../src/live/transit');
+    const { placeParcel, ParcelStore } = await import('../../src/engine/fabric');
+    const c = openLine();
+    const stop = transitFor(c.map).lines[0]!.stops[1]!;
+    const px = stop.platform % c.map.width;
+    const py = Math.floor(stop.platform / c.map.width);
+    placeParcel(c.map, new ParcelStore(), { x: px, y: py, width: 1, height: 1, kind: BuiltKind.AINode });
+    let t = transitFor(c.map);
+    for (let k = 0; k < 40; k++) t = transitFor(c.map); // the cache's re-check
+    for (const s of t.lines.flatMap((l) => l.stops)) expect(s.platform).not.toBe(stop.platform);
+  });
+
+  it('a rider bound for it re-plans or walks on — never bouncing off the building', async () => {
+    const { placeParcel, ParcelStore } = await import('../../src/engine/fabric');
+    const { isWalkable } = await import('../../src/live/network');
+    const c = openLine();
+    const plan = planRide(c.map, 3, 7, 44, 7, 'tram')!;
+    const p: Ped = { x: 3, y: 7, dir: 1, tx: 3, ty: 7, homeTile: c.map.idx(3, 8) };
+    startRide(p, plan, { x: 44, y: 7 }, 'to-building');
+    c.state.peds.push(p);
+    const px = plan.board.platform % c.map.width;
+    const py = Math.floor(plan.board.platform / c.map.width);
+    placeParcel(c.map, new ParcelStore(), { x: px, y: py, width: 1, height: 1, kind: BuiltKind.AINode });
+    let jumps = 0;
+    let last = { x: p.x, y: p.y };
+    tick(c, 1500, true, () => {
+      if (!c.state.peds.includes(p)) return;
+      if (Math.abs(p.x - last.x) + Math.abs(p.y - last.y) > 0.5 && p.ride?.stage !== 'riding' && !(p.phase === 'to-building' && last)) jumps++;
+      last = { x: p.x, y: p.y };
+      expect(isWalkable(c.map, Math.round(p.x), Math.round(p.y)) || p.ride?.stage === 'riding').toBe(true);
+    });
+    expect(jumps).toBeLessThanOrEqual(1); // at most the one hop off a vehicle
+    if (p.ride) expect(p.ride.board.platform).not.toBe(plan.board.platform);
+  });
+});
