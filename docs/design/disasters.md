@@ -30,7 +30,7 @@ The player's repairs are what make disasters rarer and smaller.
 - **`LiveEvent` gains kinds** (`fire`, `spill`, `flood`, `crash`, `crime`) and the CCTV inset shows them; a fire's
   frame grows with the fire.
 - **Fire trucks** reuse the car mover (`roadPath`); toxic clouds reuse the wind advection of smog.
-- **Art:** flames and smoke on burning tiles, a truck sprite, flood water over tiles, a green-grey cloud.
+- **Art:** in the game's own pipeline — palette pixel sprites at the one art scale, vehicles as movers with 8-way frames and the lights cruisers have, emissive things drawn after the lighting pass, haze through the smog field and overlay. Flames are frames; smoke is smog; a spill's cloud is toxic smog (its own field, greenish-yellow in the overlay).
 - **A setting:** Disasters on/off (as in SimCity). Default on.
 
 ## Order (each a stacked branch into `bodhgaia`)

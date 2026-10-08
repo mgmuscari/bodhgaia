@@ -22,7 +22,7 @@ export const FIRE_DEATH_SHARE = 0.15;
 export const FIRE_DEATH_MAX = 3;
 /** Smoke a burning tile lays into the air-pollution field each fire step: the smog overlay draws it, drifting
  *  downwind, and people breathe it like any smog. */
-export const FIRE_SMOKE = 60;
+export const FIRE_SMOKE = 160;
 
 /** Each home's vacancy (parcel → 0..1): the share of its baseline people no longer there. A derelict (no baseline)
  *  or unpeopled home is fully abandoned. growth/fire reads it: an abandoned building burns more readily. */

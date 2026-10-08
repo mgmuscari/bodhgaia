@@ -511,8 +511,13 @@ export const SPILL_WATER_RADIUS = 4;
 export const CLOUD_RADIUS = 2.5;
 export const CLOUD_SPEED = 0.03;
 export const CLOUD_SUBSTEPS = 600;
-/** Smog the cloud lays on each tile under it, per substep. */
+/** Smog the cloud lays on each tile under it, per substep (what people breathe), and its own TOXIC smog (what is
+ *  seen: the greenish-yellow haze the smog overlay draws), which drifts and spreads like smog and clears at
+ *  TOXIC_DECAY a substep. */
 export const CLOUD_SMOG = 3;
+export const CLOUD_TOXIC = 24;
+export const TOXIC_MAX = 255;
+export const TOXIC_DECAY = 0.5;
 /** Each person outdoors the cloud passes over dies with this chance (one roll each); at most CLOUD_DEATH_MAX. */
 export const CLOUD_DEATH_CHANCE = 0.08;
 export const CLOUD_DEATH_MAX = 3;

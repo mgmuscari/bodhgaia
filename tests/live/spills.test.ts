@@ -5,7 +5,7 @@ import { GameMap, Water } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState, NEUTRAL_PRACTICES } from '../../src/live/types';
-import { spillChance, startSpill, stepClouds, drawSpills } from '../../src/live/spills';
+import { spillChance, startSpill, stepClouds, drawSpills, stepToxic } from '../../src/live/spills';
 import { CLOUD_DEATH_MAX, CLOUD_SUBSTEPS, SPILL_WATER_RADIUS } from '../../src/live/tuning';
 
 function works(opts: { water?: boolean; treatment?: boolean } = {}) {
@@ -75,6 +75,21 @@ describe('spills: what they do', () => {
     expect(state.pollution.get(map.idx(Math.floor(state.clouds![0]!.x), 9)) ?? 0).toBeGreaterThan(0);
     for (let i = 0; i < CLOUD_SUBSTEPS; i++) stepClouds(state, map, rng);
     expect(state.clouds).toHaveLength(0);
+  });
+
+  it('the cloud is toxic smog: it lays its own field under it, which drifts downwind, spreads, and clears', () => {
+    const { map, parcels, state, w } = works();
+    startSpill(state, map, parcels.get(w));
+    const rng = createRng('t').fork('t');
+    for (let i = 0; i < 20; i++) stepClouds(state, map, rng);
+    expect(state.toxic!.get(map.idx(11, 9)) ?? 0).toBeGreaterThan(100);
+    state.clouds = [];
+    const mass = (minX: number) => [...state.toxic!].filter(([t]) => t % map.width >= minX).reduce((s, [, v]) => s + v, 0);
+    const downwindBefore = mass(15);
+    for (let i = 0; i < 80; i++) stepToxic(state, map, i % 8 === 0);
+    expect(mass(15)).toBeGreaterThan(downwindBefore);
+    for (let i = 0; i < 4000; i++) stepToxic(state, map, i % 8 === 0);
+    expect(state.toxic!.size).toBe(0);
   });
 
   it('kills a few of the people it passes over — never more than its cap, never anyone indoors or away from it', () => {
