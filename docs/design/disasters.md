@@ -93,3 +93,12 @@ TRAFFIC_MAX, likelier the worse it is. The car just ahead is wrecked too. A wrec
 gets out and walks on (or dies at the wheel); it blocks the lane ~30 s, then it's towed. A quarter of crashes
 kill someone — the driver, or a walker beside the road. Drawn spun a frame round with its hazards flashing, glass
 on the road, an amber pool on the GPU. Measured on lotus: one crash in ~5 minutes of play at the opening's jams.
+
+## Architecture note: violent crime (2026-10-08)
+
+Live layer (`live/crime.ts`), drawn hourly by the host with its own rng fork. Despair at a spot = encampments
+within 3 tiles + decayed buildings within 2 + the police-violence record under it (0 where nothing harms it);
+belonging (`civic/voice.ts` neighborhoodBelonging, above the opening level) takes up to 60% off, and a refuge in
+reach (the same REFUGE_KINDS police respect) cuts it to 35%. Policing is never a protection: cruisers are not in
+the formula, their violence is. At most one person out on the street is killed an hour, twice as likely at night;
+mourned like any death (the death camera, the news). Measured on lotus: ~one life in 10 minutes of play.

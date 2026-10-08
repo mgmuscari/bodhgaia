@@ -23,3 +23,20 @@ describe('neighborhoodVoice', () => {
     expect(neighborhoodVoice(civic, partition, 5)).toBe(0); // open land far from any home
   });
 });
+
+describe('neighborhoodBelonging (crime: conditions, not cops)', () => {
+  it("reads how held a tile's neighbourhood is beyond the opening, 0..1", async () => {
+    const { neighborhoodBelonging } = await import('../../src/civic/voice');
+    const { SEED_BELONGING } = await import('../../src/civic/state');
+    const map = new GameMap(6, 1);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    const partition = computeNeighborhoods(map);
+    const civic = createCivicState(partition);
+    const id = partition.tileToNeighborhood[0]!;
+    expect(neighborhoodBelonging(civic, partition, 0)).toBe(0);
+    civic.setValues(id, { ...civic.getValues(id), belonging: SEED_BELONGING + (255 - SEED_BELONGING) / 2 });
+    expect(neighborhoodBelonging(civic, partition, 0)).toBeCloseTo(0.5, 9);
+    expect(neighborhoodBelonging(civic, partition, 5)).toBe(0);
+  });
+});
