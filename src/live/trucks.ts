@@ -7,7 +7,7 @@ import type { GameMap } from '../engine/map';
 import { isRoadKind } from '../engine/fabric';
 import type { AmbientState, Truck } from './types';
 import { roadPath } from './pathing';
-import { SPRAY_SUBSTEPS, TRUCK_SPEED } from './tuning';
+import { SPRAY_SUBSTEPS, TRUCK_SPEED, TURNOUT_SUBSTEPS } from './tuning';
 
 /** The nearest road tile to the footprint (x, y, w, h), within 3 tiles, or null. */
 export function roadNear(map: GameMap, x: number, y: number, w: number, h: number): { x: number; y: number } | null {
@@ -33,7 +33,7 @@ export function roadNear(map: GameMap, x: number, y: number, w: number, h: numbe
 export function dispatchTruck(state: AmbientState, map: GameMap, from: { x: number; y: number }, to: { x: number; y: number }, target: number): boolean {
   const path = roadPath(map, from.x, from.y, to.x, to.y, state.traffic);
   if (!path) return false;
-  (state.trucks ??= []).push({ x: from.x, y: from.y, hx: 1, hy: 0, path, i: 1, phase: 'to-fire', target, spray: 0, home: from });
+  (state.trucks ??= []).push({ x: from.x, y: from.y, hx: 1, hy: 0, path, i: 1, phase: 'to-fire', target, spray: 0, home: from, turnout: TURNOUT_SUBSTEPS });
   return true;
 }
 
@@ -70,7 +70,8 @@ export function stepTrucks(state: AmbientState, map: GameMap): void {
   const still: Truck[] = [];
   for (const t of state.trucks) {
     if (t.phase === 'to-fire') {
-      if (drive(t, map)) {
+      if ((t.turnout ?? 0) > 0) t.turnout!--;
+      else if (drive(t, map)) {
         t.phase = 'spraying';
         t.spray = SPRAY_SUBSTEPS;
       }

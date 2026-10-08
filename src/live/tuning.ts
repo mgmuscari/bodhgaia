@@ -490,6 +490,8 @@ export const LV_RUIN = 12;
 // ── Fire trucks (docs/design/disasters.md) ──────────────────────────────────────────────────────────────────
 /** Tiles a truck moves per substep — faster than a car, lights on. */
 export const TRUCK_SPEED = 0.16;
+/** Substeps the crew takes to turn out before the truck leaves the station (~5 s): a fire burns a while first. */
+export const TURNOUT_SUBSTEPS = 100;
 /** Substeps a truck sprays before the fire is out (~3 s). */
 export const SPRAY_SUBSTEPS = 60;
 

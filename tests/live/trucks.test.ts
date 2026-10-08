@@ -5,7 +5,7 @@ import { GameMap } from '../../src/engine/map';
 import { BuiltKind, placeTransport } from '../../src/engine/fabric';
 import { createAmbientState } from '../../src/live/types';
 import { dispatchTruck, stepTrucks, roadNear } from '../../src/live/trucks';
-import { SPRAY_SUBSTEPS } from '../../src/live/tuning';
+import { SPRAY_SUBSTEPS, TURNOUT_SUBSTEPS } from '../../src/live/tuning';
 
 function town() {
   const map = new GameMap(40, 10);
@@ -41,6 +41,16 @@ describe('fire trucks', () => {
     expect(state.trucks![0]!.phase).toBe('home');
     for (let i = 0; i < 2000 && state.trucks!.length > 0; i++) stepTrucks(state, map);
     expect(state.trucks).toEqual([]); // back at the station
+  });
+
+  it('the crew turns out before the truck leaves the station', () => {
+    const { map, state } = town();
+    expect(TURNOUT_SUBSTEPS).toBeGreaterThanOrEqual(60); // seconds, not a blink
+    dispatchTruck(state, map, { x: 3, y: 5 }, { x: 30, y: 5 }, 7);
+    for (let i = 0; i < TURNOUT_SUBSTEPS - 1; i++) stepTrucks(state, map);
+    expect(state.trucks![0]!.x).toBe(3);
+    for (let i = 0; i < 5; i++) stepTrucks(state, map);
+    expect(state.trucks![0]!.x).toBeGreaterThan(3);
   });
 
   it('a fire with no road to it gets no truck', () => {
