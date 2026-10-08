@@ -85,6 +85,8 @@ export interface SoundDeps {
   hasHealing(): boolean;
   /** Is the tab hidden (the soundscape rests)? */
   hidden(): boolean;
+  /** Play this track first instead of the mood's pick (DEV auditions: ?track=<id>). */
+  firstTrack?: string;
 }
 
 export interface Sound {
@@ -101,7 +103,8 @@ export function createSound(deps: SoundDeps): Sound {
   const ambience = createAmbience(engine);
   let mood = moodFor(deps.hour(), deps.hasHealing());
   const music = createMusicPlayer(engine, MUSIC_TRACKS, { mood });
-  void music.next().catch(() => {}); // waits for the unlock, then the first piece of the mood
+  // waits for the unlock, then the first piece of the mood (or the one asked for)
+  void (deps.firstTrack ? music.play(deps.firstTrack) : music.next()).catch(() => {});
   let resting = false;
   let siren: Voice | null = null;
   let sirenTick = 0;
