@@ -1,6 +1,6 @@
 # Tech tree audit (2026-10-07)
 
-What each of the 43 nodes in `src/tech/tree.ts` actually does in the simulation, traced to the
+What each of the 39 nodes in `src/tech/tree.ts` actually does in the simulation, traced to the
 code that reads it. The standard (Maddy): **every tech is either a building with a distinctive
 area or resource effect, or a mechanic that switches a sim system on/off or changes its
 coefficients — and the panel says exactly what.**
