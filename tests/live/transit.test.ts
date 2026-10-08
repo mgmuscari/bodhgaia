@@ -75,3 +75,22 @@ describe('transit lines and stops', () => {
     expect(JSON.stringify(transitLines(lineWithStreet(30)))).toBe(JSON.stringify(transitLines(lineWithStreet(30))));
   });
 });
+
+describe('tracks are closed to walkers (docs/design/transit.md step 4; Maddy 2026-10-08: people walk on the tracks)', () => {
+  it('a rail line is walked across only where a road crosses it; a viaduct only where a street passes under', () => {
+    const map = new GameMap(30, 10);
+    for (let x = 1; x <= 25; x++) map.setBuilt(x, 5, BuiltKind.Rail);
+    for (let x = 1; x <= 25; x++) map.setBuilt(x, 2, BuiltKind.ElevatedRail);
+    for (const y of [1, 3, 4, 6]) placeTransport(map, 10, y, BuiltKind.RoadStreet); // a street across both
+    expect(isWalkable(map, 5, 5)).toBe(false);
+    expect(isWalkable(map, 10, 5)).toBe(true); // the level crossing
+    expect(isWalkable(map, 5, 2)).toBe(false);
+    expect(isWalkable(map, 10, 2)).toBe(true); // under the viaduct
+  });
+
+  it('a streetcar line is a street: walked along its kerbs', () => {
+    const map = new GameMap(30, 10);
+    for (let x = 1; x <= 25; x++) map.setBuilt(x, 5, BuiltKind.Streetcar);
+    expect(isWalkable(map, 5, 5)).toBe(true);
+  });
+});
