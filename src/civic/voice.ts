@@ -1,12 +1,14 @@
-// A tile's neighbourhood voice as 0..1 — how organised the people there are (rehoming.md): tenant organising
-// protects their homes from displacement, and an organised neighbourhood welcomes the unhoused back. Pure
-// (the architecture guard scans src/civic).
+// How organised a tile's neighbourhood is, 0..1 (rehoming.md): its voice ABOVE the opening level, so the
+// inherited crisis holds until the city actually organises (Circles, Participatory Budgeting, Gift Circles…).
+// Tenant organising protects those homes from displacement; an organised neighbourhood welcomes the unhoused
+// back. Pure (the architecture guard scans src/civic).
 
 import type { NeighborhoodMap } from './neighborhoods';
-import type { CivicState } from './state';
+import { SEED_VOICE, type CivicState } from './state';
 
 export function neighborhoodVoice(civic: CivicState, partition: NeighborhoodMap, tile: number): number {
   const id = partition.tileToNeighborhood[tile] ?? 0;
   if (id === 0 || id > civic.count()) return 0;
-  return civic.getValues(id).voice / 255;
+  const above = civic.getValues(id).voice - SEED_VOICE;
+  return above <= 0 ? 0 : above / (255 - SEED_VOICE);
 }

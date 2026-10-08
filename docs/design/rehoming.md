@@ -1,6 +1,6 @@
 # Re-homing: the unhoused as people, voice as the welcome
 
-Status: **building, 2026-10-07** (branch `feat/tech-effects`, ahead of tech-tree batch 3).
+Status: **built, 2026-10-07** (branch `feat/tech-effects`, ahead of tech-tree batch 3).
 Maddy's decisions: only big roads divide neighbourhoods; displacement empties real homes; voice
 protects and welcomes; a tiny-home village. No Housing First practice.
 
@@ -36,9 +36,12 @@ protects and welcomes; a tiny-home village. No Housing First practice.
   [homelessness-inherited] intact.
 
 **Voice:**
+- "Organised" means voice **above the opening level** (`SEED_VOICE` 40), on a 0..1 scale:
+  `(voice − 40) ÷ 215`. The seeded voice is nobody's organising yet; counting it re-homed about 100
+  people in 40 s with no action.
 - **Tenant organising**: a home's displacement protection is the larger of its kind/Land-Trust
-  protection and its neighbourhood's voice ÷ 255.
-- **Welcome**: re-homing into a home runs at `REHOME_RATE × voice ÷ 255`.
+  protection and how organised its neighbourhood is.
+- **Welcome**: re-homing into a home runs at `REHOME_WELCOME × organised`.
 
 The host publishes per-home voice to live (`state.welcome`) and to the economy (`voiceAt`) after
 each civic tick.
