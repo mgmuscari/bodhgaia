@@ -44,5 +44,5 @@ export const OPENING_TIMING = {
   startHour: 23,
   dawnHour: 6,
   /** The camera's zoom while it follows the walker. */
-  followZoom: 3,
+  followZoom: 4,
 } as const;

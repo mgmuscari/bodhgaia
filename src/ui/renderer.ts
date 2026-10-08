@@ -1067,13 +1067,6 @@ export class Renderer {
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
-    // The opening's night walker: an unhoused resident on foot, drawn like any citizen (a two-step walk).
-    if (ambient.wanderer) {
-      const w = ambient.wanderer;
-      const img = this.sprites.get(personKey('ped', w.seed >>> 0, Math.floor(performance.now() / 260) % 2));
-      if (img) this.drawArt(ctx, img, w.x + 0.5, w.y + 0.5, camera);
-    }
-
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
     // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
     const psx = camera.tileSize / BASE_TILE;
@@ -1164,6 +1157,35 @@ export class Renderer {
         ctx.fillRect(0, 0, this.base.width, this.base.height);
         ctx.restore();
       }
+    }
+
+    // CPU mode (the fallback, and the CCTV inset) has no lighting shader: darken the whole frame with the same
+    // day/night curve so the night reads as night there too (headlights are drawn after, so they still shine).
+    if (!this.gpuMode) {
+      const dark = 1 - dayNightBrightness(gameSec());
+      if (dark > 0.004) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = `rgba(6, 9, 22, ${(dark * 1.1).toFixed(3)})`;
+        ctx.fillRect(0, 0, this.base.width, this.base.height);
+        ctx.restore();
+      }
+    }
+
+    // The opening's night walker — drawn AFTER the night pass (like the headlights) so the dark doesn't swallow
+    // one small figure: a pool of lamplight follows them, and they walk in it (a two-step walk).
+    if (ambient.wanderer) {
+      const w = ambient.wanderer;
+      const c = camera.worldToScreen(w.x + 0.5, w.y + 0.5);
+      const r = camera.tileSize * 2;
+      const glow = ctx.createRadialGradient(c.sx, c.sy, 0, c.sx, c.sy, r);
+      glow.addColorStop(0, 'rgba(255, 214, 140, 0.42)');
+      glow.addColorStop(0.5, 'rgba(255, 214, 140, 0.16)');
+      glow.addColorStop(1, 'rgba(255, 214, 140, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(c.sx - r, c.sy - r, 2 * r, 2 * r);
+      const img = this.sprites.get(personKey('ped', w.seed >>> 0, Math.floor(performance.now() / 260) % 2));
+      if (img) this.drawArt(ctx, img, w.x + 0.5, w.y + 0.5, camera);
     }
 
     // Vehicle headlights/taillights — NIGHT-GATED (off at midday, ramping on at dusk) and evading shading

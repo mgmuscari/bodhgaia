@@ -317,6 +317,8 @@
       }
       .night-dim {
         background: rgba(4, 6, 14, 0.45);
+        align-items: flex-end; /* the words in the lower third: the spot where they fell stays in view */
+        padding-bottom: 18vh;
       }
       .night-clear {
         background: transparent;
@@ -356,7 +358,7 @@
       .night-hint {
         position: absolute;
         right: 16px;
-        bottom: 14px;
+        bottom: calc(var(--status-h) + 10px);
         color: rgba(232, 226, 204, 0.55);
         font-size: 0.85rem;
       }

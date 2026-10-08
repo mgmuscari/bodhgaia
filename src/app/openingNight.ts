@@ -43,8 +43,8 @@ type Phase =
   | { kind: 'epigraph'; i: number; since: number }
   | { kind: 'walk' }
   | { kind: 'hold'; since: number; x: number; y: number }
-  | { kind: 'mantra'; since: number; shown: number }
-  | { kind: 'awaken'; since: number }
+  | { kind: 'mantra'; since: number; shown: number; x: number; y: number }
+  | { kind: 'awaken'; since: number; x: number; y: number }
   | { kind: 'done' };
 
 export function createNightOpening(deps: NightDeps): NightOpening {
@@ -65,13 +65,13 @@ export function createNightOpening(deps: NightDeps): NightOpening {
   const toWalk = (): void => {
     ui.clear();
     if (startWanderer(live, map, deps.rng, T.walkSubsteps)) phase = { kind: 'walk' };
-    else toAwaken(0); // nowhere to walk: straight to the dawn
+    else toAwaken(0, map.width >> 1, map.height >> 1); // nowhere to walk: straight to the dawn
   };
-  const toAwaken = (now: number): void => {
+  const toAwaken = (now: number, x: number, y: number): void => {
     const h = deps.hour();
     if (h < T.dawnHour || h >= 20) deps.setHour(T.dawnHour); // forward to dawn (never backwards in the day)
     ui.title(AWAKENING);
-    phase = { kind: 'awaken', since: now };
+    phase = { kind: 'awaken', since: now, x, y };
   };
 
   return {
@@ -104,22 +104,24 @@ export function createNightOpening(deps: NightDeps): NightOpening {
         case 'hold':
           deps.follow(phase.x + 0.5, phase.y + 0.5);
           if (now - phase.since >= T.holdMs) {
-            phase = { kind: 'mantra', since: now, shown: 1 };
+            phase = { kind: 'mantra', since: now, shown: 1, x: phase.x, y: phase.y };
             ui.words(1);
           }
           return;
         case 'mantra': {
+          deps.follow(phase.x + 0.5, phase.y + 0.5); // the camera stays with them
           if (phase.shown < MANTRA.length) {
             if (now - phase.since >= T.mantraWordMs) {
-              phase = { kind: 'mantra', since: now, shown: phase.shown + 1 };
+              phase = { ...phase, since: now, shown: phase.shown + 1 };
               ui.words(phase.shown);
             }
             return;
           }
-          if (now - phase.since >= T.mantraHoldMs) toAwaken(now);
+          if (now - phase.since >= T.mantraHoldMs) toAwaken(now, phase.x, phase.y);
           return;
         }
         case 'awaken':
+          deps.follow(phase.x + 0.5, phase.y + 0.5);
           if (now - phase.since >= T.awakeningMs) finish();
           return;
       }
