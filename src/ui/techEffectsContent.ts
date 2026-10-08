@@ -12,6 +12,8 @@ import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
 import { MAKER_RADIUS, MAKER_REPAIR } from '../growth/revival';
 import {
+  BATTERY_CAPACITY,
+  BATTERY_RATE,
   LOCAL_GRID_RADIUS,
   ROOF_SOLAR_FROM,
   ROOF_SOLAR_TO,
@@ -134,6 +136,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   const effects: string[] = [];
   const out = plantOutput(kind);
   if (out > 0) effects.push(`Generates ${out} power${plantPollution(kind) > 0 ? ', with smoke' : ', no smoke'}`);
+  if (kind === BuiltKind.EnergyNode) effects.push(`Battery: banks up to ${BATTERY_CAPACITY} of its grid's surplus, gives back up to ${BATTERY_RATE} an hour when power runs short`);
   if (kind === BuiltKind.SolarPlant) effects.push('Follows the sun: full at noon, half at 09:00 and 15:00, nothing 18:00–06:00');
   if (kind === BuiltKind.WindTurbine) effects.push('Gusts hour to hour (0.4–1.6× its rating), blowing harder 20:00–06:00');
   if (isServiceStation(kind)) effects.push(`Fire & health cover within ${COVERAGE_RADIUS} tiles`);

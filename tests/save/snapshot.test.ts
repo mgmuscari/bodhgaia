@@ -124,3 +124,12 @@ describe('the format refuses what it cannot read', () => {
     expect(() => parseSave(JSON.stringify(future))).toThrow(/newer/);
   });
 });
+
+describe('the batteries are saved', () => {
+  it('captures each energy node’s charge, and an older save has none', () => {
+    const p = { ...parts(), power: { storage: new Map([[17, 300]]) } };
+    const save = parseSave(JSON.stringify(captureGame(p)));
+    expect(save.power?.storage).toEqual([[17, 300]]);
+    expect(captureGame(parts()).power).toEqual({ storage: [] });
+  });
+});

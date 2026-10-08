@@ -222,6 +222,13 @@ function weatherFactor(kind: number, clock: GridClock | undefined): number {
   return 1;
 }
 
+// ── Batteries (Maddy 2026-10-07: the solar problem) ─────────────────────────────────────────────────────
+/** Every energy node carries a battery: it stores up to BATTERY_CAPACITY power-hours (4 h of its own output),
+ *  charging from its grid's surplus and discharging into its grid's shortfall at up to BATTERY_RATE an hour —
+ *  so the noon sun can light the evening. Only clocked (live) solves move the charge. */
+export const BATTERY_RATE = 168;
+export const BATTERY_CAPACITY = 4 * BATTERY_RATE;
+
 // ── Rolling blackouts ─────────────────────────────────────────────────────────────────────────────
 // A short grid sheds whole FEEDERS (FEEDER×FEEDER-tile blocks), never scattered single homes, and the
 // order feeders are served in is re-drawn every ROTATION_HOURS — so the dark patch moves around the
@@ -241,6 +248,8 @@ export function feederOf(map: GameMap, tile: number): number {
 export interface PowerGrid {
   /** Anchor tiles of consumer parcels that ARE powered this tick. */
   poweredAnchors: Set<number>;
+  /** Each energy node's battery charge after this hour (anchor → stored power-hours). */
+  storage: Map<number, number>;
   /** Total generation capacity across all plants on the map. */
   capacity: number;
   /** Total demand across all consumer parcels. */
@@ -264,7 +273,9 @@ export function computePowerGrid(
   parcels: ParcelStore,
   clock?: GridClock,
   practices: PowerPractices = NEUTRAL_POWER_PRACTICES,
+  storageIn: ReadonlyMap<number, number> = new Map(),
 ): PowerGrid {
+  const storage = new Map(storageIn);
   const size = map.width * map.height;
   const built = map.built;
 
@@ -302,6 +313,7 @@ export function computePowerGrid(
   let hasAiNode = false;
   for (const i of parcels.aliveIndices()) if (parcels.kindAt(i) === BuiltKind.AINode) hasAiNode = true;
   const capByComp = new Float64Array(nComp);
+  const nodesByComp: number[][] = Array.from({ length: nComp }, () => []);
   const consumersByComp: ConsumerRef[][] = Array.from({ length: nComp }, () => []);
   const plantTiles: number[] = [];
   let capacity = 0;
@@ -312,6 +324,7 @@ export function computePowerGrid(
     const c = comp[anchor]!;
     if (c < 0) continue;
     const out = plantOutput(p.kind) * (RENEWABLE_KINDS.has(p.kind) ? practices.renewableOutput : 1) * weatherFactor(p.kind, clock);
+    if (p.kind === BuiltKind.EnergyNode) nodesByComp[c]!.push(anchor);
     if (out > 0) {
       capByComp[c] = capByComp[c]! + out;
       capacity += out;
@@ -370,6 +383,23 @@ export function computePowerGrid(
     for (let c = 0; c < nComp; c++) {
       let budget = capByComp[c]!;
       if (budget <= 0) continue;
+      // batteries: bank the surplus, or cover the shortfall from the bank
+      let load = 0;
+      for (const cons of consumersByComp[c]!) load += cons.demand;
+      let gap = budget - load;
+      for (const node of nodesByComp[c]!) {
+        const s0 = storage.get(node) ?? 0;
+        if (gap > 0) {
+          const add = Math.min(BATTERY_RATE, BATTERY_CAPACITY - s0, gap);
+          if (add > 0) storage.set(node, s0 + add);
+          gap -= Math.max(0, add);
+        } else if (gap < 0 && s0 > 0) {
+          const take = Math.min(BATTERY_RATE, s0, -gap);
+          storage.set(node, s0 - take);
+          budget += take;
+          gap += take;
+        }
+      }
       const feeders = new Map<number, ConsumerRef[]>();
       for (const cons of consumersByComp[c]!) {
         // Local Grids: the homes an energy node holds are served before any feeder takes its turn
@@ -392,7 +422,7 @@ export function computePowerGrid(
         for (const m of members) poweredAnchors.add(m.anchor);
       }
     }
-    return { poweredAnchors, capacity, demand };
+    return { poweredAnchors, storage, capacity, demand };
   }
 
   // 3b. Static solve (no clock — worldgen checks and tests): power consumers per component within its
@@ -411,5 +441,5 @@ export function computePowerGrid(
     }
   }
 
-  return { poweredAnchors, capacity, demand };
+  return { poweredAnchors, storage, capacity, demand };
 }

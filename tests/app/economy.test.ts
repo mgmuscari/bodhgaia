@@ -32,7 +32,7 @@ function setup(initial: EconomyRun | null = null, autosaveOverride?: () => void,
     landValue: new Map<number, number>([[anchor, 128]]),
     policeViolence: new Map<number, number>(),
   };
-  const grid: PowerGrid = { capacity: 0, demand: 0, poweredAnchors: new Set([anchor]) };
+  const grid: PowerGrid = { capacity: 0, demand: 0, poweredAnchors: new Set([anchor]), storage: new Map() };
   const log: string[] = [];
   let autosaves = 0;
   const ui: EconomyUi = {

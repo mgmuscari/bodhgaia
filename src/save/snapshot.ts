@@ -59,6 +59,8 @@ export interface SaveV1 {
   econ: EconomyRun;
   /** `unhoused`/`freshHomes` arrived 2026-10-07 (rehoming.md); an older save derives the pool on restore. */
   live: { maps: Record<LiveMapName, Array<[number, number]>>; occPasses: number; unhoused?: number; freshHomes?: number[] };
+  /** Energy-node battery charge, anchor → power-hours (2026-10-07; absent in older saves ⇒ empty). */
+  power?: { storage: Array<[number, number]> };
 }
 
 /** Everything the save reads, as the running game holds it. */
@@ -71,6 +73,8 @@ export interface GameParts {
   civic: CivicState;
   econ: EconomyRun;
   live: AmbientState;
+  /** The power grid's battery charge (absent ⇒ none). */
+  power?: { storage: ReadonlyMap<number, number> };
   tick: number;
   camera: { x: number; y: number; zoom: number };
 }
@@ -137,6 +141,7 @@ export function captureGame(p: GameParts): SaveV1 {
     civic: p.civic.exportCells(),
     econ: JSON.parse(JSON.stringify(p.econ)) as EconomyRun,
     live: captureLive(p.live),
+    power: { storage: [...(p.power?.storage ?? new Map()).entries()] },
   };
 }
 

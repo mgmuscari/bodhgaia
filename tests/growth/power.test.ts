@@ -15,6 +15,8 @@ import {
   solarFactor,
   windFactor,
   smartGridFactor,
+  BATTERY_RATE,
+  BATTERY_CAPACITY,
   SMART_GRID_RADIUS,
   SMART_GRID_CUT,
   SMART_GRID_FROM,
@@ -385,5 +387,40 @@ describe('Community AI Node: the smart grid (Maddy 2026-10-07)', () => {
     const a = town(false);
     const b = town(true);
     expect(computePowerGrid(b.map, b.parcels, clock(19)).demand).toBeLessThan(computePowerGrid(a.map, a.parcels, clock(19)).demand);
+  });
+});
+
+describe('energy node batteries (Maddy 2026-10-07: the solar problem)', () => {
+  // solar plus an energy node feeding a row of homes
+  const town = () => {
+    const map = new GameMap(40, 4);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 3, height: 3, kind: BuiltKind.SolarPlant });
+    placeParcel(map, parcels, { x: 3, y: 1, width: 1, height: 1, kind: BuiltKind.EnergyNode });
+    for (const y of [1, 2]) for (let x = 4; x < 40; x++) placeParcel(map, parcels, { x, y, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 3 });
+    return { map, parcels, node: map.idx(3, 1) };
+  };
+
+  it('charge from the noon surplus, up to its rate per hour and its capacity', () => {
+    const { map, parcels, node } = town();
+    const g = computePowerGrid(map, parcels, clock(12), NEUTRAL_POWER_PRACTICES, new Map());
+    expect(g.capacity).toBeGreaterThan(g.demand); // noon: the panels out-make the homes
+    expect(g.storage.get(node)).toBe(BATTERY_RATE);
+    const full = computePowerGrid(map, parcels, clock(12), NEUTRAL_POWER_PRACTICES, new Map([[node, BATTERY_CAPACITY - 10]]));
+    expect(full.storage.get(node)).toBe(BATTERY_CAPACITY);
+  });
+
+  it('discharge into the evening shortfall: more homes lit, the charge spent', () => {
+    const { map, parcels, node } = town();
+    const dark = computePowerGrid(map, parcels, clock(20), NEUTRAL_POWER_PRACTICES, new Map());
+    const stored = computePowerGrid(map, parcels, clock(20), NEUTRAL_POWER_PRACTICES, new Map([[node, BATTERY_CAPACITY]]));
+    expect(stored.poweredAnchors.size).toBeGreaterThan(dark.poweredAnchors.size);
+    expect(stored.storage.get(node)!).toBeLessThan(BATTERY_CAPACITY);
+    expect(BATTERY_CAPACITY - stored.storage.get(node)!).toBeLessThanOrEqual(BATTERY_RATE + 1e-9);
+  });
+
+  it('a static solve (no clock) neither charges nor spends', () => {
+    const { map, parcels, node } = town();
+    expect(computePowerGrid(map, parcels, undefined, NEUTRAL_POWER_PRACTICES, new Map([[node, 100]])).storage.get(node)).toBe(100);
   });
 });

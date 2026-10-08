@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createPowerController } from '../../src/app/power';
 import { GameMap } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
-import { computePowerGrid } from '../../src/growth/power';
+import { computePowerGrid, BATTERY_RATE } from '../../src/growth/power';
 import { gameClock, DAYSPEED } from '../../src/ui/lighting';
 
 // The power controller owns main's derived grid: it solves at creation, re-solves on demand (placement, the
@@ -63,5 +63,33 @@ describe('createPowerController', () => {
     expect(published).toHaveLength(2);
     expect(power.maybeResolveHour(1.6 * HOUR_SEC * 1000)).toBe(false);
     expect(published).toHaveLength(2);
+  });
+});
+
+describe('the batteries are banked hour by hour', () => {
+  const noonCity = (storage?: Map<number, number>) => {
+    const map = new GameMap(24, 8);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 0, width: 1, height: 1, kind: BuiltKind.FusionPlant });
+    placeParcel(map, parcels, { x: 1, y: 0, width: 1, height: 1, kind: BuiltKind.EnergyNode });
+    placeParcel(map, parcels, { x: 2, y: 0, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    let t = 12.5 * HOUR_SEC;
+    const power = createPowerController({ map, parcels, publish: () => {}, nowSec: () => t, storage });
+    return { power, node: map.idx(1, 0), setT: (s: number) => (t = s) };
+  };
+
+  it('charges once per in-game hour, however often the grid is re-solved within it', () => {
+    const { power, node, setT } = noonCity();
+    power.recompute();
+    power.recompute();
+    expect(power.grid().storage.get(node)).toBe(BATTERY_RATE); // one hour's charge, not three
+    setT(13.5 * HOUR_SEC);
+    power.maybeResolveHour(13.5 * HOUR_SEC * 1000);
+    expect(power.grid().storage.get(node)).toBe(2 * BATTERY_RATE);
+  });
+
+  it('a resumed city starts from its saved charge', () => {
+    const { power, node } = noonCity(new Map([[1, 100]]));
+    expect(power.grid().storage.get(node)).toBe(100 + BATTERY_RATE);
   });
 });
