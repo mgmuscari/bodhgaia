@@ -10,6 +10,7 @@
 // rng draws is load-bearing (tests/live/golden.test.ts).
 
 import { stepGatherer } from './gatherings';
+import { stepRider } from './riders';
 import type { GameMap } from '../engine/map';
 import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import type { Rng } from '../engine/rng';
@@ -167,6 +168,8 @@ const PHASE_STEP: Partial<Record<Phase, PedStep>> = {
   inside: stepInside,
   driving: stepDriving,
   gathering: (state, map, rng, _ctx, p) => stepGatherer(state, map, rng, p),
+  transit: (state, map, _rng, _ctx, p) => stepRider(state, map, p),
+  riding: (state, map, _rng, _ctx, p) => stepRider(state, map, p),
 };
 
 // --- walking a leg -------------------------------------------------------------

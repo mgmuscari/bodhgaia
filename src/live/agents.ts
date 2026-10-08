@@ -32,6 +32,7 @@ import {
 import type { AmbientState, Car, ParkingLotInfo, Ped } from './types';
 import { spawnTargetFor } from './fields/occupancy';
 import { commitHeading } from './motion';
+import { planRide, startRide } from './riders';
 import {
   chooseMode,
   jamNear,
@@ -121,17 +122,31 @@ export function parkInPlace(state: AmbientState, map: GameMap, car: Car): void {
   car.stuck = 0;
 }
 
+/** The ride a transit mode means for a leg, or null (not a transit mode, or no line serves it). */
+function rideFor(map: GameMap, cx: number, cy: number, to: { x: number; y: number }, mode: TravelMode) {
+  if (mode !== TravelMode.Streetcar && mode !== TravelMode.ElevatedRail) return null;
+  return planRide(map, cx, cy, to.x, to.y, mode === TravelMode.Streetcar ? 'tram' : 'rail');
+}
+
 /** Send a citizen home: drive its owned car home to park it if it has one out, else walk. */
 export function headHome(state: AmbientState, p: Ped, map: GameMap): void {
   const hx = p.homeTile! % map.width;
   const hy = (p.homeTile! - hx) / map.width;
   const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-  if (!(car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home'))) {
-    p.phase = 'to-home';
-    p.walkTo = { x: hx, y: hy };
-    p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
-    p.mode = TravelMode.Walk;
+  if (car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home')) return;
+  // carless and far: the line home, if one serves both ends
+  const cx = Math.round(p.x);
+  const cy = Math.round(p.y);
+  const ride = car ? null : rideFor(map, cx, cy, { x: hx, y: hy }, chooseMode(map, cx, cy, hx, hy, 0, state.practices.walkStretch, state.practices.bikeStretch));
+  if (ride) {
+    p.building = undefined;
+    startRide(p, ride, { x: hx, y: hy }, 'to-home');
+    return;
   }
+  p.phase = 'to-home';
+  p.walkTo = { x: hx, y: hy };
+  p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
+  p.mode = TravelMode.Walk;
 }
 
 /**
@@ -216,12 +231,18 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
       // DRIVE: walk to the owned car, drive it to a parking spot, then walk to the plot. If no car
       // can be had (land-locked), fall through and walk the leg.
       if (mode === TravelMode.Drive && setDriveLeg(state, p, map, plot, 'to-building')) return true;
-      p.phase = 'to-building';
-      p.walkTo = { x: plot.x, y: plot.y };
       p.building = { x: plot.x, y: plot.y };
-      p.mode = mode === TravelMode.Drive ? TravelMode.Walk : mode; // drive unavailable → walk
       p.roadSteps = undefined; // a fresh leg — its tolls accrue anew
       p.wornSteps = undefined;
+      // A LINE: walk to the stop, wait, ride, walk on (riders.ts)
+      const ride = rideFor(map, cx, cy, plot, mode);
+      if (ride) {
+        startRide(p, ride, { x: plot.x, y: plot.y }, 'to-building');
+        return true;
+      }
+      p.phase = 'to-building';
+      p.walkTo = { x: plot.x, y: plot.y };
+      p.mode = mode === TravelMode.Drive ? TravelMode.Walk : mode; // drive unavailable → walk
       return true;
     }
   }
