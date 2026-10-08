@@ -64,3 +64,11 @@ describe('CctvQueue: one event at a time, deaths before arrests', () => {
     expect(shown).toBeLessThanOrEqual(3);
   });
 });
+
+describe('going there (Maddy 2026-10-08: clicking the feed takes you to it)', () => {
+  it('the main view centres on the event, at a close zoom', async () => {
+    const { cctvGoTo, GO_TO_ZOOM } = await import('../../src/ui/cctvContent');
+    expect(cctvGoTo({ kind: 'fire', x: 10, y: 20, w: 2, h: 2 })).toEqual({ x: 11, y: 21, zoom: GO_TO_ZOOM });
+    expect(GO_TO_ZOOM).toBeGreaterThanOrEqual(3);
+  });
+});
