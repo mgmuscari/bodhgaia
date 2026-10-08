@@ -5,7 +5,7 @@
 // only draws.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isBuildingKind, isTransportKind, transportMask, deckMask, roadDividerMask, roadCurbMask, tramKerbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
+import { BuiltKind, isBuildingKind, isTransportKind, transportMask, deckMask, roadDividerMask, roadCurbMask, tramKerbMask, railCrossingMask, railCrossingKind, isRoadKind, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import { C } from './snesPalette';
@@ -647,8 +647,11 @@ export class Renderer {
           // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, the road's asphalt band runs
           // ACROSS the track with the rails showing through it; the white stop lines go on top, after.
           const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
-          if (xMask & (N | S)) ink('@road/xband/v', dx, dy); // road runs N–S
-          if (xMask & (E | W)) ink('@road/xband/h', dx, dy); // road runs E–W
+          // in the crossing's own surface: a road's (or quiet street's) asphalt, a bike path's lane, a promenade's pavers
+          const xKind = xMask !== 0 ? railCrossingKind(map, tx, ty) : 0;
+          const band = xKind === BuiltKind.BikePath ? '@road/xband-bike' : xKind === BuiltKind.Promenade ? '@road/xband-ped' : '@road/xband';
+          if (xMask & (N | S)) ink(`${band}/v`, dx, dy); // runs N–S
+          if (xMask & (E | W)) ink(`${band}/h`, dx, dy); // runs E–W
           // Limited-access DIVIDER: a concrete barrier on each edge where a freeway abuts a surface
           // road (a frontage avenue) — you physically can't cross there, only at a ramp. Per-tile
           // (depends on neighbour kinds), drawn OVER the road like the power poles, not an atlas key.
@@ -685,7 +688,7 @@ export class Renderer {
 
             // Level-crossing PAINT: the white stop line a road has at a rail/tram crossing, on each
             // road-approach edge (the asphalt band + rails are already laid below/in the rail tile).
-            if (xMask !== 0) ink(`@road/xing/${xMask}`, dx, dy);
+            if (xMask !== 0 && isRoadKind(xKind)) ink(`@road/xing/${xMask}`, dx, dy); // stop lines where cars cross
 
             // Freeway lane markings — ONLY on a WIDE (multi-lane) freeway (a 1-wide highway keeps its
             // own double-yellow). Two parts, neither doubled (Maddy 2026-06-19): (1) a dashed gold

@@ -916,6 +916,18 @@ export function tramKerbMask(map: GameMap, x: number, y: number): number {
   return mask;
 }
 
+/** Ways that cross a rail line at grade: roads, and quiet streets, promenades and bike paths (Maddy 2026-10-08). */
+export function crossesRail(kind: number): boolean {
+  return isRoadKind(kind) || kind === BuiltKind.QuietStreet || kind === BuiltKind.Promenade || kind === BuiltKind.BikePath;
+}
+
+/** What crosses the line at a level crossing (x, y) — the kind on its first crossing side — or 0 if none. */
+export function railCrossingKind(map: GameMap, x: number, y: number): number {
+  const mask = railCrossingMask(map, x, y);
+  for (const [dx, dy, bit] of MASK_DIRS) if (mask & bit) return map.getBuilt(x + dx, y + dy);
+  return 0;
+}
+
 /**
  * Level-crossing mask for an at-grade RAIL or STREETCAR tile at (x, y): bit N=1/E=2/S=4/W=8 set on
  * each 4-neighbour edge a ROAD approaches from — i.e. where a road crosses the track at grade. Rail
@@ -928,7 +940,7 @@ export function railCrossingMask(map: GameMap, x: number, y: number): number {
   if (self !== BuiltKind.Rail && self !== BuiltKind.Streetcar) return 0;
   const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : BuiltKind.None);
   const track = (k: number): boolean => k === BuiltKind.Rail || k === BuiltKind.Streetcar;
-  const road = (dx: number, dy: number): boolean => isRoadKind(at(dx, dy));
+  const road = (dx: number, dy: number): boolean => crossesRail(at(dx, dy));
   // the line's run: east–west, north–south (or unknown, a lone tile)
   const ew = track(at(1, 0)) || track(at(-1, 0));
   const ns = track(at(0, 1)) || track(at(0, -1));
