@@ -1236,6 +1236,17 @@ describe('railCrossingMask (level crossing where a road meets a rail/tram tile)'
     expect(railCrossingMask(map, 2, 2)).toBe(0);
   });
 
+  it('a track running alongside a road (road on one side only) is no crossing (Maddy 2026-10-08)', () => {
+    const map = new GameMap(7, 5);
+    for (let x = 1; x <= 5; x++) {
+      map.setBuilt(x, 2, BuiltKind.Rail); // the line
+      map.setBuilt(x, 1, BuiltKind.RoadStreet); // a street beside it, to the north
+    }
+    expect(railCrossingMask(map, 3, 2)).toBe(0);
+    map.setBuilt(3, 3, BuiltKind.RoadStreet); // a street meeting it from the south too: now one crosses
+    expect(railCrossingMask(map, 3, 2)).toBe(N | S);
+  });
+
   it('also marks a streetcar (tram) crossing', () => {
     const map = new GameMap(5, 5);
     map.setBuilt(2, 2, BuiltKind.Streetcar);

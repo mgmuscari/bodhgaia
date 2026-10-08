@@ -905,12 +905,20 @@ export function roadCurbMask(map: GameMap, x: number, y: number): number {
 export function railCrossingMask(map: GameMap, x: number, y: number): number {
   const self = map.getBuilt(x, y);
   if (self !== BuiltKind.Rail && self !== BuiltKind.Streetcar) return 0;
+  const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : BuiltKind.None);
+  const track = (k: number): boolean => k === BuiltKind.Rail || k === BuiltKind.Streetcar;
+  const road = (dx: number, dy: number): boolean => isRoadKind(at(dx, dy));
+  // the line's run: east–west, north–south (or unknown, a lone tile)
+  const ew = track(at(1, 0)) || track(at(-1, 0));
+  const ns = track(at(0, 1)) || track(at(0, -1));
   let mask = 0;
   for (const [dx, dy, bit] of MASK_DIRS) {
-    const nx = x + dx;
-    const ny = y + dy;
-    if (!map.inBounds(nx, ny)) continue;
-    if (isRoadKind(map.getBuilt(nx, ny))) mask |= bit; // a road approaches → a crossing edge
+    if (!road(dx, dy)) continue;
+    // a road BESIDE the line crosses it only if it carries on through the other side (Maddy 2026-10-08: a track
+    // running alongside a street showed crossings); a road in line with the track is where the track meets it
+    const beside = (dy !== 0 && ew && !ns) || (dx !== 0 && ns && !ew);
+    if (beside && !road(-dx, -dy)) continue;
+    mask |= bit;
   }
   return mask;
 }
