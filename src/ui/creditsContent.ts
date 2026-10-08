@@ -18,10 +18,10 @@ export interface CreditsBlock {
   links?: CreditLink[];
 }
 
-export const GAME_NAME = 'Bodhitropolis';
+export const GAME_NAME = 'Bodhgaia';
 export const AUTHOR = 'Madeleine Muscari';
 export const LICENCE = 'GPL-3.0-or-later';
-export const SOURCE_URL = 'https://github.com/mgmuscari/bodhitropolis';
+export const SOURCE_URL = 'https://github.com/mgmuscari/bodhgaia';
 /** The GNU GPL v3 text, shipped next to the page (public/COPYING.txt → dist/); relative for subpath hosting, .txt so
  *  browsers display it rather than download it (public/COPYING ships too, by convention). */
 export const COPYING_HREF = 'COPYING.txt';
@@ -78,9 +78,22 @@ export function creditsBlocks(): CreditsBlock[] {
     },
     { heading: 'the old simulator', paragraphs: [EA_NOTICE] },
     { heading: 'Additional terms per GNU GPL Section 7', paragraphs: [...GPL7_TERMS] },
+    openingCredits(),
     musicCredits(),
     chantCredits(),
   ];
+}
+
+/** The opening's words: the epigraphs and the vows, quoted from the Berkeley Zen Center chant book. */
+function openingCredits(): CreditsBlock {
+  return {
+    heading: 'The opening',
+    paragraphs: [
+      'The opening’s epigraphs — from the Heart Sutra, and Eihei Dōgen’s Genjōkōan (“Firewood becomes ash…”) — and ' +
+        'its vows are quoted as they are chanted in the Berkeley Zen Center chant book, with gratitude.',
+    ],
+    links: [{ label: 'Berkeley Zen Center', href: 'https://www.berkeleyzencenter.org' }],
+  };
 }
 
 function trackLine(t: MusicTrack): string {

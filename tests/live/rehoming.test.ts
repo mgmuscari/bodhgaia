@@ -216,3 +216,16 @@ describe('co-ops and communes make room for the unhoused (Maddy 2026-10-07)', ()
     });
   }
 });
+
+describe('co-ops and communes are sized by their footprint (2026-10-08)', () => {
+  it('a 2×2 co-op holds four houses’ worth, a 3×3 commune nine', () => {
+    const map = new GameMap(12, 12);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 1, y: 1, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    placeParcel(map, parcels, { x: 3, y: 1, width: 2, height: 2, kind: BuiltKind.CoopHousing });
+    placeParcel(map, parcels, { x: 6, y: 1, width: 3, height: 3, kind: BuiltKind.Commune });
+    const [house, coop, commune] = residentialCensus(parcels).map((h) => h.count);
+    expect(coop).toBe(house! * 4);
+    expect(commune).toBe(house! * 9);
+  });
+});

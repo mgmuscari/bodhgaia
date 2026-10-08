@@ -39,6 +39,7 @@ export function mountOpening(
   container: HTMLElement,
   content: OpeningContent,
   onBegin: () => void,
+  buttonLabel = 'Begin',
 ): void {
   const overlay = document.createElement('div');
   overlay.className = 'opening-overlay';
@@ -57,7 +58,7 @@ export function mountOpening(
 
   const button = document.createElement('button');
   button.className = 'opening-begin';
-  button.textContent = 'Begin';
+  button.textContent = buttonLabel;
   panel.appendChild(button);
 
   const credit = document.createElement('p');

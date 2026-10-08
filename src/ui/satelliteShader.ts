@@ -53,6 +53,8 @@ in vec2 v_uv;
 out vec4 fragColor;
 
 ${ART_GRID_GLSL}
+const float WATER_LAP_S = 0.7;  // the flood's wave rhythm
+const float WATER_LAP_PX = 2.0; // art pixels the crests lap
 vec4 cell(vec2 c) { return texture(u_data, (c + 0.5) / u_grid); }
 void main() {
   vec2 g = u_origin + v_uv * u_view; // screen UV → world cell space (camera pan/zoom)
@@ -65,6 +67,16 @@ void main() {
   vec3 col = texture(u_base, v_uv).rgb;
   vec2 ga = artPixel(g); // light is evaluated once per ART pixel, never across one
   int type = int(cell(floor(ga)).r * 255.0 + 0.5); // this cell's kind (roofs take no cast shadow)
+  // Water laps (Maddy 2026-10-08: the water tiles animated the way the flood is): per tile in a checker, every
+  // WATER_LAP_S the art alternates with itself shifted WATER_LAP_PX art pixels, so the wave crests lap back and
+  // forth — taken only where the shifted pixel is water too, so a shore never smears into the bay.
+  if (type == SAT_WATER) {
+    vec2 wc = floor(ga);
+    if (mod(floor(u_time / WATER_LAP_S) + wc.x + wc.y, 2.0) > 0.5) {
+      vec2 lap = vec2(WATER_LAP_PX / ART_PX, 0.0);
+      if (int(cell(floor(ga + lap)).r * 255.0 + 0.5) == SAT_WATER) col = texture(u_base, v_uv + lap / u_view).rgb;
+    }
+  }
 
   // Day/night: the sun ARCS east→west across the sky (NOT a full orbit around the map — that read as
   // flat-earth, Maddy). Altitude = sin(day): >0 daytime, <0 night. Azimuth sweeps via cos(day), with a
@@ -135,6 +147,8 @@ export class SatelliteShader {
   private readonly vao: WebGLVertexArrayObject;
   private readonly tex: WebGLTexture;
   private readonly baseTex: WebGLTexture;
+  /** A second albedo for a second viewport (the CCTV inset) — its own camera, its own baked base. */
+  private readonly insetBaseTex: WebGLTexture;
   private readonly uGrid: WebGLUniformLocation | null;
   private readonly uOrigin: WebGLUniformLocation | null;
   private readonly uView: WebGLUniformLocation | null;
@@ -162,6 +176,7 @@ export class SatelliteShader {
     this.vao = gl.createVertexArray()!;
     this.tex = gl.createTexture()!;
     this.baseTex = gl.createTexture()!;
+    this.insetBaseTex = gl.createTexture()!;
     gl.useProgram(program);
     gl.uniform1i(gl.getUniformLocation(program, 'u_data'), 0);
     gl.uniform1i(gl.getUniformLocation(program, 'u_base'), 1); // the CPU base albedo on texture unit 1
@@ -208,10 +223,10 @@ export class SatelliteShader {
   /** Upload the CPU base canvas (the baked per-cell tiles) as the albedo texture (unit 1). Call only
    *  when the base changed (camera move / built edit) — not every frame. Canvas row 0 (top) → texture
    *  row 0, matching v_uv.y=0=top (no Y-flip). LINEAR so the water affine-displacement samples smooth. */
-  uploadBase(src: TexImageSource): void {
+  uploadBase(src: TexImageSource, slot: 'main' | 'inset' = 'main'): void {
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.baseTex);
+    gl.bindTexture(gl.TEXTURE_2D, slot === 'inset' ? this.insetBaseTex : this.baseTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -245,6 +260,8 @@ export class SatelliteShader {
     origin?: readonly [number, number];
     view?: readonly [number, number];
     dayspeed?: number;
+    /** Which baked base to sample: the main view's (default) or the CCTV inset's. */
+    slot?: 'main' | 'inset';
     /** 1 = photographic life (default), 0 = still pixel art. */
   }): void {
     const gl = this.gl;
@@ -253,7 +270,7 @@ export class SatelliteShader {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.baseTex);
+    gl.bindTexture(gl.TEXTURE_2D, opts.slot === 'inset' ? this.insetBaseTex : this.baseTex);
     if (this.uGrid) gl.uniform2f(this.uGrid, this.gridW, this.gridH);
     if (this.uOrigin) gl.uniform2f(this.uOrigin, opts.origin?.[0] ?? 0, opts.origin?.[1] ?? 0);
     if (this.uView) gl.uniform2f(this.uView, opts.view?.[0] ?? this.gridW, opts.view?.[1] ?? this.gridH);
@@ -267,6 +284,8 @@ export class SatelliteShader {
   dispose(): void {
     const gl = this.gl;
     gl.deleteTexture(this.tex);
+    gl.deleteTexture(this.baseTex);
+    gl.deleteTexture(this.insetBaseTex);
     gl.deleteVertexArray(this.vao);
     gl.deleteProgram(this.program);
   }

@@ -45,5 +45,7 @@ describe('every light/shadow/haze shader samples on the art grid', () => {
   it('the smog haze is sampled per art pixel', () => {
     expect(buildSmogFragment()).toContain(ART_GRID_GLSL);
     expect(buildSmogFragment()).toMatch(/vec2 cell = artPixel\(/);
+    // a spill's toxic smog rides the same texture (green channel) and the same art-pixel billow
+    expect(buildSmogFragment()).toMatch(/float tox = texture\(u_poll, .*\)\.g;/);
   });
 });

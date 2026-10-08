@@ -452,6 +452,53 @@ const yard: Painter = (W, H, v) => {
   return p;
 };
 
+/** A ruin (Maddy 2026-10-08): a lost house, still recognisably a house — its own drawing turned dingy grey and
+ *  brown, the roof holed through to the dark inside, windows black, rubble at its feet, the yard gone to dirt. */
+const ruin: Painter = (W, H, v) => {
+  const p = house(W, H, v + 3);
+  const holes: [number, number, number, number][] = [];
+  for (let cy = 0; cy < H; cy += T) {
+    for (let cx = 0; cx < W; cx += T) {
+      // two or three chunks gone from each house: roof and a wall corner
+      const n = 2 + (hash2(cx, cy, 660 + v) % 2);
+      for (let k = 0; k < n; k++) {
+        const h = hash2(cx + k, cy, 661 + v);
+        holes.push([cx + 3 + (h % 8), cy + 2 + ((h >>> 4) % 7), 2 + ((h >>> 8) % 3), 2 + ((h >>> 11) % 2)]);
+      }
+    }
+  }
+  const inHole = (x: number, y: number): boolean => holes.some(([hx, hy, hw, hh]) => x >= hx && x < hx + hw && y >= hy && y < hy + hh);
+  const greys = [C.ink, C.asphaltLo, C.slateLo, C.paveLo, C.slate] as const; // dark → light
+  const browns = [C.ink, C.roofBrownLo, C.dirtLo, C.dirt, C.creamLo] as const;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      if (p.data[i + 3] === 0) continue;
+      const k = key([p.data[i]!, p.data[i + 1]!, p.data[i + 2]!] as RGB);
+      const h = hash2(x, y, 662 + v);
+      if (LOT.has(k) || k === key(C.grassHi) || k === key(C.grassLo) || k === key(C.flower) || k === key(C.leaf) || k === key(C.leafHi)) {
+        // the yard: dirt, weeds, scattered rubble
+        px(p, x, y, h % 9 === 0 ? C.paveLo : h % 4 === 0 ? C.grassLo : h % 3 === 0 ? C.dirtLo : C.dirt);
+        continue;
+      }
+      if (inHole(x, y)) {
+        px(p, x, y, h % 3 === 0 ? C.asphaltLo : C.ink); // open to the dark inside
+        continue;
+      }
+      if (GLASS.has(k)) {
+        px(p, x, y, C.ink); // every window gone
+        continue;
+      }
+      // everything else: the same shape, its colour leached to grey or brown by brightness
+      const lum = (p.data[i]! * 3 + p.data[i + 1]! * 6 + p.data[i + 2]!) / 10;
+      const band = lum < 60 ? 0 : lum < 100 ? 1 : lum < 150 ? 2 : lum < 200 ? 3 : 4;
+      const set = hash2(x >> 2, y >> 2, 663 + v) % 3 === 0 ? browns : greys;
+      px(p, x, y, set[band]!);
+    }
+  }
+  return p;
+};
+
 const bazaar: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 580 + v);
   const L = blank(W, H);
@@ -570,6 +617,7 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [57, [commune, 1]],
   [63, [tinyHomes, 1]],
   [64, [yard, 2]],
+  [65, [ruin, 3]],
   [58, [bazaar, 2]],
   [59, [makerSpace, 1]],
   [60, [healingCommons, 1]],
@@ -624,6 +672,8 @@ export function derelict(src: Pixels, seed: number): Pixels {
         else if (h % 17 === 0) px(p, x, y, C.grassMid); // weeds through the cracks
       } else if (WALLS.has(k) && h % 5 === 0) {
         px(p, x, y, WALLS.get(k)!); // grime
+      } else if (k === key(C.dirt) && h % 6 === 0) {
+        px(p, x, y, C.grassLo); // bare ground going to weeds (a ruin's yard keeps decaying too)
       }
     }
   }

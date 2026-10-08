@@ -29,8 +29,8 @@ const FULL = { cars: 30, peds: 60, flocks: 3 } as const;
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 const inView = (v: ViewRect, x: number, y: number): boolean => x >= v.x0 && x < v.x1 && y >= v.y0 && y < v.y1;
 
-/** What the camera hears: moving cars, walkers on the street and flocks in view. No rain yet — the live layer's
- *  storms aren't visible, and rain you can hear but not see would only confuse. */
+/** What the camera hears: moving cars, walkers on the street and flocks in view, and the rain while a storm lasts
+ *  (it is on screen too — app/weather.ts). */
 export function soundSnapshot(s: AmbientState, view: ViewRect, night: boolean): AmbienceSnapshot {
   let cars = 0;
   for (const c of s.cars) if (!c.parked && inView(view, c.x, c.y)) cars++;
@@ -38,7 +38,7 @@ export function soundSnapshot(s: AmbientState, view: ViewRect, night: boolean): 
   for (const p of s.peds) if (p.phase !== 'inside' && p.phase !== 'driving' && inView(view, p.x, p.y)) peds++;
   let flocks = 0;
   for (const f of s.birds) if (f.birds.some((b) => inView(view, b.x, b.y))) flocks++;
-  return { traffic01: clamp01(cars / FULL.cars), peds01: clamp01(peds / FULL.peds), birds01: clamp01(flocks / FULL.flocks), rain: false, night };
+  return { traffic01: clamp01(cars / FULL.cars), peds01: clamp01(peds / FULL.peds), birds01: clamp01(flocks / FULL.flocks), rain: s.rain !== undefined, night };
 }
 
 /** The music's mood from the hour: day, night — and calm (the Pali recitation) on a night in a city that has a

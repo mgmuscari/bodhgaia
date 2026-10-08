@@ -101,6 +101,8 @@ function practiceLine(e: Effect): string {
       return `Neighbours take people in: no home falls below ${pct(e.value as number)} of its residents (was ${pct(OCC_FLOOR)})`;
     case 'industryVisit':
       return `A day at worker-owned industry costs ${-(e.value as number)} wellbeing (was ${-visitValue(BuiltKind.Industrial)})`;
+    case 'spillRate':
+      return `Worker-owned works spill ${pct(1 - (e.value as number))} less often — the people who run them live downwind`;
     case 'homeDayDemand':
       return `Rooftop solar: homes draw ${pct(1 - (e.value as number))} less power ${ROOF_SOLAR_FROM}:00–${ROOF_SOLAR_TO}:00`;
     case 'renewableOutput':

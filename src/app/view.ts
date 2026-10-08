@@ -10,6 +10,7 @@
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { Camera } from '../ui/camera';
+import type { SkinImages } from '../ui/tilesetLoader';
 import { Renderer } from '../ui/renderer';
 import { GpuRenderer } from '../ui/gpuRenderer';
 import { SmogOverlay } from '../ui/smogOverlay';
@@ -32,6 +33,8 @@ export interface ViewDeps {
 export interface View {
   readonly camera: Camera;
   readonly renderer: Renderer;
+  /** The painted skin (the CCTV inset renders with the same art). */
+  readonly skin: SkinImages;
   /** The GPU map / smog overlay, or null on the CPU path (they are re-created on a renderer switch). */
   gpu(): GpuRenderer | null;
   smog(): SmogOverlay | null;
@@ -123,6 +126,7 @@ export function createView(deps: ViewDeps): View {
   return {
     camera,
     renderer,
+    skin,
     gpu: () => gpuRenderer,
     smog: () => smogOverlay,
     width: () => cssWidth,

@@ -466,3 +466,85 @@ export const ADU_HOUSE_HEADROOM = 2;
 /** Elevated Rail: homes within RAIL_NOISE_RADIUS (Chebyshev) of the line lose RAIL_NOISE of their occupancy pull. */
 export const RAIL_NOISE_RADIUS = 2;
 export const RAIL_NOISE = 0.05;
+
+// ── Death and memorial (docs/design/bodhgaia-opening.md §2) ─────────────────────────────────────────────
+/** Wear at/above which the heaviest-worn empty tile shows an encampment tent — where the unhoused shelter. */
+export const ENCAMPMENT_WEAR = 225;
+/** Substeps a resident who has died lies on the ground before the memorial takes their place (~3 s). */
+export const FALL_SUBSTEPS = 60;
+/** Substeps a street memorial (a candle and flowers) stays where someone died (~2 min). */
+export const MEMORIAL_SUBSTEPS = 2400;
+/** Exposure: the unhoused who die per in-game night hour, per person unhoused (600 unhoused ≈ 2 a night). */
+export const EXPOSURE_PER_PERSON_HOUR = 1 / 2400;
+/** Night, for exposure: from NIGHT_FROM to NIGHT_TO (exclusive). */
+export const NIGHT_FROM = 22;
+export const NIGHT_TO = 6;
+/** Nobody dies of exposure within this reach (Chebyshev) of shelter — a healing commons or a tiny-home village. */
+export const SHELTER_RADIUS = 6;
+/** Grief: homes within GRIEF_RADIUS (Chebyshev) of a death lose GRIEF_HEALTH of their wellbeing (building health). */
+export const GRIEF_RADIUS = 3;
+export const GRIEF_HEALTH = 20;
+/** Ruins: each one near a plot takes up to LV_RUIN off its land value (linear falloff over LV_RADIUS). */
+export const LV_RUIN = 12;
+
+// ── Fire trucks (docs/design/disasters.md) ──────────────────────────────────────────────────────────────────
+/** Tiles a truck moves per substep — faster than a car, lights on. */
+export const TRUCK_SPEED = 0.16;
+/** Substeps the crew takes to turn out before the truck leaves the station (~5 s): a fire burns a while first. */
+export const TURNOUT_SUBSTEPS = 100;
+/** Substeps a truck sprays before the fire is out (~3 s). */
+export const SPRAY_SUBSTEPS = 60;
+
+// ── Industrial spills (docs/design/disasters.md) ───────────────────────────────────────────────────────────
+/** Spill chance per industrial works per in-game hour at full condition on clean ground (no practices). Rare in
+ *  real play (a game day is ~2.6 min): measured 2026-10-08, lotus's one old redlined works spills about once in
+ *  half an hour of play; a city with more works, more often. See spillChance for the multipliers. */
+export const SPILL_BASE = 1 / 1200;
+/** Ground pollution laid on the works and SPILL_GROUND_RING tiles round it. */
+export const SPILL_GROUND = 200;
+export const SPILL_GROUND_RING = 2;
+/** Water pollution laid on every water tile within SPILL_WATER_RADIUS (Chebyshev) of the works; halved where a
+ *  wastewater works is within WATER_TREAT_RADIUS of that water. It then flows downstream like any runoff. */
+export const SPILL_WATER = 200;
+export const SPILL_WATER_RADIUS = 4;
+/** The toxic cloud: its radius (tiles), its drift along the wind per substep, its life (substeps, ~30 s). */
+export const CLOUD_RADIUS = 2.5;
+export const CLOUD_SPEED = 0.03;
+export const CLOUD_SUBSTEPS = 600;
+/** Smog the cloud lays on each tile under it, per substep (what people breathe), and its own TOXIC smog (what is
+ *  seen: the greenish-yellow haze the smog overlay draws), which drifts and spreads like smog and clears at
+ *  TOXIC_DECAY a substep. */
+export const CLOUD_SMOG = 3;
+export const CLOUD_TOXIC = 24;
+export const TOXIC_MAX = 255;
+export const TOXIC_DECAY = 0.5;
+/** Each person outdoors the cloud passes over dies with this chance (one roll each); at most CLOUD_DEATH_MAX. */
+export const CLOUD_DEATH_CHANCE = 0.08;
+export const CLOUD_DEATH_MAX = 3;
+
+// ── Traffic accidents (docs/design/disasters.md) ───────────────────────────────────────────────────────────
+/** A road is jammed enough to crash on above this share of TRAFFIC_MAX. */
+export const CRASH_JAM = 0.6;
+/** Crash chance per moving car per in-game hour on a fully jammed road (scales from 0 at CRASH_JAM). Measured
+ *  2026-10-08: the inherited lotus city (55 of 58 moving cars in jams) crashes about once in 5 minutes of play;
+ *  fewer cars, fewer jams, fewer crashes. */
+export const CRASH_BASE = 1 / 2400;
+/** Substeps a wreck blocks its lane before it's towed (~30 s). */
+export const CRASH_SUBSTEPS = 600;
+/** The share of crashes that kill someone — the driver, or a walker beside the road. */
+export const CRASH_DEATH = 0.25;
+
+// ── Violent crime (docs/design/disasters.md — conditions, not cops) ─────────────────────────────────────────
+/** What makes a street desperate, each 0..1 at full weight: encampments within 3 tiles, decayed buildings within 2,
+ *  the police-violence record under it. */
+export const DESPAIR_CAMPS = 1;
+export const DESPAIR_DECAY = 0.8;
+export const DESPAIR_POLICE = 1;
+/** Belonging takes up to this share off despair; within a refuge's reach it is multiplied by CRIME_REFUGE. */
+export const CRIME_BELONGING = 0.6;
+export const CRIME_REFUGE = 0.35;
+/** Chance per person out on the street per in-game hour, per unit of despair; ×CRIME_NIGHT after dark. Measured
+ *  2026-10-08: in the inherited lotus city (417 of 461 people out on the street stand in despair) about one life in
+ *  10 minutes of play; it falls as the city heals and belongs. */
+export const CRIME_BASE = 1 / 18000;
+export const CRIME_NIGHT = 2;

@@ -30,6 +30,8 @@ export interface SettingsPanelCallbacks {
   onRendererChange(renderer: RendererMode): void;
   /** A sound-level change to apply IMMEDIATELY (engine buses) and persist. */
   onAudioChange(audio: AudioSettings): void;
+  /** Disasters on/off (takes effect at once: nothing new starts). */
+  onDisastersChange(on: boolean): void;
   /** Fired on every open/close, so the dock's button can follow. */
   onToggle?(open: boolean): void;
 }
@@ -82,6 +84,7 @@ export function mountSettingsPanel(
     panel.appendChild(worldSection(s));
     panel.appendChild(rendererSection(s));
     panel.appendChild(audioSection(s));
+    panel.appendChild(disastersSection(s));
   };
 
   // — Audio (levels + mute, instant) —
@@ -139,6 +142,24 @@ export function mountSettingsPanel(
     note.className = 'settings-panel__note';
     note.textContent = 'Sound starts after your first click or key press (the browser asks for that).';
     sec.appendChild(note);
+    return sec;
+  };
+
+  // — Disasters on/off, instant —
+  const disastersSection = (s: Settings): HTMLElement => {
+    const sec = section('Disasters');
+    const r = row('Fires, spills, floods…');
+    const on = document.createElement('input');
+    on.type = 'checkbox';
+    on.checked = s.disasters;
+    on.style.border = 'none';
+    on.style.borderImage = 'none';
+    on.style.width = '1.1rem';
+    on.style.height = '1.1rem';
+    on.style.accentColor = 'var(--ui-accent)';
+    on.addEventListener('change', () => cb.onDisastersChange(on.checked));
+    r.appendChild(on);
+    sec.appendChild(r);
     return sec;
   };
 

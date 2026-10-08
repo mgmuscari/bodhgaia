@@ -11,6 +11,8 @@ import { panelVisibility, type PanelHandle } from './panelHandle';
 export interface HelpPanelDeps {
   /** Fired on every open/close, so the dock's button can follow. */
   onToggle?(open: boolean): void;
+  /** Forget which lessons have been seen, so they play again. Omitted ⇒ no button. */
+  onReplayLessons?(): void;
 }
 
 /** Mount the persistent hint + the (hidden) controls panel into `container`. */
@@ -45,6 +47,19 @@ export function mountHelpPanel(container: HTMLElement, deps: HelpPanelDeps = {})
   body.className = 'help-panel__body';
   body.textContent = controlsLines().join('\n');
   scroll.appendChild(body);
+
+  if (deps.onReplayLessons) {
+    const replay = document.createElement('button');
+    replay.className = 'help-panel__replay';
+    replay.textContent = 'Replay lessons';
+    replay.title = 'The lessons play again as each practice takes root';
+    replay.addEventListener('click', () => {
+      deps.onReplayLessons!();
+      replay.textContent = 'Lessons will play again';
+      replay.disabled = true;
+    });
+    scroll.appendChild(replay);
+  }
 
   const credits = document.createElement('div');
   credits.className = 'help-panel__credits';

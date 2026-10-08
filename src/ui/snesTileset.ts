@@ -382,6 +382,15 @@ function murkTiles(out: Map<string, Pixels>): void {
   }
 }
 
+/** Flood water (disasters.md): the river's own tile in its murky recolour, two variants the renderer alternates for
+ *  the wave — drawn over flooded ground, roads and greens, never over a building (it stands in the water). */
+function floodTiles(out: Map<string, Pixels>): void {
+  for (let v = 0; v < 2; v++) {
+    const tile = out.get(v === 0 ? 'river-0~m2' : 'river-0#1~m2');
+    if (tile) out.set(`@sprite/flood/${v}`, tile);
+  }
+}
+
 /** A clumpy value-noise field over one tile (0..255 per pixel): hashed lattice values every 4 px,
  *  bilinearly blended, wrapping at the tile edge so a patch never ends in a hard tile seam. */
 function clumpField(seed: number): number[] {
@@ -647,6 +656,7 @@ export function paintSnesSkin(): PaintedSkin {
   const eager = new Map<string, Pixels>();
   terrainTiles(eager);
   murkTiles(eager);
+  floodTiles(eager);
   transportTiles(eager);
   edgeTiles(eager);
   encampmentTiles(eager);

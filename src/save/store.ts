@@ -11,6 +11,7 @@
 import { parseSave, type SaveV1 } from './snapshot';
 import { saveSupport, unavailableLine } from './support';
 
+// The game was Bodhitropolis until 2026-10-07; the database keeps that name so saved cities survive the rename.
 const DB_NAME = 'bodhitropolis';
 const STORE = 'saves';
 /** The slot the running game autosaves into and boot resumes from. */

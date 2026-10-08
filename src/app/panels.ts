@@ -73,6 +73,8 @@ export function trendReader<S>(sample: () => S, lines: (cur: S, prev: S | null) 
 
 export interface PanelsDeps {
   container: HTMLElement;
+  /** Help → Replay lessons. */
+  onReplayLessons?(): void;
   economy: Pick<EconomyController, 'budgetView' | 'setTax' | 'setPolice' | 'borrow' | 'beginPractice' | 'projectProgress' | 'run'>;
   tech: TechState;
   /** The image for an art key (a game tile or `@ui/` icon). */
@@ -147,7 +149,7 @@ export function mountPanels(deps: PanelsDeps): MountedPanels {
   const settings = mountSettingsPanel(container, { ...deps.settings, onToggle });
 
   // Help: the full keybinding reference and the credits ('?'/'h').
-  const help = mountHelpPanel(container, { onToggle });
+  const help = mountHelpPanel(container, { onToggle, onReplayLessons: deps.onReplayLessons });
 
   return { budget, tech: techPanel, restore, settings, help };
 }

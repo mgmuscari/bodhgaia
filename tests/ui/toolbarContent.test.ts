@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  refusalText,
   toolbarRows,
   refreshSignature,
   addedIds,
@@ -124,5 +125,18 @@ describe('toolbarToolClass', () => {
     expect(toolbarToolClass(row('bulldoze', true, false))).toBe(
       'toolbar-tool toolbar-tool-selected toolbar-tool-unaffordable',
     );
+  });
+});
+
+describe('refusalText: why a click did nothing (Maddy 2026-10-07: the ADU refusal was silent)', () => {
+  it('says what was wrong in words', () => {
+    expect(refusalText('needs-yard')).toMatch(/back yard/);
+    expect(refusalText('occupied')).toMatch(/already/);
+    expect(refusalText('funds')).toMatch(/money/);
+    expect(refusalText('effort')).toMatch(/effort/);
+    expect(refusalText('not-an-interior-lane')).toMatch(/median/i);
+  });
+  it('is silent for a stroke across empty ground', () => {
+    expect(refusalText('nothing-to-bulldoze')).toBeNull();
   });
 });

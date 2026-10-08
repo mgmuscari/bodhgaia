@@ -127,6 +127,8 @@ export interface Mover {
    *  ambush (target AHEAD of the citizen's heading, Pinky), 2 = shy (only pounce when close, else
    *  patrol, Clyde). Assigned at spawn; read by huntTarget. */
   personality?: number;
+  /** A wrecked car (live/accidents.ts): substeps until it's towed; it doesn't move meanwhile. */
+  wreck?: number;
 }
 
 export type Car = Mover;
@@ -176,6 +178,41 @@ export interface ParkingLotInfo {
 }
 
 /** The full ambient sprite state — renderer-side only, never part of the world. */
+/** A fire truck: where it is, the road route it follows, and what it's doing. */
+/** A fire truck: a mover on a committed road route (the shared vehicle mover — lanes, turns, interpolation), out
+ *  to a fire, spraying it, or driving home. */
+export interface Truck extends Mover {
+  /** Where it is in the call. */
+  call: 'to-fire' | 'spraying' | 'home';
+  /** The burning parcel (store index) it was sent to. */
+  target: number;
+  /** Substeps left spraying. */
+  spray: number;
+  /** The road tile by its station, to drive home to. */
+  home: { x: number; y: number };
+  /** Substeps left before it leaves the station (the crew turning out). */
+  turnout?: number;
+}
+
+/** A toxic cloud from an industrial spill: its centre (tiles), age (substeps), the people it has already passed
+ *  over (each rolls once) and how many it has killed. */
+export interface ToxicCloud {
+  x: number;
+  y: number;
+  age: number;
+  touched: WeakSet<object>;
+  deaths: number;
+}
+
+/** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
+export interface LiveEvent {
+  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /** The tech practices' coefficients the live layer reads. The host fills it from the tech tree's resolved
  *  effects (tech/effects.ts) — structurally, so the live layer never imports tech. */
 export interface LivePractices {
@@ -191,6 +228,8 @@ export interface LivePractices {
   occFloor: number;
   /** The wellbeing a citizen brings home from a day at industry (Collective Ownership). */
   industryVisit: number;
+  /** Multiplier on how often a works spills (Collective Ownership: the workers who live downwind run it). */
+  spillRate: number;
 }
 
 /** No practices: the coefficients the live layer runs on before any tech. */
@@ -201,6 +240,7 @@ export const NEUTRAL_PRACTICES: Readonly<LivePractices> = Object.freeze({
   droneShopDrop: 0,
   occFloor: OCC_FLOOR,
   industryVisit: visitValue(BuiltKind.Industrial),
+  spillRate: 1,
 });
 
 export interface AmbientState {
@@ -297,6 +337,43 @@ export interface AmbientState {
   welcome?: Map<number, number>;
   /** Homes built since the opening that are still filling for the first time (they open empty). */
   freshHomes?: Set<number>;
+  /** The in-game hour (0..23), set by the host each step; absent ⇒ no clock (tests, the golden run). */
+  hour?: number;
+  /** The last hour exposure was drawn for (deaths are drawn once per in-game hour). */
+  exposureHour?: number;
+  /** Residents who have just died, lying where they fell (t = substeps since). */
+  fallen?: { x: number; y: number; t: number }[];
+  /** Street memorials — a candle and flowers — where someone died (age in substeps). */
+  memorials?: { x: number; y: number; age: number }[];
+  /** The opening's night walker (bodhgaia-opening.md): one unhoused resident the camera follows until they die.
+   *  Position in tiles; `path` is the current foot route (tile indices), `i` the next waypoint. */
+  wanderer?: { x: number; y: number; path: number[]; i: number; age: number; life: number; seed: number };
+  /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
+  trucks?: Truck[];
+  /** A storm, while one lasts (app/weather.ts): rain on screen and in the ears; a heavy one floods the low land. */
+  rain?: { heavy: boolean };
+  /** Tiles under flood water now (app/flood.ts): drawn as water, and routes go round them. */
+  flooded?: ReadonlySet<number>;
+  /** Toxic clouds drifting downwind from a spill (live/spills.ts). */
+  clouds?: ToxicCloud[];
+  /** The toxic smog the clouds lay: drifts and spreads like smog, drawn greenish-yellow by the smog overlay.
+   *  Absent until the first spill. */
+  toxic?: Map<number, number>;
+  /** The in-game hour spills were last drawn for. */
+  spillHour?: number;
+  /** The in-game hour crashes were last drawn for (live/accidents.ts). */
+  crashHour?: number;
+  /** The in-game hour violent crime was last drawn for (live/crime.ts). */
+  crimeHour?: number;
+  /** Fires the trucks have put out (parcel store indices) — the host hands them to the fire step and clears it. */
+  quenched?: Set<number>;
+  /** Footprints burning now (published by the host from the fire step) — the renderer draws the flames. */
+  burning?: { x: number; y: number; w: number; h: number }[];
+  /** Residents who have died so far (the news reads its change). */
+  deaths?: number;
+  /** The live event feed — deaths, arrests (disasters later) — for the host's CCTV inset, news and costs.
+   *  Collected only once the host creates it (absent ⇒ nothing recorded); the host drains it. */
+  events?: LiveEvent[];
   /** Live ROAD DECAY (0..ROAD_DECAY_MAX), keyed by road tile: how crumbled the pavement is.
    *  Redlined roads crumble (the city won't maintain the disinvested districts); roads recover
    *  where the neighborhood is cared-for (high land value). Drags land value, never hashed. */

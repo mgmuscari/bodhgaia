@@ -149,7 +149,22 @@ export const ECON = {
   creditDays: 3,
   loanRateBest: 0.002,
   loanRateSpread: 0.008,
+  /** A death (Maddy 2026-10-07: enough to notice): approval and goodwill points, and communal effort, per death. */
+  deathApproval: 1,
+  deathGoodwill: 2,
+  deathEffort: 15,
 } as const;
+
+/** The city mourns `deaths` residents: approval, goodwill and effort fall at once. Pure. */
+export function mourn(s: EconomyState, deaths: number): EconomyState {
+  if (deaths <= 0) return s;
+  return {
+    ...s,
+    approval: clamp(s.approval - ECON.deathApproval * deaths, 0, 100),
+    goodwill: clamp(s.goodwill - ECON.deathGoodwill * deaths, 0, 100),
+    effort: Math.max(0, s.effort - ECON.deathEffort * deaths),
+  };
+}
 
 export function createEconomy(funds = 2000): EconomyState {
   return { funds, loans: [], effort: 0, burnout: 0, goodwill: ECON.goodwillNeutral, approval: 50, rent: 0.3, displaced: 0, shock: 0, reliefTaken: false, tick: 0 };

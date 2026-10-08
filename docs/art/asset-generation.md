@@ -1,17 +1,17 @@
-# Bodhitropolis — Artwork Generation Requirements
+# Bodhgaia — Artwork Generation Requirements
 
 Requirements for generating game graphics via the ComfyUI pixel-art pipeline.
 
 ## 0. Non-negotiable framing
 
-**Bodhitropolis is the product. the old simulator is reference/inspiration ONLY.**
+**Bodhgaia is the product. the old simulator is reference/inspiration ONLY.**
 
 The repo carries several the old simulator implementations and the `legacy-graphics/`
 asset tree. These exist so we understand the *shape* of the problem — the tile
 vocabulary, the simulation behavior, the visual grammar of a city-builder. They are
 **never shipped**. No the old simulator pixel ends up in the game.
 
-Every asset this pipeline produces is **original art for Bodhitropolis**, expressing
+Every asset this pipeline produces is **original art for Bodhgaia**, expressing
 *its* themes and *its* `BuiltKind` vocabulary — not a re-skin of the classic city-builder. The game
 carries deliberate weight (anti-Moses / environmental-justice framing; "decay" not
 "blight"; the player **repairs / restores / rewilds**, never "redevelops"). The art

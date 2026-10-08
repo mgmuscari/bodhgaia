@@ -1,6 +1,6 @@
 // Seeded pseudo-random number generator.
 //
-// Determinism is load-bearing for Bodhitropolis: "same seed -> same world"
+// Determinism is load-bearing for Bodhgaia: "same seed -> same world"
 // must hold across JS engines and browsers (DF-style worldgen reproducibility,
 // the future historical sim). This module therefore uses only integer bit ops
 // and `Math.imul` (a spec-defined exact 32-bit multiply) — no transcendental

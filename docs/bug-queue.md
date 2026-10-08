@@ -17,7 +17,15 @@ The dated sections below this one are the **archive** (✅ done + diagnoses kept
 `playtest-log.md` stays only as the raw newest-first capture stream. Newest decisions at the bottom
 of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
+### 0 — Active direction (2026-10-08)
+- **Disasters** (`docs/design/disasters.md`): ✅ fire, ✅ spills, ✅ weather + floods, ✅ traffic accidents, ✅ violent crime (conditions, not cops). Next: merge `bodhgaia` → main when Maddy says.
+- **Then community events** (`docs/design/community-events.md`): craft fairs, block parties, festivals, parades,
+  protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
+
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Safari scrambles canvas readback** (Maddy 2026-10-08) — ✅ the UI frames (dark bars) now encode PNGs
+  directly (`ui/pngEncode.ts`). The night glow and headlight rims still read back (`glowBatch.ts`, `renderer.ts`
+  litSilhouette) but Maddy checked: they look right in Safari — left as they are.
 - ✅ **Intersection at (97, 37) looks bad** (Maddy 2026-09-30) — an avenue crossing a 3-wide freeway at
   grade: freeway lanes/ramp dashes were painted through the crossing and ramp decks read as block corners
   (stray kerb hooks). Fixed: `freewayCrossing` junction box + ramp-aware `innerCornerMask`.

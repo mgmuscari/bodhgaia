@@ -5,9 +5,11 @@
 // only draws.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
+import { BuiltKind, isBuildingKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
+import { C } from './snesPalette';
+import { DIR_DX, DIR_DY } from '../live/geometry';
 import {
   builtRenderKey,
   footprintCellKey,
@@ -24,13 +26,15 @@ import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { ambientAlpha, trainPoses } from '../live/poses';
+import { ambientAlpha, movingPose, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
-import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
+import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
-import { CAR_LENGTH, CAR_WIDTH } from '../live/geometry';
+import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
+import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
+import { gameSec } from './gameTime';
 import type { AmbientState } from '../live/types';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
@@ -71,6 +75,25 @@ function dirVector8(d: number): [number, number] {
   return ([[0, -1], [D, -D], [1, 0], [D, D], [0, 1], [-D, D], [-1, 0], [-D, -D]] as const)[d & 7] as [number, number];
 }
 
+/** The palette's foam, for the flood's waterline. */
+const FOAM_CSS = `rgb(${C.foam[0]}, ${C.foam[1]}, ${C.foam[2]})`;
+
+/** The centre of the burning footprint nearest (x, y) — where a spraying truck aims. */
+function nearestBurning(burning: readonly { x: number; y: number; w: number; h: number }[], x: number, y: number): { x: number; y: number } | null {
+  let goal: { x: number; y: number } | null = null;
+  let best = Infinity;
+  for (const b of burning) {
+    const gx = b.x + b.w / 2;
+    const gy = b.y + b.h / 2;
+    const d = (gx - x) ** 2 + (gy - y) ** 2;
+    if (d < best) {
+      best = d;
+      goal = { x: gx, y: gy };
+    }
+  }
+  return goal;
+}
+
 /** Water pollution smoothed over a tile's 3×3 WATER neighbourhood, so murk shades across a bay or a pond
  *  instead of sitting as a hard square on the one tile the runoff landed on. */
 function murkAt(map: GameMap, poll: ReadonlyMap<number, number>, x: number, y: number): number {
@@ -93,7 +116,6 @@ function washLevel(v: number): number {
   return v >= 170 ? 3 : v >= 90 ? 2 : v > 0 ? 1 : 0;
 }
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
-const ENCAMPMENT_WEAR = 225; // wear at/above which the heaviest-worn empty tile shows an encampment tent
 
 /** What a tile's desire-path wear bakes into the base: beaten earth in three depths, then junk, then tents. */
 function wearMarks(wear: number): { level: number; nJunk: number; nTents: number } {
@@ -232,6 +254,7 @@ export class Renderer {
   private readonly baseCtx: CanvasRenderingContext2D;
   private baseDirty = true;
   private dpr = 1;
+  private hole: { x: number; y: number; w: number; h: number } | null = null;
   private cssWidth = 0;
   private cssHeight = 0;
   private preview: readonly PreviewTile[] | null = null;
@@ -933,6 +956,17 @@ export class Renderer {
     }
     this.composite(world, camera, ambient); // ambient → drawBase bakes wear/junk/tents under the agents
     this.drawSprites(world, camera, ambient);
+    if (this.hole) {
+      // the CCTV inset is drawn by the GPU in this corner of the map: keep this view's sprites out of it
+      const h = this.hole;
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.clearRect(Math.floor(h.x * this.dpr), Math.floor(h.y * this.dpr), Math.ceil(h.w * this.dpr), Math.ceil(h.h * this.dpr));
+    }
+  }
+
+  /** A rect (CSS px, this canvas's space) to leave clear of this view — the GPU CCTV inset; null for none. */
+  setHole(rect: { x: number; y: number; w: number; h: number } | null): void {
+    this.hole = rect;
   }
 
   /** Draw the ambient sprites (cars / pedestrians / bird flocks) + the live building-health
@@ -991,7 +1025,7 @@ export class Renderer {
     // (moverPose); a parked one sits on its stall, a kerb-parked one parallel to the kerb.
     // Every vehicle and person on screen is also a BODY headlights can stop at (headlights.ts); the
     // sprite each one drew is kept so a body a beam hits can be lit.
-    const nightT = performance.now() / 1000;
+    const nightT = gameSec();
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
     const bodies: Body[] = [];
     const bodyArt: { img: AtlasImage; x: number; y: number }[] = [];
@@ -1002,13 +1036,64 @@ export class Renderer {
       bodyArt.push({ img, x, y });
       bodyMul.push(mul);
     };
+    // Flood water (disasters.md): the river's murky tile over every flooded tile that isn't a building — ground,
+    // roads, yards and greens go under; buildings stand in it. On the tile grid, under the vehicles and people,
+    // two variants alternating for the wave.
+    if (ambient.flooded?.size) {
+      const wave = Math.floor(performance.now() / 700) & 1;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = 0.85;
+      const fl = ambient.flooded;
+      const m = world.map;
+      // trees and buildings stand in the water: it shows round them, not over them
+      const standsIn = (t: number): boolean => isBuildingKind(m.built[t]!) || (m.built[t] === BuiltKind.None && m.landCover[t] === LandCover.Forest);
+      const ap = ts / BASE_TILE; // one art pixel
+      for (const t of fl) {
+        if (standsIn(t)) continue;
+        const fx = t % mapW;
+        const fy = (t - fx) / mapW;
+        const { dx, dy } = camera.tileOrigin(fx, fy);
+        if (!onScreen(dx + ts / 2, dy + ts / 2)) continue;
+        const img = this.sprites.get(`@sprite/flood/${((fx + fy) & 1) ^ wave}`);
+        if (img) ctx.drawImage(img, dx, dy, ts, ts);
+        // the waterline: a broken foam edge, one art pixel, where the water meets dry ground
+        ctx.fillStyle = FOAM_CSS;
+        for (let d = 0; d < 4; d++) {
+          const nx = fx + DIR_DX[d]!;
+          const ny = fy + DIR_DY[d]!;
+          if (!m.inBounds(nx, ny)) continue;
+          const n = m.idx(nx, ny);
+          if (fl.has(n) || m.water[n] !== 0) continue;
+          for (let k = 0; k < BASE_TILE; k++) {
+            if (((t * 31 + d * 7 + k * 13 + wave * 5) & 7) < 3) continue; // broken, shifting with the wave
+            const ex = d === 1 ? dx + ts - ap : d === 3 ? dx : dx + k * ap;
+            const ey = d === 2 ? dy + ts - ap : d === 0 ? dy : dy + k * ap;
+            ctx.fillRect(ex, ey, ap, ap);
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    // A wreck (live/accidents.ts) sits spun a frame round, glass on the road beside it, hazards flashing.
+    const hazardOn = Math.floor(performance.now() / 400) % 2 === 0;
     for (const { m: c, pose } of poses.cars) {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
-      const img = this.sprites.get(`@sprite/car/${tint}/${heading8(pose.hx, pose.hy)}`);
+      const frame = (heading8(pose.hx, pose.hy) + (c.wreck !== undefined ? 1 : 0)) % 8;
+      const img = this.sprites.get(`@sprite/car/${tint}/${frame}`);
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
-      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, c.parked ? 0 : night, img);
+      if (c.wreck !== undefined) {
+        const debris = this.sprites.get('@sprite/debris');
+        if (debris) this.drawArt(ctx, debris, pose.x + pose.hx * 0.35, pose.y + pose.hy * 0.35 + 0.15, camera);
+        if (hazardOn) {
+          const lights = this.sprites.get(`@sprite/car-light/${frame}`);
+          if (lights) this.drawArt(ctx, lights, pose.x, pose.y, camera);
+        }
+      }
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, c.parked || c.wreck !== undefined ? 0 : night, img);
     }
     // (Smog is drawn LAST — the top layer, above cars/peds — see end of drawSprites.)
 
@@ -1040,6 +1125,29 @@ export class Renderer {
       addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
     }
 
+    // Fire trucks (disasters.md): movers like any vehicle — posed in their lane, interpolated, in the 8-way frame
+    // nearest their heading — red with a light bar flashing red/white in step with the cruisers', their lamps a
+    // body headlights can stop at. Spraying, a jet of droplets arcs from the truck onto the fire.
+    const trucks = (ambient.trucks ?? []).map((m) => ({ m, pose: movingPose(m, LANE, alpha) }));
+    for (const { m: tr, pose } of trucks) {
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/firetruck/${heading8(pose.hx, pose.hy)}/${copPhase}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
+      if (tr.call !== 'spraying') continue;
+      const goal = nearestBurning(ambient.burning ?? [], pose.x, pose.y);
+      const drop = this.sprites.get('@sprite/drop');
+      if (!goal || !drop) continue;
+      const flow = (performance.now() / 600) % 1;
+      for (let k = 0; k < 10; k++) {
+        const u = (k / 10 + flow) % 1; // droplets stream along the jet
+        const wx = pose.x + (goal.x - pose.x) * u;
+        const wy = pose.y + (goal.y - pose.y) * u - 0.9 * 4 * u * (1 - u); // a parabola, peaking a tile up
+        this.drawArt(ctx, drop, wx, wy, camera);
+      }
+    }
+
     // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
     // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
     for (const tr of ambient.trains) {
@@ -1066,6 +1174,41 @@ export class Renderer {
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
     }
+    // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
+    // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
+    const psx = camera.tileSize / BASE_TILE;
+    for (const f of ambient.fallen ?? []) {
+      const { sx, sy } = camera.worldToScreen(f.x + 0.5, f.y + 0.5);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(personKey('ped', (f.x * 131 + f.y) >>> 0, 0));
+      if (!img) continue;
+      const w = (img as HTMLCanvasElement).width * psx;
+      const h = (img as HTMLCanvasElement).height * psx;
+      ctx.save();
+      ctx.globalAlpha = 1 - Math.max(0, f.t / FALL_SUBSTEPS - 0.6) / 0.4; // fades over the last stretch
+      ctx.translate(sx, sy + h * 0.2);
+      ctx.rotate(Math.PI / 2); // lying down
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+    const flicker = Math.floor(performance.now() / 180);
+    for (const m of ambient.memorials ?? []) {
+      const o = camera.tileOrigin(m.x, m.y);
+      if (!onScreen(o.dx + psx * 8, o.dy + psx * 8)) continue;
+      const px = (x: number, y: number, c: string): void => {
+        ctx.fillStyle = c;
+        ctx.fillRect(o.dx + x * psx, o.dy + y * psx, psx, psx);
+      };
+      // flowers laid at the foot of a candle
+      for (const [x, y, c] of [[5, 11, '#f8d858'], [6, 12, '#e86048'], [10, 11, '#f8f8e8'], [11, 12, '#c060c0'], [8, 13, '#e86048']] as const) {
+        px(x, y, c);
+        px(x, y + 1, '#407838');
+      }
+      for (let y = 8; y <= 11; y++) px(8, y, '#f0e0b8'); // the candle
+      px(8, 7, (flicker + m.x + m.y) % 3 === 0 ? '#f8f8c0' : '#f8c040'); // its flame
+      px(8, 6, '#f89830');
+    }
+
     // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).
     const cast = castHeadlights(world.map, bodies);
     this.beams = cast.beams.map((b) => ({ ...b, mul: bodyMul[b.source]! }));
@@ -1104,7 +1247,52 @@ export class Renderer {
         const img = this.sprites.get(`@sprite/smog/${size}/${tile & 1}`);
         if (img) this.drawArt(ctx, img, wx, wy, camera);
       }
+      // a spill's toxic smog: the same streaming puffs, greenish-yellow and denser
+      for (const [tile, amt] of ambient.toxic ?? []) {
+        if (amt < 16) continue;
+        const px = tile % mapW;
+        const py = (tile - px) / mapW;
+        const phase = (drift * 0.35 + (tile % 13) * 0.11) % 1;
+        const wx = px + 0.5 + ambient.wind.dx * phase * 3.0;
+        const wy = py + 0.5 + ambient.wind.dy * phase * 3.0;
+        const { sx, sy } = camera.worldToScreen(wx, wy);
+        if (!onScreen(sx, sy)) continue;
+        const size = Math.min(SMOG_SIZES - 1, Math.floor(phase * SMOG_SIZES + amt / 120));
+        const env = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+        ctx.globalAlpha = Math.min(0.8, (amt / 255) * 1.1) * env;
+        const img = this.sprites.get(`@sprite/toxic/${size}/${tile & 1}`);
+        if (img) this.drawArt(ctx, img, wx, wy, camera);
+      }
       ctx.globalAlpha = 1;
+    }
+
+    // Rain (app/weather.ts): while a storm lasts the sky greys a little and streaks fall across the view — sprites
+    // on the art grid, each drop on its own phase, leaning with the wind; a heavy storm's are longer and thicker.
+    // Drawn before the lighting pass, so night dims the rain with everything else.
+    if (ambient.rain) {
+      const heavy = ambient.rain.heavy;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = heavy ? 'rgba(40, 52, 72, 0.24)' : 'rgba(40, 52, 72, 0.14)';
+      ctx.fillRect(0, 0, this.base.width, this.base.height);
+      ctx.restore();
+      const img = this.sprites.get(`@sprite/rain/${heavy ? 1 : 0}`);
+      if (img) {
+        const t = performance.now() / 1000;
+        const count = Math.round(((w * h) / (ts * ts)) * (heavy ? 2.2 : 0.9));
+        const fall = h * (heavy ? 1.6 : 1.2); // screens per second
+        ctx.globalAlpha = heavy ? 0.75 : 0.6;
+        for (let i = 0; i < count; i++) {
+          const a = Math.imul(i + 1, 0x9e3779b1) >>> 0;
+          const b = Math.imul(a ^ (a >>> 15), 0x85ebca6b) >>> 0;
+          const y = ((b % 1000) / 1000) * (h + ts) + t * fall;
+          const sy = (y % (h + ts)) - ts;
+          const sx = ((a % 1000) / 1000) * w + ambient.wind.dx * (sy / h) * ts;
+          const at = camera.screenToWorld(sx, sy);
+          this.drawArt(ctx, img, at.wx, at.wy, camera);
+        }
+        ctx.globalAlpha = 1;
+      }
     }
 
     // GPU mode: light the sprite layer to MATCH the ground — the same day/night dim + night cool the shader
@@ -1112,7 +1300,7 @@ export class Renderer {
     // Uniform across the view: the ground's only spatial light is building contact shadow, which sprites
     // standing in the street don't take.
     if (this.gpuMode) {
-      const dark = 1 - dayNightBrightness(performance.now() / 1000);
+      const dark = 1 - dayNightBrightness(gameSec());
       if (dark > 0.004) {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1120,6 +1308,53 @@ export class Renderer {
         ctx.fillStyle = `rgba(6, 9, 22, ${dark.toFixed(3)})`; // cool dark
         ctx.fillRect(0, 0, this.base.width, this.base.height);
         ctx.restore();
+      }
+    }
+
+    // CPU mode (the fallback, and the CCTV inset) has no lighting shader: darken the whole frame with the same
+    // day/night curve so the night reads as night there too (headlights are drawn after, so they still shine).
+    if (!this.gpuMode) {
+      const dark = 1 - dayNightBrightness(gameSec());
+      if (dark > 0.004) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = `rgba(6, 9, 22, ${(dark * 1.1).toFixed(3)})`;
+        ctx.fillRect(0, 0, this.base.width, this.base.height);
+        ctx.restore();
+      }
+    }
+
+    // The opening's night walker — drawn AFTER the night pass (like the headlights) so the dark doesn't swallow
+    // one small figure: a pool of lamplight follows them, and they walk in it (a two-step walk).
+    if (ambient.wanderer) {
+      const w = ambient.wanderer;
+      const c = camera.worldToScreen(w.x + 0.5, w.y + 0.5);
+      const r = camera.tileSize * 2;
+      const glow = ctx.createRadialGradient(c.sx, c.sy, 0, c.sx, c.sy, r);
+      glow.addColorStop(0, 'rgba(255, 214, 140, 0.42)');
+      glow.addColorStop(0.5, 'rgba(255, 214, 140, 0.16)');
+      glow.addColorStop(1, 'rgba(255, 214, 140, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(c.sx - r, c.sy - r, 2 * r, 2 * r);
+      const img = this.sprites.get(personKey('ped', w.seed >>> 0, Math.floor(performance.now() / 260) % 2));
+      if (img) this.drawArt(ctx, img, w.x + 0.5, w.y + 0.5, camera);
+    }
+
+    // Flames (disasters.md): pixel flame frames on every tile of a burning building, drawn AFTER the lighting pass
+    // like the other light sources — fire isn't dimmed by night (the GPU glow casts its light on the ground). Each
+    // tile flickers on its own phase. Its smoke is smog: the fire lays it into the field the overlay draws.
+    if (ambient.burning?.length) {
+      const tick = Math.floor(performance.now() / 110);
+      for (const b of ambient.burning) {
+        for (let dy = 0; dy < b.h; dy++) {
+          for (let dx = 0; dx < b.w; dx++) {
+            const { sx, sy } = camera.worldToScreen(b.x + dx + 0.5, b.y + dy + 0.5);
+            if (!onScreen(sx, sy)) continue;
+            const f = (tick + (((b.x + dx) * 7 + (b.y + dy) * 13) & 3)) % FIRE_FRAMES;
+            const img = this.sprites.get(`@sprite/fire/${f}`);
+            if (img) this.drawArt(ctx, img, b.x + dx + 0.5, b.y + dy + 0.4, camera);
+          }
+        }
       }
     }
 
@@ -1145,7 +1380,11 @@ export class Renderer {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = night;
       for (const { m: c, pose } of poses.cars) {
-        if (c.parked) continue; // a parked car is OFF
+        if (c.parked || c.wreck !== undefined) continue; // a parked car is OFF; a wreck's hazards flash (above)
+        const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
+        if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      }
+      for (const { pose } of trucks) {
         const img = this.sprites.get(`@sprite/car-light/${heading8(pose.hx, pose.hy)}`);
         if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       }

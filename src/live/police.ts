@@ -240,6 +240,13 @@ export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: 
     const release = state.practices.arrestRelease;
     if (release > 0 && rng.chance(release)) continue;
     const taken = state.peds[victim]!;
+    {
+      const tx = Math.round(taken.x);
+      const ty = Math.round(taken.y);
+      const x0 = Math.min(cx, tx);
+      const y0 = Math.min(cy, ty);
+      state.events?.push({ kind: 'arrest', x: x0, y: y0, w: Math.max(cx, tx) - x0 + 1, h: Math.max(cy, ty) - y0 + 1 });
+    }
     if (taken.homeTile !== undefined) {
       const cur = state.occupancy.get(taken.homeTile);
       if (cur !== undefined) state.occupancy.set(taken.homeTile, Math.max(0, cur - ARREST_DRAIN));

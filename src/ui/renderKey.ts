@@ -82,6 +82,7 @@ const BUILDING_RENDER_KINDS: readonly number[] = [
   BuiltKind.Commune,
   BuiltKind.TinyHomes,
   BuiltKind.Yard,
+  BuiltKind.Ruin,
   BuiltKind.Bazaar,
   BuiltKind.MakerSpace,
   BuiltKind.HealingCommons,

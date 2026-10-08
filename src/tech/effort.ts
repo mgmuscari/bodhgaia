@@ -59,7 +59,8 @@ export function wellbeing(world: EffortWorld): number {
   let alive = 0;
   let sumCondition = 0;
   for (const i of parcels.aliveIndices()) {
-    if (parcels.kindAt(i) === BuiltKind.Yard) continue;
+    const k = parcels.kindAt(i);
+    if (k === BuiltKind.Yard || k === BuiltKind.Ruin) continue; // open ground and empty shells: no one lives there
     alive++;
     sumCondition += parcels.conditionAt(i);
   }

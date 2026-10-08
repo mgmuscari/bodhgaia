@@ -4,7 +4,7 @@
 // label/selected/affordable derivation here, not in the shell, lets it be
 // unit-tested rather than left to manual QA (the techContent precedent).
 
-import type { ToolDef, ToolId } from '../tools/tools';
+import type { ToolDef, ToolId, ToolReason } from '../tools/tools';
 
 /** One dock entry: a tool, its `Name · cost` label, and its selected/afford state. */
 export interface ToolbarRow {
@@ -69,4 +69,29 @@ export function toolbarToolClass(row: ToolbarRow): string {
   if (row.selected) cls += ' toolbar-tool-selected';
   if (!row.affordable) cls += ' toolbar-tool-unaffordable';
   return cls;
+}
+
+/** Why a tool click did nothing, in words for the status line — or null when there's nothing to say (a bulldoze
+ *  stroke crossing empty ground). */
+export function refusalText(reason: ToolReason | undefined): string | null {
+  switch (reason) {
+    case 'nothing-to-bulldoze':
+      return null;
+    case 'needs-yard':
+      return 'An accessory dwelling goes in a house’s back yard.';
+    case 'occupied':
+      return 'Something is already there.';
+    case 'funds':
+      return 'Not enough money.';
+    case 'effort':
+      return 'Not enough communal effort.';
+    case 'not-an-interior-lane':
+      return 'A median goes on an inner lane of a wide road.';
+    case 'invalid-target':
+      return 'That can’t be converted here.';
+    case 'out-of-bounds':
+      return 'That’s off the map.';
+    default:
+      return 'That can’t be done here.';
+  }
 }
