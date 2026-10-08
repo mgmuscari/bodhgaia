@@ -45,7 +45,7 @@ function town() {
 }
 
 describe('the flood controller', () => {
-  it('evacuates a home under water, and brings its people home when the water goes', () => {
+  it('evacuates a home under water, and brings its people home when the water goes', async () => {
     const t = town();
     t.hourPasses(true);
     t.hourPasses(true);
@@ -56,6 +56,8 @@ describe('the flood controller', () => {
     expect(t.news.some((n) => n.startsWith('Flooding'))).toBe(true);
     for (let h = 0; h < 30; h++) t.hourPasses(false);
     expect(t.live.flooded!.size).toBe(0);
+    const { closedTiles } = await import('../../src/live/network');
+    expect(closedTiles(t.map)).toBeUndefined(); // the roads open again
     expect(t.live.occupancy.get(t.map.idx(3, 4))).toBe(10);
     expect(t.live.unhoused).toBe(5);
   });
@@ -80,5 +82,27 @@ describe('an evacuated home stays empty while it is under water', () => {
     for (let k = 0; k < 20; k++) stepOccupancy(t.live, t.map);
     expect(t.live.occupancy.get(t.map.idx(3, 4))).toBe(0);
     expect(t.live.unhoused).toBe(before);
+  });
+});
+
+describe('roads under water are closed', () => {
+  it('routes go round a closed tile, and use it again once it opens', async () => {
+    const { roadPath } = await import('../../src/live/pathing');
+    const { closeTiles } = await import('../../src/live/network');
+    const { placeTransport } = await import('../../src/engine/fabric');
+    const map = new GameMap(24, 12);
+    for (let x = 1; x <= 20; x++) {
+      placeTransport(map, x, 5, BuiltKind.RoadStreet);
+      placeTransport(map, x, 8, BuiltKind.RoadStreet);
+    }
+    for (const x of [1, 20]) for (let y = 6; y <= 7; y++) placeTransport(map, x, y, BuiltKind.RoadStreet);
+    const through = (p: number[] | null) => p !== null && p.includes(map.idx(10, 5));
+    expect(through(roadPath(map, 3, 5, 18, 5))).toBe(true);
+    closeTiles(map, new Set([map.idx(10, 5)]));
+    const detour = roadPath(map, 3, 5, 18, 5);
+    expect(detour).not.toBeNull();
+    expect(through(detour)).toBe(false);
+    closeTiles(map, null);
+    expect(through(roadPath(map, 3, 5, 18, 5))).toBe(true);
   });
 });
