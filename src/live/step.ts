@@ -40,6 +40,7 @@ import { stepGatherings } from './gatherings';
 import { spawnTrains, stepTrain } from './trains';
 import { advanceFlock, flockTile, spawnFlocks } from './birds';
 import { stepOccupancy } from './fields/occupancy';
+import { settleCamps } from './camps';
 import { computeCoverage, recomputeLandValue, stepRoadDecay } from './fields/landValue';
 import {
   accumulateGroundPollution,
@@ -199,7 +200,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   //    healthy) or empty (decayed/smoggy). Runs AFTER land value so it reads the fresh field. The
   //    spawn target + home weighting follow this — closing the agent-emergent population loop.
   state.occTick += 1;
-  if (state.occTick % OCC_CADENCE === 0) stepOccupancy(state, map);
+  if (state.occTick % OCC_CADENCE === 0) {
+    stepOccupancy(state, map);
+    settleCamps(state, map); // the unhoused go to the camps (and the re-housed leave them)
+  }
 
   // 9. Road decay: on a slow infrastructure clock, redlined roads crumble while cared-for
   //    neighborhoods' roads recover. Runs after land value so it reads the fresh field.

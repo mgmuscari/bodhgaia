@@ -341,6 +341,11 @@ export interface AmbientState {
   /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
    *  people back from it; it never moves without a cause. */
   unhoused: number;
+  /** Where the unhoused live (live/camps.ts): encampment tile → people. Sums to `unhoused` once settled. */
+  camps?: Map<number, number>;
+  /** People put out of homes since the last settle (home tile → people), and people re-housed (home tile → people). */
+  campIn?: Map<number, number>;
+  campOut?: Map<number, number>;
   /** Per home tile: how organised its neighbourhood is, 0..1 (civic voice ÷ 255), set by the host after
    *  each civic tick — the welcome that re-homes people there. Absent ⇒ no welcome anywhere. */
   welcome?: Map<number, number>;

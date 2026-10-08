@@ -19,7 +19,6 @@ import {
   DESPAIR_CAMPS,
   DESPAIR_DECAY,
   DESPAIR_POLICE,
-  ENCAMPMENT_WEAR,
   POLICE_VIOLENCE_MAX,
   REFUGE_KINDS,
   SAFE_RADIUS,
@@ -33,7 +32,7 @@ export function despairAt(state: AmbientState, world: World, x: number, y: numbe
   let camps = 0;
   for (let dy = -3; dy <= 3; dy++) {
     for (let dx = -3; dx <= 3; dx++) {
-      if (map.inBounds(x + dx, y + dy) && (state.wear.get(map.idx(x + dx, y + dy)) ?? 0) >= ENCAMPMENT_WEAR) camps++;
+      if (map.inBounds(x + dx, y + dy) && (state.camps?.get(map.idx(x + dx, y + dy)) ?? 0) >= 1) camps++;
     }
   }
   const seen = new Set<number>();

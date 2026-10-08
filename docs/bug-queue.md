@@ -23,7 +23,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
-- **Walkers warp across tiles** (Maddy 2026-10-08, her (106, 37)) — measured on a 96² lotus: 803 jumps > 0.2 tile in a
+- ✅ **Walkers warp across tiles** (Maddy 2026-10-08, her (106, 37)) — measured on a 96² lotus: 803 jumps > 0.2 tile in a
   50 ms step before the avenue-kerb change, 1,699 after (worst 0.9). Cause: the drawn pose is heading-relative
   (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. ✅ map-fixed sidewalks; and
   the real "warp" (Maddy: gliding extremely fast) — the vehicles' arc pacing at the kerb's radius sped walkers round
@@ -75,7 +75,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - 🟡 **Commons builds don't take time yet** (economy wiring, 2026-09-30) — practices run as projects over
   days, but placing a garden/parklet still spends its effort at once. Needs a construction-site state on the
   map (placed, then raised over hours by effort drawn as a project) to honour "projects take time" fully.
-- 🟡 **Displacement is counted, not yet enacted** — rent-driven displacement adds to the unhoused count, but
+- ✅ **Displacement is counted, not yet enacted** (stale: rent displacement empties real homes since rehoming.md; 2026-10-08 the displaced go to real encampments — `live/camps.ts`) — rent-driven displacement adds to the unhoused count, but
   doesn't yet empty specific homes (occupancy). Next: evict from the most rent-burdened unprotected homes.
 - ✅ **Freeway end cap draws oddly** — a wide road's stub past a junction is now an end cap: plain asphalt,
   hazard chevrons, a striped barrier across the dead end (decoration.endCapMask).
@@ -160,8 +160,8 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   smog→ground, then ground→adjacent-water/downhill, diluted per hop → harm relocates toward the low
   redlined banks, doesn't vanish). Live, non-hashed, deterministic; unit-tested. Cadence/dilution +
   a rain visual are tunable follow-ups. `docs/design/pollution-weather.md`.
-- 🟡 **Unhoused agents — shelter + days** — COUNT (shipped) + VISIBLE ENCAMPMENTS now shipped (`aab8b2d2`:
-  tents on heavily demand-pathed empty tiles + discarded junk on worn ground). REMAINING: per-event
+- 🟡 **Unhoused agents — shelter + days** — COUNT (shipped) + ENCAMPMENTS (2026-10-08: the unhoused live in
+  camps, `live/camps.ts`; tents are the people in them, not desire-path wear). REMAINING: per-event
   displacement, shelter-anchored daily rounds, dedicated shelter kinds. `docs/design/unhoused-residents.md`.
 
 ### 5 — Hybrid satellite shader (ACTIVE — Maddy 2026-06-20: CPU water anim still hits perf, move animations to GPU)

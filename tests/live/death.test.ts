@@ -8,7 +8,7 @@ import { createRng } from '../../src/engine/rng';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
 import { residentDies, stepDeaths, stepExposure, exposureDeathsPerHour, griefAround } from '../../src/live/death';
 import { stepArrests } from '../../src/live/police';
-import { FALL_SUBSTEPS, MEMORIAL_SUBSTEPS, SHELTER_RADIUS, ENCAMPMENT_WEAR, GRIEF_RADIUS, GRIEF_HEALTH } from '../../src/live/tuning';
+import { FALL_SUBSTEPS, MEMORIAL_SUBSTEPS, SHELTER_RADIUS, GRIEF_RADIUS, GRIEF_HEALTH } from '../../src/live/tuning';
 
 describe('a death', () => {
   it('lies down, then leaves a memorial that stays a while, then is gone', () => {
@@ -28,7 +28,8 @@ describe('exposure', () => {
   const camp = (shelter = false) => {
     const map = new GameMap(30, 30);
     const state = createAmbientState();
-    for (let x = 5; x < 10; x++) state.wear.set(map.idx(x, 5), ENCAMPMENT_WEAR + 10);
+    state.camps = new Map(); // the encampment: 600 people in five camps (live/camps.ts)
+    for (let x = 5; x < 10; x++) state.camps.set(map.idx(x, 5), 120);
     if (shelter) map.built[map.idx(7, 5 + SHELTER_RADIUS)] = BuiltKind.TinyHomes;
     state.unhoused = 600;
     return { map, state };
@@ -61,7 +62,7 @@ describe('exposure', () => {
     const died = state.deaths!;
     expect(died).toBeGreaterThan(0);
     expect(state.unhoused).toBe(600 - died);
-    for (const f of state.fallen!) expect(state.wear.get(map.idx(f.x, f.y))!).toBeGreaterThanOrEqual(ENCAMPMENT_WEAR);
+    for (const f of state.fallen!) expect(state.camps!.has(map.idx(f.x, f.y))).toBe(true);
   });
 
   it('a step within the same hour draws nothing more (deaths are per in-game hour, not per frame)', () => {

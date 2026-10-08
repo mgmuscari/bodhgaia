@@ -3,7 +3,6 @@ import { GameMap } from '../../src/engine/map';
 import { BuiltKind, ParcelStore, placeParcel } from '../../src/engine/fabric';
 import { createAmbientState } from '../../src/live/types';
 import { worstSpots, TUTORIAL, type TutorialStep } from '../../src/ui/tutorialContent';
-import { ENCAMPMENT_WEAR } from '../../src/live/tuning';
 
 function city() {
   const map = new GameMap(60, 60);
@@ -11,7 +10,8 @@ function city() {
   const live = createAmbientState();
   for (let x = 10; x < 14; x++) live.pollution.set(map.idx(x, 10), 200); // smog
   live.policeViolence.set(map.idx(40, 12), 180); // police violence
-  for (let x = 20; x < 24; x++) live.wear.set(map.idx(x, 40), ENCAMPMENT_WEAR + 20); // an encampment
+  live.camps = new Map(); // an encampment (live/camps.ts)
+  for (let x = 20; x < 24; x++) live.camps.set(map.idx(x, 40), 10);
   for (let x = 45; x < 49; x++) placeParcel(map, parcels, { x, y: 45, width: 1, height: 1, kind: BuiltKind.HouseSingle, condition: 20 }); // decay
   placeParcel(map, parcels, { x: 5, y: 50, width: 1, height: 1, kind: BuiltKind.HouseSingle, condition: 250 });
   live.waterPollution.set(map.idx(55, 5), 220); // poisoned water

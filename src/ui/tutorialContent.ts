@@ -5,7 +5,6 @@
 import type { GameMap } from '../engine/map';
 import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import type { AmbientState } from '../live/types';
-import { ENCAMPMENT_WEAR } from '../live/tuning';
 
 export type SpotKind = 'smog' | 'police' | 'unhoused' | 'decay' | 'water';
 
@@ -62,7 +61,7 @@ function hotspot(map: GameMap, field: ReadonlyMap<number, number>, r = 2): { x: 
 /** The city's worst places, in the order the tutorial visits them; a harm the city doesn't have is skipped. */
 export function worstSpots(map: GameMap, parcels: ParcelStore, live: AmbientState): WorstSpot[] {
   const camps = new Map<number, number>();
-  for (const [t, w] of live.wear) if (w >= ENCAMPMENT_WEAR) camps.set(t, w);
+  for (const [t, n] of live.camps ?? new Map<number, number>()) if (n >= 1) camps.set(t, n);
   const decay = new Map<number, number>();
   for (const i of parcels.aliveIndices()) {
     const p = parcels.get(i);

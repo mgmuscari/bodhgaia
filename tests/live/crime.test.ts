@@ -7,7 +7,7 @@ import { BuiltKind, ParcelStore, placeParcel, placeTransport } from '../../src/e
 import { createRng } from '../../src/engine/rng';
 import { createAmbientState } from '../../src/live/types';
 import { despairAt, drawCrime } from '../../src/live/crime';
-import { ENCAMPMENT_WEAR, POLICE_VIOLENCE_MAX } from '../../src/live/tuning';
+import { POLICE_VIOLENCE_MAX } from '../../src/live/tuning';
 
 function street() {
   const map = new GameMap(30, 12);
@@ -26,7 +26,7 @@ describe('despair', () => {
 
   it('rises with encampments, decay and police violence', () => {
     const camps = street();
-    for (let x = 9; x <= 11; x++) camps.state.wear.set(camps.map.idx(x, 7), ENCAMPMENT_WEAR);
+    for (let x = 9; x <= 11; x++) (camps.state.camps ??= new Map()).set(camps.map.idx(x, 7), 4);
     const decay = street();
     for (let x = 8; x <= 12; x++) placeParcel(decay.map, decay.parcels, { x, y: 5, width: 1, height: 1, kind: BuiltKind.HouseSingle, condition: 10 });
     const police = street();
@@ -36,7 +36,7 @@ describe('despair', () => {
 
   it('belonging and a refuge lower it; cruisers on the street do not', () => {
     const s = street();
-    for (let x = 9; x <= 11; x++) s.state.wear.set(s.map.idx(x, 7), ENCAMPMENT_WEAR);
+    for (let x = 9; x <= 11; x++) (s.state.camps ??= new Map()).set(s.map.idx(x, 7), 4);
     const base = despairAt(s.state, s.world, 10, 6, 0);
     expect(despairAt(s.state, s.world, 10, 6, 1)).toBeLessThan(base);
     s.state.cruisers.push({ x: 10, y: 6, dir: 1, tx: 11, ty: 6 });
@@ -50,7 +50,7 @@ describe('a life lost to violence', () => {
   it('drawn once an hour, at most one, only someone out on the street, mourned like any death', () => {
     const s = street();
     for (let x = 0; x < 30; x++) {
-      s.state.wear.set(s.map.idx(x, 7), ENCAMPMENT_WEAR);
+      (s.state.camps ??= new Map()).set(s.map.idx(x, 7), 4);
       s.state.policeViolence.set(s.map.idx(x, 6), POLICE_VIOLENCE_MAX);
     }
     const home = s.map.idx(2, 2);
@@ -77,7 +77,7 @@ describe('a life lost to violence', () => {
       let n = 0;
       for (let k = 0; k < 6; k++) {
         const s = street();
-        for (let x = 0; x < 30; x++) s.state.wear.set(s.map.idx(x, 7), ENCAMPMENT_WEAR);
+        for (let x = 0; x < 30; x++) (s.state.camps ??= new Map()).set(s.map.idx(x, 7), 4);
         for (let q = 0; q < 30; q++) s.state.peds.push({ x: q, y: 6, dir: 1, tx: q, ty: 6 });
         const rng = createRng(`n${k}`).fork('n');
         for (let h = 0; h < 24 * 30; h++) if (drawCrime(s.state, s.world, rng, h % 24, night, () => 0)) n++;
