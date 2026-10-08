@@ -31,9 +31,9 @@ import { AGENT_TINTS, SMOG_SIZES, heading8, personKey } from './snesAgents';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH } from '../live/geometry';
-import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
+import { CLOUD_RADIUS, CLOUD_SUBSTEPS, ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
 import { gameSec } from './gameTime';
-import type { AmbientState, Truck } from '../live/types';
+import type { AmbientState, ToxicCloud, Truck } from '../live/types';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 
@@ -319,6 +319,28 @@ export class Renderer {
 
   /** Draw a native pixel-art sprite centred on world point (wx, wy), at exactly one art pixel per tile
    *  pixel, its top-left snapped to the same art-pixel grid the tiles are drawn on (no half-pixel smear). */
+  /** Toxic clouds (disasters.md): a churning green-grey mass of overlapping puffs, thinning as it ages. */
+  private drawClouds(ctx: CanvasRenderingContext2D, camera: Camera, clouds: readonly ToxicCloud[]): void {
+    if (clouds.length === 0) return;
+    const ts = camera.tileSize;
+    const t = performance.now() / 1000;
+    for (const c of clouds) {
+      const life = 1 - c.age / CLOUD_SUBSTEPS;
+      const { sx, sy } = camera.worldToScreen(c.x, c.y);
+      for (let k = 0; k < 9; k++) {
+        const a = (k / 9) * Math.PI * 2 + t * 0.25;
+        const d = k === 0 ? 0 : CLOUD_RADIUS * 0.55 * ts;
+        const r = ts * (0.9 + 0.25 * Math.sin(t * 1.3 + k * 1.7)) * (k === 0 ? 1.3 : 1);
+        ctx.globalAlpha = 0.5 * Math.min(1, life * 3);
+        ctx.fillStyle = k % 3 === 0 ? '#a9b23c' : k % 3 === 1 ? '#c6c85c' : '#7c8a2a';
+        ctx.beginPath();
+        ctx.arc(sx + Math.cos(a) * d, sy + Math.sin(a) * d * 0.8, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
   private drawFire(
     ctx: CanvasRenderingContext2D,
     camera: Camera,
@@ -1155,6 +1177,7 @@ export class Renderer {
     // Fire (disasters.md): flickering tongues of flame on every tile of a burning building, smoke rising off it;
     // fire trucks — red, a flashing light bar — and, while one sprays, an arc of water onto the fire.
     this.drawFire(ctx, camera, ambient.burning ?? [], ambient.trucks ?? [], onScreen);
+    this.drawClouds(ctx, camera, ambient.clouds ?? []);
 
     // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
     // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.

@@ -495,8 +495,9 @@ export const SPRAY_SUBSTEPS = 60;
 
 // ── Industrial spills (docs/design/disasters.md) ───────────────────────────────────────────────────────────
 /** Spill chance per industrial works per in-game hour at full condition on clean ground (no practices). Rare in
- *  real play (a game day is ~2.6 min); see spillChance for the multipliers. */
-export const SPILL_BASE = 1 / 9000;
+ *  real play (a game day is ~2.6 min): measured 2026-10-08, lotus's one old redlined works spills about once in
+ *  half an hour of play; a city with more works, more often. See spillChance for the multipliers. */
+export const SPILL_BASE = 1 / 1200;
 /** Ground pollution laid on the works and SPILL_GROUND_RING tiles round it. */
 export const SPILL_GROUND = 200;
 export const SPILL_GROUND_RING = 2;
