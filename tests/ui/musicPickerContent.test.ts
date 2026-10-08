@@ -8,7 +8,7 @@ describe('the music picker', () => {
   const rows = pickerRows(MUSIC_TRACKS, 'st-louis-blues');
 
   it('lists every ensemble piece, by title and composer, marking the one playing', () => {
-    expect(rows).toHaveLength(MUSIC_TRACKS.filter((t) => !t.sacred).length);
+    expect(rows).toHaveLength(MUSIC_TRACKS.length);
     const st = rows.find((r) => r.id === 'st-louis-blues')!;
     expect(st.label).toBe('St. Louis Blues — W. C. Handy');
     expect(st.playing).toBe(true);
@@ -20,7 +20,7 @@ describe('the music picker', () => {
     expect(rows.find((r) => r.id === 'satie-gymnopedie-1')!.when).toBe('day · night · calm');
   });
 
-  it('does not offer the recitations (Maddy 2026-10-08)', () => {
+  it('offers no recitations (Maddy 2026-10-08: they were removed)', () => {
     expect(rows.some((r) => r.id.startsWith('pali-'))).toBe(false);
   });
 

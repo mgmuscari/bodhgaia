@@ -13,7 +13,6 @@ import {
   openingCreditLine,
 } from '../src/ui/creditsContent';
 import { LICENCES, MUSIC_TRACKS } from '../src/audio/music/tracks';
-import { CHANT_TEXTS } from '../src/audio/music/chant';
 
 /** The upstream §7 block, unwrapped from its C comment, one string per paragraph. */
 function upstreamSection7(): string[] {
@@ -112,19 +111,8 @@ describe('credits content', () => {
     expect(body).toContain('MIDI typeset by Glen Larsen for the Mutopia Project (Creative Commons Attribution-ShareAlike 4.0); arranged for Bodhgaia by Madeleine Muscari; Creative Commons Attribution-ShareAlike 4.0.');
   });
 
-  it('credits the Pali chant as a transcription of traditional recitation, with the text and its meaning', () => {
-    const block = creditsBlocks().find((b) => /pali/i.test(b.heading));
-    expect(block).toBeDefined();
-    const body = block!.paragraphs.join('\n');
-    expect(body).toMatch(/transcription/i);
-    expect(body).toMatch(/not a recording/i);
-    for (const text of CHANT_TEXTS) {
-      expect(body).toContain(text.title);
-      for (const v of text.verses) {
-        for (const line of v.pali) expect(body).toContain(line);
-        expect(body).toContain(v.meaning);
-      }
-    }
+  it('credits no Pali recitation — they were removed (Maddy 2026-10-08)', () => {
+    expect(creditsBlocks().some((b) => /pali/i.test(b.heading))).toBe(false);
   });
 });
 

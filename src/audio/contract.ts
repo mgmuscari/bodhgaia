@@ -1,6 +1,6 @@
 // The audio CONTRACT (Maddy 2026-10-07: "we need audio … SNES style"). One interface the three halves build
 // against: the engine (src/audio/engine*.ts — a small SNES-flavoured synth over WebAudio), the music player
-// (src/audio/music/* — Standard MIDI Files and chant through the engine) and the sound design (src/audio/sfx*.ts,
+// (src/audio/music/* — Standard MIDI Files through the engine) and the sound design (src/audio/sfx*.ts,
 // src/audio/ambience*.ts — UI/build cues and the living city's soundscape). Like the art, every instrument is
 // generated in code: short looped waveforms with the SNES's 32 kHz crunch, ADSR envelopes, a gentle low-pass and
 // the S-DSP's signature echo. PURE (types and data only).
@@ -25,7 +25,6 @@ export const INSTRUMENTS = [
   'bass',
   'pluck',
   'pad',
-  'chant', // a soft vowel voice for recitation (Pali chant) — never used for alerts
   // percussive / sound design
   'click',
   'thud',

@@ -117,13 +117,13 @@ describe('createMusicPlayer', () => {
     { id: 'a', moods: ['day'] },
     { id: 'b', moods: ['day', 'night'] },
     { id: 'c', moods: ['night'] },
-    { id: 'chant', moods: ['calm'], voices: { 0: 'chant', 1: 'pad' } },
+    { id: 'quiet', moods: ['calm'] },
   ];
   const pieces: Record<string, MidiPiece> = {
     a: piece([note(0, 60), note(0.5, 62), note(1, 64, { program: 40 })]),
     b: piece([note(0, 50)]),
     c: piece([note(0, 70)]),
-    chant: piece([note(0, 57, { channel: 0 }), note(0, 45, { channel: 1, duration: 4 })]),
+    quiet: piece([note(0, 57, { channel: 0 }), note(0, 45, { channel: 1, duration: 4 })]),
   };
 
   it('schedules ahead on the engine clock, through the music bus, with mapped instruments', async () => {
@@ -162,19 +162,9 @@ describe('createMusicPlayer', () => {
     expect(seen).toEqual([60, 62, 64]);
   });
 
-  it('applies per-track channel voicing (the chant voice over a pad drone)', async () => {
-    const { env, timer, player } = setup(tracks, pieces);
-    await player.play('chant');
-    run(env, timer, 0.5);
-    expect(env.played.map((n) => [n.pitch, n.instrument]).sort()).toEqual([
-      [45, 'pad'],
-      [57, 'chant'],
-    ]);
-  });
-
   it('stop() releases sounding voices and stops the loop', async () => {
     const { env, timer, player } = setup(tracks, pieces);
-    await player.play('chant');
+    await player.play('quiet');
     run(env, timer, 1);
     player.stop();
     expect(player.current).toBeNull();
@@ -206,16 +196,16 @@ describe('createMusicPlayer', () => {
     expect(player.mood).toBe('calm');
     expect(player.current).toBe('a'); // the piece finishes
     await player.next();
-    expect(player.current).toBe('chant'); // the only calm track
+    expect(player.current).toBe('quiet'); // the only calm track
     run(env, timer, 0.5);
-    expect(env.played.some((n) => n.instrument === 'chant')).toBe(true);
+    expect(env.played.some((n) => n.pitch === 57)).toBe(true);
   });
 
   it('next() from silence starts a track of the current mood', async () => {
     const { player } = setup(tracks, pieces);
     player.setMood('calm');
     await player.next();
-    expect(player.current).toBe('chant');
+    expect(player.current).toBe('quiet');
   });
 
   it('waits for the engine to unlock before the piece starts (nothing is lost)', async () => {

@@ -27,12 +27,12 @@ describe('the ambience hears what the camera sees', () => {
 });
 
 describe('the music follows the day', () => {
-  it('day by day, night by night, and calm (the chants) on a night when the city has a healing commons', () => {
+  it('day by day, night by night, and calm on a night when the city has a healing commons', () => {
     expect(moodFor(12, false)).toBe('day');
     expect(moodFor(22, false)).toBe('night');
     expect(moodFor(3, false)).toBe('night');
     expect(moodFor(22, true)).toBe('calm');
-    expect(moodFor(12, true)).toBe('day'); // the chants are for the quiet hours
+    expect(moodFor(12, true)).toBe('day'); // calm is for the quiet hours
   });
 });
 

@@ -16,13 +16,12 @@ describe('music manifest', () => {
     expect(sourced.length).toBeLessThanOrEqual(12);
   });
 
-  it("ships Madeleine Muscari's arrangements for the game — GPL with the game, city music (not sacred)", () => {
+  it("ships Madeleine Muscari's arrangements for the game — GPL with the game, city music", () => {
     expect(arranged.map((t) => t.id).sort()).toEqual(['after-youve-gone', 'kyabdro-night', 'motherless-night', 'namo-bossa', 'om-mani-town', 'st-louis-blues']);
     for (const t of arranged) {
       expect(t.credit.typesetter).toBe('Madeleine Muscari');
       expect(t.credit.licence).toBe('gpl-3.0-or-later');
       expect(t.credit.source).toBe('https://github.com/mgmuscari/bodhgaia');
-      expect(t.sacred).toBeFalsy();
       expect(t.moods.some((m) => m === 'day' || m === 'night')).toBe(true);
     }
   });
@@ -47,9 +46,6 @@ describe('music manifest', () => {
         expect(t.credit.source).toMatch(/^https:\/\/www\.mutopiaproject\.org\/cgibin\/piece-info\.cgi\?id=\d+$/);
         expect(t.credit.download).toMatch(/^https:\/\/www\.mutopiaproject\.org\/ftp\/.+\.mid$/);
         expect(t.credit.typesetter.length).toBeGreaterThan(0);
-      } else {
-        // authored here (the chant transcriptions): part of the game, under its own licence
-        expect(t.credit.licence).toBe('gpl-3.0-or-later');
       }
     }
   });
@@ -84,23 +80,13 @@ describe('music manifest', () => {
     for (const f of readdirSync('public/music')) expect(credited.has(f), f).toBe(true);
   });
 
-  it('every mood has music; the sacred recitations are tagged calm ONLY', () => {
+  it('every mood has music', () => {
     for (const mood of ['day', 'night', 'calm'] as const)
       expect(MUSIC_TRACKS.some((t) => t.moods.includes(mood)), mood).toBe(true);
-    for (const t of MUSIC_TRACKS.filter((x) => x.sacred)) expect(t.moods).toEqual(['calm']);
   });
 
-  it('ships the Pali recitations as sacred, calm-only transcriptions voiced by the chant instrument', () => {
-    const sacred = MUSIC_TRACKS.filter((t) => t.sacred);
-    expect(sacred.map((t) => t.id).sort()).toEqual(['pali-metta-sutta', 'pali-tisarana']);
-    for (const t of sacred) {
-      expect(t.file).toBeUndefined();
-      expect(t.voices?.[0]).toBe('chant');
-      const piece = t.piece!();
-      expect(piece.notes.length).toBeGreaterThan(50);
-    }
-    // the chant voice is reserved for recitation
-    for (const t of MUSIC_TRACKS.filter((x) => !x.sacred))
-      expect(Object.values(t.voices ?? {})).not.toContain('chant');
+  it('the Pali recitations are gone (Maddy 2026-10-08): every piece is a MIDI score', () => {
+    expect(MUSIC_TRACKS.some((t) => t.id.startsWith('pali-'))).toBe(false);
+    for (const t of MUSIC_TRACKS) expect(t.file, t.id).toMatch(/\.mid$/);
   });
 });
