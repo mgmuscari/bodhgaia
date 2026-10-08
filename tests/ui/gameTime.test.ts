@@ -18,3 +18,17 @@ describe('game time', () => {
     expect(gameClock(gameSec(50_000)).hour).toBe(22);
   });
 });
+
+describe('the clock only ever moves forward', () => {
+  afterEach(() => resetGameTime());
+  it('setGameHour goes to the NEXT start of that hour — never back in the day (the economy counts hours)', () => {
+    setGameHour(23, 0);
+    const late = gameClock(gameSec(0));
+    expect(late.hour).toBe(23);
+    setGameHour(6, 10_000); // dawn after a night (10 s ≈ 1½ game hours later): forward, not back to the first morning
+    const dawn = gameClock(gameSec(10_000));
+    expect(dawn.hour).toBe(6);
+    expect(dawn.slot).toBeGreaterThan(late.slot);
+    expect(dawn.slot - late.slot).toBe(7);
+  });
+});
