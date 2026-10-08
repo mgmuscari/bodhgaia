@@ -467,3 +467,6 @@ export const FRESH_FOOD_RADIUS = 6;
 export const FRESH_FOOD_PULL = 0.05;
 /** Accessory dwellings: a house beside one (8-neighbour) can fill to this × its first residents (was 1.5). */
 export const ADU_HOUSE_HEADROOM = 2;
+/** Elevated Rail: a plot within STATION_RADIUS (Manhattan) of the line gains LV_STATION land value, once. */
+export const STATION_RADIUS = 2;
+export const LV_STATION = 30;
