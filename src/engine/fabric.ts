@@ -485,6 +485,7 @@ export function canPlaceTransport(map: GameMap, x: number, y: number, kind: numb
   if (existing === 0) return true; // empty land: any transport kind (incl. 5..9)
   if (isRoadKind(kind) && isRoadKind(existing)) return true; // road/road junction
   if (kind === BuiltKind.Rail && existing === BuiltKind.Rail) return true; // rail/rail
+  if (kind === BuiltKind.Rail && crossesRail(existing)) return true; // track laid across a way: a level crossing
   return false; // building tile, road<->rail crossing, or a transit kind onto anything
 }
 
@@ -499,7 +500,8 @@ export function placeTransport(map: GameMap, x: number, y: number, kind: number)
   if (!canPlaceTransport(map, x, y, kind)) return false;
   const i = map.idx(x, y);
   const existing = map.built[i]!;
-  map.built[i] = existing === 0 ? kind : Math.max(existing, kind);
+  // track across a way takes the tile (the crossing); the way carries on either side of it
+  map.built[i] = existing === 0 || (kind === BuiltKind.Rail && crossesRail(existing)) ? kind : Math.max(existing, kind);
   return true;
 }
 
@@ -743,8 +745,19 @@ export function demolishTransportAt(map: GameMap, x: number, y: number): boolean
   if (!map.inBounds(x, y)) return false;
   const i = map.idx(x, y);
   if (!isTransportKind(map.built[i]!)) return false;
-  map.built[i] = 0;
+  // a level crossing torn up gives the way it crossed back (Maddy 2026-10-08)
+  map.built[i] = map.built[i] === BuiltKind.Rail ? crossedWay(map, x, y) : 0;
   return true;
+}
+
+/** The way a rail tile at (x, y) crosses — the same crossing kind on both sides of it, along one axis — or 0. */
+function crossedWay(map: GameMap, x: number, y: number): number {
+  const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : 0);
+  for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+    const a = at(dx, dy);
+    if (crossesRail(a) && at(-dx, -dy) === a) return a;
+  }
+  return 0;
 }
 
 // --- Connectivity queries ------------------------------------------------

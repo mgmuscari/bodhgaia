@@ -397,7 +397,7 @@ describe('canPlaceTransport / placeTransport', () => {
     expect(b.getBuilt(4, 4)).toBe(BuiltKind.RoadAvenue); // same result, order-independent
   });
 
-  it('allows rail-on-rail but rejects road<->rail crossings', () => {
+  it('allows rail-on-rail and rail across a road, but no road onto rail', () => {
     const map = new GameMap(8, 8);
     placeTransport(map, 2, 2, BuiltKind.Rail);
     expect(placeTransport(map, 2, 2, BuiltKind.Rail)).toBe(true);
@@ -408,11 +408,11 @@ describe('canPlaceTransport / placeTransport', () => {
     expect(placeTransport(map, 2, 2, BuiltKind.RoadStreet)).toBe(false);
     expect(map.getBuilt(2, 2)).toBe(BuiltKind.Rail); // unchanged
 
-    // rail onto road rejected
+    // rail onto a road: track laid across it, a level crossing (Maddy 2026-10-08)
     placeTransport(map, 5, 5, BuiltKind.RoadAvenue);
-    expect(canPlaceTransport(map, 5, 5, BuiltKind.Rail)).toBe(false);
-    expect(placeTransport(map, 5, 5, BuiltKind.Rail)).toBe(false);
-    expect(map.getBuilt(5, 5)).toBe(BuiltKind.RoadAvenue);
+    expect(canPlaceTransport(map, 5, 5, BuiltKind.Rail)).toBe(true);
+    expect(placeTransport(map, 5, 5, BuiltKind.Rail)).toBe(true);
+    expect(map.getBuilt(5, 5)).toBe(BuiltKind.Rail);
   });
 
   it('rejects non-transport kinds', () => {
