@@ -16,7 +16,7 @@ import { availableTools, previewTool, applyTool, toolDef, type ToolDef, type Too
 import { isLineTool } from '../ui/lineTools';
 import { isRepairTool } from '../ui/repairTools';
 import { toolbarRows, refreshSignature, addedIds } from '../ui/toolbarContent';
-import { buildToolMenu, type ToolCategory } from '../ui/toolMenuContent';
+import { buildToolMenu, categoryOf, type ToolCategory } from '../ui/toolMenuContent';
 import { branchColumns, panelSignature } from '../ui/techContent';
 import type { ToolbarDeps, ToolbarHandle } from '../ui/toolbar';
 import type { MetaButton } from '../ui/dockContent';
@@ -101,7 +101,10 @@ export function createToolController(deps: ToolsDeps): ToolController {
     onSelect: (id) => select(id as ToolId),
     onToggleCategory: (id) => {
       openCategory = openCategory === id ? null : id;
-      toolbar.refresh();
+      // opening another category puts the selected tool down (Maddy 2026-10-08); its own category keeps it
+      const def = selectedDef();
+      if (openCategory !== null && def && categoryOf(def) !== openCategory) select(null);
+      else toolbar.refresh();
     },
     getMetaButtons: () => deps.meta.buttons(),
     onMeta: (id) => {
