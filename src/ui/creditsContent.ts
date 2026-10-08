@@ -78,9 +78,22 @@ export function creditsBlocks(): CreditsBlock[] {
     },
     { heading: 'Micropolis', paragraphs: [EA_NOTICE] },
     { heading: 'Additional terms per GNU GPL Section 7', paragraphs: [...GPL7_TERMS] },
+    openingCredits(),
     musicCredits(),
     chantCredits(),
   ];
+}
+
+/** The opening's words: the epigraphs and the vows, quoted from the Berkeley Zen Center chant book. */
+function openingCredits(): CreditsBlock {
+  return {
+    heading: 'The opening',
+    paragraphs: [
+      'The opening’s epigraphs — from the Heart Sutra, and Eihei Dōgen’s Genjōkōan (“Firewood becomes ash…”) — and ' +
+        'its vows are quoted as they are chanted in the Berkeley Zen Center chant book, with gratitude.',
+    ],
+    links: [{ label: 'Berkeley Zen Center', href: 'https://www.berkeleyzencenter.org' }],
+  };
 }
 
 function trackLine(t: MusicTrack): string {
