@@ -96,3 +96,30 @@ describe('encampments', () => {
     expect(tentsAt(CAMP_CAP * 4)).toBe(3);
   });
 });
+
+describe('camps gather, they do not scatter (Maddy\'s city: 363 people in 327 camps)', () => {
+  it('a trickle of fractions from homes across a district gathers into a few camps, each with tents', () => {
+    const map = new GameMap(60, 40);
+    const state = createAmbientState();
+    for (let pass = 0; pass < 60; pass++) {
+      for (let x = 5; x < 55; x += 3) leftHome(state, map.idx(x, 20), 0.15); // every home sheds a little, every pass
+      settleCamps(state, map);
+    }
+    const camps = [...state.camps!.values()];
+    expect(total(state.camps)).toBeCloseTo(state.unhoused, 6);
+    expect(camps.length).toBeLessThanOrEqual(Math.ceil(state.unhoused / CAMP_CAP) + 4);
+    for (const n of camps) expect(tentsAt(n), String(n)).toBeGreaterThan(0);
+  });
+});
+
+describe('no dust camps', () => {
+  it('a fraction of a person far from any camp joins the nearest real camp instead of founding its own', () => {
+    const { map, state } = town();
+    leftHome(state, map.idx(5, 9), 8); // a real camp by the first home
+    settleCamps(state, map);
+    leftHome(state, map.idx(14, 9), 0.1); // a fraction, beyond CAMP_REACH of it
+    settleCamps(state, map);
+    expect([...state.camps!.values()].filter((n) => n < 0.5)).toHaveLength(0);
+    expect(total(state.camps)).toBeCloseTo(8.1, 9);
+  });
+});

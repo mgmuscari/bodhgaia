@@ -21,6 +21,10 @@ export const TENTS_PER_CAMP = 3;
 export const CAMP_CAP = PEOPLE_PER_TENT * TENTS_PER_CAMP;
 /** How far (Manhattan) someone goes to join a camp before starting their own. */
 export const CAMP_REACH = 6;
+/** A camp of fewer people than this shows no tent: it gathers into the nearest real camp within DUST_REACH
+ *  (Maddy's city opened with 187 of 259 camps holding under half a person). */
+const DUST = 0.5;
+const DUST_REACH = CAMP_REACH * 3;
 /** How far (Manhattan) from where they came someone looks for open land to camp on. */
 const SITE_SEARCH = 24;
 const EPS = 1e-6;
@@ -173,5 +177,22 @@ export function settleCamps(state: AmbientState, map: GameMap): void {
     }
     if (room > 0) for (const [t, r] of empty.sort((a, b) => a[0] - b[0])) place(map, state, camps, t, (gap * r) / room);
     else place(map, state, camps, map.idx(map.width >> 1, map.height >> 1), gap);
+  }
+  // dust (a fraction of a person) gathers into the nearest real camp
+  for (const t of [...camps.keys()].sort((a, b) => a - b)) {
+    const n = camps.get(t);
+    if (n === undefined || n >= DUST) continue;
+    const [x, y] = xy(map, t);
+    let best = -1;
+    let bestD = Infinity;
+    for (const [c, m] of camps) {
+      if (c === t || m < DUST) continue;
+      const [cx, cy] = xy(map, c);
+      const d = Math.abs(cx - x) + Math.abs(cy - y);
+      if (d <= DUST_REACH && (d < bestD || (d === bestD && c < best))) [best, bestD] = [c, d];
+    }
+    if (best < 0) continue;
+    camps.set(best, camps.get(best)! + n);
+    camps.delete(t);
   }
 }
