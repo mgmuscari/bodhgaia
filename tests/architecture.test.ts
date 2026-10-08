@@ -107,6 +107,7 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/techContent.ts',
   'src/ui/techEffectsContent.ts',
   'src/ui/cctvContent.ts',
+  'src/ui/gameTime.ts',
   'src/ui/renderKey.ts',
   'src/ui/decoration.ts',
   'src/ui/toolbarContent.ts',

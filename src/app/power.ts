@@ -8,13 +8,14 @@ import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
 import { computePowerGrid, NEUTRAL_POWER_PRACTICES, type PowerGrid, type PowerPractices } from '../growth/power';
 import { gameClock } from '../ui/lighting';
+import { gameSec } from '../ui/gameTime';
 
 export interface PowerDeps {
   map: GameMap;
   parcels: ParcelStore;
   /** Receives the powered anchors after every solve (renderer.setPowerGrid). */
   publish: (poweredAnchors: Set<number>) => void;
-  /** Wall-clock seconds the in-game clock reads (default performance.now() / 1000). */
+  /** Seconds the in-game clock reads (default gameSec — wall time plus the opening's offset). */
   nowSec?: () => number;
   /** The tech practices' power effects, read at every solve (default: none). */
   practices?: () => PowerPractices;
@@ -35,7 +36,7 @@ const signature = (g: PowerGrid): string => `${g.capacity}/${g.demand}/${g.power
 
 export function createPowerController(deps: PowerDeps): PowerController {
   const { map, parcels, publish } = deps;
-  const nowSec = deps.nowSec ?? ((): number => performance.now() / 1000);
+  const nowSec = deps.nowSec ?? ((): number => gameSec());
   const practices = deps.practices ?? ((): PowerPractices => NEUTRAL_POWER_PRACTICES);
   const clock0 = gameClock(nowSec());
   // The batteries' charge at the START of the hour being solved: every solve within an hour works from it, and
@@ -66,6 +67,6 @@ export function createPowerController(deps: PowerDeps): PowerController {
   return {
     grid: () => grid,
     recompute,
-    maybeResolveHour: (nowMs) => gameClock(nowMs / 1000).slot !== slot && recompute(),
+    maybeResolveHour: (nowMs) => gameClock(gameSec(nowMs)).slot !== slot && recompute(),
   };
 }

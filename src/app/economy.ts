@@ -23,6 +23,7 @@ import { projectProgress } from '../economy/projects';
 import { economyLine } from '../ui/economyContent';
 import { budgetView, type BudgetView } from '../ui/budgetContent';
 import { gameClock } from '../ui/lighting';
+import { gameSec } from '../ui/gameTime';
 import type { Wallet } from '../tools/tools';
 
 /** Autosave every this many in-game hours (and whenever the tab is hidden or closed — see app/saves). */
@@ -64,7 +65,7 @@ export interface EconomyDeps {
   /** Called every AUTOSAVE_HOURS hours — the caller resolves the current autosave at call time. */
   autosave: () => void;
   ui: EconomyUi;
-  /** Wall-clock seconds the in-game clock reads (default performance.now() / 1000). */
+  /** Seconds the in-game clock reads (default gameSec — wall time plus the opening's offset). */
   nowSec?: () => number;
   /** How organised the neighbourhood at a tile is, 0..1 (civic voice ÷ 255) — tenant organising. Default 0. */
   voiceAt?(tile: number): number;
@@ -106,7 +107,7 @@ export interface EconomyController {
 
 export function createEconomyController(deps: EconomyDeps): EconomyController {
   const { map, parcels, tech, civic, sim, live, ui } = deps;
-  const nowSec = deps.nowSec ?? ((): number => performance.now() / 1000);
+  const nowSec = deps.nowSec ?? ((): number => gameSec());
 
   const wellbeing01 = (): number =>
     Math.min(1, wellbeing({ parcels, ecoMeans: sim.ecoMeans, civicMeans: sim.civicMeans }) / 200);
@@ -218,7 +219,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       }),
     runHour,
     advance: (nowMs) => {
-      const hourNow = gameClock(nowMs / 1000).slot;
+      const hourNow = gameClock(gameSec(nowMs)).slot;
       for (let k = 0; k < MAX_CATCH_UP && econSlot < hourNow; k++) {
         econSlot++;
         runHour();

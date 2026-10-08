@@ -32,6 +32,7 @@ import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH } from '../live/geometry';
 import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
+import { gameSec } from './gameTime';
 import type { AmbientState } from '../live/types';
 import { dayNightBrightness } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
@@ -991,7 +992,7 @@ export class Renderer {
     // (moverPose); a parked one sits on its stall, a kerb-parked one parallel to the kerb.
     // Every vehicle and person on screen is also a BODY headlights can stop at (headlights.ts); the
     // sprite each one drew is kept so a body a beam hits can be lit.
-    const nightT = performance.now() / 1000;
+    const nightT = gameSec();
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(nightT)) / 0.3));
     const bodies: Body[] = [];
     const bodyArt: { img: AtlasImage; x: number; y: number }[] = [];
@@ -1147,7 +1148,7 @@ export class Renderer {
     // Uniform across the view: the ground's only spatial light is building contact shadow, which sprites
     // standing in the street don't take.
     if (this.gpuMode) {
-      const dark = 1 - dayNightBrightness(performance.now() / 1000);
+      const dark = 1 - dayNightBrightness(gameSec());
       if (dark > 0.004) {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
