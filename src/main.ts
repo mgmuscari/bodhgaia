@@ -44,7 +44,7 @@ import { gameSec, setGameHour } from './ui/gameTime';
 import { OPENING_TIMING } from './ui/openingScript';
 import { mountNightOverlay } from './ui/openingNight';
 import { createNightOpening } from './app/openingNight';
-import { tourStops } from './ui/tourContent';
+import { cityFocus, tourStops } from './ui/tourContent';
 import { worstSpots } from './ui/tutorialContent';
 import { mountTutorial } from './ui/tutorial';
 import { createTutorial, type Tutorial } from './app/tutorial';
@@ -96,6 +96,10 @@ export function main(save: SaveV1 | null = null): void {
   if (openingUp) setGameHour(OPENING_TIMING.startHour);
 
   const view = createView({ canvas, map: world.map, camera: save?.camera, mode: settings.current().renderer });
+  if (!save?.camera) {
+    const f = cityFocus(world.map, world.parcels); // a new city opens on the city, not the map's corner
+    view.camera.centerOn(f.x, f.y, view.camera.zoom);
+  }
   const { camera, renderer, markDirty, markPreviewDirty } = view;
   const live = createLive({
     seed,
