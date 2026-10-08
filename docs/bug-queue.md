@@ -39,7 +39,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   - ✅ pedestrians don't walk to the line to wait — riders walk to the stop, wait, ride (32 a car), walk on;
   - ✅ there are no animated streetcars;
   - ✅ trains too slow and stopping too often — 2.5× a tram, stations only at crossings and junctions.
-- **"Convert to X" should work on any transit tile** (Maddy 2026-10-08) — whatever the underlying transport kind
+- ✅ **"Convert to X" should work on any transit tile** (Maddy 2026-10-08) — whatever the underlying transport kind
   (e.g. rail → street, streetcar → avenue), not only the pairs `fabric.ts` CONVERSIONS lists.
 - **Safari scrambles canvas readback** (Maddy 2026-10-08) — ✅ the UI frames (dark bars) now encode PNGs
   directly (`ui/pngEncode.ts`). The night glow and headlight rims still read back (`glowBatch.ts`, `renderer.ts`
