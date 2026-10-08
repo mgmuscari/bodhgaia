@@ -27,7 +27,7 @@ import {
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
-import { RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
+import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
 import { VILLAGE_RESIDENTS } from '../citizens/census';
@@ -155,7 +155,10 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (kind === BuiltKind.AINode) {
     effects.push(`Smart grid: homes within ${SMART_GRID_RADIUS} tiles draw ${pct(SMART_GRID_CUT)} less power ${SMART_GRID_FROM}:00–${SMART_GRID_TO}:00`);
   }
-  if (kind === BuiltKind.Commune) effects.push('Its residents own no cars');
+  if (kind === BuiltKind.Commune) {
+    effects.push('Its residents work at home and own no cars');
+    effects.push(`Doubles as a market: neighbours shop here; taxed at ${pct(COMMUNE_COMMERCE_SHARE)} of a shop its size`);
+  }
   if (kind === BuiltKind.MakerSpace) effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
   if (kind === BuiltKind.ElevatedRail) {
     effects.push(`Stations: shops within ${RAIL_COMMERCE_RADIUS} tiles of the line pay ${pct(RAIL_COMMERCE_LIFT - 1)} more tax`);

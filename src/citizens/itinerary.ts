@@ -27,6 +27,8 @@ const CATEGORY_OF: ReadonlyMap<number, StopCategory> = new Map<number, StopCateg
   [BuiltKind.CommercialStrip, StopCategory.Shop],
   [BuiltKind.Bazaar, StopCategory.Shop],
   [BuiltKind.MakerSpace, StopCategory.Shop],
+  // a commune's workshops double as a market its neighbours shop at (Maddy 2026-10-07)
+  [BuiltKind.Commune, StopCategory.Shop],
   // Lifestyle — civic, cultural, and restorative third places.
   [BuiltKind.Civic, StopCategory.Lifestyle],
   [BuiltKind.HealingCommons, StopCategory.Lifestyle],
@@ -57,3 +59,11 @@ export const DAILY_ITINERARY: readonly StopCategory[] = [
   StopCategory.Lifestyle,
   StopCategory.Leisure,
 ];
+
+/** A commune's residents meet their work needs at home (its workshops and fields), so their round skips the commute. */
+const COMMUNE_ITINERARY: readonly StopCategory[] = DAILY_ITINERARY.filter((c) => c !== StopCategory.Work);
+
+/** The daily round of a citizen who lives in a home of `homeKind`. */
+export function itineraryFor(homeKind: number): readonly StopCategory[] {
+  return homeKind === BuiltKind.Commune ? COMMUNE_ITINERARY : DAILY_ITINERARY;
+}

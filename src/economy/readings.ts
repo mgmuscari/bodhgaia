@@ -142,6 +142,9 @@ function nearElevatedRail(map: GameMap, p: { x: number; y: number; width: number
   return false;
 }
 
+/** Commune: its workshops are assessed at this share of a commercial lot of its size (it doubles as a market). */
+export const COMMUNE_COMMERCE_SHARE = 0.5;
+
 /** Commune: its households regenerate effort COMMUNE_REGEN × (pooled lives, pooled time). */
 export const COMMUNE_REGEN = 2;
 
@@ -224,7 +227,11 @@ export function readCity(inp: CityInputs): CityReading {
     const lv = (inp.landValueAt(anchor) ?? 0) / 255;
     if (RESIDENTIAL.has(p.kind)) {
       households += occ;
-      if (p.kind === BuiltKind.Commune) communeHouseholds += occ;
+      if (p.kind === BuiltKind.Commune) {
+        communeHouseholds += occ;
+        const jobs = p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
+        base.c += jobs * lv * BASE_PER_UNIT.c * COMMUNE_COMMERCE_SHARE;
+      }
       protectedHouseholds += occ * (protection.get(anchor) ?? 0);
       base.r += occ * lv * BASE_PER_UNIT.r;
     } else if (COMMERCIAL.has(p.kind) || INDUSTRIAL.has(p.kind)) {

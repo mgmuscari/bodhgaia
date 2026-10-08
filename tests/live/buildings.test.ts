@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind } from '../../src/engine/fabric';
 import { createAmbientState, setHouseholds } from '../../src/live/types';
+import { DAILY_ITINERARY, StopCategory, itineraryFor, stopCategoryOf } from '../../src/citizens/itinerary';
 import { homeDrives, nearKind } from '../../src/live/pathing';
 import { stepOccupancy, homeCapacity } from '../../src/live/fields/occupancy';
 import { RAIL_NOISE_RADIUS, OCC_SETTLE_PASSES, PARKLET_RADIUS, PARKLET_SHIFT, FRESH_FOOD_RADIUS, ADU_HOUSE_HEADROOM, OCC_HEADROOM } from '../../src/live/tuning';
@@ -86,5 +87,27 @@ describe('Elevated Rail: noise for the homes beside the line (Maddy 2026-10-07)'
     expect(run(12)).toBeLessThan(10);
     expect(run(12, true)).toBeLessThan(10); // an overpass line is as loud
     expect(run(15)).toBe(10);
+  });
+});
+
+describe('Communes vs co-ops (Maddy 2026-10-07)', () => {
+  it('commune residents work at home; co-op residents commute like anyone', () => {
+    expect(itineraryFor(BuiltKind.Commune)).not.toContain(StopCategory.Work);
+    expect(itineraryFor(BuiltKind.Commune)).toEqual([StopCategory.Shop, StopCategory.Lifestyle, StopCategory.Leisure]);
+    expect(itineraryFor(BuiltKind.CoopHousing)).toEqual(DAILY_ITINERARY);
+    expect(itineraryFor(BuiltKind.HouseSingle)).toEqual(DAILY_ITINERARY);
+  });
+
+  it('a commune doubles as a market neighbours shop at', () => {
+    expect(stopCategoryOf(BuiltKind.Commune)).toBe(StopCategory.Shop);
+    expect(stopCategoryOf(BuiltKind.CoopHousing)).toBe(0);
+  });
+
+  it('co-op residents keep their cars; commune residents have none', () => {
+    const map = new GameMap(10, 10);
+    map.built[map.idx(2, 2)] = BuiltKind.CoopHousing;
+    map.built[map.idx(6, 6)] = BuiltKind.Commune;
+    expect(homeDrives(map, map.idx(2, 2), 1)).toBe(true);
+    expect(homeDrives(map, map.idx(6, 6), 1)).toBe(false);
   });
 });
