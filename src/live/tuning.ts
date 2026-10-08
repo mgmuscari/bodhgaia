@@ -486,3 +486,9 @@ export const GRIEF_RADIUS = 3;
 export const GRIEF_HEALTH = 20;
 /** Ruins: each one near a plot takes up to LV_RUIN off its land value (linear falloff over LV_RADIUS). */
 export const LV_RUIN = 12;
+
+// ── Fire trucks (docs/design/disasters.md) ──────────────────────────────────────────────────────────────────
+/** Tiles a truck moves per substep — faster than a car, lights on. */
+export const TRUCK_SPEED = 0.16;
+/** Substeps a truck sprays before the fire is out (~3 s). */
+export const SPRAY_SUBSTEPS = 60;
