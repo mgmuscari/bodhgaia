@@ -28,7 +28,7 @@ import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { isPowerConsumer, windFactor } from '../growth/power';
-import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses } from '../live/poses';
+import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses, wandererPose } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
 import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, rotorFrame, spinRotor, windowsLit } from './snesAgents';
@@ -1557,7 +1557,8 @@ export class Renderer {
     // The opening's night walker — drawn AFTER the night pass (like the headlights) so the dark doesn't swallow
     // one small figure: a pool of lamplight follows them, and they walk in it (a two-step walk).
     if (ambient.wanderer) {
-      const w = ambient.wanderer;
+      const w = wandererPose(ambient.wanderer, alpha); // between its steps, like everyone (the camera follows this)
+      const seed = ambient.wanderer.seed;
       const c = camera.worldToScreen(w.x + 0.5, w.y + 0.5);
       const r = camera.tileSize * 2;
       const glow = ctx.createRadialGradient(c.sx, c.sy, 0, c.sx, c.sy, r);
@@ -1566,7 +1567,7 @@ export class Renderer {
       glow.addColorStop(1, 'rgba(255, 214, 140, 0)');
       ctx.fillStyle = glow;
       ctx.fillRect(c.sx - r, c.sy - r, 2 * r, 2 * r);
-      const img = this.sprites.get(personKey('ped', w.seed >>> 0, Math.floor(performance.now() / 260) % 2));
+      const img = this.sprites.get(personKey('ped', seed >>> 0, Math.floor(performance.now() / 260) % 2));
       if (img) this.drawArt(ctx, img, w.x + 0.5, w.y + 0.5, camera);
     }
 

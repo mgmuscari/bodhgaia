@@ -57,6 +57,8 @@ function nextRoute(state: AmbientState, map: GameMap, rng: Rng, x: number, y: nu
 export function stepWanderer(state: AmbientState, map: GameMap, rng: Rng): void {
   const w = state.wanderer;
   if (!w) return;
+  w.px = w.x; // where it stood: drawn (and followed) between here and its new spot
+  w.py = w.y;
   w.age++;
   if (w.age >= w.life) {
     const x = Math.round(w.x);
