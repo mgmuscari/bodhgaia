@@ -1,4 +1,4 @@
-// The SNES tileset — a code-painted skin channelling the classic city-builder on the Super Famicom (PURE — no DOM, no
+// The SNES tileset — a code-painted skin in the manner of the 16-bit console city-builders (PURE — no DOM, no
 // transcendental Math → pure-ui allowlist). Every tile is drawn here, in integer pixel ops, from ONE
 // shared limited palette: bright saturated grass with dark tufts, round-crowned forest, deep blue water
 // with wave marks, and (later increments) ink-outlined 3/4-view buildings. Deterministic by
@@ -12,6 +12,7 @@ import { BASE_TILE } from './camera';
 import type { PaintedSkin } from './tileset';
 import { blank, disc, dither, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
+import { BuiltKind } from '../engine/fabric';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
 import { snesRoadTiles, pathFrame } from './snesRoads';
 import { paintSnesAgents } from './snesAgents';
@@ -275,6 +276,8 @@ function alongTrack(mask: number, half: number, f: (x: number, y: number, s: num
 /** Twin rails (+ optional sleepers) laid along the track's paths — straight, curved round a bend, a wye at
  *  a junction — the same geometry the road paint uses (snesRoads.pathFrame), so track and roads turn alike. */
 function track(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB): void {
+  const arms = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
+  if (arms === 3) return turnout(p, mask, ties, rail, shadow);
   if (ties) alongTrack(mask, 4.5, (x, y, _s, t) => {
     if (Math.floor(t) % 3 === 1) px(p, x, y, ties);
   });
@@ -286,11 +289,41 @@ function track(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB
   });
 }
 
+/** A T-junction as a clean turnout (Maddy 2026-10-08: streetcar branches read as a knot): the through line straight,
+ *  and the branch joining it on the INNER rail of each curve — from the through line's near rail into one rail of the
+ *  branch — so no rail crosses the through line or bunches in the middle. */
+function turnout(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB): void {
+  const through = (mask & 5) === 5 ? 5 : 10;
+  const stub = mask & ~through;
+  track(p, through, ties, rail, shadow);
+  for (const side of through === 5 ? [1, 4] : [2, 8]) {
+    const turn = stub | side;
+    // the corner the curve bends round: east or west, north or south
+    const cx = turn & 2 ? T : 0;
+    const cy = turn & 1 ? 0 : T;
+    const inner = (x: number, y: number): boolean => (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 < 64;
+    alongTrack(turn, 4, (x, y, s) => {
+      if (inner(x, y) && Math.abs(Math.abs(s - 1) - 2.5) < 0.5) px(p, x, y, shadow);
+    });
+    alongTrack(turn, 3, (x, y, s) => {
+      if (inner(x, y) && Math.abs(Math.abs(s) - 2.5) < 0.5) px(p, x, y, rail);
+    });
+  }
+}
+
 function railTile(mask: number): Pixels {
   const p = blank(T, T);
   fill(p, C.grass);
   alongTrack(mask, 6, (x, y) => px(p, x, y, hash2(x, y, 6200) % 4 === 0 ? C.dirtLo : C.dirt)); // ballast bed
   track(p, mask, C.roofBrownLo, C.paveHi, C.slateLo);
+  return p;
+}
+
+/** The rails alone, transparent between (Maddy 2026-10-08): laid over a level crossing's band, so the track keeps its
+ *  own shape — a corner's curve, a turnout's branch — where a road meets it, not straight stubs. */
+function railsOnly(mask: number, family: 'tram' | 'rail'): Pixels {
+  const p = blank(T, T);
+  track(p, mask, null, C.paveHi, family === 'tram' ? C.asphaltLo : C.slateLo);
   return p;
 }
 
@@ -305,6 +338,57 @@ function elevTile(mask: number): Pixels {
   fill(p, C.grassLo); // the shadow the viaduct throws on the ground
   alongTrack(mask, 6, (x, y, s) => px(p, x, y, Math.abs(s) > 5 ? C.paveHi : C.pave)); // deck, parapets on its edges
   track(p, mask, null, C.line, C.paveLo);
+  return p;
+}
+
+/** A bridge deck (Maddy 2026-10-08: bridges over water): a concrete slab along the span's arms, a parapet on its
+ *  edges, transparent beyond — the water shows either side. Its way is laid on top by the caller. */
+function deck(mask: number): Pixels {
+  const p = blank(T, T);
+  const on = new Uint8Array(T * T);
+  arms(mask, 5, (x, y) => {
+    on[y * T + x] = 1;
+    px(p, x, y, C.pave);
+  });
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      if (!on[y * T + x]) continue;
+      const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+        const nx = x + dx!;
+        const ny = y + dy!;
+        return nx >= 0 && ny >= 0 && nx < T && ny < T && !on[ny * T + nx];
+      });
+      if (edge) px(p, x, y, C.paveHi); // the parapet
+    }
+  }
+  return p;
+}
+
+function bikeDeck(mask: number): Pixels {
+  const p = deck(mask);
+  arms(mask, 3, (x, y) => px(p, x, y, C.leafLo)); // the green lane
+  arms(mask, 0, (x, y) => {
+    if ((x + y) % 4 < 2) px(p, x, y, C.line);
+  });
+  return p;
+}
+
+function pedDeck(mask: number): Pixels {
+  const p = deck(mask);
+  arms(mask, 4, (x, y) => px(p, x, y, (x + y) % 2 === 0 ? C.paveHi : C.pave)); // pavers
+  return p;
+}
+
+function railDeck(mask: number): Pixels {
+  const p = deck(mask);
+  track(p, mask, C.roofBrownLo, C.paveHi, C.slateLo);
+  return p;
+}
+
+function streetcarDeck(mask: number): Pixels {
+  const p = deck(mask);
+  arms(mask, 4, (x, y) => px(p, x, y, C.asphalt));
+  track(p, mask, null, C.paveHi, C.asphaltLo);
   return p;
 }
 
@@ -329,8 +413,8 @@ function pedTile(mask: number): Pixels {
   return p;
 }
 
-/** A level crossing: the road's asphalt band across the track, with the rails (on the rail tile's own
- *  rows) running through it. `axis` is the ROAD's direction; drawn over the rail tile. */
+/** A level crossing: the road's band across the track tile — its surface only. `axis` is the ROAD's direction;
+ *  drawn over the rail tile, and the tile's own rails (`@road/rails/…`) are laid back over it. */
 function crossingBand(axis: 'v' | 'h', surface: 'asphalt' | 'bike' | 'pavers' = 'asphalt'): Pixels {
   const p = blank(T, T);
   for (let a = 0; a < T; a++) {
@@ -342,15 +426,6 @@ function crossingBand(axis: 'v' | 'h', surface: 'asphalt' | 'bike' | 'pavers' = 
         : surface === 'pavers' ? ((x + y) % 2 === 0 ? C.paveHi : C.pave)
         : hash2(x, y, 6400) % 7 === 0 ? C.asphaltLo : C.asphalt;
       px(p, x, y, c);
-    }
-  }
-  for (const r of [5, 10]) {
-    for (let b = 4; b <= 11; b++) {
-      // the rails cross perpendicular to the road: rail on row r, its shadow on the next
-      const [x, y] = axis === 'v' ? [b, r] : [r, b];
-      const [sx, sy] = axis === 'v' ? [b, r + 1] : [r + 1, b];
-      px(p, x, y, C.paveHi);
-      px(p, sx, sy, C.slateLo);
     }
   }
   return p;
@@ -480,6 +555,13 @@ function transportTiles(out: Map<string, Pixels>): void {
   for (let m = 0; m < 16; m++) {
     out.set(`rail-${m}`, railTile(m));
     out.set(`streetcar-${m}`, streetcarTile(m));
+    out.set(`@road/rails/tram/${m}`, railsOnly(m, 'tram'));
+    out.set(`@road/rails/rail/${m}`, railsOnly(m, 'rail'));
+    // over water: the same ways on a bridge deck
+    out.set(`rail-${m}~deck`, railDeck(m));
+    out.set(`streetcar-${m}~deck`, streetcarDeck(m));
+    out.set(`bike-${m}~deck`, bikeDeck(m));
+    out.set(`ped-${m}~deck`, pedDeck(m));
     out.set(`elev-${m}`, elevTile(m));
     out.set(`bike-${m}`, bikeTile(m));
     out.set(`ped-${m}`, pedTile(m));
@@ -693,7 +775,32 @@ export function paintSnesSkin(): PaintedSkin {
   paintSnesAgents(eager);
   for (const name of Object.keys(ICONS)) eager.set(`@icon/${name}`, icon(name));
   for (const [k, p] of paintUiIcons()) eager.set(k, p); // the tool palette's icons
-  return { eager, lazy: { keys: buildingKeys(), paint: buildingPainter() } };
+  const paint = buildingPainter();
+  const turbine = windTurbineIcon(paint, eager);
+  if (turbine) eager.set('@ui/wind-turbine', turbine);
+  return { eager, lazy: { keys: buildingKeys(), paint } };
+}
+
+/** The wind turbine's menu icon (Maddy 2026-10-08: it had no blades): its tile is bladeless, since the rotor turns as
+ *  a sprite over it (renderer: centred on the hub at art (8.5, 6.5)), so the icon is the tile with a rotor frame there. */
+function windTurbineIcon(paint: (key: string) => Pixels | null, eager: ReadonlyMap<string, Pixels>): Pixels | null {
+  const tower = paint(footprintCellKey(BuiltKind.WindTurbine, 1, 1, 0, 0, 0));
+  const rotor = eager.get('@sprite/turbine-rotor/0');
+  if (!tower || !rotor) return null;
+  const icon = blank(T, T);
+  icon.data.set(tower.data);
+  const ox = Math.round(8.5 - rotor.w / 2);
+  const oy = Math.round(6.5 - rotor.h / 2);
+  for (let y = 0; y < rotor.h; y++)
+    for (let x = 0; x < rotor.w; x++) {
+      const i = (y * rotor.w + x) * 4;
+      if (rotor.data[i + 3] === 0) continue;
+      const tx = x + ox;
+      const ty = y + oy;
+      if (tx < 0 || ty < 0 || tx >= T || ty >= T) continue;
+      icon.data.set(rotor.data.subarray(i, i + 4), (ty * T + tx) * 4);
+    }
+  return icon;
 }
 
 /** Paint the WHOLE SNES skin eagerly: atlas key → pixel buffer (tests; the renderer loads paintSnesSkin). */

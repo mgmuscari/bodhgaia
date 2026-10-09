@@ -101,7 +101,8 @@ export function createFireController(deps: FireDeps): FireController {
       const vacancy = hour !== undefined && hour !== fires.lastHour ? homeVacancy(live, map) : undefined; // only on the hour's draw
       const ev = stepFire(world, fires, deps.rng, { hour, quenched, vacancy });
 
-      for (const i of [...lit.splice(0), ...ev.ignited]) {
+      // every new fire gets a truck — a spread one too (Maddy 2026-10-08: spreading fires went unanswered)
+      for (const i of [...lit.splice(0), ...ev.ignited, ...ev.spread]) {
         if (!fires.burning.has(i)) continue;
         live.events?.push({ kind: 'fire', ...footprint(i) });
         deps.news('Fire!');

@@ -7,9 +7,8 @@
 
 ## 1. Problem Statement
 
-Bodhitropolis is a dharmapunk city-builder: a modern, browser-based, heavily
-modified fork of the old simulator (the GPL release of the classic city-builder Classic). Where the classic city-builder
-models the Robert Moses school of urban planning — highways, single-use zones,
+Bodhitropolis is a dharmapunk city-builder: a modern, browser-based city-builder.
+Where the classic city-builders model the Robert Moses school of urban planning — highways, single-use zones,
 police budgets, growth as the win condition — Bodhitropolis models the repair:
 the player inherits a city wrecked by a century of car-centric American
 development and heals it using a tech tree rooted in New Urbanism, green
@@ -37,7 +36,7 @@ eco/solarpunk practice, and anarcho-communist organization.
 - **Worldgen** inspired by Dwarf Fortress: generate terrain, then simulate one
   century of Robert Moses-esque urban development; the game opens with the
   player challenged to fix the blight.
-- **Graphics**: pixel art fusing the classic city-builder's top-down density with the comfy
+- **Graphics**: pixel art fusing the classic city-builders' top-down density with the comfy
   cottagecore warmth of Stardew Valley.
 
 **Why this feature now:** none of that can be built without a platform. The
@@ -96,10 +95,6 @@ engine/renderer split:
 - **Dependencies**: `vite`, `typescript`, `vitest` (dev). Zero runtime
   dependencies — noise and PRNG are implemented in-repo (small, testable,
   license-clean).
-- **Legacy subtrees untouched**: `legacy-activity/`, `LegacyCore/`,
-  `legacy-java/` remain as reference implementations.
-  `legacy-java/src/legacyj/engine/MapGenerator.java` is the canonical
-  reference for river/forest generation feel.
 
 ## 4. Acceptance Criteria
 
@@ -140,7 +135,7 @@ engine/renderer split:
 - **Pixel-art rendering pitfalls**: canvas blurring from fractional scales or
   default smoothing. Mitigation: integer zoom steps, explicit
   `imageSmoothingEnabled = false`, device-pixel-ratio handling.
-- **GPL hygiene**: the project is GPL-3 (the old simulator lineage). In-repo noise
+- **GPL hygiene**: the project is GPL-3. In-repo noise
   and PRNG implementations avoid license ambiguity from vendored snippets.
 - **Hook conversion**: swapping the Python git hooks for npm equivalents
   touches methodology infrastructure; a mistake could silently disable gates.

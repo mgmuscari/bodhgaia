@@ -13,8 +13,6 @@ import {
   isTransportKind,
   canPlaceParcel,
   placeParcel,
-  canPlaceTransport,
-  placeTransport,
   canConvertTransport,
   convertTransport,
   canConvertParcel,
@@ -30,7 +28,7 @@ import {
   canPlaceOverpass,
   placeOverpass,
   removeOverpassAt,
-  overpassAt, isCommonsKind } from '../engine/fabric';
+  overpassAt, isCommonsKind, canPlaceBridge, placeBridge } from '../engine/fabric';
 import { builtKindName } from '../engine/builtNames';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { GameMap } from '../engine/map';
@@ -66,6 +64,8 @@ export interface Wallet {
 
 /** Funds per unit of a tool's base cost, for the built fabric. */
 export const FUNDS_PER_COST = 40;
+/** A bridge span over water costs this many times the same way on land. */
+export const BRIDGE_COST_MUL = 3;
 
 /** What a tool costs under the economy: the commons in communal effort, the built fabric in funds. */
 export function toolPrice(tool: ToolDef): { effort: number; funds: number } {
@@ -138,6 +138,15 @@ function bulldozeTarget(world: ToolWorld, x: number, y: number): number {
  *  removal pays salvage, and volunteer works take funds first and the shortfall in effort. Funds may come
  *  back negative (a credit). */
 export function chargeFor(world: ToolWorld, tool: ToolDef, x: number, y: number, wallet: Wallet): { effort: number; funds: number } {
+  const c = chargeHere(world, tool, x, y, wallet);
+  // a span over water costs BRIDGE_COST_MUL× the way on land
+  const bridging = tool.id.startsWith('build-') && tool.kind !== undefined && isTransportKind(tool.kind) &&
+    world.map.inBounds(x, y) && world.map.water[world.map.idx(x, y)] !== 0;
+  return bridging ? { effort: c.effort * BRIDGE_COST_MUL, funds: c.funds * BRIDGE_COST_MUL } : c;
+}
+
+/** What `tool` costs at (x, y), before any bridge premium. */
+function chargeHere(world: ToolWorld, tool: ToolDef, x: number, y: number, wallet: Wallet): { effort: number; funds: number } {
   if (tool.id.startsWith('build-') && isSiteKind(tool.kind)) return { effort: 0, funds: 0 }; // paid as it rises
   const sticker = toolPrice(tool);
   let volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
@@ -181,14 +190,26 @@ export interface ApplyResult {
   reason?: ToolReason;
   /** Inspect-only: a human-readable line describing the tile. */
   info?: string;
-  /** A commons work laid as a construction site: what it will become, where, and the effort it will draw. */
-  site?: { kind: BuiltKind; x: number; y: number; cost: number; name: string };
+  /** A work laid as a construction site: what it will become, where, its cost, and how it's paid as it rises — the
+   *  commons in effort, a civic building from the treasury. */
+  site?: { kind: BuiltKind; x: number; y: number; cost: number; name: string; pay: 'effort' | 'funds'; effort?: number };
 }
 
-/** A commons work (a lot of its own) goes up as a construction site, paid in effort as it rises (Maddy 2026-10-08);
- *  the parklet sits on the kerb and stays immediate. */
+/** Civic buildings go up as sites too, paid from the treasury as they rise (Maddy 2026-10-08). */
+const CIVIC_SITE_KINDS: ReadonlySet<number> = new Set([
+  BuiltKind.School,
+  BuiltKind.Library,
+  BuiltKind.Precinct,
+  BuiltKind.FireStation,
+  BuiltKind.Clinic,
+  BuiltKind.Civic,
+]);
+
+/** A work that goes up as a construction site (Maddy 2026-10-08): a commons work (a lot of its own — the parklet sits
+ *  on the kerb and stays immediate), paid in effort, or a civic building, paid in funds. */
 export function isSiteKind(kind: number | undefined): boolean {
-  return kind !== undefined && kind !== BuiltKind.Parklet && isCommonsKind(kind) && isBuildingKind(kind);
+  if (kind === undefined) return false;
+  return CIVIC_SITE_KINDS.has(kind) || (kind !== BuiltKind.Parklet && isCommonsKind(kind) && isBuildingKind(kind));
 }
 
 const BULLDOZE_COST = 1;
@@ -414,7 +435,7 @@ function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): P
   // transport build — an elevated kind (rail/promenade) targeting a road DECKS an overpass over it
   // (grade-separated); otherwise it places at grade on empty land.
   if (isOverpassKind(kind) && canPlaceOverpass(map, x, y, kind)) return { valid: true };
-  return canPlaceTransport(map, x, y, kind)
+  return canPlaceBridge(map, x, y, kind) // over water it bridges (Maddy 2026-10-08)
     ? { valid: true }
     : { valid: false, reason: 'occupied' };
 }
@@ -537,7 +558,13 @@ export function applyTool(
     // a commons work goes up as a site; the city raises it as the commons pays (economy buildProject)
     const fp = tool.footprint!;
     placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind: BuiltKind.Site });
-    return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name } };
+    if (isCommonsKind(kind)) return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'effort' } };
+    // a civic building is paid from the treasury — unless the city can't cover it, when a community work (clinic,
+    // fire station…) rises on volunteer effort instead (the ways out of a deficit, 2026-10-01)
+    const full = tool.cost * FUNDS_PER_COST;
+    if (wallet && wallet.funds < full && VOLUNTEER_KINDS.has(kind))
+      return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'effort', effort: Math.ceil(full / VOLUNTEER_DOLLARS_PER_EFFORT) } };
+    return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'funds' } };
   } else if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
     placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });
@@ -545,7 +572,7 @@ export function applyTool(
   } else if (isOverpassKind(kind) && canPlaceOverpass(map, x, y, kind)) {
     placeOverpass(map, x, y, kind); // deck an overpass over the road below (grade-separated)
   } else {
-    placeTransport(map, x, y, kind);
+    placeBridge(map, x, y, kind); // on land the ordinary placement; over water, a bridge span
   }
   return { ok: true };
 }

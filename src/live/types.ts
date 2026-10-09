@@ -162,6 +162,9 @@ export interface Flock {
  *  and the tail dropped, so the cars trace the exact track. Live layer, never hashed. */
 export interface Train {
   cells: number[];
+  /** The tile the tail last left (dropped off `cells`): it gives the last car the side it came in from, so on a
+   *  corner it bends round the arc like the others instead of standing straight across, off the rails. */
+  behind?: number;
   hx: number;
   hy: number;
   tx: number;

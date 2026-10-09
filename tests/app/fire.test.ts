@@ -94,3 +94,41 @@ describe('the fire controller', () => {
     expect(h.fire.active()).toBe(true);
   });
 });
+
+describe('fire spreading (Maddy 2026-10-08: when fires spread, trucks were not dispatched)', () => {
+  it('a fire that spreads to the house next door gets a truck of its own', () => {
+    // a terrace with a station, every other house alight; seeds tried until the fire spreads (it's a chance)
+    for (let seed = 0; seed < 40; seed++) {
+      const map = new GameMap(40, 12);
+      const parcels = new ParcelStore();
+      for (let x = 0; x < 40; x++) placeTransport(map, x, 5, BuiltKind.RoadStreet);
+      placeParcel(map, parcels, { x: 2, y: 3, width: 2, height: 2, kind: BuiltKind.FireStation });
+      const lit = new Set<number>();
+      for (let x = 6; x <= 38; x++) {
+        const i = placeParcel(map, parcels, { x, y: 6, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+        if (x % 2 === 0) lit.add(i);
+      }
+      const live = createAmbientState();
+      live.events = [];
+      const fire = createFireController({
+        world: { map, parcels }, live, rng: createRng(`spread-${seed}`).fork('f'), hour: () => undefined,
+        disastersOn: () => true, markDirty: () => {}, refreshHouseholds: () => {}, news: () => {},
+      });
+      for (const i of lit) fire.ignite(i);
+      const spread = new Set<number>();
+      let t = 0;
+      for (let k = 0; k < 120; k++) {
+        fire.frame((t += FIRE_STEP_MS));
+        for (const b of live.burning ?? []) {
+          const i = map.parcel[map.idx(b.x, b.y)]! - 1;
+          if (!lit.has(i)) spread.add(i);
+        }
+      }
+      if (spread.size === 0) continue;
+      const targeted = new Set((live.trucks ?? []).map((tr) => tr.target));
+      for (const i of spread) expect(targeted.has(i), `parcel ${i}`).toBe(true);
+      return;
+    }
+    throw new Error('no spread in 40 seeds');
+  });
+});

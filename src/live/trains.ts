@@ -49,7 +49,12 @@ export function spawnTransit(state: AmbientState, map: GameMap, rng: Rng): void 
     const sy = (idx - sx) / map.width;
     const dir = pickStep(map, sx, sy, -1, rng, (nx, ny) => trackTraversable(map, nx, ny, line.family), CAR_STRAIGHT_WEIGHT);
     if (dir < 0) continue;
-    state.trains.push({ cells: [idx], hx: sx, hy: sy, tx: sx + DIR_DX[dir]!, ty: sy + DIR_DY[dir]!, dir, family: line.family });
+    // where it came from (Maddy 2026-10-08: after a reload the trailing car stood straight across a corner): the track
+    // straight behind, else the other track it bends in from — so the tail rounds its bend from the first tile
+    const fromDirs = [opposite(dir), ...[0, 1, 2, 3].filter((d) => d !== dir && d !== opposite(dir))];
+    const back = fromDirs.find((d) => trackTraversable(map, sx + DIR_DX[d]!, sy + DIR_DY[d]!, line.family));
+    const behind = back === undefined ? undefined : map.idx(sx + DIR_DX[back]!, sy + DIR_DY[back]!);
+    state.trains.push({ cells: [idx], behind, hx: sx, hy: sy, tx: sx + DIR_DX[dir]!, ty: sy + DIR_DY[dir]!, dir, family: line.family });
     return; // one a substep
   }
 }
@@ -77,7 +82,7 @@ export function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
     const head = map.idx(t.tx, t.ty);
     if (t.cells[0] !== head) {
       t.cells.unshift(head);
-      if (t.cells.length > (family === 'tram' ? TRAM_LEN : TRAIN_LEN)) t.cells.pop();
+      if (t.cells.length > (family === 'tram' ? TRAM_LEN : TRAIN_LEN)) t.behind = t.cells.pop();
     }
     const nd = pickStep(map, t.tx, t.ty, opposite(t.dir), rng, (nx, ny) => trackTraversable(map, nx, ny, family), CAR_STRAIGHT_WEIGHT);
     if (nd < 0) return false; // isolated stub → despawn

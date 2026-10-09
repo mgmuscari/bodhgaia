@@ -3,7 +3,7 @@ import { framePixels, FRAME_SIZE, FRAME_SLICE, themeVars, FRAME_KINDS } from '..
 import { SNES_PALETTE } from '../../src/ui/snesPalette';
 import type { Pixels } from '../../src/ui/pixelArt';
 
-// The window kit (Maddy 2026-09-30: menus should match the pixel art and feel like a classic classic game):
+// The window kit (Maddy 2026-09-30: menus should match the pixel art and feel like a classic 16-bit city-builder):
 // bevelled 9-slice frames painted from the one shared palette, served as CSS border-images.
 const rgbAt = (p: Pixels, x: number, y: number): number[] => [...p.data.subarray((y * p.w + x) * 4, (y * p.w + x) * 4 + 4)];
 const onPalette = (r: number, g: number, b: number): boolean => SNES_PALETTE.some((c) => c[0] === r && c[1] === g && c[2] === b);

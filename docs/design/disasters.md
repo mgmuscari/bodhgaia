@@ -31,7 +31,7 @@ The player's repairs are what make disasters rarer and smaller.
   frame grows with the fire.
 - **Fire trucks** reuse the car mover (`roadPath`); toxic clouds reuse the wind advection of smog.
 - **Art:** in the game's own pipeline — palette pixel sprites at the one art scale, vehicles as movers with 8-way frames and the lights cruisers have, emissive things drawn after the lighting pass, haze through the smog field and overlay. Flames are frames; smoke is smog; a spill's cloud is toxic smog (its own field, greenish-yellow in the overlay).
-- **A setting:** Disasters on/off (as in the classic city-builder). Default on.
+- **A setting:** Disasters on/off (as in the classic city-builders). Default on.
 
 ## Order (each a stacked branch into `bodhgaia`)
 

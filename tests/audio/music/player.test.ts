@@ -71,7 +71,7 @@ function run(env: ReturnType<typeof fakeEngine>, timer: ReturnType<typeof fakeTi
   }
 }
 
-function setup(tracks: PlayableTrack[], pieces: Record<string, MidiPiece>, opts: { ready?: boolean } = {}) {
+function setup(tracks: PlayableTrack[], pieces: Record<string, MidiPiece>, opts: { ready?: boolean; bridges?: boolean } = {}) {
   const env = fakeEngine(opts.ready ?? true);
   const timer = fakeTimer();
   let r = 0;
@@ -81,6 +81,7 @@ function setup(tracks: PlayableTrack[], pieces: Record<string, MidiPiece>, opts:
     random: () => (r = (r + 0.37) % 1),
     lookahead: 0.2,
     gap: 2,
+    bridges: opts.bridges ?? false, // the scheduler's own tests run piece to piece; the bridges have theirs below
   });
   return { env, timer, player };
 }
@@ -269,5 +270,54 @@ describe('the melody is never crowded out (Maddy 2026-10-08: the Gymnopédie los
     run(env, timer, 2);
     expect(env.played.some((p) => p.pitch === 78)).toBe(true); // the melody is heard
     expect(env.played.filter((p) => p.pitch >= 57 && p.pitch <= 66 && (p.at ?? 0) > 0.5).length).toBeLessThan(4); // the comp gave way
+  });
+});
+
+// Bridges (Maddy 2026-10-08): every change of piece is joined by a generated passage — chords resolving into the
+// next piece, the tempo gliding — instead of a gap of silence.
+describe('every change is bridged', () => {
+  const scale = (base: number, program: number) =>
+    piece([...[0, 2, 4, 5, 7, 9, 11, 12].map((d, i) => note(i * 0.5, base + d, { program })), ...[0, 4, 7].map((d) => note(4, base + d, { duration: 2, program }))]);
+  const tracks: PlayableTrack[] = [
+    { id: 'c', moods: ['day'] },
+    { id: 'g', moods: ['day'] },
+  ];
+  const pieces = { c: scale(60, 40), g: scale(67, 73) };
+
+  it('when a piece ends, the bridge plays at once and the next piece lands as it resolves', async () => {
+    const { env, timer, player } = setup(tracks, pieces, { bridges: true });
+    await player.play('c'); // ends at 6 s
+    run(env, timer, 6.2);
+    await new Promise((r) => setTimeout(r, 0)); // the next piece loads
+    run(env, timer, 7);
+    expect(player.current).toBe('g');
+    const bridgeNotes = env.played.filter((n) => n.at! >= 6 - 1e-6);
+    expect(bridgeNotes.length).toBeGreaterThan(0); // no silent gap: the bridge is already sounding
+    run(env, timer, 30);
+    const gFirst = env.played.find((n) => n.pitch === 67 && n.at! > 6 && n.duration! < 1)!; // g's opening note
+    expect(gFirst).toBeDefined();
+    // the bridge's chords all come before g's first downbeat
+    const chords = env.played.filter((n) => n.at! > 6 && n.at! < gFirst.at! - 1e-6);
+    expect(chords.length).toBeGreaterThan(4);
+  });
+
+  it('a skip bridges too, from wherever the piece was', async () => {
+    const { env, timer, player } = setup(tracks, pieces, { bridges: true });
+    await player.play('c');
+    run(env, timer, 2);
+    const before = env.played.length;
+    await player.next();
+    expect(player.current).toBe('g');
+    run(env, timer, 2.5);
+    const fresh = env.played.slice(before);
+    expect(fresh.length).toBeGreaterThan(0);
+    expect(fresh.some((n) => n.pitch === 67 && (n.duration ?? 0) < 1 && n.at! < 2.5)).toBe(false); // g has not begun: the bridge has
+  });
+
+  it('a first play, from silence, is not bridged', async () => {
+    const { env, timer, player } = setup(tracks, pieces, { bridges: true });
+    await player.play('g');
+    run(env, timer, 0.2);
+    expect(env.played.map((n) => n.pitch)).toEqual([67]);
   });
 });

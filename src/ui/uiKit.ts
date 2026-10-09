@@ -1,6 +1,6 @@
 // The UI kit (PURE — pure-ui allowlist): the chrome every menu, panel and button is built from,
 // painted from the same shared palette as the map so the interface reads as part of the pixel art, in
-// the idiom of 16-bit console city-builders (Maddy 2026-09-30). Frames are tiny 9-slice images — outline, bevel, inner rim,
+// the idiom of the 16-bit console city-builders (Maddy 2026-09-30). Frames are tiny 9-slice images — outline, bevel, inner rim,
 // fill — that the DOM shell (uiTheme.ts) serves as CSS border-images at a whole-pixel scale; theme
 // variables give text and accents the same palette.
 

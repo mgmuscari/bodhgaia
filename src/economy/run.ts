@@ -6,6 +6,7 @@ import { stepEconomy, type CityReading, type EconomyState, type Levers } from '.
 import { advanceProjects, startProject, type Project } from './projects';
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
+import { FUNDS_PER_COST } from '../tools/tools';
 
 /** The player's standing levers (the per-hour project spends are filled in each hour). */
 export type StandingLevers = Pick<Levers, 'tax' | 'police'>;
@@ -48,12 +49,13 @@ export const SITE_EFFORT_PER_HOUR = 2;
 
 /** Raising a commons work at (x, y): its cost in effort, drawn SITE_EFFORT_PER_HOUR an hour; done, the site there
  *  becomes `kind` (the city calls finishSite on completion). */
-export function buildProject(spec: { kind: number; name: string; cost: number; x: number; y: number }): Project {
+export function buildProject(spec: { kind: number; name: string; cost: number; x: number; y: number; pay?: 'effort' | 'funds'; effort?: number }): Project {
+  const funds = spec.pay === 'funds'; // a civic building is paid from the treasury, the commons in effort
   return startProject({
     id: `build-${spec.kind}@${spec.x},${spec.y}`,
     label: `Raising ${spec.name}`,
-    effort: spec.cost,
-    funds: 0,
+    effort: funds ? 0 : (spec.effort ?? spec.cost), // volunteers raising a civic work pay its price in effort
+    funds: funds ? spec.cost * FUNDS_PER_COST : 0,
     hours: Math.ceil(spec.cost / SITE_EFFORT_PER_HOUR),
     payload: { site: { x: spec.x, y: spec.y, kind: spec.kind } },
   });

@@ -139,7 +139,9 @@ describe('live layer golden determinism', () => {
 
   it('matches the pinned digest (a pure refactor must leave this byte-identical)', () => {
     // 2026-10-08: the unhoused go out on their day from the camps to the commercial streets — new walkers, new draws
-    expect(first).toBe('cars=9 peds=171 cruisers=4 trains=5 flocks=6 #92635bab');
+    // 2026-10-08: a train remembers the tile its tail left (Train.behind, for the last car's bend) — same motion,
+    // one more field hashed
+    expect(first).toBe('cars=9 peds=171 cruisers=4 trains=5 flocks=6 #8326fd8e');
   });
 });
 

@@ -694,7 +694,7 @@ describe('commons works go up as construction sites (Maddy 2026-10-08)', () => {
     const r = applyTool(world, tech, tool, 3, 3);
     expect(r.ok).toBe(true);
     expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site);
-    expect(r.site).toEqual({ kind: BuiltKind.CommunityGarden, x: 3, y: 3, cost: tool.cost, name: tool.name });
+    expect(r.site).toEqual({ kind: BuiltKind.CommunityGarden, x: 3, y: 3, cost: tool.cost, name: tool.name, pay: 'effort' });
     expect(tech.effort).toBe(0);
   });
 
@@ -705,5 +705,21 @@ describe('commons works go up as construction sites (Maddy 2026-10-08)', () => {
     const r = applyTool(world, tech, toolDef('build-61')!, 3, 3); // a pocket park on open land: a site too
     expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site);
     expect(r.site?.kind).toBe(BuiltKind.Park);
+  });
+});
+
+describe('civic buildings go up as sites too, paid from the treasury (Maddy 2026-10-08)', () => {
+  it('placing a school lays a site, takes no money up front, and will draw its price in funds', async () => {
+    const { FUNDS_PER_COST } = await import('../../src/tools/tools');
+    const world = freshWorld();
+    const tech = freshTech(0);
+    const wallet = { funds: 50_000 };
+    const tool = toolDef(`build-${BuiltKind.School}`)!;
+    const r = applyTool(world, tech, tool, 3, 3, wallet);
+    expect(r.ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site);
+    expect(wallet.funds).toBe(50_000);
+    expect(r.site).toMatchObject({ kind: BuiltKind.School, pay: 'funds', cost: tool.cost });
+    void FUNDS_PER_COST;
   });
 });

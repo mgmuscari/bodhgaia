@@ -1,12 +1,13 @@
 // The music player: plays parsed pieces through the AudioEngine's 'music' bus with a lookahead scheduler — every
 // tick (~50 ms) it hands the engine the notes that fall within the next ~200 ms, timed on the engine clock, so
-// timer jitter never reaches the music. Moods pick from tagged tracks ('day', 'night', 'calm'); between pieces there
-// is a breath of silence. Gentle by construction: softened velocities, a voice cap, long notes trimmed, most drums
-// dropped. The engine is the contract only — this module never touches WebAudio.
+// timer jitter never reaches the music. Moods pick from tagged tracks ('day', 'night', 'calm'); every change of piece
+// is joined by a generated bridge (bridge.ts) that resolves into the next. Gentle by construction: softened
+// velocities, a voice cap, long notes trimmed, most drums dropped. The engine is the contract only — this module never touches WebAudio.
 import type { AudioEngine, InstrumentId, Voice } from '../contract';
 import { instrumentForProgram, percussionFor } from './gm';
 import { parseMidi, type MidiNote, type MidiPiece } from './midi';
 import { dueNotes, Polyphony, soften } from './sequencer';
+import { bridge, type BridgeFrom } from './bridge';
 
 export type Mood = 'day' | 'night' | 'calm';
 
@@ -33,8 +34,10 @@ export interface MusicPlayerOptions {
   tickMs?: number;
   /** Simultaneous-note cap. Default 8. */
   maxVoices?: number;
-  /** Seconds of silence between pieces. Default 6. */
+  /** Seconds of silence between pieces when they are not bridged. Default 6. */
   gap?: number;
+  /** Join every change of piece with a generated bridge (bridge.ts) instead of a gap. Default true. */
+  bridges?: boolean;
   /** Initial mood. Default 'day'. */
   mood?: Mood;
 }
@@ -70,6 +73,21 @@ const PERCUSSION_GAIN = 0.4;
 /** A light stereo spread by register: low left, high right, never far. */
 const pan = (pitch: number) => Math.max(-0.35, Math.min(0.35, (pitch - 64) / 60));
 
+/** The bridge from `from` followed by `p`, as one piece in `p`'s own time (scaled by its rate), the bridge
+ *  resolving exactly on p's first note. */
+function bridged(from: BridgeFrom, p: MidiPiece, rateB: number): MidiPiece {
+  const br = bridge(from, { piece: p, rate: rateB });
+  const shift = br.duration * rateB - (p.notes[0]?.time ?? 0);
+  return {
+    notes: [
+      ...br.notes.map((n) => ({ ...n, time: n.time * rateB, duration: n.duration * rateB })),
+      ...p.notes.map((n) => ({ ...n, time: n.time + shift })),
+    ],
+    duration: p.duration + shift,
+    tempo: p.tempo,
+  };
+}
+
 function defaultLoad(track: PlayableTrack): Promise<MidiPiece> {
   if (!track.file) return Promise.reject(new Error(`music: track ${track.id} has no file`));
   const base = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/';
@@ -96,7 +114,8 @@ export function createMusicPlayer(
   const random = options.random ?? Math.random;
   const lookahead = options.lookahead ?? 0.2;
   const tickMs = options.tickMs ?? 50;
-  const gap = options.gap ?? 6;
+  const bridges = options.bridges ?? true;
+  const gap = bridges ? 0 : (options.gap ?? 6);
   const poly = new Polyphony(options.maxVoices ?? 8);
   const cache = new Map<string, MidiPiece>();
 
@@ -165,14 +184,22 @@ export function createMusicPlayer(
     }
   }
 
+  /** Where the playing piece is leaving from, for a bridge out of it (null from silence). */
+  function leaving(): BridgeFrom | null {
+    if (!piece || !track || !bridges) return null;
+    const at = cursor >= piece.notes.length ? piece.duration : Math.max(0, Math.min(piece.duration, (engine.now() - start) * rate()));
+    return { piece, at, rate: rate() };
+  }
+
   async function begin(t: PlayableTrack): Promise<void> {
+    const from = leaving();
     halt();
     const gen = generation;
     const p = cache.get(t.id) ?? (await load(t));
     cache.set(t.id, p);
     if (gen !== generation) return; // superseded while loading
     track = t;
-    piece = p;
+    piece = from ? bridged(from, p, t.rate ?? 1) : p;
     cursor = 0;
     started = false;
     start = engine.now() + LEAD;

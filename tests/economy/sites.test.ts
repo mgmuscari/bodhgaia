@@ -42,3 +42,13 @@ describe('construction sites', () => {
     expect(liveProjects([p], map)).toHaveLength(0);
   });
 });
+
+describe('a civic site draws money, not effort', () => {
+  it('its price in funds, over the same hours', async () => {
+    const { FUNDS_PER_COST } = await import('../../src/tools/tools');
+    const p = buildProject({ kind: BuiltKind.School, name: 'School', cost: 16, x: 3, y: 4, pay: 'funds' });
+    expect(p.effort).toBe(0);
+    expect(p.funds).toBe(16 * FUNDS_PER_COST);
+    expect(p.hours).toBe(Math.ceil(16 / SITE_EFFORT_PER_HOUR));
+  });
+});

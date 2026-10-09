@@ -170,6 +170,8 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   to the commercial streets, thinning commerce's taxes there — `live/unhoused.ts`). Remaining (post-1.0): fuller
   shelter-anchored rounds, dedicated shelter kinds. REMAINING: per-event
   displacement, shelter-anchored daily rounds, dedicated shelter kinds. `docs/design/unhoused-residents.md`.
+- 🔲 **AI nodes clean up industry** (Maddy 2026-10-08): an AI node turns nearby industry into high-tech jobs —
+  the industrial pollution there goes away.
 
 ### 5 — Hybrid satellite shader (done — audited 2026-10-08)
 DECISION: **full hybrid path** — WebGL2 renders the MAP (baked-tile albedo + GPU water/grass/clouds/
@@ -430,7 +432,7 @@ Plan: `~/.claude/plans/love-this-so-far-silly-moonbeam.md`.
 
 ## ACTIVE DIRECTION
 
-**Agent-driven simulation.** Mutate from the classic city-builder's 1989 aggregate/cellular-automata layers into an
+**Agent-driven simulation.** Mutate from the 1989 classic's aggregate/cellular-automata layers into an
 AGENT-DRIVEN sim with the same kinds of layers (traffic, pollution, land value…), emergent from the
 actual travelers. **Determinism: "seeded world, live dynamics"** — worldgen/ecology/civic stay seeded
 + reproducible (N=120 gate over the seeded starting world); dynamic layers live in the live agent

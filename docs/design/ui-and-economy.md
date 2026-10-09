@@ -1,7 +1,7 @@
-# classic UI + a Civ-style economy — inquiry (2026-09-30)
+# A classic city-builder UI + a Civ-style economy — inquiry (2026-09-30)
 
 Maddy: *"fixing the menus and tech tree, they don't match up well with the pixel art and don't feel like
-the classic city-builder or any other classic classic game. we also need info maps, and modals for other things. this game
+any classic 16-bit city-builder. we also need info maps, and modals for other things. this game
 needs more economy."* — and: *"take inspiration from 4x like civ for the economy … monetary budget,
 probably also taxes, but new resources like community effort and goodwill, and approval rating unlocking
 things like eminent domain."*
@@ -16,10 +16,10 @@ things like eminent domain."*
 - **Modals:** only the opening modal exists — no messages, events or advisor.
 - **Economy:** one currency, **communal effort**. It accrues from wellbeing every tick and is spent on tech
   nodes and builds. There is no money, upkeep or demand, and spending carries no tension.
-- **Foundation PRD:** the fork dropped the classic city-builder's police budgets and growth as a win condition. A money
+- **Foundation PRD:** the fork dropped the classic city-builders' police budgets and growth as a win condition. A money
   economy is a deliberate departure from that, so the design must say how it stays honest to it (below).
 
-## A. The UI language: 16-bit console city-builders, in our palette
+## A. The UI language: 16-bit console city-builder, in our palette
 
 One **window kit** for everything, built from the skin's pixels rather than CSS-drawn chrome:
 
@@ -29,7 +29,7 @@ One **window kit** for everything, built from the skin's pixels rather than CSS-
   font if no licensed one matches.
 - **Theme.** Colours as CSS variables generated from the palette, so UI and map share one palette.
 
-The layout follows the 16-bit console city-builders screen:
+The layout follows the 16-bit console city-builder screen:
 
 - **Tool palette:** a vertical strip of pixel icons on the left, painted like the status icons, with a
   flyout per category. This replaces the emoji dock.
@@ -47,7 +47,7 @@ The layout follows the 16-bit console city-builders screen:
 
 ## B. Info maps
 
-A **Maps window**, modelled on the classic city-builder's:
+A **Maps window**, modelled on the classic city-builders':
 
 - **Minimap:** the whole city, one pixel per tile, drawn from each tile's average colour, with the camera
   viewport outlined. Click to jump.
@@ -73,7 +73,7 @@ A **Maps window**, modelled on the classic city-builder's:
 
 | Resource | Earned by | Spent on | Feels like |
 |---|---|---|---|
-| **Funds** (money) | taxes; later grants, fees, bonds | building, **upkeep** of roads, transit, plants and services | the classic city-builder's budget |
+| **Funds** (money) | taxes; later grants, fees, bonds | building, **upkeep** of roads, transit, plants and services | the classic city-builders' budget |
 | **Communal effort** | wellbeing (exists) — neighbours with time and trust | the commons tech tree; community-built works (gardens, parklets, repair) | Civ culture / science |
 | **Goodwill** | keeping people housed, repairing harm, responsiveness, honouring commitments | contentious acts (rezoning, takings, raising taxes) | Civ diplomatic favour |
 | **Approval** (0–100%, a level not a stock) | wellbeing, services, fairness of taxes, goodwill | gates powers: bonds, ballot measures, special powers (eminent domain …) | Civ legitimacy / governments |
@@ -120,7 +120,7 @@ constraint.
 2. **Police → a budget line the player can cut.** Funding police feeds the police-violence field; cutting
    it and redirecting to Circles (restorative) is a real lever. This revises the foundation PRD's
    "no police budget" — the apparatus enters the ledger so that defunding can be a choice.
-3. **Taxes → per-class R/C/I sliders** on property value (classic the classic city-builder). The displacement loop in §D
+3. **Taxes → per-class R/C/I sliders** on property value (the classic city-builders). The displacement loop in §D
    still applies through rents.
 4. **Stakes → soft consequences only.** No game over. Empty funds degrade services; low approval locks
    powers.

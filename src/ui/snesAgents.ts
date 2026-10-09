@@ -149,6 +149,40 @@ const TRAIN_CAR_E = ['.kkkkkkkkkkk.', 'kbbbbbbbbbbbk', 'kbwbwbwbwbwbk', 'kbwbwbw
 // Trams (docs/design/transit.md): a cream car with a red band and a row of windows; the head has its windscreen.
 const TRAM_HEAD_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'kcwcwcwcwcwgk', 'kcwcwcwcwcwgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
 const TRAM_CAR_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrrk', 'kcwcwcwcwcwck', 'kcwcwcwcwcwck', 'krrrrrrrrrrrk', '.kkkkkkkkkkk.'];
+// ── Wind turbine rotors (Maddy 2026-10-08: they turn with their output) ──────────────────────────────────
+/** Frames of a rotor's turn; three blades repeat every 120°, so a frame is 20° and a turn is 3 × ROTOR_FRAMES. */
+export const ROTOR_FRAMES = 6;
+/** Turns a second at the turbine's nameplate output (its wind factor 1). */
+export const ROTOR_REVS_PER_SEC = 0.4;
+/** A blade's tip at each 20° step from straight up, 5 art px out (rounded; no trig in this pure module). */
+const BLADE_TIPS: ReadonlyArray<readonly [number, number]> = [
+  [0, -5], [2, -5], [3, -4], [4, -2], [5, -1], [5, 1], [4, 2], [3, 4], [2, 5],
+  [0, 5], [-2, 5], [-3, 4], [-4, 2], [-5, 1], [-5, -1], [-4, -3], [-3, -4], [-2, -5],
+];
+
+/** A rotor's turns after `dtSec` more at a wind factor `wind` (its share of nameplate). */
+export function spinRotor(turns: number, dtSec: number, wind: number): number {
+  return turns + dtSec * ROTOR_REVS_PER_SEC * (wind > 0 ? wind : 0);
+}
+
+/** The frame a rotor at `turns` shows. */
+export function rotorFrame(turns: number): number {
+  const t = turns - Math.floor(turns);
+  return Math.floor(t * ROTOR_FRAMES * 3) % ROTOR_FRAMES;
+}
+
+/** One frame: three blades from the hub, at 20°·k, +120°, +240°. */
+function rotor(k: number): Pixels {
+  const p = blank(11, 11);
+  for (const b of [0, 6, 12]) {
+    const [tx, ty] = BLADE_TIPS[(k + b) % 18]!;
+    const n = Math.max(Math.abs(tx), Math.abs(ty));
+    for (let s = 1; s <= n; s++) px(p, 5 + Math.round((tx * s) / n), 5 + Math.round((ty * s) / n), C.line);
+  }
+  px(p, 5, 5, C.pave); // the hub
+  return p;
+}
+
 /** Window columns of a passenger car or tram (art x), filled centre-out as riders board. */
 const WINDOW_COLS = [6, 2, 10, 4, 8];
 export const WINDOWS = WINDOW_COLS.length;
@@ -298,6 +332,7 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   out.set('@sprite/transit-stop/tram', glyph(STOP, { s: C.leaf, d: C.cream, p: C.slateLo }));
   out.set('@sprite/transit-stop/rail', glyph(STOP, { s: C.roofBlue, d: C.cream, p: C.slateLo }));
   BIRD_FRAMES.forEach((rows, f) => out.set(`@sprite/bird/${f}`, glyph(rows, { k: C.ink })));
+  for (let k = 0; k < ROTOR_FRAMES; k++) out.set(`@sprite/turbine-rotor/${k}`, rotor(k));
   SMOG_PX.forEach((size, i) => {
     for (const v of [0, 1]) {
       out.set(`@sprite/smog/${i}/${v}`, smogPuff(size, v));

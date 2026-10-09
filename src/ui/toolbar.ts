@@ -3,7 +3,7 @@
 // overlapped"). It holds NO logic worth unit-testing — categorization and art keys are pure and tested in
 // ui/toolMenuContent.ts, the map/panel buttons in ui/dockContent.ts. This shell only APPLIES those.
 //
-// Layout (top→bottom, a 2-column grid of icon buttons, 16-bit console city-builders style): the modes (inspect,
+// Layout (top→bottom, a 2-column grid of icon buttons, in the 16-bit console city-builders' manner): the modes (inspect,
 // bulldoze), the build categories, then the map toggles and panels. A category opens a FLYOUT beside the
 // sidebar with its tools, each shown as the very tile it builds. Labels, costs and hotkeys live in a
 // pixel tooltip. The status line (inspect readouts, legend captions) is a bar along the bottom of the map.

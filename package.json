@@ -1,7 +1,7 @@
 {
   "name": "bodhgaia",
-  "version": "0.0.0",
-  "description": "Dharmapunk browser city-builder forked from the old simulator (GPL-3 lineage)",
+  "version": "1.0.0",
+  "description": "Dharmapunk browser city-builder",
   "private": true,
   "type": "module",
   "scripts": {

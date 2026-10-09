@@ -609,15 +609,32 @@ describe('snes washes — dithered pixel overlays instead of translucent per-til
     expect(cover('@wash/shadow')).toBeLessThan(0.6);
   });
 
-  it('a level crossing paves a road band across the rails, with the rails running through it', () => {
+  it('a level crossing paves a road band across the tile — its surface only; the track is laid over it', () => {
     const v = tiles.get('@road/xband/v')!; // road runs N-S across an E-W railway
     const a = (x: number, y: number): number => v.data[(y * v.w + x) * 4 + 3]!;
     expect(a(0, 0)).toBe(0); // outside the band stays the rail tile
     expect(a(8, 0)).toBe(255); // the band reaches both edges
     expect(a(8, 15)).toBe(255);
-    const at = (x: number, y: number): number[] => [...v.data.subarray((y * v.w + x) * 4, (y * v.w + x) * 4 + 3)];
-    expect(at(8, 5)).not.toEqual(at(8, 7)); // a rail row differs from the asphalt beside it
     expect(tiles.has('@road/xband/h')).toBe(true);
+  });
+
+  // Maddy 2026-10-08: "trams that come to 4-way intersections but have corners don't draw the turn right" / "same with
+  // t junctions". The band used to carry its own straight rails, so on a corner or a turnout at a street junction the
+  // curve was paved over with straight stubs. The rails are now an overlay of the tile's own track, laid on the band.
+  it('the rails laid over a crossing are exactly the tile’s own track — a corner’s curve, a turnout’s branch', () => {
+    const [hr, hg, hb] = C.paveHi;
+    for (const [fam, base] of [['tram', 'streetcar'], ['rail', 'rail']] as const) {
+      for (const m of [3, 6, 9, 12, 5, 10, 7, 11, 13, 14, 15]) {
+        const o = tiles.get(`@road/rails/${fam}/${m}`)!;
+        const t = tiles.get(`${base}-${m}`)!;
+        expect(o, `@road/rails/${fam}/${m}`).toBeDefined();
+        for (let i = 0; i < o.data.length; i += 4) {
+          const railHere = t.data[i] === hr && t.data[i + 1] === hg && t.data[i + 2] === hb;
+          if (railHere) expect([...o.data.subarray(i, i + 3)], `${fam} ${m} px ${i / 4}`).toEqual([hr, hg, hb]);
+          if (o.data[i + 3]! > 0 && !railHere) expect(o.data[i + 3]).toBe(255); // a rail's shadow, nothing else
+        }
+      }
+    }
   });
 });
 
@@ -730,5 +747,37 @@ describe('flood water (disasters.md)', () => {
     expect([a.w, a.h]).toEqual([BASE_TILE, BASE_TILE]);
     expect(a.data.join()).not.toBe(b.data.join());
     expect(a.data.join()).toBe(tiles.get('river-0~m2')!.data.join());
+  });
+});
+
+describe('bridge decks (Maddy 2026-10-08: bridges over water)', () => {
+  it('a bike path, promenade, rail or streetcar over water is a narrow deck — the water shows either side', () => {
+    for (const base of ['bike', 'ped', 'rail', 'streetcar']) {
+      const deck = tiles.get(`${base}-10~deck`); // an east–west span
+      expect(deck, base).toBeDefined();
+      const a = (x: number, y: number) => deck!.data[(y * 16 + x) * 4 + 3]!;
+      expect(a(8, 1), `${base} edge`).toBe(0); // open water beside the deck
+      expect(a(8, 14), `${base} edge`).toBe(0);
+      expect(a(8, 8), `${base} middle`).toBe(255); // the deck itself
+      expect(a(0, 8)).toBe(255); // and it reaches the next span
+    }
+  });
+});
+
+describe('track T-junctions read cleanly (Maddy 2026-10-08: streetcar branches)', () => {
+  it('the branch joins on two clean arcs: nothing on the far side of the through line, no knot in the middle', () => {
+    for (const base of ['streetcar', 'rail']) {
+      const p = tiles.get(`${base}-7`)!; // through N–S, the branch off to the east
+      const isRail = (x: number, y: number) => {
+        const o = (y * 16 + x) * 4;
+        return p.data[o] === C.paveHi[0] && p.data[o + 1] === C.paveHi[1] && p.data[o + 2] === C.paveHi[2];
+      };
+      // west of the through line's left rail (x < 5) there is no rail at all
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 5; x++) expect(isRail(x, y), `${base} (${x},${y})`).toBe(false);
+      // between the through rails, only the rails' own columns — no curve rail crossing the middle (x 6..9)
+      let middle = 0;
+      for (let y = 0; y < 16; y++) for (let x = 6; x <= 9; x++) if (isRail(x, y)) middle++;
+      expect(middle, base).toBe(0);
+    }
   });
 });

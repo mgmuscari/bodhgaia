@@ -501,8 +501,8 @@ export function isJunctionTile(map: GameMap, x: number, y: number): boolean {
  *  the walkable set (around plots), so they no longer cut diagonally through buildings. */
 export function isWalkable(map: GameMap, x: number, y: number): boolean {
   if (!map.inBounds(x, y)) return false;
-  if (map.water[map.idx(x, y)] !== 0) return false; // Water.None === 0
   const k = map.built[map.idx(x, y)]!;
+  if (map.water[map.idx(x, y)] !== 0 && k === 0) return false; // open water (a bridge's deck walks like its way)
   if (k === BuiltKind.RoadHighway || k === BuiltKind.RoadRamp) return false; // no walking a freeway/ramp
   // A planted median is a no-traffic green BARRIER dividing a road, not a crossing or a park: cars
   // never drive on/across it, and peds must not cut through it either (Maddy: travelers path through
