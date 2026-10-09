@@ -104,6 +104,7 @@ const liveFiles = tsFiles(liveDir);
 // guard becomes fail-closed.
 const PURE_UI_ALLOWLIST = [
   'src/ui/openingContent.ts',
+  'src/ui/tileExtrude.ts',
   'src/ui/techContent.ts',
   'src/ui/techEffectsContent.ts',
   'src/ui/cctvContent.ts',
