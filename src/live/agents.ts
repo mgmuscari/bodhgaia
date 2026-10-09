@@ -762,7 +762,7 @@ function indexCars(cars: Car[]): Map<number, number> {
   const ix = new Map<number, number>();
   for (let i = 0; i < cars.length; i++) {
     const id = cars[i]!.id;
-    if (!ix.has(id)) ix.set(id, i);
+    if (id !== undefined && !ix.has(id)) ix.set(id, i); // an id-less car can never match a lookup
   }
   carIndex.set(cars, ix);
   return ix;

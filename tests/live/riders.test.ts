@@ -201,3 +201,32 @@ describe('a stop built over (Maddy 2026-10-08: an AI node on a platform — ride
     if (p.ride) expect(p.ride.board.platform).not.toBe(plan.board.platform);
   });
 });
+
+// The scaling pass (Maddy 2026-10-08): each waiting rider at a stop with a vehicle in counted every ped to see if it
+// was full (waiting × all peds). The vehicle's load is counted once and kept as riders board — the same answers.
+describe('a crowd boarding reads each ped a few times, not once per rider', () => {
+  it('a thousand waiting riders and a dwelling tram: linear in the peds', async () => {
+    const { stepRider } = await import('../../src/live/riders');
+    const { transitFor } = await import('../../src/live/transit');
+    const map = new GameMap(50, 12);
+    for (let x = 2; x <= 45; x++) map.setBuilt(x, 5, BuiltKind.Streetcar);
+    const state = createAmbientState();
+    const stop = transitFor(map).lines[0]!.stops[0]!;
+    const far = transitFor(map).lines[0]!.stops.at(-1)!;
+    const sx = stop.track % map.width;
+    const tram = { cells: [stop.track], hx: sx, hy: 5, tx: sx + 1, ty: 5, dir: 1, family: 'tram', dwell: 50 } as never;
+    state.trains.push(tram);
+    let reads = 0;
+    for (let i = 0; i < 1000; i++) {
+      const ride = { family: 'tram', board: stop, alight: far, stage: 'waiting', waited: 0, dest: { x: 44, y: 7 }, then: 'to-building' };
+      const p = { x: sx, y: 6, dir: 0, tx: sx, ty: 6, phase: 'transit' } as Record<string, unknown>;
+      let r: unknown = ride;
+      Object.defineProperty(p, 'ride', { get: () => (reads++, r), set: (v) => (r = v), enumerable: true });
+      state.peds.push(p as never);
+    }
+    for (const p of state.peds) stepRider(state, map, p);
+    const aboard = state.peds.filter((p) => p.ride?.vehicle === tram).length;
+    expect(aboard).toBe(64); // exactly a two-car tram's load boarded — the same answer as counting every time
+    expect(reads).toBeLessThan(20 * 1000); // counting every time: ~1M
+  });
+});

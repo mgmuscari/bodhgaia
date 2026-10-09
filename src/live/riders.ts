@@ -75,9 +75,30 @@ export function planRide(map: GameMap, ox: number, oy: number, dx: number, dy: n
   return best;
 }
 
+/** Each vehicle's load (peds whose ride names it), counted once per ped list and kept as riders board — a waiting
+ *  rider asking "is it full?" used to count every ped (the scaling pass, Maddy 2026-10-08). A ride starting or ending
+ *  elsewhere marks it stale, so the next ask recounts: the same answers as counting every time. */
+const loads = new WeakMap<object, Map<Train, number>>();
+let loadsStale = false;
+
+function loadOf(state: AmbientState, v: Train): number {
+  let m = loadsStale ? undefined : loads.get(state.peds);
+  if (!m) {
+    m = new Map();
+    for (const q of state.peds) {
+      const veh = q.ride?.vehicle;
+      if (veh) m.set(veh, (m.get(veh) ?? 0) + 1);
+    }
+    loads.set(state.peds, m);
+    loadsStale = false;
+  }
+  return m.get(v) ?? 0;
+}
+
 /** Set a citizen off on a ride: they walk to the boarding platform first. */
 export function startRide(p: Ped, plan: { board: Stop; alight: Stop }, dest: { x: number; y: number }, then: Ride['then']): void {
   const family = plan.board.family;
+  if (p.ride?.vehicle) loadsStale = true;
   p.ride = { family, board: plan.board, alight: plan.alight, stage: 'to-stop', waited: 0, dest, then };
   p.phase = 'transit';
   p.mode = family === 'tram' ? TravelMode.Streetcar : TravelMode.ElevatedRail;
@@ -100,6 +121,7 @@ function walkOn(p: Ped): void {
   p.tx = Math.round(p.x);
   p.ty = Math.round(p.y);
   p.recent = undefined;
+  if (ride.vehicle) loadsStale = true; // off a vehicle: its load is recounted at the next ask
   p.ride = undefined;
 }
 
@@ -170,10 +192,12 @@ export function stepRider(state: AmbientState, map: GameMap, p: Ped): boolean {
   if (ride.stage === 'waiting') {
     const t = state.trains.find(
       (v) => (v.family ?? 'rail') === ride.family && (v.dwell ?? 0) > 0 && headTile(map, v) === ride.board.track &&
-        state.peds.filter((q) => q.ride?.vehicle === v).length < capacityOf(ride.family),
+        loadOf(state, v) < capacityOf(ride.family),
     );
     if (t) {
       ride.vehicle = t;
+      const m = loadsStale ? undefined : loads.get(state.peds);
+      if (m) m.set(t, (m.get(t) ?? 0) + 1); // one more aboard
       ride.stage = 'riding';
       p.phase = 'riding';
     } else if (++ride.waited > WAIT_MAX) walkOn(p); // nothing came: walk
