@@ -62,9 +62,11 @@ import { createCommunity } from './app/community';
 import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
+import { registerServiceWorker } from './app/pwa';
 
 
 export function main(save: SaveV1 | null = null): void {
+  registerServiceWorker(); // installable + offline; a production build checks the site for a new release on launch
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing #game canvas');
   installUiTheme(); // the pixel UI kit: palette variables, 9-slice frames, pixel font
