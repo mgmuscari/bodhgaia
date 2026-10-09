@@ -721,20 +721,24 @@
         content: '·';
         margin: 0 0.6em;
       }
-      /* a phone: the segments wrap onto two centred rows inside the bar, spaced rather than dotted (Maddy 2026-10-08:
-         the one line was cut off) */
+      /* a phone: the readings sit in a fixed grid — two columns, three rows, each in its own cell — so a number
+         gaining a digit never re-flows the bar (Maddy 2026-10-08: a wrapping line swapped between 2 and 3 rows) */
       @media (max-width: 760px) {
         .pulse-dock {
-          flex-wrap: wrap;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-auto-rows: 1.2em;
           align-content: center;
-          column-gap: 0.9em;
-          white-space: normal;
+          justify-items: center;
+          column-gap: 0.6em;
           padding: 0 0.4rem;
           font-size: 1rem; /* the news ticker's size (Maddy 2026-10-08), in the taller phone bar (ui/layout.ts TOPBAR_H_NARROW) */
           line-height: 1.2;
           letter-spacing: 0;
         }
         .pulse-seg {
+          max-width: 100%;
+          overflow: hidden;
           white-space: nowrap;
         }
         .pulse-seg + .pulse-seg::before {

@@ -50,14 +50,17 @@ describe('the top bar on a narrow screen', () => {
     ]);
   });
 
-  it('on a narrow screen the segments wrap onto two rows that fit inside the bar', () => {
+  // Maddy 2026-10-08: "having the header swap between 2-3 rows when numbers change digit count is too noisy" — a
+  // fixed grid: two columns, three rows, each reading in its own cell, so a digit more never moves another.
+  it('on a narrow screen the readings sit in a fixed two-column grid inside the bar', () => {
     const css = readFileSync('index.html', 'utf8');
     const narrow = /@media \(max-width: (\d+)px\) \{\s*\.pulse-dock \{([^}]*)\}/.exec(css);
     expect(narrow, 'a narrow-screen rule for the bar').not.toBeNull();
     expect(Number(narrow![1])).toBeGreaterThanOrEqual(700);
     const rule = narrow![2]!;
-    expect(rule).toMatch(/flex-wrap:\s*wrap/);
-    expect(rule).toMatch(/white-space:\s*normal/);
+    expect(rule).toMatch(/display:\s*grid/);
+    expect(rule).toMatch(/grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(rule).not.toMatch(/flex-wrap/);
     // the news ticker's size (Maddy 2026-10-08: 12 px was "very tiny… keep font same size as news ticker")
     expect(rule).toMatch(/font-size:\s*1rem/);
     const size = 20; // 1rem: the root size (index.html html { font-size: 20px })
