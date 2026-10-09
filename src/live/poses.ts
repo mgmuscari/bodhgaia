@@ -76,7 +76,8 @@ export function syncTrainLegs(t: Train, W: number): Mover[] {
     const ax = a % W;
     const ay = Math.floor(a / W);
     const dir = k === 0 ? t.dir : stepDir(a, t.cells[k - 1]!, W);
-    const prevDir = k + 1 < t.cells.length ? stepDir(t.cells[k + 1]!, a, W) : dir;
+    const from = k + 1 < t.cells.length ? t.cells[k + 1] : t.behind;
+    const prevDir = from !== undefined ? stepDir(from, a, W) : dir;
     const m = (cars[k] ??= { x: 0, y: 0, dir: 0, tx: 0, ty: 0 } as Mover);
     m.x = ax + DIR_DX[dir]! * p;
     m.y = ay + DIR_DY[dir]! * p;
