@@ -129,3 +129,14 @@ describe('liveInspectLine (inspect live-sample formatting)', () => {
     );
   });
 });
+
+describe('an energy node shows its battery (Maddy 2026-10-08: the charge was invisible)', () => {
+  it('inspecting a node reads its charge out of its capacity', async () => {
+    const { BATTERY_CAPACITY } = await import('../../src/growth/power');
+    const { map, parcels, live, world } = setup();
+    placeParcel(map, parcels, { x: 6, y: 6, width: 1, height: 1, kind: BuiltKind.EnergyNode });
+    const line = inspectReadout('energy node', 6, 6, world, live, new Set(), new Map([[map.idx(6, 6), 300.4]]));
+    expect(line).toContain(`battery 300/${BATTERY_CAPACITY}`);
+    expect(inspectReadout('energy node', 6, 6, world, live, new Set(), new Map())).toContain(`battery 0/${BATTERY_CAPACITY}`);
+  });
+});

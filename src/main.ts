@@ -227,7 +227,7 @@ export function main(save: SaveV1 | null = null): void {
       },
     },
     techPanel: () => mounted.tech,
-    inspect: (info, tx, ty) => inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors),
+    inspect: (info, tx, ty) => inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors, power.grid().storage),
     placed: () => {
       power.recompute(); // a new plant lights its district
       live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources
