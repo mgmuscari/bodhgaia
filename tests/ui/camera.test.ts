@@ -195,7 +195,9 @@ describe('Camera.tileOrigin — seamless tile placement', () => {
   // Maddy 2026-10-08, Windows on a 5K display: tile seams. At a fractional display scale (125–225%) a whole CSS pixel
   // is a fraction of a device pixel, so tiles snapped to CSS pixels still met mid-pixel. They snap to device pixels.
   it('at a fractional display scale, every tile edge lands on a whole device pixel and tiles still abut', () => {
-    for (const dpr of [1.25, 1.5, 1.75, 2.25, 2.5]) {
+    // any scale, the odd ones too: 110%, 133%, and the not-quite values Chrome on Windows reports (Maddy 2026-10-08,
+    // 1.0.1 still had a seam every 4 tiles: a tile was N.25 device px wide, so origins could snap but not abut)
+    for (const dpr of [1.1, 1.25, 1.3333333, 1.5, 1.75, 2.2000000476837, 2.25, 2.5, 2.6666667, 3]) {
       for (const zoom of [1, 2, 3, 4]) {
         const cam = new Camera({ mapWidth: 128, mapHeight: 128, viewportWidth: 1400, viewportHeight: 800, zoom, dpr });
         (cam as unknown as { x: number }).x = 29.3171;
@@ -205,6 +207,7 @@ describe('Camera.tileOrigin — seamless tile placement', () => {
           const o = cam.tileOrigin(t, t);
           expect(Math.abs(o.dx * dpr - Math.round(o.dx * dpr)), `dpr ${dpr} zoom ${zoom} col ${t}`).toBeLessThan(1e-6);
           expect(Math.abs(o.dy * dpr - Math.round(o.dy * dpr)), `dpr ${dpr} zoom ${zoom} row ${t}`).toBeLessThan(1e-6);
+          expect(Math.abs(ts * dpr - Math.round(ts * dpr)), `dpr ${dpr} zoom ${zoom}: whole device px a tile`).toBeLessThan(1e-6);
           expect(cam.tileOrigin(t + 1, t + 1).dx - o.dx).toBeCloseTo(ts, 9);
           expect(cam.tileOrigin(t + 1, t + 1).dy - o.dy).toBeCloseTo(ts, 9);
         }

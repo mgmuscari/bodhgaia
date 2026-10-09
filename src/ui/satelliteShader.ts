@@ -79,11 +79,9 @@ void main() {
     vec2 wc = floor(ga);
     if (mod(floor(u_time / WATER_LAP_S) + wc.x + wc.y, 2.0) > 0.5) {
       vec2 lap = vec2(WATER_LAP_PX / ART_PX, 0.0);
-      // a whole number of base texels (device pixels): at a fractional display scale 2 art px is not one, and a
-      // part-texel shift smeared the water as it lapped (Maddy 2026-10-08)
-      vec2 baseTexels = vec2(textureSize(u_base, 0));
-      vec2 shift = floor(lap / u_view * baseTexels + 0.5) / baseTexels;
-      if (int(cell(floor(ga + lap)).r * 255.0 + 0.5) == SAT_WATER) col = texture(u_base, v_uv + shift).rgb;
+      // the art pixel two over, read at ITS centre: the lap moves the art by whole art pixels at any display scale
+      // (a screen-pixel shift tore at fractional scales, where an art pixel is a fraction of device px — Maddy 2026-10-08)
+      if (int(cell(floor(ga + lap)).r * 255.0 + 0.5) == SAT_WATER) col = texture(u_base, (ga + lap - u_origin) / u_view).rgb;
     }
   }
 
@@ -250,7 +248,7 @@ export class SatelliteShader {
   /** Upload the CPU base canvas (the baked per-cell tiles) as the albedo texture (unit 1). Call only
    *  when the base changed (camera move / built edit) — not every frame. Canvas row 0 (top) → texture
    *  row 0, matching v_uv.y=0=top (no Y-flip). NEAREST: the base is the screen's own pixels, and the water's lap
-   *  shifts it by whole texels — a blend would only smear the art. */
+   *  reads whole art pixels from it — a blend would only smear the art. */
   uploadBase(src: TexImageSource, slot: 'main' | 'inset' = 'main'): void {
     const gl = this.gl;
     gl.activeTexture(gl.TEXTURE1);
