@@ -136,6 +136,7 @@ export function main(save: SaveV1 | null = null): void {
     hasHealing: () => world.parcels.aliveIndices().some((i) => world.parcels.kindAt(i) === BuiltKind.HealingCommons),
     hidden: () => document.hidden,
     firstTrack: import.meta.env.DEV ? (params.get('track') ?? undefined) : undefined, // DEV: audition a piece
+    intro: openingUp, // the intro plays Kyabdro
   });
   sound.applySettings(settings.current().audio);
   let deniedAt = 0; // a refused drag would repeat per tile — one 'no' per gesture is enough

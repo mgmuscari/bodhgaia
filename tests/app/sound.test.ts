@@ -58,17 +58,22 @@ describe('the siren', () => {
   });
 });
 
-// Maddy 2026-10-08: "the opening song of the game should be Kyabdro".
+// Maddy 2026-10-08: "the opening song of the game should be Kyabdro" — corrected: "it should be the music that
+// plays when the intro plays, not every load of the game".
 import { firstPiece } from '../../src/app/sound';
 import { MUSIC_TRACKS, OPENING_TRACK } from '../../src/audio/music/tracks';
 
-describe('the game opens on Kyabdro', () => {
-  it('the first piece, whatever the hour, is Kyabdro — a track the manifest ships', () => {
+describe('the intro plays Kyabdro', () => {
+  it('when the intro plays, the first piece is Kyabdro — a track the manifest ships', () => {
     expect(OPENING_TRACK).toBe('kyabdro-night');
-    expect(firstPiece()).toBe(OPENING_TRACK);
+    expect(firstPiece(true)).toBe(OPENING_TRACK);
     expect(MUSIC_TRACKS.find((t) => t.id === OPENING_TRACK)?.title).toBe('Kyabdro');
   });
+  it('any other load starts on the mood’s own pick', () => {
+    expect(firstPiece(false)).toBeUndefined();
+  });
   it('a DEV audition (?track=) still goes first', () => {
-    expect(firstPiece('satie-gymnopedie-1')).toBe('satie-gymnopedie-1');
+    expect(firstPiece(true, 'satie-gymnopedie-1')).toBe('satie-gymnopedie-1');
+    expect(firstPiece(false, 'satie-gymnopedie-1')).toBe('satie-gymnopedie-1');
   });
 });

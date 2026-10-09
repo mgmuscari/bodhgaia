@@ -89,6 +89,8 @@ export interface SoundDeps {
   hidden(): boolean;
   /** Play this track first instead of the mood's pick (DEV auditions: ?track=<id>). */
   firstTrack?: string;
+  /** The intro (the opening night) is playing: it opens on Kyabdro. */
+  intro?: boolean;
 }
 
 export interface Sound {
@@ -100,9 +102,10 @@ export interface Sound {
 
 const LISTEN_MS = 250;
 
-/** The first piece of a session: Kyabdro, the game's opening song — or the piece a DEV audition asks for. */
-export function firstPiece(audition?: string): string {
-  return audition ?? OPENING_TRACK;
+/** The first piece of a session: the piece a DEV audition asks for; else Kyabdro while the intro plays (Maddy
+ *  2026-10-08: "the music that plays when the intro plays, not every load"); else none — the mood's own pick. */
+export function firstPiece(intro: boolean, audition?: string): string | undefined {
+  return audition ?? (intro ? OPENING_TRACK : undefined);
 }
 
 export function createSound(deps: SoundDeps): Sound {
@@ -112,8 +115,9 @@ export function createSound(deps: SoundDeps): Sound {
   const ambience = createAmbience(engine);
   let mood = moodFor(deps.hour(), deps.hasHealing());
   const music = createMusicPlayer(engine, MUSIC_TRACKS, { mood });
-  // waits for the unlock, then the opening song (or the piece asked for); the mood's picks follow, bridged
-  void music.play(firstPiece(deps.firstTrack)).catch(() => music.next().catch(() => {}));
+  // waits for the unlock, then the intro's song (or the piece asked for, or the mood's pick); the mood's picks follow
+  const first = firstPiece(deps.intro ?? false, deps.firstTrack);
+  void (first ? music.play(first) : music.next()).catch(() => music.next().catch(() => {}));
   let resting = false;
   let siren: Voice | null = null;
   let sirenTick = 0;
