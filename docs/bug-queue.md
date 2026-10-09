@@ -231,7 +231,7 @@ low luminance and got keyed away). Output = glowing-lights-on-transparent, align
   the albedo variant-selection makes auto-gen vs placed each use one variant). Bake N light variants per
   high-frequency 1×1 kind + per-parcel selection (reuse the albedo variant hash). Also fix the albedo
   variant selection so auto-gen residences vary (separate from lighting).
-- 🔵 **Building emission → GPU** (optional) — building windows/beacons still draw on CPU (#game z1, above
+- ✅ **Building emission → GPU** (2026-10-08: windows and furnaces baked with the base into two emission layers the satellite shader adds after the night dimming — under the agents now; only the blinking beacons stay on the CPU) (optional) — building windows/beacons still draw on CPU (#game z1, above
   the GPU agents). Works (additive glow, ~7ms gate skew) but could move into the GPU pipeline for full
   consistency + to feed the glow pass (window glow spilling onto streets).
 

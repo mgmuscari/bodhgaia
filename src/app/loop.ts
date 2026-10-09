@@ -102,7 +102,7 @@ export function createSimTick(ctx: SimTickCtx): SimTicker {
 export interface FrameView {
   renderer: Pick<
     Renderer,
-    'refreshLiveMarks' | 'renderFrame' | 'render' | 'baseCanvas' | 'baseVersion' | 'basePatch' | 'emissiveBuildingList' | 'headlightBeams'
+    'refreshLiveMarks' | 'renderFrame' | 'render' | 'baseCanvas' | 'baseVersion' | 'basePatch' | 'emissionLayers' | 'emissiveBuildingList' | 'headlightBeams'
   >;
   camera: Camera;
   gpu(): Pick<GpuRenderer, 'render' | 'renderAgents'> | null;
@@ -171,7 +171,7 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     const h = view.height();
     // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so it samples
     // the freshest baked tiles. The base re-uploads only when its version changed.
-    gpu?.render(camera, w, h, gameSec(now), renderer.baseCanvas(), renderer.baseVersion(), renderer.basePatch());
+    gpu?.render(camera, w, h, gameSec(now), renderer.baseCanvas(), renderer.baseVersion(), renderer.basePatch(), renderer.emissionLayers());
     // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
     if (gpu && live.on) gpu.renderAgents(live.state, camera, w, h, gameSec(now), renderer.emissiveBuildingList(), renderer.headlightBeams());
     // GPU smog overlay (z2, above sprites): the atmospheric haze.
