@@ -206,3 +206,25 @@ describe('runFrames', () => {
     expect(queue).toEqual([]);
   });
 });
+
+// Maddy 2026-10-08: "this game heats up phones". Drawing ran on every display refresh — 120 Hz on newer phones —
+// though nothing moves faster than the live layer's 20 steps a second. On a touch screen it is capped at 30 fps.
+describe('runFrames with a frame cap', () => {
+  const drive = (hz: number, seconds: number, minFrameMs: number) => {
+    const queue: Array<(now: number) => void> = [];
+    let drawn = 0;
+    runFrames(() => void drawn++, (cb) => void queue.push(cb), minFrameMs);
+    for (let i = 1; i <= hz * seconds; i++) queue.shift()!((i * 1000) / hz);
+    return drawn / seconds;
+  };
+  it('a 120-Hz display draws 30 frames a second under a 30-fps cap; a 60-Hz one too', () => {
+    expect(drive(120, 2, 1000 / 30)).toBeCloseTo(30, 0);
+    expect(drive(60, 2, 1000 / 30)).toBeCloseTo(30, 0);
+  });
+  it('a refresh slower than the cap draws every frame', () => {
+    expect(drive(24, 2, 1000 / 30)).toBeCloseTo(24, 0);
+  });
+  it('no cap: every refresh, as before', () => {
+    expect(drive(120, 1, 0)).toBe(120);
+  });
+});

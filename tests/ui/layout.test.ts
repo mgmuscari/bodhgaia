@@ -35,3 +35,16 @@ describe('a taller top bar on a phone', () => {
     expect(layoutVars()['--topbar-h']).toBe(`${TOPBAR_H}px`);
   });
 });
+
+// …and the canvases render at 2× at most on a touch screen: pixel art gains nothing past it, and a 3× phone drew 2.25×
+// the pixels for no visible gain (Maddy 2026-10-08: "this game heats up phones").
+import { renderScale } from '../../src/ui/layout';
+describe('render scale', () => {
+  it('a touch screen renders at 2× at most; a desktop at its own scale', () => {
+    expect(renderScale(3, true)).toBe(2);
+    expect(renderScale(2, true)).toBe(2);
+    expect(renderScale(1.5, true)).toBe(1.5);
+    expect(renderScale(3, false)).toBe(3);
+    expect(renderScale(0, false)).toBe(1); // no reading → 1
+  });
+});

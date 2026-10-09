@@ -571,7 +571,8 @@ export function main(save: SaveV1 | null = null): void {
     },
     afterGpu: (now) => events.gpuPass(now),
   });
-  runFrames(frame, (cb) => window.requestAnimationFrame(cb));
+  // 30 fps on a touch screen: nothing moves faster than 20 steps a second, and a phone heated drawing 120 (Maddy 2026-10-08)
+  runFrames(frame, (cb) => window.requestAnimationFrame(cb), touchScreen() ? 1000 / 30 : 0);
 }
 
 // Boot: resume the game in progress (the CURRENT slot, kept by autosave) unless `?new` asks for a fresh city;

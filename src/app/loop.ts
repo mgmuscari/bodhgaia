@@ -186,9 +186,19 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
 }
 
 /** Drive `frame` from requestAnimationFrame: the body runs, THEN the next frame is requested. */
-export function runFrames(frame: (now: number) => void, raf: (cb: (now: number) => void) => void): void {
+/** A display refresh this close to the cap's interval still counts as due (refresh timestamps jitter). */
+const FRAME_SLACK_MS = 2;
+
+/** Run `frame` on display refreshes — at most one per `minFrameMs` (0: every refresh). A skipped refresh does no work;
+ *  the next frame's longer step catches the clocks up (Maddy 2026-10-08: a 120-Hz phone heated up drawing 120 frames
+ *  a second of a city that moves 20 steps a second). */
+export function runFrames(frame: (now: number) => void, raf: (cb: (now: number) => void) => void, minFrameMs = 0): void {
+  let last = -Infinity;
   const loop = (now: number): void => {
-    frame(now);
+    if (now - last >= minFrameMs - FRAME_SLACK_MS) {
+      last = now;
+      frame(now);
+    }
     raf(loop);
   };
   raf(loop);
