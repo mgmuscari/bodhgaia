@@ -12,6 +12,7 @@ import { BASE_TILE } from './camera';
 import type { PaintedSkin } from './tileset';
 import { blank, disc, dither, fill, hash2, getPx, isOpaque, outline, px, slice, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
+import { BuiltKind } from '../engine/fabric';
 import { BUILDING_PAINTERS, emissionOf, paintBuilding } from './snesBuildings';
 import { snesRoadTiles, pathFrame } from './snesRoads';
 import { paintSnesAgents } from './snesAgents';
@@ -774,7 +775,32 @@ export function paintSnesSkin(): PaintedSkin {
   paintSnesAgents(eager);
   for (const name of Object.keys(ICONS)) eager.set(`@icon/${name}`, icon(name));
   for (const [k, p] of paintUiIcons()) eager.set(k, p); // the tool palette's icons
-  return { eager, lazy: { keys: buildingKeys(), paint: buildingPainter() } };
+  const paint = buildingPainter();
+  const turbine = windTurbineIcon(paint, eager);
+  if (turbine) eager.set('@ui/wind-turbine', turbine);
+  return { eager, lazy: { keys: buildingKeys(), paint } };
+}
+
+/** The wind turbine's menu icon (Maddy 2026-10-08: it had no blades): its tile is bladeless, since the rotor turns as
+ *  a sprite over it (renderer: centred on the hub at art (8.5, 6.5)), so the icon is the tile with a rotor frame there. */
+function windTurbineIcon(paint: (key: string) => Pixels | null, eager: ReadonlyMap<string, Pixels>): Pixels | null {
+  const tower = paint(footprintCellKey(BuiltKind.WindTurbine, 1, 1, 0, 0, 0));
+  const rotor = eager.get('@sprite/turbine-rotor/0');
+  if (!tower || !rotor) return null;
+  const icon = blank(T, T);
+  icon.data.set(tower.data);
+  const ox = Math.round(8.5 - rotor.w / 2);
+  const oy = Math.round(6.5 - rotor.h / 2);
+  for (let y = 0; y < rotor.h; y++)
+    for (let x = 0; x < rotor.w; x++) {
+      const i = (y * rotor.w + x) * 4;
+      if (rotor.data[i + 3] === 0) continue;
+      const tx = x + ox;
+      const ty = y + oy;
+      if (tx < 0 || ty < 0 || tx >= T || ty >= T) continue;
+      icon.data.set(rotor.data.subarray(i, i + 4), (ty * T + tx) * 4);
+    }
+  return icon;
 }
 
 /** Paint the WHOLE SNES skin eagerly: atlas key → pixel buffer (tests; the renderer loads paintSnesSkin). */

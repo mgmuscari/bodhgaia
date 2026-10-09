@@ -83,7 +83,7 @@ const CATEGORY_ART: Record<ToolCategory, string> = {
   industrial: footprintCellKey(BuiltKind.Industrial, 1, 1, 0, 0, 0),
   civic: footprintCellKey(BuiltKind.Civic, 1, 1, 0, 0, 0),
   green: footprintCellKey(BuiltKind.Park, 1, 1, 0, 0, 0),
-  energy: footprintCellKey(BuiltKind.WindTurbine, 1, 1, 0, 0, 0),
+  energy: '@ui/wind-turbine', // the tower with its blades (its tile is bladeless: the rotor turns as a sprite)
 };
 
 // Per-kind category. Anything not listed is uncategorized (won't appear as a build
@@ -142,6 +142,7 @@ export function toolArt(def: ToolDef): string {
   if (def.id === 'bulldoze') return '@ui/bulldoze';
   if (def.kind === undefined) return '@ui/help';
   if (isTransportKind(def.kind)) return builtRenderKey(def.kind, 10, 'c', 0);
+  if (def.kind === BuiltKind.WindTurbine) return '@ui/wind-turbine'; // with its blades
   return footprintCellKey(def.kind, 1, 1, 0, 0, 0);
 }
 
