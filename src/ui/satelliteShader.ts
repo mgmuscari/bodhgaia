@@ -41,6 +41,10 @@ ${glslDefines()}
 
 uniform sampler2D u_data; // packed world: R=type G=height/band/class B=adjacency A=free (always 0)
 uniform sampler2D u_base; // the CPU-rendered base (terrain+buildings+roads+all markings) — the albedo
+uniform sampler2D u_emitN; // building light baked with the base: lit windows (on at night)…
+uniform sampler2D u_emitA; // …and power plants' furnaces (always on)
+uniform float u_night;     // 0 day … 1 night: how much the windows show
+uniform float u_emitOn;    // 1 when the emission layers are uploaded for this view
 uniform vec2 u_grid;      // data-texture size in cells (for sampling normalization)
 uniform vec2 u_origin;    // top-left visible world cell (camera pan)
 uniform vec2 u_view;      // visible window size in cells (camera zoom)
@@ -122,6 +126,13 @@ void main() {
     col = mix(col, col * vec3(0.72, 0.8, 1.06), clamp(-alt, 0.0, 1.0) * 0.6); // cool blue at night
   }
 
+  // Building light (Maddy 2026-10-08: building lights on the GPU): the windows and furnaces baked with the base,
+  // added AFTER the night's dimming, so a lit window glows on a dark street
+  if (u_emitOn > 0.5) {
+    vec4 en = texture(u_emitN, v_uv);
+    vec4 ea = texture(u_emitA, v_uv);
+    col += en.rgb * en.a * u_night + ea.rgb * ea.a;
+  }
   fragColor = vec4(col, 1.0);
 }`;
 }
@@ -149,6 +160,11 @@ export class SatelliteShader {
   private readonly baseTex: WebGLTexture;
   /** A second albedo for a second viewport (the CCTV inset) — its own camera, its own baked base. */
   private readonly insetBaseTex: WebGLTexture;
+  private readonly emitNTex: WebGLTexture;
+  private readonly emitATex: WebGLTexture;
+  private readonly uNight: WebGLUniformLocation | null;
+  private readonly uEmitOn: WebGLUniformLocation | null;
+  private emitReady = false;
   private readonly uGrid: WebGLUniformLocation | null;
   private readonly uOrigin: WebGLUniformLocation | null;
   private readonly uView: WebGLUniformLocation | null;
@@ -180,6 +196,12 @@ export class SatelliteShader {
     gl.useProgram(program);
     gl.uniform1i(gl.getUniformLocation(program, 'u_data'), 0);
     gl.uniform1i(gl.getUniformLocation(program, 'u_base'), 1); // the CPU base albedo on texture unit 1
+    gl.uniform1i(gl.getUniformLocation(program, 'u_emitN'), 2); // building light: windows (unit 2)…
+    gl.uniform1i(gl.getUniformLocation(program, 'u_emitA'), 3); // …and furnaces (unit 3)
+    this.emitNTex = gl.createTexture()!;
+    this.emitATex = gl.createTexture()!;
+    this.uNight = gl.getUniformLocation(program, 'u_night');
+    this.uEmitOn = gl.getUniformLocation(program, 'u_emitOn');
     this.uGrid = gl.getUniformLocation(program, 'u_grid');
     this.uOrigin = gl.getUniformLocation(program, 'u_origin');
     this.uView = gl.getUniformLocation(program, 'u_view');
@@ -234,6 +256,22 @@ export class SatelliteShader {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
   }
 
+  /** Upload the building light baked with the base (Renderer.emissionLayers): windows and furnaces, each the base's
+   *  size. NEAREST — every lit window is a whole art pixel. */
+  uploadEmission(night: TexImageSource, always: TexImageSource): void {
+    const gl = this.gl;
+    for (const [unit, tex, src] of [[gl.TEXTURE2, this.emitNTex, night], [gl.TEXTURE3, this.emitATex, always]] as const) {
+      gl.activeTexture(unit);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    }
+    this.emitReady = true;
+  }
+
   /** Re-upload just these rects of the CPU base (a live-mark patch): the same texture, sub-images in place. */
   uploadBaseRects(src: TexImageSource, rects: readonly { x: number; y: number; w: number; h: number }[]): void {
     const gl = this.gl;
@@ -262,6 +300,8 @@ export class SatelliteShader {
     dayspeed?: number;
     /** Which baked base to sample: the main view's (default) or the CCTV inset's. */
     slot?: 'main' | 'inset';
+    /** 0 day … 1 night: how much the lit windows show (main view only). */
+    night?: number;
     /** 1 = photographic life (default), 0 = still pixel art. */
   }): void {
     const gl = this.gl;
@@ -278,6 +318,13 @@ export class SatelliteShader {
     if (this.uSun) gl.uniform2f(this.uSun, opts.sun[0], opts.sun[1]);
     if (this.uShadow) gl.uniform1f(this.uShadow, opts.shadow ?? 0.45);
     if (this.uDayspeed) gl.uniform1f(this.uDayspeed, opts.dayspeed ?? 0);
+    const emit = this.emitReady && opts.slot !== 'inset'; // the inset draws its own windows on the CPU
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.emitNTex);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.emitATex);
+    if (this.uEmitOn) gl.uniform1f(this.uEmitOn, emit ? 1 : 0);
+    if (this.uNight) gl.uniform1f(this.uNight, opts.night ?? 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -286,6 +333,8 @@ export class SatelliteShader {
     gl.deleteTexture(this.tex);
     gl.deleteTexture(this.baseTex);
     gl.deleteTexture(this.insetBaseTex);
+    gl.deleteTexture(this.emitNTex);
+    gl.deleteTexture(this.emitATex);
     gl.deleteVertexArray(this.vao);
     gl.deleteProgram(this.program);
   }

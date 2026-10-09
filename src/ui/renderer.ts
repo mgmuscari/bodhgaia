@@ -261,6 +261,9 @@ export class Renderer {
   // Canvas2D base goes transparent. Sprites/decorations/UI still draw on top. The CPU path stays the
   // no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
   private gpuMode = false;
+  // Building light baked with the base, for the GPU (Maddy 2026-10-08): lit windows (night) and furnaces (always).
+  private readonly emitNight: HTMLCanvasElement;
+  private readonly emitAlways: HTMLCanvasElement;
   private baseTexVersion = 0; // bumped each base rebuild so the GPU path knows to re-upload the base texture
   // Cached base pass (terrain + built + overlay) on an offscreen canvas. Rebuilt
   // ONLY when invalidated (map/camera/overlay change), then blitted 1:1 onto the
@@ -318,6 +321,8 @@ export class Renderer {
     this.ctx = canvas.getContext('2d')!;
     this.base = document.createElement('canvas');
     this.baseCtx = this.base.getContext('2d')!;
+    this.emitNight = document.createElement('canvas');
+    this.emitAlways = document.createElement('canvas');
     const ns = (prefix: string): Map<string, AtlasImage> => new Map([...skin].filter(([k]) => k.startsWith(prefix)));
     this.atlas = buildAtlas(skin);
     this.tileVariants = variantCounts([...skin.keys(), ...(skin.lazy?.keys ?? [])]);
@@ -471,7 +476,36 @@ export class Renderer {
     // identity 1:1 blit lands at the exact device pixels (no rescale/blur).
     this.base.width = Math.round(cssWidth * dpr);
     this.base.height = Math.round(cssHeight * dpr);
+    for (const c of [this.emitNight, this.emitAlways]) {
+      c.width = this.base.width;
+      c.height = this.base.height;
+    }
     this.baseDirty = true; // the resized base canvas is cleared → must redraw
+  }
+
+  /** Bake the light-bearing buildings' emission maps into the two emission layers, on the base's grid — the GPU adds
+   *  them over the lit scene (windows by night, furnaces always), so they glow under the agents, not over them. */
+  private bakeEmission(camera: Camera): void {
+    const ts = camera.tileSize;
+    const layers = [this.emitNight, this.emitAlways].map((c) => {
+      const g = c.getContext('2d')!;
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, c.width, c.height);
+      g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      g.imageSmoothingEnabled = false;
+      return g;
+    });
+    for (const b of this.emissiveBuildings) {
+      if (!b.lit) continue;
+      const { dx, dy } = camera.tileOrigin(b.x, b.y);
+      const isPower = b.kind >= 24 && b.kind <= 30; // power plants run 24/7
+      layers[isPower ? 1 : 0]!.drawImage(b.lit, dx, dy, b.w * ts, b.h * ts);
+    }
+  }
+
+  /** The building light layers baked with the base (GPU mode): windows (night-gated) and furnaces (always on). */
+  emissionLayers(): { night: HTMLCanvasElement; always: HTMLCanvasElement } {
+    return { night: this.emitNight, always: this.emitAlways };
   }
 
   /** Mark the cached base pass stale (map/camera/overlay changed). */
@@ -944,6 +978,7 @@ export class Renderer {
     // day-night/grass/clouds); the visible Canvas2D is cleared transparent so the shader shows through.
     if (this.baseDirty) {
       this.drawBase(world, camera, ambient);
+      if (this.gpuMode) this.bakeEmission(camera);
       this.baseDirty = false;
       this.baseTexVersion++; // signals the GPU path to re-upload the base texture
     }
@@ -1525,7 +1560,7 @@ export class Renderer {
         // Power plants (24–30) run 24/7 → glow always on; everything else is lit WINDOWS → night-gated.
         const isPower = b.kind >= 24 && b.kind <= 30;
         const a = isPower ? 1 : night;
-        const stat = b.lit;
+        const stat = this.gpuMode ? undefined : b.lit; // on the GPU the steady light is baked with the base
         if (stat && a > 0.02) {
           ctx.globalAlpha = a;
           ctx.drawImage(stat, sx, sy, w, h);

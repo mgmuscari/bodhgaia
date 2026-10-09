@@ -113,6 +113,7 @@ function frameSetup(opts: { liveOn?: boolean; gpu?: boolean; hidden?: boolean; c
         renderFrame: () => log.push('renderFrame'),
         render: () => log.push('render'),
         baseCanvas: () => null as never,
+        emissionLayers: () => null as never,
         baseVersion: () => 0,
         basePatch: () => ({ version: 0, rects: [] }),
         emissiveBuildingList: () => [],

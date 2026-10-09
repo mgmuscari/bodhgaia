@@ -219,6 +219,7 @@ export class GpuRenderer {
     base: TexImageSource,
     baseVersion: number,
     patch?: { version: number; rects: readonly { x: number; y: number; w: number; h: number }[] },
+    emission?: { night: TexImageSource; always: TexImageSource },
   ): void {
     if (!this.shader || !this.gl) return;
     this.shader.uploadDirty(this.bridge);
@@ -227,6 +228,7 @@ export class GpuRenderer {
     // A live-mark patch (worn ground, encampments, murk) re-uploads just the rects it re-drew.
     if (baseVersion !== this.lastBaseVersion) {
       this.shader.uploadBase(base);
+      if (emission) this.shader.uploadEmission(emission.night, emission.always); // baked with the base
       this.lastBaseVersion = baseVersion;
       if (patch) this.lastPatchVersion = patch.version;
     } else if (patch && patch.version !== this.lastPatchVersion) {
@@ -236,7 +238,8 @@ export class GpuRenderer {
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED });
+    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED, night });
   }
 
   /** The CCTV inset: a second viewport drawn into `rect` (device px, GL bottom-left origin) of this canvas, AFTER
