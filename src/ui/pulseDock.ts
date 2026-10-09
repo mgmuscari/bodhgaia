@@ -9,6 +9,8 @@
 // transient, which inspect/legend already clobber) so the always-on pulse never
 // flickers — it is refreshed on the civic cadence and the economy's hour only.
 
+import { pulseSegments } from './pulseContent';
+
 export interface PulseDockHandle {
   /** Replace the pulse line text. */
   set(line: string): void;
@@ -27,7 +29,15 @@ export function mountPulseDock(container: HTMLElement, deps: PulseDockDeps = {})
   container.appendChild(dock);
   return {
     set(line: string): void {
-      dock.textContent = line;
+      // each segment its own span: dotted apart on a wide screen, wrapping onto two rows on a narrow one
+      dock.replaceChildren(
+        ...pulseSegments(line).map((text) => {
+          const seg = document.createElement('span');
+          seg.className = 'pulse-seg';
+          seg.textContent = text;
+          return seg;
+        }),
+      );
     },
   };
 }

@@ -714,6 +714,30 @@
         color: var(--ui-text);
         white-space: nowrap;
       }
+      .pulse-seg + .pulse-seg::before {
+        content: '·';
+        margin: 0 0.6em;
+      }
+      /* a phone: the segments wrap onto two centred rows inside the bar, spaced rather than dotted (Maddy 2026-10-08:
+         the one line was cut off) */
+      @media (max-width: 760px) {
+        .pulse-dock {
+          flex-wrap: wrap;
+          align-content: center;
+          column-gap: 0.9em;
+          white-space: normal;
+          padding: 0 0.4rem;
+          font-size: 12px;
+          line-height: 1;
+          letter-spacing: 0;
+        }
+        .pulse-seg {
+          white-space: nowrap;
+        }
+        .pulse-seg + .pulse-seg::before {
+          content: none;
+        }
+      }
       .restoration-panel {
         border: 12px solid transparent;
         border-image: var(--ui-frame-panel) 4 fill / 12px stretch;

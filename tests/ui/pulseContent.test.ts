@@ -33,3 +33,33 @@ describe('pulseLine', () => {
     expect(pulseLine(99, null)).not.toContain('↘');
   });
 });
+
+// Maddy 2026-10-08: "on mobile, the header with money/etc is too wide for the screen, text is cut off". The line is
+// shown as its segments, which wrap onto two rows on a narrow screen.
+import { pulseSegments } from '../../src/ui/pulseContent';
+import { readFileSync } from 'node:fs';
+import { TOPBAR_H } from '../../src/ui/layout';
+
+describe('the top bar on a narrow screen', () => {
+  it('splits the line into its segments, each whole', () => {
+    expect(pulseSegments('$3,691,431 (+2728/h)  ·  Effort 68716/79821  ·  Wellbeing 157 →  ·  Unhoused 1345 ↓')).toEqual([
+      '$3,691,431 (+2728/h)',
+      'Effort 68716/79821',
+      'Wellbeing 157 →',
+      'Unhoused 1345 ↓',
+    ]);
+  });
+
+  it('on a narrow screen the segments wrap onto two rows that fit inside the bar', () => {
+    const css = readFileSync('index.html', 'utf8');
+    const narrow = /@media \(max-width: (\d+)px\) \{\s*\.pulse-dock \{([^}]*)\}/.exec(css);
+    expect(narrow, 'a narrow-screen rule for the bar').not.toBeNull();
+    expect(Number(narrow![1])).toBeGreaterThanOrEqual(700);
+    const rule = narrow![2]!;
+    expect(rule).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule).toMatch(/white-space:\s*normal/);
+    const size = Number(/font-size:\s*([\d.]+)px/.exec(rule)![1]);
+    const lh = Number(/line-height:\s*([\d.]+);/.exec(rule)![1]);
+    expect(2 * size * lh).toBeLessThanOrEqual(TOPBAR_H - 2 * 10); // two rows inside the 10-px frame
+  });
+});

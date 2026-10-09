@@ -20,3 +20,9 @@ export function pulseLine(wellbeing: number, prevWellbeing: number | null): stri
   }
   return `Wellbeing ${wellbeing} ${trend}`;
 }
+
+/** The top bar's line as its segments (the readout joins them with " · "), each kept whole — so on a narrow screen
+ *  they wrap onto two rows between segments, never inside one (Maddy 2026-10-08: the line was cut off on a phone). */
+export function pulseSegments(line: string): string[] {
+  return line.split('·').map((s) => s.trim()).filter((s) => s.length > 0);
+}
