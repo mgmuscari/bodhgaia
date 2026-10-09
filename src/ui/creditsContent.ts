@@ -63,6 +63,24 @@ declare const __APP_VERSION__: string;
 /** The release, from package.json (vite.config `define`). */
 export const GAME_VERSION = __APP_VERSION__;
 
+/** The licence text of the bundled typeface, shipped beside the game (public/fonts-OFL.txt). */
+export const FONT_LICENCE_HREF = 'fonts-OFL.txt';
+
+/** The typeface: Jersey 10, under the SIL Open Font License — its notice and licence travel with it. */
+function fontCredits(): CreditsBlock {
+  return {
+    heading: 'Type',
+    paragraphs: [
+      'Set in Jersey 10, copyright 2023 The Soft Type Project Authors (github.com/scfried/soft-type-jersey), ' +
+        'used under the SIL Open Font License, Version 1.1.',
+    ],
+    links: [
+      { label: 'Jersey 10 (source)', href: 'https://github.com/scfried/soft-type-jersey' },
+      { label: 'Licence: SIL Open Font License 1.1 (OFL)', href: FONT_LICENCE_HREF },
+    ],
+  };
+}
+
 /** The credits as headed blocks — the help panel renders these in order. */
 export function creditsBlocks(): CreditsBlock[] {
   return [
@@ -83,6 +101,7 @@ export function creditsBlocks(): CreditsBlock[] {
     { heading: 'Additional terms per GNU GPL Section 7', paragraphs: [...GPL7_TERMS] },
     openingCredits(),
     musicCredits(),
+    fontCredits(),
   ];
 }
 

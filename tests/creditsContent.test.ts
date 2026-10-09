@@ -135,3 +135,17 @@ describe('the credits name the release (1.0.0)', () => {
     expect(creditsBlocks()[0]!.heading).toBe(`Bodhgaia ${version}`);
   });
 });
+
+describe('the font is credited, under its licence (SIL OFL 1.1)', () => {
+  it('names Jersey 10, its authors and the OFL, and links the licence text that ships with the game', async () => {
+    const { readFileSync } = await import('node:fs');
+    const all = creditsBlocks();
+    const text = all.flatMap((b) => [b.heading, ...b.paragraphs]).join('\n');
+    expect(text).toContain('Jersey 10');
+    expect(text).toContain('The Soft Type Project Authors');
+    expect(text).toMatch(/SIL Open Font License/);
+    const link = all.flatMap((b) => b.links ?? []).find((l) => /OFL/i.test(l.label))!;
+    expect(link.href).toBe('fonts-OFL.txt');
+    expect(readFileSync('public/fonts-OFL.txt', 'utf8')).toContain('SIL OPEN FONT LICENSE Version 1.1');
+  });
+});
