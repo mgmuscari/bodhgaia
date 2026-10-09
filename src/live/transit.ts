@@ -4,6 +4,7 @@
 // neighbour off the track: the platform people wait on. Pure reads of the map, deterministic,
 // never hashed; the live layer recomputes them when the fabric changes.
 
+import { seconds } from './tuning';
 import { liveClock, tickLiveClock } from './clock';
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
@@ -112,7 +113,7 @@ export function transitLines(map: GameMap): Line[] {
 }
 
 /** Substeps a vehicle halts at a stop (~5 s): long enough to see it wait, and for riders to get on and off. */
-export const DWELL = 100;
+export const DWELL = seconds(5);
 
 export interface Transit {
   lines: Line[];
@@ -131,7 +132,7 @@ const CACHE = new WeakMap<GameMap, Cached>();
 /** Substeps between re-checks of the track for changes — once a second. By the clock, not by calls: every transit
  *  rider asks twice a substep, so a call count made the full-map scans grow with the riders (the scaling pass, Maddy
  *  2026-10-08). */
-export const TRANSIT_RECHECK_SUBSTEPS = 20;
+export const TRANSIT_RECHECK_SUBSTEPS = seconds(1);
 let scans = 0;
 
 /** Advance the live clock one substep (step.ts calls it at the top of each) — the transit cache's clock. */

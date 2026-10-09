@@ -1,3 +1,4 @@
+import { SUBSTEP_MS } from '../../src/live/tuning';
 import { describe, it, expect } from 'vitest';
 import { pedPose } from '../../src/live/poses';
 import { PED_SPEED } from '../../src/live/tuning';
@@ -78,7 +79,7 @@ function probe(): { jumps: number; worstSide: number; worstAlong: number; fastes
   const hits = new Map<string, number>();
   let jumps = 0, samples = 0, worst = 0, worstSide = 0, worstAlong = 0, fastest = 0;
   for (let s = 0; s < 1200; s++) {
-    stepAmbient(state, world.map, ambientRng, 50);
+    stepAmbient(state, world.map, ambientRng, SUBSTEP_MS); // one substep a sample
     for (const p of state.peds) {
       if (p.phase === 'inside' || p.phase === 'driving') { last.delete(p); continue; }
       // stepping out of a car eases the drawing from the car to the kerb while the walker's place has already moved —

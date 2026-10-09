@@ -9,7 +9,7 @@ import type { AmbientState, Ped } from './types';
 import { walkPath } from './pathing';
 import { isWalkable } from './network';
 import { advanceMover, commitHeading, pathStep } from './motion';
-import { PED_SPEED } from './tuning';
+import { PED_SPEED, seconds } from './tuning';
 
 export type GatheringKind = 'craft-fair' | 'block-party' | 'festival' | 'parade' | 'protest' | 'uprising';
 
@@ -28,7 +28,7 @@ export interface Gathering {
 }
 
 /** Substeps before the end that people start for home (they walk there inside the gathering's life). */
-export const GATHER_LEAVE = 400;
+export const GATHER_LEAVE = seconds(20);
 
 /** A walkable tile beside a home (its kerb), or null. */
 function kerbOf(map: GameMap, tile: number): { x: number; y: number } | null {
@@ -102,7 +102,7 @@ export function stepGatherer(state: AmbientState, map: GameMap, rng: Rng, p: Ped
     p.leg = undefined;
     if (gs.go === 'going') return false; // home
     gs.go = 'here';
-    gs.mill = 40 + rng.nextInt(80);
+    gs.mill = seconds(2) + rng.nextInt(seconds(4));
     return true;
   }
   const x = Math.round(p.x);
@@ -115,7 +115,7 @@ export function stepGatherer(state: AmbientState, map: GameMap, rng: Rng, p: Ped
   if (--gs.mill > 0) return true;
   const to = siteTile(g, rng);
   if (board(p, walkPath(map, x, y, to.x, to.y), map)) gs.go = 'milling';
-  else gs.mill = 40;
+  else gs.mill = seconds(2);
   return true;
 }
 

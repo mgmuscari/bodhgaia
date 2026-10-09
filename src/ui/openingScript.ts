@@ -1,5 +1,7 @@
 // The opening's words and timing (bodhgaia-opening.md §3, from Maddy's notes). Pure — no DOM.
 
+import { seconds } from '../live/tuning';
+
 export interface Epigraph {
   lines: readonly string[];
   source: string;
@@ -45,7 +47,7 @@ export const OPENING_TIMING = {
   /** Each epigraph holds this long (click or Space moves on sooner). */
   epigraphMs: 9000,
   /** The walk, in live substeps (~30 s). */
-  walkSubsteps: 600,
+  walkSubsteps: seconds(30), // life steps (live/tuning: 30 a second)
   /** After they fall, the camera stays with them this long before the mantra. */
   holdMs: 4000,
   /** Each word of the mantra lands this far apart; the whole line then holds. */

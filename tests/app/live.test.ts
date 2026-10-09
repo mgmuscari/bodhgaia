@@ -1,3 +1,4 @@
+import { perSecond, SUBSTEP_MS } from '../../src/live/tuning';
 import { describe, it, expect, afterEach } from 'vitest';
 import { createLive, plantEmitters, PLUME_RADIUS } from '../../src/app/live';
 import { GameMap } from '../../src/engine/map';
@@ -31,7 +32,8 @@ describe('plantEmitters: each dirty plant smogs its footprint + a plume ring', (
     const map = new GameMap(16, 16);
     const parcels = new ParcelStore();
     placeParcel(map, parcels, { x: 6, y: 6, width: 2, height: 2, kind: BuiltKind.CoalPlant });
-    const amt = plantPollution(BuiltKind.CoalPlant);
+    // the table is per 20-Hz life step; emitted per step at the life layer's rate — the same smog a second
+    const amt = perSecond(plantPollution(BuiltKind.CoalPlant) * 20);
     expect(amt).toBeGreaterThan(0);
     const e = plantEmitters(map, parcels);
     const side = 2 + 2 * PLUME_RADIUS;
@@ -97,22 +99,24 @@ describe('createLive', () => {
     let t = 1000;
     const live = createLive({ seed: 's', map, parcels, caps: liveCaps, saved: null, practices: () => practices, now: () => t });
     expect(live.on).toBe(true); // ambient life is on by default
+    // the time the clock has advanced the life layer: its substeps, plus what it still owes (a step may be borrowed)
+    const advanced = () => live.state.lvTick * SUBSTEP_MS + live.state.accMs;
     live.step(1010);
-    expect(live.state.accMs).toBe(10);
+    expect(advanced()).toBeCloseTo(10, 9);
     practices = { ...NEUTRAL_PRACTICES, walkStretch: 1.5 };
     live.step(1030);
-    expect(live.state.accMs).toBe(30);
+    expect(advanced()).toBeCloseTo(30, 9);
     expect(live.state.practices.walkStretch).toBe(1.5);
     // off for a long while, then back on: the clock restarts — no giant first dt
     live.on = false;
     t = 90_000;
     live.on = true;
     live.step(90_005);
-    expect(live.state.accMs).toBe(35);
+    expect(advanced()).toBeCloseTo(35, 9); // 5 ms since the restart — not 89 s
     // a tab coming back resets the clock the same way
     t = 200_000;
     live.resetClock();
     live.step(200_001);
-    expect(live.state.accMs).toBe(36);
+    expect(advanced()).toBeCloseTo(36, 9);
   });
 });

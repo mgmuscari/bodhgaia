@@ -1,3 +1,4 @@
+import { SUBSTEP_MS, SCATTER_LEN, CHASE_LEN, FUEL_BURN_MIN } from '../../src/live/tuning';
 import { describe, it, expect } from 'vitest';
 import { GameMap, Water } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, hashWorld, placeTransport, placeOverpass } from '../../src/engine/fabric';
@@ -166,17 +167,18 @@ describe('ambient fixed 50ms substep accumulator', () => {
     expect(a).toEqual(b);
   });
 
-  it('30ms then 70ms equals two 50ms substeps with the accumulator drained', () => {
+  it('0.6 then 1.4 of a substep equals two whole substeps, the accumulator drained', () => {
     const map = gridMap();
     const a = createAmbientState();
     const b = createAmbientState();
     const ra = ambientFork('sub2');
     const rb = ambientFork('sub2');
-    stepAmbient(a, map, ra, 30); // < 50 → no substep yet
-    stepAmbient(a, map, ra, 70); // 30+70=100 → two substeps
-    stepAmbient(b, map, rb, 50);
-    stepAmbient(b, map, rb, 50);
-    expect(a.accMs).toBe(0);
+    stepAmbient(a, map, ra, SUBSTEP_MS * 0.6); // < a substep → none yet
+    stepAmbient(a, map, ra, SUBSTEP_MS * 1.4); // together two → two substeps
+    stepAmbient(b, map, rb, SUBSTEP_MS);
+    stepAmbient(b, map, rb, SUBSTEP_MS);
+    expect(a.accMs).toBeCloseTo(0, 9); // (a 33⅓-ms substep leaves float dust)
+    a.accMs = b.accMs;
     expect(a).toEqual(b);
   });
 });
@@ -190,7 +192,7 @@ describe('ambient spiral-of-death clamp', () => {
     const rb = ambientFork('spiral');
     stepAmbient(a, map, ra, 10_000_000); // clamped to AMBIENT_MAX_FRAME_MS
     stepAmbient(b, map, rb, AMBIENT_MAX_FRAME_MS);
-    expect(a.accMs).toBe(0);
+    expect(Math.min(a.accMs, SUBSTEP_MS - a.accMs)).toBeCloseTo(0, 9); // a second is whole substeps (float dust aside)
     expect(a).toEqual(b);
   });
 });
@@ -1447,8 +1449,8 @@ describe('police cruisers (over-policing made visible)', () => {
 
   it('scatter/chase phase cycles (the ghost cadence)', () => {
     expect(policePhase(0)).toBe('scatter'); // opens calm
-    expect(policePhase(300)).toBe('chase'); // then sweeps
-    expect(policePhase(0)).toBe(policePhase(540)); // periodic (SCATTER_LEN + CHASE_LEN = 540)
+    expect(policePhase(SCATTER_LEN + 1)).toBe('chase'); // then sweeps
+    expect(policePhase(0)).toBe(policePhase(SCATTER_LEN + CHASE_LEN)); // periodic (27 s)
   });
 
   it('chase personalities aim differently (direct / ambush / shy)', () => {
@@ -2411,7 +2413,7 @@ describe('pedestrian fuel (give up / die when a destination is unreachable — M
       x: 8, y: 8, dir: 0, tx: 8, ty: 8,
       walkTo: { x: 15, y: 8 }, phase: 'to-building',
       homeTile: map.idx(2, 8), building: { x: 15, y: 8 },
-      fuel: 1, // burns out on the next substep, before it can reach (15,8)
+      fuel: FUEL_BURN_MIN / 2, // burns out on the next substep, before it can reach (15,8)
     });
     const rng = ambientFork('fuel-giveup');
     stepAmbient(state, map, rng, 50);
@@ -2431,7 +2433,7 @@ describe('pedestrian fuel (give up / die when a destination is unreachable — M
       x: 12, y: 8, dir: 0, tx: 12, ty: 8,
       walkTo: { x: 2, y: 8 }, phase: 'to-home',
       homeTile: map.idx(2, 8),
-      fuel: 1, // can't even make it home
+      fuel: FUEL_BURN_MIN / 2, // can't even make it home
     });
     const rng = ambientFork('fuel-die');
     stepAmbient(state, map, rng, 50);
@@ -2450,7 +2452,7 @@ describe('pedestrian fuel (give up / die when a destination is unreachable — M
     state.peds.push({
       x: 8, y: 8, dir: 0, tx: 8, ty: 8,
       walkTo: { x: 15, y: 8 }, phase: 'to-home', // no homeTile (a freight/bound stand-in)
-      fuel: 1,
+      fuel: FUEL_BURN_MIN / 2,
     });
     const rng = ambientFork('fuel-homeless');
     stepAmbient(state, map, rng, 50);
