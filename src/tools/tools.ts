@@ -202,6 +202,7 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.RoadAvenue]: { label: 'Avenue', cost: 3 },
   [BuiltKind.RoadHighway]: { label: 'Highway', cost: 5 },
   [BuiltKind.Rail]: { label: 'Rail', cost: 4 },
+  [BuiltKind.ParkingLot]: { label: 'Parking Lot', cost: 3, footprint: { w: 1, h: 1 } }, // a lot tile; neighbours join one lot
   [BuiltKind.HouseSingle]: { label: 'Residential', cost: 4, footprint: { w: 1, h: 1 } },
   [BuiltKind.CommercialStrip]: { label: 'Commercial', cost: 6, footprint: { w: 1, h: 1 } },
   [BuiltKind.Industrial]: { label: 'Industrial', cost: 6, footprint: { w: 1, h: 1 } },
@@ -279,6 +280,7 @@ const CLASSIC_BUILD_KINDS: readonly BuiltKind[] = [
   BuiltKind.RoadAvenue,
   BuiltKind.RoadHighway,
   BuiltKind.Rail,
+  BuiltKind.ParkingLot,
   BuiltKind.HouseSingle,
   BuiltKind.CommercialStrip,
   BuiltKind.Industrial,

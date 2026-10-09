@@ -87,8 +87,9 @@ const CATEGORY_ART: Record<ToolCategory, string> = {
 };
 
 // Per-kind category. Anything not listed is uncategorized (won't appear as a build
-// tool — e.g. ParkingLot is worldgen-only). Transit is computed via isTransportKind.
+// tool). Transit is computed via isTransportKind — plus the parking lot, a building kind that belongs with it.
 const CATEGORY_OF_BUILDING: ReadonlyMap<number, ToolCategory> = new Map<number, ToolCategory>([
+  [BuiltKind.ParkingLot, 'transit'],
   [BuiltKind.HouseSingle, 'residential'],
   [BuiltKind.Apartments, 'residential'],
   [BuiltKind.Projects, 'residential'],

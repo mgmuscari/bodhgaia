@@ -666,3 +666,19 @@ describe('a house comes with a back yard; an accessory dwelling goes in it (Madd
     expect(world.map.built[world.map.idx(5, 10)]).toBe(BuiltKind.ADU);
   });
 });
+
+describe('parking lots are placeable (Maddy 2026-10-08)', () => {
+  it('a Parking Lot tool sits in the transit menu and lays lot tiles, each with its own stalls', async () => {
+    const { categoryOf } = await import('../../src/ui/toolMenuContent');
+    const { parkingLots } = await import('../../src/ui/parkingContent');
+    const tech = freshTech(1000);
+    expect(ids(tech)).toContain(`build-${BuiltKind.ParkingLot}`);
+    const tool = toolDef(`build-${BuiltKind.ParkingLot}`)!;
+    expect(categoryOf(tool)).toBe('transit');
+    const world = freshWorld();
+    expect(applyTool(world, tech, tool, 3, 3).ok).toBe(true);
+    expect(applyTool(world, tech, tool, 4, 3).ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.ParkingLot);
+    expect(parkingLots(world.map)).toHaveLength(2); // a lot per tile (parkingContent)
+  });
+});
