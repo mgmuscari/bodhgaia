@@ -47,3 +47,6 @@ yarn-error.log*
 
 # refactor pass: pause sentinel (never committed)
 .refactor-pause
+
+# packaged builds for upload
+releases/
