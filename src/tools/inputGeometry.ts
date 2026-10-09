@@ -82,3 +82,24 @@ export function wheelZoom(acc: number, deltaY: number, deltaMode: number): { ste
   const k = Math.trunc(a / WHEEL_STEP_PX);
   return { steps: k === 0 ? 0 : -k, acc: a - k * WHEEL_STEP_PX };
 }
+
+/** The ratio the gap between two fingers must grow (or shrink) by to change the zoom one level (Maddy 2026-10-08:
+ *  mobile — touch screens send no wheel). Whole levels, like the wheel, so the pixel art stays crisp. */
+export const PINCH_STEP = 1.4;
+
+/** A pinch's progress: `base` is the finger spread at the last level change, `spread` the spread now. Returns the
+ *  levels to apply (+ = in) and the base to carry — the spread at the last step taken. */
+export function pinchZoom(base: number, spread: number): { steps: number; base: number } {
+  if (!(base > 0) || !(spread > 0)) return { steps: 0, base: spread > 0 ? spread : base };
+  let b = base;
+  let steps = 0;
+  while (spread >= b * PINCH_STEP - 1e-9) {
+    b *= PINCH_STEP;
+    steps++;
+  }
+  while (spread <= b / PINCH_STEP + 1e-9) {
+    b /= PINCH_STEP;
+    steps--;
+  }
+  return { steps, base: b };
+}
