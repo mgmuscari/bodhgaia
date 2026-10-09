@@ -8,7 +8,7 @@ import { buildReport } from '../worldgen/report';
 import { ecologyReport } from '../ecology/report';
 import { cityName } from '../engine/names';
 import { createRng } from '../engine/rng';
-import { statLines, eraHeadline, challengeText, ecologyStatLine } from '../ui/openingContent';
+import { statLines, eraLine, challengeText, ecologyStatLine } from '../ui/openingContent';
 import { mountOpening, type OpeningContent } from '../ui/opening';
 
 /** The overlay's plain-data content for `world` (generated from `seed`). Pure — no DOM. */
@@ -21,7 +21,7 @@ export function openingContentFor(world: WorldState, seed: string): OpeningConte
   const ecoLine = ecologyStatLine(ecologyReport(world));
   return {
     name,
-    eras: chronicle.entries.map(eraHeadline),
+    eras: chronicle.entries.map((e) => eraLine(e, { w: world.map.width, h: world.map.height })),
     stats: ecoLine !== null ? [...statLines(report), ecoLine] : statLines(report),
     challenge: challengeText(name, report, chronicle),
   };

@@ -9,7 +9,7 @@ import { createRng } from '../../src/engine/rng';
 import { parseChronicle } from '../../src/worldgen/chronicle';
 import { buildReport } from '../../src/worldgen/report';
 import { ecologyReport } from '../../src/ecology/report';
-import { statLines, eraHeadline, ecologyStatLine } from '../../src/ui/openingContent';
+import { statLines, eraLine, ecologyStatLine } from '../../src/ui/openingContent';
 
 describe('openingContentFor: the opening overlay content from a generated world', () => {
   const seed = 'lotus';
@@ -20,9 +20,9 @@ describe('openingContentFor: the opening overlay content from a generated world'
     expect(content.name).toBe(cityName(createRng(seed).fork('city-name')));
   });
 
-  it('has one headline per chronicle era', () => {
+  it('has one line per chronicle era, its places measured on this map', () => {
     const chronicle = parseChronicle(world.log);
-    expect(content.eras).toEqual(chronicle.entries.map(eraHeadline));
+    expect(content.eras).toEqual(chronicle.entries.map((e) => eraLine(e, { w: 64, h: 64 })));
     expect(content.eras.length).toBeGreaterThan(0);
   });
 

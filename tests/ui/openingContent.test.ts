@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import type { BlightReport } from '../../src/worldgen/report';
-import type { Chronicle, ChronicleEntry } from '../../src/worldgen/chronicle';
+import type { Chronicle } from '../../src/worldgen/chronicle';
 import type { EcologyReport } from '../../src/ecology/report';
-import { statLines, eraHeadline, challengeText, ecologyStatLine } from '../../src/ui/openingContent';
+import { statLines, eraLine, challengeText, ecologyStatLine, placeName } from '../../src/ui/openingContent';
 
-// openingContent is pure presentation: data in, strings out. It must embed the
-// exact report numbers, omit lines whose chronicle-sourced field is null,
-// tolerate an empty-events era entry without emitting "undefined", and (in the
-// challenge copy) cite both a real number and a verbatim chronicle event.
+// openingContent is pure presentation: data in, strings out — the city's history and state as the player reads them
+// after the tour of its worst places. Maddy 2026-10-08: "the post tutorial summary is kind of sloppy… it also includes
+// things like coordinates instead of 'northeast'". So: written sentences, places by compass, the real numbers in plain
+// words, no engine units or debug log, and no closing imperative (the tutorial goes on after it).
 
 const FOUNDED_REPORT: BlightReport = {
   parcelsTotal: 588,
@@ -82,181 +82,153 @@ const ALL_WATER_CHRONICLE: Chronicle = {
   unparsed: [],
 };
 
-describe('statLines', () => {
-  it('emits 4-6 lines embedding the exact report numbers, none over 90 chars', () => {
-    const lines = statLines(FOUNDED_REPORT);
-    expect(lines.length).toBeGreaterThanOrEqual(4);
-    expect(lines.length).toBeLessThanOrEqual(6);
-    const joined = lines.join('\n');
-    for (const n of [412, 588, 57, 143, 16, 137, 20, 45]) {
-      expect(joined).toContain(String(n));
-    }
-    for (const line of lines) expect(line.length).toBeLessThanOrEqual(90);
-  });
 
-  it('omits the line for each null chronicle-sourced field', () => {
-    const lines = statLines(SPARSE_REPORT);
-    expect(lines).toHaveLength(4); // base lines only
-    const joined = lines.join('\n');
-    expect(joined).not.toContain('disinvestment');
-    expect(joined).not.toContain('rail tiles');
-  });
+const SIZE = { w: 128, h: 128 };
+/** Real history logs (moses.ts) for two seeds, era-grouped as parseChronicle does. */
+const REAL: Chronicle[] = [
+  {
+    entries: [
+      { era: 1, years: '1900-1920', events: ['founded at (100, 36)', 'streetcar — 2 lines, 20 rail tiles', 'fabric — 80 parcels (6 commercial)'] },
+      { era: 2, years: '1920-1945', events: ['motor age — 100 avenue tiles, 8 industry, 3 parking, 3 fields (12 lots), 311 infill'] },
+      { era: 3, years: '1945-1965', events: ['highway col 99 from 0 to 58', 'highway row 18 from 90 to 127', 'rails removed 20 (peak 20)', 'urban renewal — 87 parcels demolished, 5 projects, 1 civic, 4 power, 4 precincts, 4 services, 9 civic services'] },
+      { era: 4, years: '1965-1985', events: ['suburban flight — 24 spurs, 59 suburban parcels, 5 offices, 125 core parcels declined'] },
+      { era: 5, years: '1985-2000', events: ['disinvestment — 923 decayed, 235 abandoned, 134 craters (of 923 standing)', 'the land kept the bill — soil broken along the corridors, the wild pushed to the edges'] },
+    ],
+    unparsed: [],
+  },
+  {
+    entries: [
+      { era: 1, years: '1900-1920', events: ['founded at (20, 100)', 'streetcar — 1 lines, 12 rail tiles'] },
+      { era: 3, years: '1945-1965', events: ['highway col 64 from 0 to 127', 'rails removed 12 (peak 12)'] },
+      { era: 5, years: '1985-2000', events: ['disinvestment — 10 decayed, 1 abandoned, 1 craters (of 10 standing)'] },
+    ],
+    unparsed: [],
+  },
+];
+const JARGON = /\(\d+, ?\d+\)|\btiles?\b|\bcol\b|\brow\b|\bparcels?\b|of 255|infill|spurs|craters|undefined|NaN/i;
+const everything = (c: Chronicle, r: BlightReport): string[] => [
+  ...c.entries.map((e) => eraLine(e, SIZE)),
+  ...statLines(r),
+  ...challengeText('Flet', r, c),
+];
 
-  it('is deterministic (same report -> same lines)', () => {
-    expect(statLines(FOUNDED_REPORT)).toEqual(statLines(FOUNDED_REPORT));
-  });
-
-  it('uses a zero-aware towers line when projectsStanding is 0 (founded city, towers abandoned)', () => {
-    const lines = statLines({ ...FOUNDED_REPORT, projectsStanding: 0 });
-    const joined = lines.join('\n');
-    expect(joined).not.toContain('0 towers'); // never "0 towers... still loom"
-    expect(joined).toContain('Not one tower-in-the-park is left standing over the core.');
-    // The rest of the founded stats still render normally.
-    expect(joined).toContain('412 parcels still stand');
-    for (const line of lines) expect(line.length).toBeLessThanOrEqual(90);
+describe('placeName — compass, not coordinates', () => {
+  it('names the ninths of the map', () => {
+    expect(placeName(100, 36, 128, 128)).toBe('the northeast');
+    expect(placeName(20, 100, 128, 128)).toBe('the southwest');
+    expect(placeName(64, 64, 128, 128)).toBe('the middle');
+    expect(placeName(64, 10, 128, 128)).toBe('the north');
+    expect(placeName(120, 64, 128, 128)).toBe('the east');
   });
 });
 
-describe('eraHeadline', () => {
-  it('renders the year range and first event verbatim', () => {
-    const entry: ChronicleEntry = { era: 1, years: '1900-1920', events: ['founded at (6, 6)'] };
-    expect(eraHeadline(entry)).toBe('1900-1920: founded at (6, 6)');
+describe('the history, era by era, in sentences', () => {
+  const [a, b] = REAL;
+  const lines = a!.entries.map((e) => eraLine(e, SIZE));
+
+  it('one line per era, opening on its years', () => {
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toMatch(/^1900–1920 · /);
+    expect(lines[4]).toMatch(/^1985–2000 · /);
   });
 
-  it('falls back to the year range alone for an empty-events entry (no "undefined")', () => {
-    const entry: ChronicleEntry = { era: 3, years: '1945-1965', events: [] };
-    const headline = eraHeadline(entry);
-    expect(headline).toBe('1945-1965');
-    expect(headline).not.toContain('undefined');
+  it('the founding and the expressways by compass, never by grid coordinate', () => {
+    expect(lines[0]).toContain('the northeast');
+    expect(lines[2]).toMatch(/Expressways split the east and the north/); // a north–south one in the east, an east–west one in the north
+  });
+
+  it('keeps the real numbers, in plain words', () => {
+    expect(lines[2]).toContain('87'); // buildings cleared
+    expect(lines[3]).toContain('125'); // the core's decline
+    expect(lines[4]).toContain('235'); // abandoned
+    expect(lines[4]).toContain('134'); // torn down to empty lots
+  });
+
+  it('counts agree with their nouns', () => {
+    const small = b!.entries.map((e) => eraLine(e, SIZE));
+    expect(small[0]).toMatch(/one streetcar line\b/);
+    expect(small[1]).toMatch(/An expressway splits the middle/);
+    expect(small.join(' ')).not.toMatch(/\b1 (buildings|lots|lines)\b/);
+  });
+
+  it('an era with nothing parseable still reads as a sentence', () => {
+    expect(eraLine({ era: 2, years: '1920-1945', events: [] }, SIZE)).toMatch(/^1920–1945 · [A-Z].+\.$/);
+  });
+});
+
+describe('the whole screen', () => {
+  it('no coordinates, engine units or debug log anywhere — real logs, fixtures, all-water', () => {
+    for (const c of REAL) for (const line of everything(c, FOUNDED_REPORT)) expect(line, line).not.toMatch(JARGON);
+    for (const line of everything(CHRONICLE, SPARSE_REPORT)) expect(line, line).not.toMatch(JARGON);
+    for (const line of everything(ALL_WATER_CHRONICLE, ALL_WATER_REPORT)) expect(line, line).not.toMatch(JARGON);
+  });
+
+  it('every line is a sentence: a capital (or the years) to start, a full stop to end, and not too long to read', () => {
+    for (const c of REAL)
+      for (const line of everything(c, FOUNDED_REPORT)) {
+        expect(line, line).toMatch(/^([A-Z0-9]|“)/);
+        expect(line, line).toMatch(/[.!]$/);
+        expect(line.length, line).toBeLessThanOrEqual(150);
+      }
+  });
+
+  it('is deterministic', () => {
+    expect(everything(REAL[0]!, FOUNDED_REPORT)).toEqual(everything(REAL[0]!, FOUNDED_REPORT));
+  });
+});
+
+describe('statLines — the city now', () => {
+  it('buildings standing of those ever built, the share in poor repair and the share derelict (of all, not stacked)', () => {
+    const lines = statLines(FOUNDED_REPORT);
+    expect(lines[0]).toBe('412 of the 588 buildings ever raised still stand.');
+    expect(lines[1]).toContain('45%');
+    expect(lines[1]).toContain('20%');
+  });
+
+  it('the towers by count, singular and plural; none — no line', () => {
+    expect(statLines({ ...FOUNDED_REPORT, projectsStanding: 1 }).join(' ')).toMatch(/One tower block .* stands/);
+    expect(statLines({ ...FOUNDED_REPORT, projectsStanding: 16 }).join(' ')).toMatch(/16 tower blocks .* stand/);
+    expect(statLines({ ...FOUNDED_REPORT, projectsStanding: 0 }).join(' ')).not.toMatch(/tower/);
+  });
+
+  it('nothing built: says so plainly', () => {
+    expect(statLines(ALL_WATER_REPORT)).toEqual(['Nothing was ever built here — only open water.']);
+  });
+});
+
+describe('ecologyStatLine', () => {
+  const eco = { corridorSoilDeficit: 42, peripheryFaunaMean: 101 } as unknown as EcologyReport;
+  it('the wound in words: the soil along the expressways, the wild at the edges', () => {
+    const line = ecologyStatLine(eco)!;
+    expect(line).toMatch(/soil/);
+    expect(line).toMatch(/edges/);
+    expect(line).not.toMatch(/\d/);
+  });
+  it('returns null (line omitted) when a ring scalar is null', () => {
+    expect(ecologyStatLine({ corridorSoilDeficit: null, peripheryFaunaMean: 3 } as unknown as EcologyReport)).toBeNull();
   });
 });
 
 describe('challengeText', () => {
-  it('cites the city name, a real report number, and a verbatim chronicle event', () => {
-    const paras = challengeText('Marrowfield', FOUNDED_REPORT, CHRONICLE);
-    const joined = paras.join('\n');
-    expect(joined).toContain('Marrowfield');
-    expect(joined).toMatch(/\d/);
-    expect(joined).toContain(String(FOUNDED_REPORT.parcelsAlive)); // a real report number
-    // The era fact must be a VERBATIM chronicle event, not paraphrase.
-    expect(joined).toContain(CHRONICLE.entries[0]!.events[0]!);
+  it('names redlining precisely — housing denied first, then the dumping ground — with the real share', () => {
+    const t = challengeText('Flet', FOUNDED_REPORT, CHRONICLE).join(' ');
+    expect(t).toMatch(/Redlining/);
+    expect(t).toMatch(/Black families/);
+    expect(t).toContain('35%');
+    expect(t.indexOf('Black families')).toBeLessThan(t.indexOf('35%'));
   });
 
-  it('ends with the imperative to begin and never emits "undefined"', () => {
-    const paras = challengeText('Marrowfield', FOUNDED_REPORT, CHRONICLE);
-    expect(paras.length).toBeGreaterThanOrEqual(2);
-    expect(paras.length).toBeLessThanOrEqual(5); // + the two-part redline indictment
-    expect(paras[paras.length - 1]).toMatch(/begin/i);
-    expect(paras.join('\n')).not.toContain('undefined');
+  it('the empty lots, as room for something kinder', () => {
+    expect(challengeText('Flet', FOUNDED_REPORT, CHRONICLE).join(' ')).toMatch(/\b9 empty lots\b/);
   });
 
-  it('names redlining precisely — housing denial + segregation, then dumping ground', () => {
-    const named = challengeText('Marrowfield', FOUNDED_REPORT, CHRONICLE).join('\n');
-    // The CAUSE: Black families denied the good neighborhoods and segregated.
-    expect(named).toContain('Black families');
-    expect(named).toMatch(/barred|denied/);
-    // The CONSEQUENCE: the red zones made dumping grounds, with the real %.
-    expect(named).toContain('dumping ground');
-    expect(named).toContain(`${Math.round(FOUNDED_REPORT.redlinedShare * 100)}%`);
-    // No redlined ground (all-water) → the indictment is omitted entirely.
-    const none = challengeText('Tidehollow', ALL_WATER_REPORT, ALL_WATER_CHRONICLE).join('\n');
-    expect(none).not.toContain('dumping ground');
-    expect(none).not.toContain('Black families');
+  it('no closing imperative: the tutorial goes on after this screen', () => {
+    const t = challengeText('Flet', FOUNDED_REPORT, CHRONICLE).join(' ');
+    expect(t).not.toMatch(/\bBegin\b|planner/i);
   });
 
-  it('keeps every paragraph within 90 chars', () => {
-    for (const para of challengeText('Marrowfield', FOUNDED_REPORT, CHRONICLE)) {
-      expect(para.length).toBeLessThanOrEqual(90);
-    }
-  });
-
-  it('tolerates an empty chronicle (no events) without "undefined"', () => {
-    const paras = challengeText('Nowhere', SPARSE_REPORT, { entries: [], unparsed: [] });
-    const joined = paras.join('\n');
-    expect(joined).toContain('Nowhere');
-    expect(joined).not.toContain('undefined');
-    expect(paras[paras.length - 1]).toMatch(/begin/i);
-  });
-
-  it('is deterministic (same inputs -> same paragraphs)', () => {
-    expect(challengeText('Marrowfield', FOUNDED_REPORT, CHRONICLE)).toEqual(
-      challengeText('Marrowfield', FOUNDED_REPORT, CHRONICLE),
-    );
-  });
-
-  it('holds the invariants on the realistic all-water path (0 parcels, "no viable site")', () => {
-    const paras = challengeText('Tidehollow', ALL_WATER_REPORT, ALL_WATER_CHRONICLE);
-    const joined = paras.join('\n');
-    expect(joined).toContain('Tidehollow');
-    expect(joined).toContain('no viable site'); // verbatim era fact, not the fallback
-    expect(joined).not.toContain('undefined');
-    expect(paras[paras.length - 1]).toMatch(/begin/i);
-    for (const para of paras) expect(para.length).toBeLessThanOrEqual(90);
-  });
-});
-
-const FOUNDED_ECOLOGY: EcologyReport = {
-  soilMean: 142.3,
-  floraMean: 88.1,
-  faunaMean: 96.4,
-  biodiversityMean: 120.7,
-  coreSoilMean: 96.2,
-  peripherySoilMean: 159.8,
-  corridorSoilDeficit: 63.6,
-  peripheryFaunaMean: 138.4,
-};
-
-describe('ecologyStatLine', () => {
-  it('embeds the corridor deficit + periphery fauna numbers and the corridor/edge fact, <=90 chars', () => {
-    const line = ecologyStatLine(FOUNDED_ECOLOGY);
-    expect(line).not.toBeNull();
-    expect(line!.length).toBeLessThanOrEqual(90);
-    // The two real numbers it cites (rounded).
-    expect(line).toContain(String(Math.round(FOUNDED_ECOLOGY.corridorSoilDeficit!)));
-    expect(line).toContain(String(Math.round(FOUNDED_ECOLOGY.peripheryFaunaMean!)));
-    // The corridor/periphery register: soil thin along corridors, wild at the edges.
-    expect(line!.toLowerCase()).toContain('corridor');
-    expect(line!.toLowerCase()).toContain('edge');
-  });
-
-  it('returns null (line omitted) on the degenerate path when a ring scalar is null', () => {
-    expect(ecologyStatLine({ ...FOUNDED_ECOLOGY, corridorSoilDeficit: null })).toBeNull();
-    expect(ecologyStatLine({ ...FOUNDED_ECOLOGY, peripheryFaunaMean: null })).toBeNull();
-    // All-water style: both null.
-    expect(
-      ecologyStatLine({
-        ...FOUNDED_ECOLOGY,
-        coreSoilMean: null,
-        peripherySoilMean: null,
-        corridorSoilDeficit: null,
-        peripheryFaunaMean: null,
-      }),
-    ).toBeNull();
-  });
-
-  it('is deterministic (same report -> same line)', () => {
-    expect(ecologyStatLine(FOUNDED_ECOLOGY)).toBe(ecologyStatLine(FOUNDED_ECOLOGY));
-  });
-});
-
-describe('statLines: realistic all-water path', () => {
-  it('is zero-aware (four base lines, no absurd "0 ..." copy)', () => {
-    const lines = statLines(ALL_WATER_REPORT);
-    expect(lines).toHaveLength(4);
-    const joined = lines.join('\n');
-    // No stat line reads as a bug at zero.
-    expect(joined).not.toContain('0 parcels still stand');
-    expect(joined).not.toContain('0 ever raised');
-    expect(joined).not.toContain('0 towers');
-    expect(joined).not.toContain('0%');
-    expect(joined).not.toContain('weary 0');
-    // Zero-aware variants present.
-    expect(joined).toContain('No ground was ever built here — only open water.');
-    expect(joined).toContain('Not one tower-in-the-park is left standing over the core.');
-    // Still free of chronicle-sourced lines and artifacts.
-    expect(joined).not.toContain('disinvestment');
-    expect(joined).not.toContain('rail tiles');
-    expect(joined).not.toContain('undefined');
-    for (const line of lines) expect(line.length).toBeLessThanOrEqual(90);
+  it('no redlining on a city that had none; nothing at all on open water', () => {
+    expect(challengeText('Flet', { ...FOUNDED_REPORT, redlinedShare: 0 }, CHRONICLE).join(' ')).not.toMatch(/Redlining/);
+    expect(challengeText('Flet', ALL_WATER_REPORT, ALL_WATER_CHRONICLE)).toEqual([]);
   });
 });
