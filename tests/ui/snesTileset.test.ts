@@ -609,15 +609,32 @@ describe('snes washes — dithered pixel overlays instead of translucent per-til
     expect(cover('@wash/shadow')).toBeLessThan(0.6);
   });
 
-  it('a level crossing paves a road band across the rails, with the rails running through it', () => {
+  it('a level crossing paves a road band across the tile — its surface only; the track is laid over it', () => {
     const v = tiles.get('@road/xband/v')!; // road runs N-S across an E-W railway
     const a = (x: number, y: number): number => v.data[(y * v.w + x) * 4 + 3]!;
     expect(a(0, 0)).toBe(0); // outside the band stays the rail tile
     expect(a(8, 0)).toBe(255); // the band reaches both edges
     expect(a(8, 15)).toBe(255);
-    const at = (x: number, y: number): number[] => [...v.data.subarray((y * v.w + x) * 4, (y * v.w + x) * 4 + 3)];
-    expect(at(8, 5)).not.toEqual(at(8, 7)); // a rail row differs from the asphalt beside it
     expect(tiles.has('@road/xband/h')).toBe(true);
+  });
+
+  // Maddy 2026-10-08: "trams that come to 4-way intersections but have corners don't draw the turn right" / "same with
+  // t junctions". The band used to carry its own straight rails, so on a corner or a turnout at a street junction the
+  // curve was paved over with straight stubs. The rails are now an overlay of the tile's own track, laid on the band.
+  it('the rails laid over a crossing are exactly the tile’s own track — a corner’s curve, a turnout’s branch', () => {
+    const [hr, hg, hb] = C.paveHi;
+    for (const [fam, base] of [['tram', 'streetcar'], ['rail', 'rail']] as const) {
+      for (const m of [3, 6, 9, 12, 5, 10, 7, 11, 13, 14, 15]) {
+        const o = tiles.get(`@road/rails/${fam}/${m}`)!;
+        const t = tiles.get(`${base}-${m}`)!;
+        expect(o, `@road/rails/${fam}/${m}`).toBeDefined();
+        for (let i = 0; i < o.data.length; i += 4) {
+          const railHere = t.data[i] === hr && t.data[i + 1] === hg && t.data[i + 2] === hb;
+          if (railHere) expect([...o.data.subarray(i, i + 3)], `${fam} ${m} px ${i / 4}`).toEqual([hr, hg, hb]);
+          if (o.data[i + 3]! > 0 && !railHere) expect(o.data[i + 3]).toBe(255); // a rail's shadow, nothing else
+        }
+      }
+    }
   });
 });
 

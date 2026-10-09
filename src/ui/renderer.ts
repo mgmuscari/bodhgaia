@@ -696,13 +696,15 @@ export class Renderer {
           const builtTile = this.atlas.get(builtKey);
           if (builtTile) ctx.drawImage(builtTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
           // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, the road's asphalt band runs
-          // ACROSS the track with the rails showing through it; the white stop lines go on top, after.
+          // ACROSS the track and the track's own rails are laid back over it; the white stop lines go on top, after.
           const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
           // in the crossing's own surface: a road's (or quiet street's) asphalt, a bike path's lane, a promenade's pavers
           const xKind = xMask !== 0 ? railCrossingKind(map, tx, ty) : 0;
           const band = xKind === BuiltKind.BikePath ? '@road/xband-bike' : xKind === BuiltKind.Promenade ? '@road/xband-ped' : '@road/xband';
           if (xMask & (N | S)) ink(`${band}/v`, dx, dy); // runs N–S
           if (xMask & (E | W)) ink(`${band}/h`, dx, dy); // runs E–W
+          // …and the tile's own rails back over the band: a corner's curve, a turnout's branch (Maddy 2026-10-08)
+          if (xMask !== 0) ink(`@road/rails/${built === BuiltKind.Streetcar ? 'tram' : 'rail'}/${mask}`, dx, dy);
           // Limited-access DIVIDER: a concrete barrier on each edge where a freeway abuts a surface
           // road (a frontage avenue) — you physically can't cross there, only at a ramp. Per-tile
           // (depends on neighbour kinds), drawn OVER the road like the power poles, not an atlas key.

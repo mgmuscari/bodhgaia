@@ -318,6 +318,14 @@ function railTile(mask: number): Pixels {
   return p;
 }
 
+/** The rails alone, transparent between (Maddy 2026-10-08): laid over a level crossing's band, so the track keeps its
+ *  own shape — a corner's curve, a turnout's branch — where a road meets it, not straight stubs. */
+function railsOnly(mask: number, family: 'tram' | 'rail'): Pixels {
+  const p = blank(T, T);
+  track(p, mask, null, C.paveHi, family === 'tram' ? C.asphaltLo : C.slateLo);
+  return p;
+}
+
 function streetcarTile(mask: number): Pixels {
   const p = asphalt(1);
   track(p, mask, null, C.paveHi, C.asphaltLo);
@@ -404,8 +412,8 @@ function pedTile(mask: number): Pixels {
   return p;
 }
 
-/** A level crossing: the road's asphalt band across the track, with the rails (on the rail tile's own
- *  rows) running through it. `axis` is the ROAD's direction; drawn over the rail tile. */
+/** A level crossing: the road's band across the track tile — its surface only. `axis` is the ROAD's direction;
+ *  drawn over the rail tile, and the tile's own rails (`@road/rails/…`) are laid back over it. */
 function crossingBand(axis: 'v' | 'h', surface: 'asphalt' | 'bike' | 'pavers' = 'asphalt'): Pixels {
   const p = blank(T, T);
   for (let a = 0; a < T; a++) {
@@ -417,15 +425,6 @@ function crossingBand(axis: 'v' | 'h', surface: 'asphalt' | 'bike' | 'pavers' = 
         : surface === 'pavers' ? ((x + y) % 2 === 0 ? C.paveHi : C.pave)
         : hash2(x, y, 6400) % 7 === 0 ? C.asphaltLo : C.asphalt;
       px(p, x, y, c);
-    }
-  }
-  for (const r of [5, 10]) {
-    for (let b = 4; b <= 11; b++) {
-      // the rails cross perpendicular to the road: rail on row r, its shadow on the next
-      const [x, y] = axis === 'v' ? [b, r] : [r, b];
-      const [sx, sy] = axis === 'v' ? [b, r + 1] : [r + 1, b];
-      px(p, x, y, C.paveHi);
-      px(p, sx, sy, C.slateLo);
     }
   }
   return p;
@@ -555,6 +554,8 @@ function transportTiles(out: Map<string, Pixels>): void {
   for (let m = 0; m < 16; m++) {
     out.set(`rail-${m}`, railTile(m));
     out.set(`streetcar-${m}`, streetcarTile(m));
+    out.set(`@road/rails/tram/${m}`, railsOnly(m, 'tram'));
+    out.set(`@road/rails/rail/${m}`, railsOnly(m, 'rail'));
     // over water: the same ways on a bridge deck
     out.set(`rail-${m}~deck`, railDeck(m));
     out.set(`streetcar-${m}~deck`, streetcarDeck(m));
