@@ -4,7 +4,8 @@
 
 import { Water, type GameMap } from '../engine/map';
 import { isRoadKind, type ParcelStore } from '../engine/fabric';
-import { plantOutput, isPowerConsumer } from '../growth/power';
+import { BuiltKind } from '../engine/fabric';
+import { plantOutput, isPowerConsumer, BATTERY_CAPACITY } from '../growth/power';
 import { gradeLetter } from '../worldgen/redline';
 
 /** The LIVE sample values the inspector appends to its readout — each undefined when the tile
@@ -66,6 +67,8 @@ export function inspectReadout(
   world: { map: GameMap; parcels: ParcelStore },
   live: InspectFields,
   poweredAnchors: ReadonlySet<number>,
+  /** Each energy node's battery charge (anchor → power-hours), from the grid. */
+  storage?: ReadonlyMap<number, number>,
 ): string {
   const { map, parcels } = world;
   let line = info;
@@ -96,6 +99,7 @@ export function inspectReadout(
   const builtHere = map.built[i];
   const out = builtHere ? plantOutput(builtHere) : 0;
   if (out > 0) line += ` · output ${out}`;
+  if (pid && parcels.kindAt(pid - 1) === BuiltKind.EnergyNode && storage) line += ` · battery ${Math.round(storage.get(anchor) ?? 0)}/${BATTERY_CAPACITY}`;
   else if (pid && isPowerConsumer(parcels.kindAt(pid - 1))) {
     line += poweredAnchors.has(anchor) ? ' · powered' : ' · UNPOWERED';
   }

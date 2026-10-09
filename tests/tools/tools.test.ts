@@ -239,6 +239,20 @@ describe('availableTools: rezone tools (building-target 3-way gate)', () => {
     expect(ids(tech)).toContain('convert-61');
   });
 
+  it('a park can be BUILT on open land too, not only rezoned from a lot (Maddy 2026-10-08)', () => {
+    const tech = freshTech(1000);
+    expect(ids(tech)).not.toContain('build-61');
+    for (const id of ['walkable-streets', 'road-diets', 'parklets', 'pocket-parks']) tech.unlock(id);
+    expect(ids(tech)).toContain('build-61');
+    expect(ids(tech)).toContain('convert-61'); // and rezoning stays
+    const world = freshWorld();
+    const r = applyTool(world, tech, toolDef('build-61')!, 3, 3);
+    expect(r.ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site); // it goes up as a site (commons take time)
+    expect(r.site?.kind).toBe(BuiltKind.Park);
+    expect(world.parcels.aliveCount()).toBe(1);
+  });
+
   it('reveals convert-62 only after the rewilding chain (RewildedLand grant)', () => {
     const tech = freshTech(1000);
     tech.unlock('walkable-streets');
@@ -263,13 +277,14 @@ describe('availableTools: rezone tools (building-target 3-way gate)', () => {
   });
 });
 
+// (a 1×1 lot on open land: a shop — a parklet goes on a road now)
 describe('previewTool never mutates', () => {
   it('leaves world hash + tech snapshot byte-equal on a VALID target', () => {
     const world = freshWorld();
     const tech = freshTech(1000);
     const h = hashWorld(world);
     const sb = tech.snapshotBytes();
-    const r = previewTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = previewTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.valid).toBe(true);
     expect(hashWorld(world)).toBe(h);
     expect(tech.snapshotBytes()).toEqual(sb);
@@ -281,7 +296,7 @@ describe('previewTool never mutates', () => {
     placeTransport(world.map, 3, 3, BuiltKind.RoadStreet); // occupy the tile
     const h = hashWorld(world);
     const sb = tech.snapshotBytes();
-    const r = previewTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = previewTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.valid).toBe(false);
     expect(hashWorld(world)).toBe(h);
     expect(tech.snapshotBytes()).toEqual(sb);
@@ -290,7 +305,7 @@ describe('previewTool never mutates', () => {
   it('reports effort as the blocker when geometry is valid but funds are short', () => {
     const world = freshWorld();
     const tech = freshTech(0);
-    const r = previewTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = previewTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.valid).toBe(false);
     expect(r.reason).toBe('effort');
   });
@@ -308,12 +323,12 @@ describe('applyTool spends + routes to single-writers', () => {
   it('debits exactly the tool cost and places the parcel', () => {
     const world = freshWorld();
     const tech = freshTech(1000);
-    const tool = toolDef('build-48')!;
+    const tool = toolDef(`build-${BuiltKind.CommercialStrip}`)!;
     const before = tech.effort;
     const r = applyTool(world, tech, tool, 3, 3);
     expect(r.ok).toBe(true);
     expect(tech.effort).toBe(before - tool.cost);
-    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Parklet);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.CommercialStrip);
     expect(world.parcels.aliveCount()).toBe(1);
   });
 
@@ -322,7 +337,7 @@ describe('applyTool spends + routes to single-writers', () => {
     const tech = freshTech(0);
     const h = hashWorld(world);
     const sb = tech.snapshotBytes();
-    const r = applyTool(world, tech, toolDef('build-48')!, 3, 3);
+    const r = applyTool(world, tech, toolDef(`build-${BuiltKind.CommercialStrip}`)!, 3, 3);
     expect(r.ok).toBe(false);
     expect(r.reason).toBe('effort');
     expect(hashWorld(world)).toBe(h);
@@ -651,5 +666,44 @@ describe('a house comes with a back yard; an accessory dwelling goes in it (Madd
     expect(previewTool(world, tech, adu, 6, 11)).toEqual({ valid: false, reason: 'needs-yard' }); // beside, not a yard
     expect(applyTool(world, tech, adu, 5, 10).ok).toBe(true);
     expect(world.map.built[world.map.idx(5, 10)]).toBe(BuiltKind.ADU);
+  });
+});
+
+describe('parking lots are placeable (Maddy 2026-10-08)', () => {
+  it('a Parking Lot tool sits in the transit menu and lays lot tiles, each with its own stalls', async () => {
+    const { categoryOf } = await import('../../src/ui/toolMenuContent');
+    const { parkingLots } = await import('../../src/ui/parkingContent');
+    const tech = freshTech(1000);
+    expect(ids(tech)).toContain(`build-${BuiltKind.ParkingLot}`);
+    const tool = toolDef(`build-${BuiltKind.ParkingLot}`)!;
+    expect(categoryOf(tool)).toBe('transit');
+    const world = freshWorld();
+    expect(applyTool(world, tech, tool, 3, 3).ok).toBe(true);
+    expect(applyTool(world, tech, tool, 4, 3).ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.ParkingLot);
+    expect(parkingLots(world.map)).toHaveLength(2); // a lot per tile (parkingContent)
+  });
+});
+
+describe('commons works go up as construction sites (Maddy 2026-10-08)', () => {
+  it('placing a community garden lays a site, asks no effort up front, and says what it will become', () => {
+    const tech = freshTech(0); // no effort at all: the commons pays as it goes
+    for (const id of ['soil-and-soul', 'urban-composting', 'walkable-streets', 'road-diets', 'community-gardens']) tech.unlock(id);
+    const world = freshWorld();
+    const tool = toolDef(`build-${BuiltKind.CommunityGarden}`)!;
+    const r = applyTool(world, tech, tool, 3, 3);
+    expect(r.ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site);
+    expect(r.site).toEqual({ kind: BuiltKind.CommunityGarden, x: 3, y: 3, cost: tool.cost, name: tool.name });
+    expect(tech.effort).toBe(0);
+  });
+
+  it('a pocket park built on open land goes up as a site too', () => {
+    const world = freshWorld();
+    const tech = freshTech(1000);
+    for (const id of ['walkable-streets', 'road-diets', 'parklets', 'pocket-parks']) tech.unlock(id);
+    const r = applyTool(world, tech, toolDef('build-61')!, 3, 3); // a pocket park on open land: a site too
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site);
+    expect(r.site?.kind).toBe(BuiltKind.Park);
   });
 });

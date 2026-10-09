@@ -1,6 +1,5 @@
 // General MIDI program → the engine's instrument set (PURE). One table, by GM family with the exceptions that
 // matter for the classical repertoire. The sound-effects bank (120..127) is dropped: this is background music.
-// 'chant' is never reached from GM — it is reserved for the Pali recitation tracks, which name it explicitly.
 import type { InstrumentId } from '../contract';
 
 const OVERRIDES: Record<number, InstrumentId> = {

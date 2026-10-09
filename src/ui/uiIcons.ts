@@ -112,13 +112,12 @@ const PAINT: Record<UiIcon, (p: Pixels) => void> = {
     line(p, 2, 12, 11, 3, C.leafLo); // the vein
   },
   civic: (p) => {
-    for (const [cx, shirt] of [[5, C.roofBlue], [11, C.signal]] as const) {
-      disc(p, cx, 4, 2, C.cream); // head
-      rect(p, cx - 2, 7, 5, 6, shirt); // body
-      hline(p, cx - 2, cx + 2, 7, C.line);
+    // two neighbours talking: each a head over a neck (the outline row between) over a body, a speech bubble
+    // above and between them, clear of both heads
+    for (const [ox, shirt] of [[1, C.roofBlue], [10, C.signal]] as const) {
+      glyph(p, ox, 4, ['.hhh.', 'hhhhh', 'hhhhh', '.hhh.', '.....', 'sssss', 'sssss', 'sssss', 'sssss'], { h: C.cream, s: shirt });
     }
-    rect(p, 6, 0, 4, 2, C.line); // a speech bubble between them
-    px(p, 8, 2, C.line);
+    glyph(p, 5, 1, ['lllll', '..l..'], { l: C.line }); // the bubble, its tail pointing down between them
   },
   redline: (p) => {
     rect(p, 2, 2, 12, 12, C.cream); // an old survey sheet
@@ -135,22 +134,24 @@ const PAINT: Record<UiIcon, (p: Pixels) => void> = {
     rect(p, 5, 5, 6, 6, C.roofRedLo); // the district drawn in red
   },
   police: (p) => {
+    // a symmetric five-point badge: the top point as long as the arms
     glyph(p, 1, 1, [
-      '......y.......',
-      '.....yYy......',
-      'yyyyyYYYyyyyy.',
-      '.yYYYYYYYYYy..',
-      '..yYYYoYYYy...',
-      '...yYYYYYy....',
-      '...yYYYYYy....',
-      '..yYYyyyYYy...',
-      '..yYy...yYy...',
-      '.yy.......yy..',
+      '......y......',
+      '.....yYy.....',
+      '.....yYy.....',
+      'yyyyyYYYyyyyy',
+      '.yYYYYYYYYYy.',
+      '..yYYYoYYYy..',
+      '...yYYYYYy...',
+      '...yYYYYYy...',
+      '..yYYyyyYYy..',
+      '..yYy...yYy..',
+      '.yy.......yy.',
     ], { y: C.gold, Y: C.flower, o: C.roofBlue });
   },
   coverage: (p) => {
-    disc(p, 8, 8, 7, C.line);
-    disc(p, 8, 8, 6, C.paveHi);
+    disc(p, 8, 8, 6, C.line);
+    disc(p, 8, 8, 5, C.paveHi);
     rect(p, 6, 3, 4, 10, C.signal); // the cross
     rect(p, 3, 6, 10, 4, C.signal);
   },
@@ -175,18 +176,20 @@ const PAINT: Record<UiIcon, (p: Pixels) => void> = {
     rect(p, 6, 6, 4, 5, C.roofBlue); // coat
     line(p, 6, 7, 3, 10, C.cream); // swinging arm
     line(p, 9, 7, 12, 9, C.cream);
-    line(p, 7, 11, 5, 15, C.slateLo); // striding legs
-    line(p, 9, 11, 11, 15, C.slateLo);
+    line(p, 7, 11, 5, 14, C.slateLo); // striding legs
+    line(p, 9, 11, 11, 14, C.slateLo);
   },
   help: (p) => {
-    disc(p, 8, 8, 7, C.roofBlue);
-    glyph(p, 5, 3, ['.www.', 'w...w', '....w', '...w.', '..w..', '.....', '..w..'], { w: C.line });
+    disc(p, 8, 8, 6, C.roofBlue);
+    glyph(p, 5, 4, ['.www.', 'w...w', '....w', '...w.', '..w..', '.....', '..w..'], { w: C.line });
   },
   settings: (p) => {
-    for (const [x, y] of [[7, 1], [7, 13], [1, 7], [13, 7], [3, 3], [11, 3], [3, 11], [11, 11]] as const) rect(p, x, y, 2, 2, C.slate);
-    disc(p, 8, 8, 5, C.slateHi); // the gear
-    disc(p, 8, 8, 2, C.ink);
-    px(p, 6, 5, C.line);
+    // symmetric about the centre pixel (8, 8) and inside 2..14, so its outline is never clipped on one side:
+    // eight teeth, 3-wide on the axes and 2×2 on the diagonals, round a body of radius 4 with a hub
+    for (const [x, y, w, h] of [[7, 2, 3, 2], [7, 13, 3, 2], [2, 7, 2, 3], [13, 7, 2, 3], [4, 4, 2, 2], [11, 4, 2, 2], [4, 11, 2, 2], [11, 11, 2, 2]] as const) rect(p, x, y, w, h, C.slate);
+    disc(p, 8, 8, 4, C.slateHi); // the gear
+    disc(p, 8, 8, 1, C.ink); // the hub
+    px(p, 6, 6, C.line); // a glint
   },
   budget: (p) => {
     disc(p, 8, 8, 6, C.roofBrown); // a gold coin, its rim
@@ -213,10 +216,37 @@ const PAINT: Record<UiIcon, (p: Pixels) => void> = {
   },
 };
 
+/** Room around the 16-px art while it is outlined, so no outline pixel falls off an edge. */
+const ROOM = 4;
+
+/** An icon drawn with room to spare: the 16-px art at (ROOM, ROOM) on a larger canvas, outlined — nothing clipped. */
+export function iconArt(name: UiIcon): Pixels {
+  const art = blank(16, 16);
+  PAINT[name](art);
+  const big = blank(16 + 2 * ROOM, 16 + 2 * ROOM);
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const i = (y * 16 + x) * 4;
+    if (art.data[i + 3]) big.data.set(art.data.subarray(i, i + 4), ((y + ROOM) * big.w + x + ROOM) * 4);
+  }
+  outline(big, C.ink);
+  return big;
+}
+
+/** The icon as the button shows it (Maddy 2026-10-08: "match the button drawable area"): the outlined drawing,
+ *  whole and centred on the 16×16 canvas — however its painter placed it. */
 function paintIcon(name: UiIcon): Pixels {
+  const big = iconArt(name);
+  let x0 = big.w, y0 = big.h, x1 = -1, y1 = -1;
+  for (let y = 0; y < big.h; y++) for (let x = 0; x < big.w; x++) if (big.data[(y * big.w + x) * 4 + 3]) {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
   const p = blank(16, 16);
-  PAINT[name](p);
-  outline(p, C.ink);
+  const ox = Math.floor((16 - (x1 - x0 + 1)) / 2) - x0;
+  const oy = Math.floor((16 - (y1 - y0 + 1)) / 2) - y0;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const i = (y * big.w + x) * 4;
+    if (big.data[i + 3] && x + ox >= 0 && y + oy >= 0 && x + ox < 16 && y + oy < 16) p.data.set(big.data.subarray(i, i + 4), ((y + oy) * 16 + x + ox) * 4);
+  }
   return p;
 }
 

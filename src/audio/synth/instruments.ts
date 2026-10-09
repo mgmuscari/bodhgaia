@@ -286,22 +286,6 @@ const SPECS: Record<InstrumentId, () => Spec> = {
       gain: 0.36,
     };
   },
-  chant: () => {
-    // a soft open vowel between 'ah' and 'oh' (F1 ≈ 600, F2 ≈ 950, a faint F3), low male-ish root, two voices
-    // a hair apart and a breath — suited to unhurried recitation
-    const fs = [[600, 110, 1], [950, 140, 0.55], [2450, 220, 0.12]] as const;
-    const v = (d: number) => harmonics(80, 34, (k) => (0.05 / k + formant(k * hzOf(80 + d, L16), fs)) / k ** 0.6, d, L16);
-    const rnd = mulberry32(141);
-    const breath: Partial[] = [];
-    for (let j = 0; j < 80; j++) breath.push({ bin: 200 + Math.floor(rnd() * 600), amp: 0.004 });
-    return {
-      body: additive(L16, [...v(0), ...v(1), ...breath], 142),
-      loop: true,
-      rootHz: hzOf(80, L16),
-      envelope: { attack: 0.15, decay: 0.6, sustain: 0.9, release: 0.35 },
-      gain: 0.5,
-    };
-  },
   click: () => {
     const rnd = mulberry32(151);
     return {

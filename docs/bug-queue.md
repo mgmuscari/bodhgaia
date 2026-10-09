@@ -23,6 +23,26 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- ✅ **Walkers warp across tiles** (Maddy 2026-10-08, her (106, 37)) — measured on a 96² lotus: 803 jumps > 0.2 tile in a
+  50 ms step before the avenue-kerb change, 1,699 after (worst 0.9). Cause: the drawn pose is heading-relative
+  (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. ✅ map-fixed sidewalks; and
+  the real "warp" (Maddy: gliding extremely fast) — the vehicles' arc pacing at the kerb's radius sped walkers round
+  corners up to 13× a walk — ✅ walkers keep their own pace.
+- ✅ Walkers hop when re-planning mid-leg (up to 0.2 tile, once) and when stepping back onto the grid from a parked
+  car's off-grid spot (up to 0.6, once). Smooth these. — Not visible any more (Maddy 2026-10-08: hasn't seen one):
+  measured over a live minute, 0 drawn leaps > 0.25 tile in 90,802 walker-steps, worst 0.06. The sim position still
+  hops on a re-plan; the drawing blends across it (blendPose).
+- ✅ **The toxic cloud glows at night** (Maddy 2026-10-08) — the smog overlay now darkens with the night.
+- ✅ **Cyclists on bike paths drawn walking** (Maddy 2026-10-08) — real bicycles now.
+- ✅ **Transit, one missing idea — stops and vehicles** (Maddy 2026-10-08):
+  - ✅ rail running beside a road is drawn with at-grade crossings though there's road on one side only;
+  - ✅ pedestrians walk on train tracks — rail is crossed only where a road crosses it; a streetcar line is a
+    street: walkers on its kerbs, cars in its outer lanes;
+  - ✅ pedestrians don't walk to the line to wait — riders walk to the stop, wait, ride (32 a car), walk on;
+  - ✅ there are no animated streetcars;
+  - ✅ trains too slow and stopping too often — 2.5× a tram, stations only at crossings and junctions.
+- ✅ **"Convert to X" should work on any transit tile** (Maddy 2026-10-08) — whatever the underlying transport kind
+  (e.g. rail → street, streetcar → avenue), not only the pairs `fabric.ts` CONVERSIONS lists.
 - **Safari scrambles canvas readback** (Maddy 2026-10-08) — ✅ the UI frames (dark bars) now encode PNGs
   directly (`ui/pngEncode.ts`). The night glow and headlight rims still read back (`glowBatch.ts`, `renderer.ts`
   litSilhouette) but Maddy checked: they look right in Safari — left as they are.
@@ -36,44 +56,53 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   the budget could never balance. Fixed: residents move on the gap from what they expect (settled on the
   inherited city), taxes recalibrated on the settled state, and ways out of debt (freeway salvage, volunteer
   works, a one-time relief grant).
-- 🟡 **Map clicks dropped when a no-button move arrives between press and release** — `src/ui/input.ts`
+- ✅ **Map clicks dropped when a no-button move arrives between press and release** — `src/ui/input.ts`
   safety net (`e.buttons === 0` → end drag) swallows the pointerup, so a build click places nothing (seen
   driving the game from the Chrome extension). Fix: only apply the safety net when the pointer isn't captured.
-- 🟡 **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
-  cut off the top; the dock also runs off the bottom edge.
+- ✅ **Intro modal clipped on short windows** — at 784 px tall the city name + first chronicle lines are
+  cut off the top; the dock also runs off the bottom edge. — Cause: focusing the Continue button scrolled the
+  (88vh, scrolling) panel to its foot; it now focuses without scrolling. The dock sits in the top bar now.
 - ✅ **Tech tree cards overlap** — rebuilt as branch lanes of fixed-size cards with a detail pane.
 - ✅ **Settings typo** — the renderer note now describes what the GPU path does.
-- 🟢 **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
+- ✅ **Opening camera frames empty wilderness** — the city sits clipped at the right edge on load.
 - ✅ **Last non-pixel-art draws** (one-aesthetic pass, Maddy 2026-09-30) — trains (8-way loco + carriages),
   birds (flapping gulls), water pollution + redlined asphalt (clumped pixel patches), level crossings (road
   band over the rails), overpass shadow (half-tone, whole-art-pixel offsets) are all pixel art now.
-- 🟢 **Murky water still steps at tile edges in narrow creeks** — the 3×3-smoothed murk level reads fine
+- ✅ **Murky water still steps at tile edges in narrow creeks** (2026-10-08: murkier water bleeds an ordered-dither band across the shared edge — `murkEdge`) — the 3×3-smoothed murk level reads fine
   across bays and ponds, but a 1-tile-wide creek can still show a 2-tile murk rectangle. Consider letting
   murk fade across a tile (shore-style edge overlay keyed on neighbour level) rather than per-tile only.
 - ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
-- 🟡 **Commons builds don't take time yet** (economy wiring, 2026-09-30) — practices run as projects over
+- ✅ **Trips converge on one plot** (2026-10-08, from the walker-stream diagnosis) — every citizen goes to the
+  NEAREST plot of a category, so a district streams to one shop/workplace (77 to one shop in lotus). Spread choice
+  over the nearest few (weighted by distance/appeal).
+- ✅ **Energy node charge isn't shown** (inspect readout: `battery N/672`) (2026-10-08) — the battery's charge is invisible; show it in the inspect
+  readout and/or a small charge mark on the node.
+- ✅ **Commons builds don't take time yet** (2026-10-08: a commons work goes up as a construction site, raised by effort drawn per hour — `economy/run buildProject`; bulldozed half-built: dropped, no refund) (economy wiring, 2026-09-30) — practices run as projects over
   days, but placing a garden/parklet still spends its effort at once. Needs a construction-site state on the
   map (placed, then raised over hours by effort drawn as a project) to honour "projects take time" fully.
-- 🟡 **Displacement is counted, not yet enacted** — rent-driven displacement adds to the unhoused count, but
+- ✅ **Displacement is counted, not yet enacted** (stale: rent displacement empties real homes since rehoming.md; 2026-10-08 the displaced go to real encampments — `live/camps.ts`) — rent-driven displacement adds to the unhoused count, but
   doesn't yet empty specific homes (occupancy). Next: evict from the most rent-burdened unprotected homes.
 - ✅ **Freeway end cap draws oddly** — a wide road's stub past a junction is now an end cap: plain asphalt,
   hazard chevrons, a striped barrier across the dead end (decoration.endCapMask).
-- 🔴 **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
+- ✅ **At-grade rail crossings** (Maddy 2026-09-30: "we also don't currently have at-grade crossings for
   trains which we should support") — a road and a railway can't share a tile today. Needs a level-crossing
   tile both `canDrive` and `railTraversable` accept (built by dragging a road across track, or vice
   versa), the crossing art (road band over the rails + stop lines, already painted as `@road/xband`), and
-  right-of-way: cars hold at the stop line while a train occupies or approaches the crossing.
-- 🔴 **Trains: smooth turns + whole-consist motion** (Maddy 2026-09-30) — "rail passenger cars don't animate
+  right-of-way: cars hold at the stop line while a train occupies or approaches the crossing. — Done: the
+  crossing tile, its art, cars crossing (canDrive), and (2026-10-08) cars wait while a train or tram is on it or coming.
+- ✅ **Trains: smooth turns + whole-consist motion** (Maddy 2026-09-30) — "rail passenger cars don't animate
   correctly, and we should have natural turns for rails that trains go around like other sprite movers."
   Make the consist one path-follower (cars at fixed arc-length spacing behind the loco along the rail
   polyline) using the moverPose quarter-arc turns, so every car interpolates and banks through bends.
-- 🔴 **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
+- ✅ **Train consist doesn't interpolate** (Maddy 2026-06-20) — the leading car (red locomotive) animates
   smoothly but the white consist cars "tick along locked to the tiles behind it" (snap per-tile, no lerp).
-  The loco is interpolated; give the trailing cars the same smooth interpolation along the track.
-- 🔴 **Peds path into NON-destination plots** (Maddy 2026-06-20) — pedestrians should only be able to
+  The loco is interpolated; give the trailing cars the same smooth interpolation along the track. — Done: every
+  car is a mover on the shared quarter-arc path (trainPoses), pinned by the never-jump test.
+- ✅ **Peds path into NON-destination plots** (Maddy 2026-06-20) — pedestrians should only be able to
   walk INTO a plot that is their own trip destination; right now they cut across/into arbitrary plots.
   Gate `isWalkable` (or the walkPath neighbour test) so a built plot tile is walkable for an agent ONLY
-  if it's that agent's destination parcel (roads/paths/green always walkable; other plots blocked).
+  if it's that agent's destination parcel (roads/paths/green always walkable; other plots blocked). — Done:
+  built plots aren't walkable (isWalkable); yards are, deliberately, at PED_YARD cost; walkers stop at a door.
 - ✅ **Coal plant emission not visible** — STALE SESSION, not a bug: the running session predated the
   baked asset + render code; a reload loads the emission map and the beacons show. (Confirmed working.)
 - ✅ **Travelers path THROUGH dividers/medians — blocked** (`9e0e7946`). Cars were already blocked
@@ -136,21 +165,23 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   smog→ground, then ground→adjacent-water/downhill, diluted per hop → harm relocates toward the low
   redlined banks, doesn't vanish). Live, non-hashed, deterministic; unit-tested. Cadence/dilution +
   a rain visual are tunable follow-ups. `docs/design/pollution-weather.md`.
-- 🟡 **Unhoused agents — shelter + days** — COUNT (shipped) + VISIBLE ENCAMPMENTS now shipped (`aab8b2d2`:
-  tents on heavily demand-pathed empty tiles + discarded junk on worn ground). REMAINING: per-event
+- 🟡 **Unhoused agents — shelter + days** — COUNT (shipped) + ENCAMPMENTS (2026-10-08: the unhoused live in
+  camps, `live/camps.ts`; tents are the people in them, not desire-path wear) + DAYS OUT (2026-10-08: from the camps
+  to the commercial streets, thinning commerce's taxes there — `live/unhoused.ts`). Remaining (post-1.0): fuller
+  shelter-anchored rounds, dedicated shelter kinds. REMAINING: per-event
   displacement, shelter-anchored daily rounds, dedicated shelter kinds. `docs/design/unhoused-residents.md`.
 
-### 5 — Hybrid satellite shader (ACTIVE — Maddy 2026-06-20: CPU water anim still hits perf, move animations to GPU)
+### 5 — Hybrid satellite shader (done — audited 2026-10-08)
 DECISION: **full hybrid path** — WebGL2 renders the MAP (baked-tile albedo + GPU water/grass/clouds/
 shadows); Canvas2D draws sprites + UI on top; a settings toggle (GPU⇄CPU) under the menu bars; CPU stays
 the no-WebGL fallback. Shippable increments (each verifiable via `?shader`):
-- 🟡 **Inc 1 — two-canvas stack + toggle plumbing** — WebGL canvas under the Canvas2D sprite/UI canvas;
+- ✅ **Inc 1 — two-canvas stack + toggle plumbing** — WebGL canvas under the Canvas2D sprite/UI canvas;
   `renderer: cpu|gpu` setting (WebGL2-gated); when GPU on, skip the Canvas2D base + CPU water/grass/cloud
   overlays; sync camera/dpr/resize. (In progress.)
-- 🔴 **Inc 2 — phase 2 baked-tile ALBEDO** — shader samples the baked atlas so it keeps the Oakland look;
+- ✅ **Inc 2 — phase 2 baked-tile ALBEDO** — shader samples the baked atlas so it keeps the Oakland look;
   pack a per-cell atlas index/uv into the data texture (mirror the renderer's tile selection on the CPU
   at invalidation). The hard part (multitile cells, road masks, variants, dihedral terrain).
-- 🔴 **Inc 3 — animations on GPU** — water (waves/shear/foam), grass sheen, non-repeating clouds, shadows
+- ✅ **Inc 3 — animations on GPU** (closed 2026-10-08: the water laps on the GPU and Maddy finds it right; shadows and day/night are there, and building light now too; no older GPU code is left — every GPU module is in use) — water (waves/shear/foam), grass sheen, non-repeating clouds, shadows
   over the baked albedo. (Foundation already has procedural water/grass/glints/shadows.)
 
 ### 6 — Theme mechanic
@@ -202,7 +233,7 @@ low luminance and got keyed away). Output = glowing-lights-on-transparent, align
   the albedo variant-selection makes auto-gen vs placed each use one variant). Bake N light variants per
   high-frequency 1×1 kind + per-parcel selection (reuse the albedo variant hash). Also fix the albedo
   variant selection so auto-gen residences vary (separate from lighting).
-- 🔵 **Building emission → GPU** (optional) — building windows/beacons still draw on CPU (#game z1, above
+- ✅ **Building emission → GPU** (2026-10-08: windows and furnaces baked with the base into two emission layers the satellite shader adds after the night dimming — under the agents now; only the blinking beacons stay on the CPU) (optional) — building windows/beacons still draw on CPU (#game z1, above
   the GPU agents). Works (additive glow, ~7ms gate skew) but could move into the GPU pipeline for full
   consistency + to feed the glow pass (window glow spilling onto streets).
 

@@ -17,7 +17,7 @@ const DESIGN_BRIEF_IDS = [
   'urban-promenades', 'streetcar-revival', 'pocket-parks',
   // GreenDevelopment
   'soil-and-soul', 'urban-composting', 'community-gardens', 'vertical-farming',
-  'wastewater-recycling', 'rewilding',
+  'wastewater-recycling', 'rewilding', 'retention-ponds',
   // RestorativeJustice
   'circles', 'community-land-trust', 'healing-commons', 'tiny-home-villages', 'participatory-budgeting',
   // IntentionalCommunities
@@ -40,8 +40,15 @@ function cap(id: string, prereqs: string[] = []): TechNode {
 }
 
 describe('TECH_TREE shape', () => {
-  it('has 40 nodes (39 + Tiny-Home Villages, 2026-10-07)', () => {
-    expect(TECH_TREE.length).toBe(40);
+  it('has 41 nodes (39 + Tiny-Home Villages, 2026-10-07, + Retention Ponds, 2026-10-08)', () => {
+    expect(TECH_TREE.length).toBe(41);
+  });
+
+  it('Retention Ponds grants the pond, after Soil and Soul (Maddy 2026-10-08)', () => {
+    const n = TECH_TREE.find((t) => t.id === 'retention-ponds')!;
+    expect(n.branch).toBe(Branch.GreenDevelopment);
+    expect(n.prereqs).toEqual(['soil-and-soul']);
+    expect(n.grants.kinds).toEqual([BuiltKind.RetentionPond]);
   });
 
   it('contains exactly the design-brief node ids', () => {

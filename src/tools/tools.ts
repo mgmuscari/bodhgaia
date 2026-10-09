@@ -21,6 +21,8 @@ import {
   convertParcel,
   buildOnYard,
   layYardFor,
+  canPlaceParklet,
+  placeParklet,
   demolishParcel,
   demolishTransportAt,
   isInteriorRoadLane,
@@ -85,6 +87,7 @@ const VOLUNTEER_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.Library,
   BuiltKind.School,
   BuiltKind.WastewaterWorks,
+  BuiltKind.RetentionPond,
   BuiltKind.CoopHousing,
   BuiltKind.ADU,
   BuiltKind.Commune,
@@ -135,6 +138,7 @@ function bulldozeTarget(world: ToolWorld, x: number, y: number): number {
  *  removal pays salvage, and volunteer works take funds first and the shortfall in effort. Funds may come
  *  back negative (a credit). */
 export function chargeFor(world: ToolWorld, tool: ToolDef, x: number, y: number, wallet: Wallet): { effort: number; funds: number } {
+  if (tool.id.startsWith('build-') && isSiteKind(tool.kind)) return { effort: 0, funds: 0 }; // paid as it rises
   const sticker = toolPrice(tool);
   let volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
   if (tool.id === 'bulldoze') {
@@ -164,6 +168,7 @@ export type ToolReason =
   | 'not-an-interior-lane'
   | 'nothing-to-bulldoze'
   | 'needs-yard'
+  | 'needs-kerb'
   | 'effort';
 
 export interface PreviewResult {
@@ -176,6 +181,14 @@ export interface ApplyResult {
   reason?: ToolReason;
   /** Inspect-only: a human-readable line describing the tile. */
   info?: string;
+  /** A commons work laid as a construction site: what it will become, where, and the effort it will draw. */
+  site?: { kind: BuiltKind; x: number; y: number; cost: number; name: string };
+}
+
+/** A commons work (a lot of its own) goes up as a construction site, paid in effort as it rises (Maddy 2026-10-08);
+ *  the parklet sits on the kerb and stays immediate. */
+export function isSiteKind(kind: number | undefined): boolean {
+  return kind !== undefined && kind !== BuiltKind.Parklet && isCommonsKind(kind) && isBuildingKind(kind);
 }
 
 const BULLDOZE_COST = 1;
@@ -198,6 +211,7 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.RoadAvenue]: { label: 'Avenue', cost: 3 },
   [BuiltKind.RoadHighway]: { label: 'Highway', cost: 5 },
   [BuiltKind.Rail]: { label: 'Rail', cost: 4 },
+  [BuiltKind.ParkingLot]: { label: 'Parking Lot', cost: 3, footprint: { w: 1, h: 1 } }, // a lot tile; neighbours join one lot
   [BuiltKind.HouseSingle]: { label: 'Residential', cost: 4, footprint: { w: 1, h: 1 } },
   [BuiltKind.CommercialStrip]: { label: 'Commercial', cost: 6, footprint: { w: 1, h: 1 } },
   [BuiltKind.Industrial]: { label: 'Industrial', cost: 6, footprint: { w: 1, h: 1 } },
@@ -223,10 +237,12 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.Promenade]: { label: 'Promenade', cost: 4 },
   // Buildings (parcels)
   [BuiltKind.Parklet]: { label: 'Parklet', cost: 8, footprint: { w: 1, h: 1 } },
+  [BuiltKind.Park]: { label: 'Pocket Park', cost: 6, footprint: { w: 1, h: 1 } }, // built on open land, or rezoned from a lot
   [BuiltKind.CommunityGarden]: { label: 'Community Garden', cost: 14, footprint: { w: 2, h: 2 } },
   [BuiltKind.CompostHub]: { label: 'Compost Hub', cost: 10, footprint: { w: 1, h: 1 } },
   [BuiltKind.VerticalFarm]: { label: 'Vertical Farm', cost: 22, footprint: { w: 2, h: 2 } },
   [BuiltKind.WastewaterWorks]: { label: 'Wastewater Works', cost: 24, footprint: { w: 2, h: 2 } },
+  [BuiltKind.RetentionPond]: { label: 'Retention Pond', cost: 16, footprint: { w: 2, h: 2 } },
   [BuiltKind.EnergyNode]: { label: 'Energy Node', cost: 16, footprint: { w: 1, h: 1 } },
   [BuiltKind.AINode]: { label: 'AI Node', cost: 26, footprint: { w: 1, h: 1 } },
   [BuiltKind.ADU]: { label: 'Accessory Dwelling', cost: 10, footprint: { w: 1, h: 1 } },
@@ -238,9 +254,9 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.TinyHomes]: { label: 'Tiny-Home Village', cost: 16, footprint: { w: 2, h: 2 } },
 };
 
-// Conversion tools keyed by TARGET kind. The transport targets are the union of
-// TRANSPORT_CONVERSIONS' entry lists: {Street, Avenue, BikePath, Streetcar,
-// QuietStreet, Promenade}, costs 2..4/tile (cheaper than fresh build — a road diet
+// Conversion tools keyed by TARGET kind. The transport targets are TRANSPORT_CONVERT_TARGETS
+// ({Street, Avenue, BikePath, Streetcar, QuietStreet, Promenade}, from any transport tile) plus the
+// planted median, costs 2..4/tile (cheaper than fresh build — a road diet
 // reuses the roadbed). The building targets are the rezoning greens (Park,
 // RewildedLand): an in-place depave of any alive building parcel (see convertParcel).
 interface ConvertEntry {
@@ -273,6 +289,7 @@ const CLASSIC_BUILD_KINDS: readonly BuiltKind[] = [
   BuiltKind.RoadAvenue,
   BuiltKind.RoadHighway,
   BuiltKind.Rail,
+  BuiltKind.ParkingLot,
   BuiltKind.HouseSingle,
   BuiltKind.CommercialStrip,
   BuiltKind.Industrial,
@@ -385,6 +402,8 @@ function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): P
 
   // build-*
   const kind = tool.kind!;
+  // a parklet goes on a road, in place of its kerb (Maddy 2026-10-08)
+  if (kind === BuiltKind.Parklet) return canPlaceParklet(map, x, y) ? { valid: true } : { valid: false, reason: 'needs-kerb' };
   if (isBuildingKind(kind)) {
     // an accessory dwelling is a backyard cottage: it goes IN a house's back yard, not on new land
     if (kind === BuiltKind.ADU) return map.built[map.idx(x, y)] === BuiltKind.Yard ? { valid: true } : { valid: false, reason: 'needs-yard' };
@@ -416,8 +435,8 @@ export function previewTool(
   const g = geometryValid(world, tool, x, y);
   if (!g.valid) return g;
   if (!wallet) {
-    // no economy attached: the original single-purse pricing (effort for everything)
-    if (tool.cost > tech.effort) return { valid: false, reason: 'effort' };
+    // no economy attached: the original single-purse pricing (effort for everything) — a site pays as it rises
+    if (tool.cost > tech.effort && !(tool.id.startsWith('build-') && isSiteKind(tool.kind))) return { valid: false, reason: 'effort' };
     return { valid: true };
   }
   const price = chargeFor(world, tool, x, y, wallet);
@@ -485,7 +504,7 @@ export function applyTool(
     const price = chargeFor(world, tool, x, y, wallet);
     if (!tech.spend(price.effort)) return { ok: false, reason: 'effort' };
     wallet.funds -= price.funds;
-  } else if (!tech.spend(tool.cost)) return { ok: false, reason: 'effort' };
+  } else if (!(tool.id.startsWith('build-') && isSiteKind(tool.kind)) && !tech.spend(tool.cost)) return { ok: false, reason: 'effort' };
 
   const { map, parcels } = world;
   if (tool.id === 'bulldoze') {
@@ -510,8 +529,15 @@ export function applyTool(
   }
   // build-*
   const kind = tool.kind!;
-  if (kind === BuiltKind.ADU) {
+  if (kind === BuiltKind.Parklet) {
+    placeParklet(map, x, y); // on the road's kerb, in its deck
+  } else if (kind === BuiltKind.ADU) {
     buildOnYard(map, parcels, x, y, kind); // the yard's lot becomes the cottage's
+  } else if (isSiteKind(kind)) {
+    // a commons work goes up as a site; the city raises it as the commons pays (economy buildProject)
+    const fp = tool.footprint!;
+    placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind: BuiltKind.Site });
+    return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name } };
   } else if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
     placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });

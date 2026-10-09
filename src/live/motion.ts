@@ -203,6 +203,8 @@ export function advanceMover(
   pickNext: (x: number, y: number, fromDir: number, recent: readonly number[]) => number,
   blocked?: (m: Mover) => boolean,
   lateral = LANE,
+  /** Keep pace round a turn arc (vehicles are drawn on one); walkers walk straight legs and keep their own pace. */
+  paced = true,
 ): boolean {
   if (blocked?.(m)) {
     // space ahead occupied → pause this substep (alive, just waiting) — unless it has waited so long
@@ -211,7 +213,7 @@ export function advanceMover(
     if (m.stuck < STUCK_ESCAPE) return true;
   }
   m.stuck = 0;
-  speed *= legPaceFactor(m, lateral); // a turn leg's drawn arc is shorter/longer than a tile — keep pace
+  if (paced) speed *= legPaceFactor(m, lateral); // a turn leg's drawn arc is shorter/longer than a tile — keep pace
   const dist = Math.abs(m.tx - m.x) + Math.abs(m.ty - m.y);
   if (dist <= speed) {
     // Arrive at the target tile centre, record it, and recommit to the next leg.

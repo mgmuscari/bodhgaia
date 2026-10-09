@@ -24,6 +24,9 @@ export interface Mover {
   /** The mover's leg state as it stood BEFORE the latest substep (snapshotMovers) — cosmetic, read only
    *  by the pose functions to interpolate between 50 ms substeps at the display's frame rate. */
   snap?: { x: number; y: number; dir: number; prevDir?: number; tx: number; ty: number };
+  /** A drawn pose this mover is easing in from, and the substeps left (poses.ts easeFrom) — a car pulling into a
+   *  stall or out of one, a driver stepping out to the kerb — so it slides rather than snaps. Cosmetic only. */
+  ease?: { x: number; y: number; hx: number; hy: number; n: number };
   /** Consecutive substeps this vehicle has been held by the space-ahead rule. Drives gridlock relief:
    *  a re-plan at STUCK_REPATH, a one-off pass-through at STUCK_ESCAPE. Reset whenever it moves. */
   stuck?: number;
@@ -67,6 +70,8 @@ export interface Mover {
    *  a trip leaves a residential plot. The destination's visit wellbeing is deposited here on
    *  return. Undefined ⇒ a non-residential (freight) trip — no home, no health deposit. */
   homeTile?: number;
+  /** An unhoused person's camp (live/unhoused.ts): they set out from it and come back to it, in place of a home. */
+  shelter?: number;
   /** For a street-parked car: the direction (0=N/1=E/2=S/3=W) toward its curb (the adjacent
    *  non-road tile), so the renderer draws it hugging the kerb instead of in the lane. */
   curbDir?: number;
@@ -86,7 +91,9 @@ export interface Mover {
    *  ('to-home'), depositing the visit at `homeTile` on arrival. `phase` tracks the leg;
    *  `building` is the destination plot (the wellbeing source); `dwellInside` times the visit. */
   carId?: number;
-  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving' | 'gathering';
+  phase?: 'to-building' | 'inside' | 'to-car' | 'to-home' | 'to-vehicle' | 'driving' | 'gathering' | 'transit' | 'riding';
+  /** On a transit trip (live/riders.ts): walking to the stop and waiting ('transit'), or aboard ('riding'). */
+  ride?: import('./riders').Ride;
   /** At a gathering (live/gatherings.ts): which, where they are in it, and the kerb they walk home to. */
   gather?: { id: number; go: 'coming' | 'here' | 'milling' | 'going'; mill: number; home: { x: number; y: number } };
   building?: { x: number; y: number };
@@ -163,6 +170,11 @@ export interface Train {
   /** One Mover per car (head first), re-synced each substep by syncTrainLegs — the same movers cars and
    *  peds are, so the substep snapshot and pose blending cover trains too. */
   cars?: Mover[];
+  /** Which track it runs on (live/transit.ts): a train (rail, elevated rail) or a tram (streetcar). */
+  family?: 'rail' | 'tram';
+  /** Substeps left halted at a stop, and the stop it last halted at (so it moves on). */
+  dwell?: number;
+  lastStop?: number;
 }
 
 /** A parking lot the ambient layer can store cars in: its centre, its bounding box (for the
@@ -208,7 +220,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising';
+  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
   x: number;
   y: number;
   w: number;
@@ -334,6 +346,13 @@ export interface AmbientState {
   /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
    *  people back from it; it never moves without a cause. */
   unhoused: number;
+  /** Commercial places the unhoused spent their days at (live/unhoused.ts): tile → visits, fading. */
+  unhousedVisits?: Map<number, number>;
+  /** Where the unhoused live (live/camps.ts): encampment tile → people. Sums to `unhoused` once settled. */
+  camps?: Map<number, number>;
+  /** People put out of homes since the last settle (home tile → people), and people re-housed (home tile → people). */
+  campIn?: Map<number, number>;
+  campOut?: Map<number, number>;
   /** Per home tile: how organised its neighbourhood is, 0..1 (civic voice ÷ 255), set by the host after
    *  each civic tick — the welcome that re-homes people there. Absent ⇒ no welcome anywhere. */
   welcome?: Map<number, number>;
@@ -454,4 +473,10 @@ export function setPlantEmitters(
   emitters: ReadonlyArray<{ tile: number; amount: number }>,
 ): void {
   state.plantEmitters = emitters;
+}
+
+/** Is this person off the street — inside a building, driving their car, or riding a tram or train? Off the
+ *  street, nobody sees, arrests, hurts or hears them, and they aren't drawn. The one test every system uses. */
+export function offStreet(p: { phase?: Ped['phase'] }): boolean {
+  return p.phase === 'inside' || p.phase === 'driving' || p.phase === 'riding';
 }

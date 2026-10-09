@@ -10,7 +10,7 @@
 // version is lifted through MIGRATIONS (one step per version) before use.
 
 import type { GameMap } from '../engine/map';
-import type { ParcelColumns, ParcelStore } from '../engine/fabric';
+import { BuiltKind, type ParcelColumns, type ParcelStore } from '../engine/fabric';
 import type { TechState } from '../tech/state';
 import type { CivicState } from '../civic/state';
 import type { EconomyRun } from '../economy/run';
@@ -19,7 +19,7 @@ import type { AmbientState } from '../live/types';
 export const SAVE_FORMAT = 'bodhgaia-save';
 /** Saves written before the rename (2026-10-07) — still read. */
 const LEGACY_FORMATS: ReadonlySet<unknown> = new Set([SAVE_FORMAT, 'bodhitropolis-save']);
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 /** The map layers a save carries, by GameMap field name (all of them: they are the world). v1 also carried
  *  'traffic' — an always-zero legacy layer, retired in v2 (MIGRATIONS[1] drops it). */
@@ -60,7 +60,14 @@ export interface SaveV1 {
   civic: Array<{ belonging: number; voice: number; trust: number; ring: number[] }>;
   econ: EconomyRun;
   /** `unhoused`/`freshHomes` arrived 2026-10-07 (rehoming.md); an older save derives the pool on restore. */
-  live: { maps: Record<LiveMapName, Array<[number, number]>>; occPasses: number; unhoused?: number; freshHomes?: number[] };
+  live: {
+    maps: Record<LiveMapName, Array<[number, number]>>;
+    occPasses: number;
+    unhoused?: number;
+    freshHomes?: number[];
+    /** Encampments, tile → people (2026-10-08; absent in older saves ⇒ placed by the emptiest homes on settle). */
+    camps?: Array<[number, number]>;
+  };
   /** Energy-node battery charge, anchor → power-hours (2026-10-07; absent in older saves ⇒ empty). */
   power?: { storage: Array<[number, number]> };
 }
@@ -159,6 +166,17 @@ const MIGRATIONS: Record<number, (s: Record<string, unknown>) => Record<string, 
     const { traffic: _dropped, ...layers } = world.layers;
     return { ...s, world: { ...world, layers } };
   },
+  // v2 → v3 (Maddy 2026-10-08): parklets moved off their own lots onto the road's kerb (the deck layer). A
+  // parklet lot in an older city becomes a pocket park — its parcel kind and its tiles' built kind, nothing else.
+  2: (s) => {
+    const world = s.world as { layers?: Record<string, string>; parcels?: { kind?: number[] } } | undefined;
+    if (!world?.layers?.built || !world.parcels?.kind) return s;
+    const bytes = decodeBytes(world.layers.built);
+    const built = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 1);
+    for (let i = 0; i < built.length; i++) if (built[i] === BuiltKind.Parklet) built[i] = BuiltKind.Park;
+    const kind = world.parcels.kind.map((k) => (k === BuiltKind.Parklet ? BuiltKind.Park : k));
+    return { ...s, world: { ...world, layers: { ...world.layers, built: encodeBytes(bytes) }, parcels: { ...world.parcels, kind } } };
+  },
 };
 
 export function parseSave(text: string): SaveV1 {
@@ -210,7 +228,13 @@ export function restoreCivic(civic: CivicState, saved: SaveV1['civic']): void {
 export function captureLive(live: AmbientState): SaveV1['live'] {
   const maps = {} as Record<LiveMapName, Array<[number, number]>>;
   for (const name of LIVE_MAPS) maps[name] = [...live[name].entries()];
-  return { maps, occPasses: live.occPasses, unhoused: live.unhoused, freshHomes: [...(live.freshHomes ?? [])] };
+  return {
+    maps,
+    occPasses: live.occPasses,
+    unhoused: live.unhoused,
+    freshHomes: [...(live.freshHomes ?? [])],
+    camps: [...(live.camps ?? new Map<number, number>()).entries()],
+  };
 }
 
 /** Put the saved live stocks back; derived fields recompute on their own cadences, agents respawn. A save from
@@ -220,6 +244,9 @@ export function restoreLive(live: AmbientState, saved: SaveV1['live'], mapWidth:
   for (const name of LIVE_MAPS) live[name] = new Map(saved.maps[name] ?? []);
   live.occPasses = saved.occPasses;
   live.freshHomes = new Set(saved.freshHomes ?? []);
+  live.camps = new Map(saved.camps ?? []);
+  live.campIn?.clear();
+  live.campOut?.clear();
   if (saved.unhoused !== undefined) {
     live.unhoused = saved.unhoused;
     return;

@@ -9,6 +9,7 @@
 // gated check is a no-op. prevToolIds is SEEDED from the initial rows (Y7) so the first diff is empty → no
 // spurious unlock flash on load.
 
+import type { ApplyResult } from '../tools/tools';
 import { TECH_TREE } from '../tech/tree';
 import type { TechState } from '../tech/state';
 import { refusalText } from '../ui/toolbarContent';
@@ -16,7 +17,7 @@ import { availableTools, previewTool, applyTool, toolDef, type ToolDef, type Too
 import { isLineTool } from '../ui/lineTools';
 import { isRepairTool } from '../ui/repairTools';
 import { toolbarRows, refreshSignature, addedIds } from '../ui/toolbarContent';
-import { buildToolMenu, type ToolCategory } from '../ui/toolMenuContent';
+import { buildToolMenu, categoryOf, type ToolCategory } from '../ui/toolMenuContent';
 import { branchColumns, panelSignature } from '../ui/techContent';
 import type { ToolbarDeps, ToolbarHandle } from '../ui/toolbar';
 import type { MetaButton } from '../ui/dockContent';
@@ -43,6 +44,8 @@ export interface ToolsDeps {
   inspect: (info: string, tx: number, ty: number) => string;
   /** A placement / bulldoze succeeded: re-derive what reads the built layer (the grid, the smog sources). */
   placed: () => void;
+  /** A commons work was laid as a construction site: start raising it (the economy's build project). */
+  siteLaid?: (site: NonNullable<ApplyResult['site']>) => void;
   /** A repair-classified placement succeeded at its anchor tile (the tools→civic crossing). */
   repaired: (tx: number, ty: number) => void;
   /** Feedback (sound): a tool was picked, a use succeeded, or one was refused. Optional. */
@@ -101,7 +104,10 @@ export function createToolController(deps: ToolsDeps): ToolController {
     onSelect: (id) => select(id as ToolId),
     onToggleCategory: (id) => {
       openCategory = openCategory === id ? null : id;
-      toolbar.refresh();
+      // opening another category puts the selected tool down (Maddy 2026-10-08); its own category keeps it
+      const def = selectedDef();
+      if (openCategory !== null && def && categoryOf(def) !== openCategory) select(null);
+      else toolbar.refresh();
     },
     getMetaButtons: () => deps.meta.buttons(),
     onMeta: (id) => {
@@ -140,6 +146,7 @@ export function createToolController(deps: ToolsDeps): ToolController {
       return;
     }
     deps.feedback?.applied(def);
+    if (r.site) deps.siteLaid?.(r.site);
     deps.placed();
     deps.markDirty(); // mutated the built/parcel layer → rebuild the cached base
     // Effort changed → dock affordability + (if open) tech-panel affordability, snapshotted (the discrete path)

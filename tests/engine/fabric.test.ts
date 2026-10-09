@@ -28,7 +28,7 @@ import {
   parcelTouchesRoad,
   demolishParcel,
   demolishTransportAt,
-  TRANSPORT_CONVERSIONS,
+  TRANSPORT_CONVERT_TARGETS,
   canConvertTransport,
   convertTransport,
   isOverpassKind,
@@ -397,7 +397,7 @@ describe('canPlaceTransport / placeTransport', () => {
     expect(b.getBuilt(4, 4)).toBe(BuiltKind.RoadAvenue); // same result, order-independent
   });
 
-  it('allows rail-on-rail but rejects road<->rail crossings', () => {
+  it('allows rail-on-rail and rail across a road, but no road onto rail', () => {
     const map = new GameMap(8, 8);
     placeTransport(map, 2, 2, BuiltKind.Rail);
     expect(placeTransport(map, 2, 2, BuiltKind.Rail)).toBe(true);
@@ -408,11 +408,11 @@ describe('canPlaceTransport / placeTransport', () => {
     expect(placeTransport(map, 2, 2, BuiltKind.RoadStreet)).toBe(false);
     expect(map.getBuilt(2, 2)).toBe(BuiltKind.Rail); // unchanged
 
-    // rail onto road rejected
+    // rail onto a road: track laid across it, a level crossing (Maddy 2026-10-08)
     placeTransport(map, 5, 5, BuiltKind.RoadAvenue);
-    expect(canPlaceTransport(map, 5, 5, BuiltKind.Rail)).toBe(false);
-    expect(placeTransport(map, 5, 5, BuiltKind.Rail)).toBe(false);
-    expect(map.getBuilt(5, 5)).toBe(BuiltKind.RoadAvenue);
+    expect(canPlaceTransport(map, 5, 5, BuiltKind.Rail)).toBe(true);
+    expect(placeTransport(map, 5, 5, BuiltKind.Rail)).toBe(true);
+    expect(map.getBuilt(5, 5)).toBe(BuiltKind.Rail);
   });
 
   it('rejects non-transport kinds', () => {
@@ -493,7 +493,7 @@ describe('transport merge-hazard guard (the predicate stays isRoadKind, not cate
   }
 });
 
-describe('TRANSPORT_CONVERSIONS table + canConvertTransport / convertTransport', () => {
+describe('transport conversions: canConvertTransport / convertTransport', () => {
   // Every designed (from -> to) entry. `from` kinds are all classic 1..4 OR
   // empty-land-placeable transit kinds, so each fixture can be placed directly.
   const CONVERSION_CASES: ReadonlyArray<readonly [number, number]> = [
@@ -505,23 +505,21 @@ describe('TRANSPORT_CONVERSIONS table + canConvertTransport / convertTransport',
     [BuiltKind.RoadHighway, BuiltKind.RoadAvenue],
     [BuiltKind.RoadHighway, BuiltKind.PlantedMedian],
     [BuiltKind.Rail, BuiltKind.Streetcar],
+    // any transit tile converts to any target (Maddy 2026-10-08)
+    [BuiltKind.RoadStreet, BuiltKind.RoadAvenue],
+    [BuiltKind.RoadHighway, BuiltKind.RoadStreet],
+    [BuiltKind.QuietStreet, BuiltKind.RoadStreet],
+    [BuiltKind.Streetcar, BuiltKind.RoadStreet],
+    [BuiltKind.Rail, BuiltKind.BikePath],
+    [BuiltKind.BikePath, BuiltKind.Streetcar],
+    [BuiltKind.Promenade, BuiltKind.RoadAvenue],
+    [BuiltKind.ElevatedRail, BuiltKind.Promenade],
   ];
 
-  it('exposes the designed conversion entries in order', () => {
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.RoadStreet)!]).toEqual([
-      BuiltKind.QuietStreet,
-      BuiltKind.Promenade,
-      BuiltKind.BikePath,
-    ]);
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.RoadAvenue)!]).toEqual([
-      BuiltKind.RoadStreet,
-      BuiltKind.QuietStreet,
-    ]);
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.RoadHighway)!]).toEqual([
-      BuiltKind.RoadAvenue,
-      BuiltKind.PlantedMedian, // the road-diet planted median (tool-gated to interior lanes)
-    ]);
-    expect([...TRANSPORT_CONVERSIONS.get(BuiltKind.Rail)!]).toEqual([BuiltKind.Streetcar]);
+  it('converts to a street, avenue, bike path, streetcar, quiet street or promenade', () => {
+    expect([...TRANSPORT_CONVERT_TARGETS].sort((x, y) => x - y)).toEqual(
+      [BuiltKind.RoadStreet, BuiltKind.RoadAvenue, BuiltKind.BikePath, BuiltKind.Streetcar, BuiltKind.QuietStreet, BuiltKind.Promenade].sort((x, y) => x - y),
+    );
   });
 
   it('a planted median converts BACK to highway (the road diet is reversible)', () => {
@@ -551,14 +549,13 @@ describe('TRANSPORT_CONVERSIONS table + canConvertTransport / convertTransport',
   // tiles. Each rejected by BOTH canConvertTransport and convertTransport, with no
   // mutation.
   const REJECT_CASES: ReadonlyArray<readonly [number, number]> = [
-    [BuiltKind.RoadStreet, BuiltKind.RoadAvenue], // Street has no avenue entry
-    [BuiltKind.RoadStreet, BuiltKind.RoadHighway],
+    [BuiltKind.RoadStreet, BuiltKind.RoadStreet], // already that
+    [BuiltKind.RoadStreet, BuiltKind.RoadHighway], // not a conversion target (only a median reverts to it)
     [BuiltKind.RoadStreet, BuiltKind.Rail],
     [BuiltKind.RoadAvenue, BuiltKind.RoadHighway],
-    [BuiltKind.RoadHighway, BuiltKind.RoadStreet],
-    [BuiltKind.QuietStreet, BuiltKind.RoadStreet], // reverse of a real entry
-    [BuiltKind.Streetcar, BuiltKind.Rail], // reverse of Rail -> Streetcar
-    [BuiltKind.Rail, BuiltKind.ElevatedRail], // Rail only converts to Streetcar
+    [BuiltKind.Streetcar, BuiltKind.Rail],
+    [BuiltKind.Rail, BuiltKind.ElevatedRail],
+    [BuiltKind.RoadStreet, BuiltKind.PlantedMedian], // a median is planted in a highway's lane only
   ];
 
   for (const [from, to] of REJECT_CASES) {
@@ -834,12 +831,13 @@ describe('transportMask: transit category connections', () => {
   // The placement fence blocks placeTransport for kinds 5..9, so these category
   // fixtures are injected directly via map.setBuilt — the mask only reads the
   // built layer through transportCategory and must connect by shared category.
-  it('connects a streetcar to a rail neighbour (shared rail category)', () => {
+  it('a streetcar does not join a rail neighbour, though they share the rail category (Maddy 2026-10-08)', () => {
     const map = new GameMap(5, 5);
     map.setBuilt(2, 2, BuiltKind.Streetcar); // category rail
-    map.setBuilt(2, 1, BuiltKind.Rail); // north rail — connects
+    map.setBuilt(2, 1, BuiltKind.Rail); // north rail — a different line, no join
+    map.setBuilt(2, 3, BuiltKind.Streetcar); // south streetcar — joins
     map.setBuilt(3, 2, BuiltKind.RoadStreet); // east road — different category
-    expect(transportMask(map, 2, 2)).toBe(N);
+    expect(transportMask(map, 2, 2)).toBe(S);
   });
 
   it('connects a bike path only to another bike path', () => {
@@ -1234,6 +1232,17 @@ describe('railCrossingMask (level crossing where a road meets a rail/tram tile)'
     map.setBuilt(2, 2, BuiltKind.Rail);
     map.setBuilt(3, 2, BuiltKind.Rail);
     expect(railCrossingMask(map, 2, 2)).toBe(0);
+  });
+
+  it('a track running alongside a road (road on one side only) is no crossing (Maddy 2026-10-08)', () => {
+    const map = new GameMap(7, 5);
+    for (let x = 1; x <= 5; x++) {
+      map.setBuilt(x, 2, BuiltKind.Rail); // the line
+      map.setBuilt(x, 1, BuiltKind.RoadStreet); // a street beside it, to the north
+    }
+    expect(railCrossingMask(map, 3, 2)).toBe(0);
+    map.setBuilt(3, 3, BuiltKind.RoadStreet); // a street meeting it from the south too: now one crosses
+    expect(railCrossingMask(map, 3, 2)).toBe(N | S);
   });
 
   it('also marks a streetcar (tram) crossing', () => {

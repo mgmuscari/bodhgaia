@@ -15,7 +15,7 @@
 //
 // The transit codes 5..9 are granted by the tech tree and, since build-tools,
 // placeable on EMPTY land only (they never merge or cross — see canPlaceTransport)
-// or reachable as the target of a conversion (see TRANSPORT_CONVERSIONS). The
+// or reachable as the target of a conversion (see TRANSPORT_CONVERT_TARGETS). The
 // tech-tree building codes 48..60 are granted but reach the map only through a
 // build tool (see the tools layer). See the tech-tree + build-tools PRPs.
 
@@ -110,6 +110,11 @@ export const BuiltKind = {
   Yard: 64,
   // A ruin (Maddy 2026-10-08): a home lost to disinvestment, left standing as a shell — no one lives here.
   Ruin: 65,
+  // A retention pond (Maddy 2026-10-08): holds storm water, so the land around it doesn't flood.
+  RetentionPond: 66,
+  // A construction site (Maddy 2026-10-08): a commons work being raised — fenced, no effects — until the effort is
+  // paid (economy/run buildProject), when finishSite turns it into the building.
+  Site: 67,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -401,28 +406,22 @@ const MIN_FOOTPRINT = 1;
 const MAX_FOOTPRINT = 4; // the largest plant footprint (Nuclear/Fusion are 4x4)
 
 /**
- * Transport conversions: the explicit "road diet" transformation table. A tile
- * holding a `from` kind may be converted in place to any kind in its entry list.
- * These are deliberate transformations — a street narrows to a quiet street, a
- * promenade, or a bike path; an avenue steps down to a street; a highway reverses
- * to a boulevard-grade avenue; a rail line becomes a streetcar — NOT placements
- * and NOT junction merges. Conversion is the ONLY way a kind reaches an
- * already-occupied tile: placement stays empty-land-only, and the junction merge
- * (max() over same-category classic kinds) is untouched. Joining the single-writer
- * block keeps every built-layer write in this module (PRD risk #1).
+ * Transport conversions: the kinds any transport tile may be converted to in place — a street, avenue, bike path,
+ * streetcar, quiet street or promenade, whatever the tile holds now (Maddy 2026-10-08: "convert to X" should work
+ * regardless of the underlying transit tile). The road diet's planted median is its own pair: a highway's interior
+ * lane plants as a median (the tool fences it to interior lanes) and a median reverts to highway. These are
+ * deliberate transformations — NOT placements and NOT junction merges. Conversion is the ONLY way a kind reaches
+ * an already-occupied tile: placement stays empty-land-only, and the junction merge (max() over same-category
+ * classic kinds) is untouched. Joining the single-writer block keeps every built-layer write in this module
+ * (PRD risk #1).
  */
-export const TRANSPORT_CONVERSIONS: ReadonlyMap<BuiltKind, readonly BuiltKind[]> = new Map<
-  BuiltKind,
-  readonly BuiltKind[]
->([
-  [BuiltKind.RoadStreet, [BuiltKind.QuietStreet, BuiltKind.Promenade, BuiltKind.BikePath]],
-  [BuiltKind.RoadAvenue, [BuiltKind.RoadStreet, BuiltKind.QuietStreet]],
-  // A highway reverses to a boulevard-grade avenue, OR — once road diets are unlocked — its interior
-  // through-lane is planted as a no-traffic median (the tool fences PlantedMedian to interior lanes).
-  [BuiltKind.RoadHighway, [BuiltKind.RoadAvenue, BuiltKind.PlantedMedian]],
-  // The road diet is reversible: a planted median converts back to highway.
-  [BuiltKind.PlantedMedian, [BuiltKind.RoadHighway]],
-  [BuiltKind.Rail, [BuiltKind.Streetcar]],
+export const TRANSPORT_CONVERT_TARGETS: ReadonlySet<BuiltKind> = new Set([
+  BuiltKind.RoadStreet,
+  BuiltKind.RoadAvenue,
+  BuiltKind.BikePath,
+  BuiltKind.Streetcar,
+  BuiltKind.QuietStreet,
+  BuiltKind.Promenade,
 ]);
 
 /**
@@ -489,6 +488,7 @@ export function canPlaceTransport(map: GameMap, x: number, y: number, kind: numb
   if (existing === 0) return true; // empty land: any transport kind (incl. 5..9)
   if (isRoadKind(kind) && isRoadKind(existing)) return true; // road/road junction
   if (kind === BuiltKind.Rail && existing === BuiltKind.Rail) return true; // rail/rail
+  if (kind === BuiltKind.Rail && crossesRail(existing)) return true; // track laid across a way: a level crossing
   return false; // building tile, road<->rail crossing, or a transit kind onto anything
 }
 
@@ -503,7 +503,8 @@ export function placeTransport(map: GameMap, x: number, y: number, kind: number)
   if (!canPlaceTransport(map, x, y, kind)) return false;
   const i = map.idx(x, y);
   const existing = map.built[i]!;
-  map.built[i] = existing === 0 ? kind : Math.max(existing, kind);
+  // track across a way takes the tile (the crossing); the way carries on either side of it
+  map.built[i] = existing === 0 || (kind === BuiltKind.Rail && crossesRail(existing)) ? kind : Math.max(existing, kind);
   return true;
 }
 
@@ -533,15 +534,17 @@ export function placeBridge(map: GameMap, x: number, y: number, kind: number): b
 }
 
 /**
- * True iff the transport tile at (x, y) can be converted to `to`: the tile must
- * hold a `from` kind whose {@link TRANSPORT_CONVERSIONS} entry contains `to`.
- * Empty tiles, building tiles, and off-table (from, to) pairs all return false.
+ * True iff the transport tile at (x, y) can be converted to `to`: any transport tile to any of
+ * {@link TRANSPORT_CONVERT_TARGETS} but its own kind; a highway to a planted median, and back.
+ * Empty tiles and building tiles return false.
  */
 export function canConvertTransport(map: GameMap, x: number, y: number, to: number): boolean {
   if (!map.inBounds(x, y)) return false;
-  const from = map.built[map.idx(x, y)]! as BuiltKind;
-  const targets = TRANSPORT_CONVERSIONS.get(from);
-  return targets !== undefined && targets.includes(to as BuiltKind);
+  const from = map.built[map.idx(x, y)]!;
+  if (from === to || !isTransportKind(from)) return false;
+  if (to === BuiltKind.PlantedMedian) return from === BuiltKind.RoadHighway;
+  if (to === BuiltKind.RoadHighway) return from === BuiltKind.PlantedMedian;
+  return TRANSPORT_CONVERT_TARGETS.has(to as BuiltKind);
 }
 
 /**
@@ -592,7 +595,7 @@ export function isInteriorRoadLane(map: GameMap, x: number, y: number): boolean 
 /**
  * Rezoning targets: the building kinds an existing alive building parcel may be
  * converted *in place* into. A fixed set (the building analogue of the per-from
- * {@link TRANSPORT_CONVERSIONS} table) — *any* alive building parcel rezones to
+ * {@link TRANSPORT_CONVERT_TARGETS}) — *any* alive building parcel rezones to
  * either of these depaved greens.
  */
 export const REZONE_TARGETS: ReadonlySet<BuiltKind> = new Set<BuiltKind>([
@@ -661,22 +664,29 @@ export function convertParcel(
 // A house fronts the street it sits beside; its yard is the tile directly behind it. A corner house (streets on
 // two or more sides) has no "behind" and gets no yard, and neither does a house whose back tile is taken.
 
-/** The tile behind the house at (x, y) — away from the one street it faces — if it is free to be a yard. */
+/** The tile behind the house at (x, y) — away from the one street it faces — if it is free to be a yard. A house
+ *  on no street faces the one line it sits beside instead: a streetcar, promenade, bike path or rail (Maddy
+ *  2026-10-08: houses on a tram street got no yard). */
 export function yardTileFor(map: GameMap, x: number, y: number): { x: number; y: number } | null {
+  const street = (k: number): boolean => isRoadKind(k) || k === BuiltKind.QuietStreet;
+  const front = frontOf(map, x, y, street) ?? frontOf(map, x, y, isTransportKind);
+  if (!front) return null; // off any street or line, or a corner
+  const bx = x - front[0];
+  const by = y - front[1];
+  return map.inBounds(bx, by) && canPlaceParcel(map, bx, by, 1, 1) ? { x: bx, y: by } : null;
+}
+
+/** The one side of (x, y) that `faces` — or null if none does, or several do (a corner has no back). */
+function frontOf(map: GameMap, x: number, y: number, faces: (k: number) => boolean): readonly [number, number] | null {
   let front: readonly [number, number] | null = null;
   for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
     const nx = x + dx;
     const ny = y + dy;
-    if (!map.inBounds(nx, ny)) continue;
-    const k = map.built[map.idx(nx, ny)]!;
-    if (!isRoadKind(k) && k !== BuiltKind.QuietStreet) continue;
-    if (front) return null; // a corner: no back
+    if (!map.inBounds(nx, ny) || !faces(map.built[map.idx(nx, ny)]!)) continue;
+    if (front) return null;
     front = [dx, dy];
   }
-  if (!front) return null; // off any street
-  const bx = x - front[0];
-  const by = y - front[1];
-  return map.inBounds(bx, by) && canPlaceParcel(map, bx, by, 1, 1) ? { x: bx, y: by } : null;
+  return front;
 }
 
 /** Lay the yard behind the house at (x, y) as its own 1×1 lot. False when it can have none. */
@@ -684,6 +694,19 @@ export function layYardFor(map: GameMap, store: ParcelStore, x: number, y: numbe
   const t = yardTileFor(map, x, y);
   if (!t) return false;
   return placeParcel(map, store, { x: t.x, y: t.y, width: 1, height: 1, kind: BuiltKind.Yard }) !== -1;
+}
+
+/** A construction site at (x, y) becomes the building it was raising: its footprint's built kind and its parcel
+ *  kind, in place, at full condition. False (writing nothing) if there's no site there any more (bulldozed). */
+export function finishSite(map: GameMap, store: ParcelStore, x: number, y: number, kind: BuiltKind): boolean {
+  if (!map.inBounds(x, y)) return false;
+  const pid = map.parcel[map.idx(x, y)]!;
+  if (pid === 0 || store.get(pid - 1).kind !== BuiltKind.Site) return false;
+  const p = store.get(pid - 1);
+  for (let dy = 0; dy < p.height; dy++) for (let dx = 0; dx < p.width; dx++) map.built[map.idx(p.x + dx, p.y + dy)] = kind;
+  store.setKind(pid - 1, kind);
+  store.setCondition(pid - 1, 255);
+  return true;
 }
 
 /** Build `to` (an accessory dwelling) on the yard at (x, y), in place: the yard's lot becomes the building's. */
@@ -738,8 +761,19 @@ export function demolishTransportAt(map: GameMap, x: number, y: number): boolean
   if (!map.inBounds(x, y)) return false;
   const i = map.idx(x, y);
   if (!isTransportKind(map.built[i]!)) return false;
-  map.built[i] = 0;
+  // a level crossing torn up gives the way it crossed back (Maddy 2026-10-08)
+  map.built[i] = map.built[i] === BuiltKind.Rail ? crossedWay(map, x, y) : 0;
   return true;
+}
+
+/** The way a rail tile at (x, y) crosses — the same crossing kind on both sides of it, along one axis — or 0. */
+function crossedWay(map: GameMap, x: number, y: number): number {
+  const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : 0);
+  for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+    const a = at(dx, dy);
+    if (crossesRail(a) && at(-dx, -dy) === a) return a;
+  }
+  return 0;
 }
 
 // --- Connectivity queries ------------------------------------------------
@@ -789,14 +823,17 @@ const MASK_DIRS: ReadonlyArray<readonly [number, number, number]> = [
  * are unset.
  */
 export function transportMask(map: GameMap, x: number, y: number): number {
-  const selfCat = transportCategory(map.getBuilt(x, y));
+  const self = map.getBuilt(x, y);
+  const selfCat = transportCategory(self);
   if (selfCat === 0) return 0;
   let mask = 0;
   for (const [dx, dy, bit] of MASK_DIRS) {
     const nx = x + dx;
     const ny = y + dy;
     if (!map.inBounds(nx, ny)) continue;
-    if (transportCategory(map.getBuilt(nx, ny)) === selfCat) mask |= bit;
+    const k = map.getBuilt(nx, ny);
+    // tracks join only their own: streetcar to streetcar, rail to rail (or elevated) — never one to the other
+    if (transportCategory(k) === selfCat && (self !== BuiltKind.Streetcar) === (k !== BuiltKind.Streetcar)) mask |= bit;
   }
   return mask;
 }
@@ -890,9 +927,37 @@ export function roadCurbMask(map: GameMap, x: number, y: number): number {
     const nx = x + dx;
     const ny = y + dy;
     if (!map.inBounds(nx, ny)) continue; // map edge: no curb
-    if (transportCategory(map.getBuilt(nx, ny)) !== 1) mask |= bit; // non-road neighbour → curb
+    if (!streetish(map.getBuilt(nx, ny))) mask |= bit; // non-road neighbour → curb
   }
   return mask;
+}
+
+/** A road, or a streetcar line (a tram street, Maddy 2026-10-08): no kerb runs between two of these. */
+function streetish(kind: number): boolean {
+  return transportCategory(kind) === 1 || kind === BuiltKind.Streetcar;
+}
+
+/** Render-only: the edges of a streetcar tile with a small kerb — each in-bounds neighbour that isn't street
+ *  (N=1 E=2 S=4 W=8). Where the line carries on or meets a road, none. */
+export function tramKerbMask(map: GameMap, x: number, y: number): number {
+  if (map.getBuilt(x, y) !== BuiltKind.Streetcar) return 0;
+  let mask = 0;
+  for (const [dx, dy, bit] of MASK_DIRS) {
+    if (map.inBounds(x + dx, y + dy) && !streetish(map.getBuilt(x + dx, y + dy))) mask |= bit;
+  }
+  return mask;
+}
+
+/** Ways that cross a rail line at grade: roads, and quiet streets, promenades and bike paths (Maddy 2026-10-08). */
+export function crossesRail(kind: number): boolean {
+  return isRoadKind(kind) || kind === BuiltKind.QuietStreet || kind === BuiltKind.Promenade || kind === BuiltKind.BikePath;
+}
+
+/** What crosses the line at a level crossing (x, y) — the kind on its first crossing side — or 0 if none. */
+export function railCrossingKind(map: GameMap, x: number, y: number): number {
+  const mask = railCrossingMask(map, x, y);
+  for (const [dx, dy, bit] of MASK_DIRS) if (mask & bit) return map.getBuilt(x + dx, y + dy);
+  return 0;
 }
 
 /**
@@ -905,12 +970,20 @@ export function roadCurbMask(map: GameMap, x: number, y: number): number {
 export function railCrossingMask(map: GameMap, x: number, y: number): number {
   const self = map.getBuilt(x, y);
   if (self !== BuiltKind.Rail && self !== BuiltKind.Streetcar) return 0;
+  const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : BuiltKind.None);
+  const track = (k: number): boolean => k === BuiltKind.Rail || k === BuiltKind.Streetcar;
+  const road = (dx: number, dy: number): boolean => crossesRail(at(dx, dy));
+  // the line's run: east–west, north–south (or unknown, a lone tile)
+  const ew = track(at(1, 0)) || track(at(-1, 0));
+  const ns = track(at(0, 1)) || track(at(0, -1));
   let mask = 0;
   for (const [dx, dy, bit] of MASK_DIRS) {
-    const nx = x + dx;
-    const ny = y + dy;
-    if (!map.inBounds(nx, ny)) continue;
-    if (isRoadKind(map.getBuilt(nx, ny))) mask |= bit; // a road approaches → a crossing edge
+    if (!road(dx, dy)) continue;
+    // a road BESIDE the line crosses it only if it carries on through the other side (Maddy 2026-10-08: a track
+    // running alongside a street showed crossings); a road in line with the track is where the track meets it
+    const beside = (dy !== 0 && ew && !ns) || (dx !== 0 && ns && !ew);
+    if (beside && !road(-dx, -dy)) continue;
+    mask |= bit;
   }
   return mask;
 }
@@ -945,7 +1018,7 @@ export function depaveAsphalt(map: GameMap, x: number, y: number): number {
       const nx = x + dx;
       const ny = y + dy;
       if (!map.inBounds(nx, ny)) continue;
-      if (!DEPAVE_GREENS.has(map.getBuilt(nx, ny))) continue;
+      if (!DEPAVE_GREENS.has(map.getBuilt(nx, ny)) && !parkletAt(map, nx, ny)) continue;
       const cheb = Math.max(Math.abs(dx), Math.abs(dy));
       const g = 1 - cheb / (DEPAVE_RADIUS + 1); // adjacent → strongest de-pave, fading with distance
       if (g > near) near = g;
@@ -1182,6 +1255,34 @@ export function canPlaceOverpass(map: GameMap, x: number, y: number, kind: numbe
 export function placeOverpass(map: GameMap, x: number, y: number, kind: number): boolean {
   if (!canPlaceOverpass(map, x, y, kind)) return false;
   map.deck[map.idx(x, y)] = kind;
+  return true;
+}
+
+// --- Parklets (Maddy 2026-10-08) ---------------------------------------------------------------------
+// A parklet is plopped on a road in place of its kerb: seating and planters in the parking lane. It is not a lot
+// of its own — it sits in the road tile's DECK (the per-tile second layer), so bulldozing lifts it off the
+// street (removeOverpassAt) and the road beneath is untouched.
+
+/** Is there a parklet on the road at (x, y)? */
+export function parkletAt(map: GameMap, x: number, y: number): boolean {
+  return map.inBounds(x, y) && map.deck[map.idx(x, y)] === BuiltKind.Parklet;
+}
+
+/** Can a parklet go at (x, y): a street or avenue tile on dry land with a kerb, nothing decked over it. */
+export function canPlaceParklet(map: GameMap, x: number, y: number): boolean {
+  if (!map.inBounds(x, y)) return false;
+  const i = map.idx(x, y);
+  const k = map.built[i]!;
+  if (k !== BuiltKind.RoadStreet && k !== BuiltKind.RoadAvenue) return false;
+  if (map.deck[i] !== 0 || map.water[i] !== Water.None) return false;
+  return roadCurbMask(map, x, y) !== 0;
+}
+
+/** Plop a parklet on the road at (x, y), writing only the deck layer. False (writing nothing) unless
+ *  {@link canPlaceParklet} holds. */
+export function placeParklet(map: GameMap, x: number, y: number): boolean {
+  if (!canPlaceParklet(map, x, y)) return false;
+  map.deck[map.idx(x, y)] = BuiltKind.Parklet;
   return true;
 }
 

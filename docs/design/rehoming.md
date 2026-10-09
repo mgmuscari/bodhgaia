@@ -59,3 +59,18 @@ Ecology's wildlife barriers are unchanged.
 - A save without `unhoused` derives the pool from its vacancies, plus any legacy `displaced`
   count.
 - The economy's `displaced` stays as a running total for stats only.
+
+## Where the unhoused live (2026-10-08)
+
+Maddy: "unhoused people must go to encampments … tents must correspond to unhoused people who are living in
+them." The pool lives in **camps** (`live/camps.ts`, `AmbientState.camps`: tile → people), always summing to it:
+
+- Someone put out of a home joins the nearest camp with room within CAMP_REACH (6), else starts one on the
+  nearest open land. Someone re-housed leaves the camp nearest their new home. Deaths are taken at their camp;
+  anything else that moves the pool is reconciled (losses from the largest camps; gains by the emptiest homes).
+- A camp holds three tents of four (CAMP_CAP 12); a camp built over or flooded moves on.
+- **Tents are drawn from the camps only** — desire-path wear keeps its beaten earth and junk but grows no tents.
+  Exposure deaths, despair (crime), grievance (protests) and the tutorial read the camps.
+- Saved with the city; an older save's pool camps by its emptiest homes on the first settle.
+- Measured on lotus: 669 unhoused in 130 camps, 221 tents.
+

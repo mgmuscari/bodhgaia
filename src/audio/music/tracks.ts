@@ -3,7 +3,6 @@
 // (the CC public-domain dedication) or Creative Commons BY / BY-SA 4.0 (GPLv3-compatible; no 3.0 or older), never
 // assumed. BY-SA requires attribution: the credits (src/ui/creditsContent.ts) name the typesetter and licence of
 // each. The files are shipped as separate data alongside the GPL program, each under its own licence.
-import { METTA_SUTTA, recite, TISARANA, type ChantText } from './chant';
 import type { Mood, PlayableTrack } from './player';
 
 export const LICENCES = {
@@ -39,8 +38,6 @@ export interface MusicTrack extends PlayableTrack {
   title: string;
   composer: string;
   credit: TrackCredit;
-  /** A sacred text (the Pali recitations): 'calm' only — never a jingle, an alert or a loop under game events. */
-  sacred?: boolean;
 }
 
 const MUTOPIA = 'https://www.mutopiaproject.org';
@@ -223,27 +220,5 @@ export const ARRANGED_TRACKS: MusicTrack[] = [
   arrangement('motherless-night', 'Sometimes I Feel Like a Motherless Child', 'traditional spiritual', ['night']),
 ];
 
-/** The reference the transcriptions follow (rules only — no notation was copied). */
-export const CHANT_REFERENCE = {
-  label: 'Tone Rules for Pāḷi Chanting in the Thai Tradition (Metta Forest Monastery, dhammatalks.org)',
-  href: 'https://www.dhammatalks.org/Archive/Writings/ChantingToneGuide151003.pdf',
-};
-
-function recitation(text: ChantText): MusicTrack {
-  return {
-    id: text.id,
-    title: text.title,
-    composer: 'Traditional Theravāda recitation, in Pali',
-    moods: ['calm'],
-    sacred: true,
-    piece: () => recite(text).piece,
-    voices: { 0: 'chant', 1: 'pad' },
-    credit: { typesetter: 'the Bodhgaia project', source: CHANT_REFERENCE.href, licence: 'gpl-3.0-or-later' },
-  };
-}
-
-/** The Pali recitations — transcriptions, not recordings (see chant.ts). Sacred: calm only. */
-export const CHANT_TRACKS: MusicTrack[] = [recitation(TISARANA), recitation(METTA_SUTTA)];
-
 /** Everything the player can play. */
-export const MUSIC_TRACKS: MusicTrack[] = [...CLASSICAL_TRACKS, ...ARRANGED_TRACKS, ...CHANT_TRACKS];
+export const MUSIC_TRACKS: MusicTrack[] = [...CLASSICAL_TRACKS, ...ARRANGED_TRACKS];

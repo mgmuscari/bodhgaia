@@ -32,6 +32,8 @@ import {
 import type { AmbientState, Car, ParkingLotInfo, Ped } from './types';
 import { spawnTargetFor } from './fields/occupancy';
 import { commitHeading } from './motion';
+import { carPose, easeFrom, EASE_SUBSTEPS } from './poses';
+import { planRide, rideCrowded, startRide } from './riders';
 import {
   chooseMode,
   jamNear,
@@ -61,7 +63,9 @@ export function boardOwnedCar(state: AmbientState, p: Ped, map: GameMap, car: Ca
   const spot = findParkingNear(state, map, dest.x, dest.y) ?? dest;
   const path = roadPath(map, Math.round(car.x), Math.round(car.y), spot.x, spot.y, state.traffic);
   if (!path || path.length < 2) return false;
-  // Board: snap onto the route's first tile and commit to following it (cars=committed paths).
+  // Board: snap onto the route's first tile and commit to following it (cars=committed paths) — drawn pulling out of
+  // the stall rather than jumping into the lane.
+  if (car.parked) easeFrom(car, carPose(car));
   const p0x = path[0]! % map.width;
   const p0y = (path[0]! - p0x) / map.width;
   const p1x = path[1]! % map.width;
@@ -121,17 +125,44 @@ export function parkInPlace(state: AmbientState, map: GameMap, car: Car): void {
   car.stuck = 0;
 }
 
+/** The ride a transit mode means for a leg, or null (not a transit mode, no line serves it, or its stop is already
+ *  crowded past a vehicle-load — then the trip goes another way). */
+function rideFor(state: AmbientState, map: GameMap, cx: number, cy: number, to: { x: number; y: number }, mode: TravelMode) {
+  if (mode !== TravelMode.Streetcar && mode !== TravelMode.ElevatedRail) return null;
+  const plan = planRide(map, cx, cy, to.x, to.y, mode === TravelMode.Streetcar ? 'tram' : 'rail');
+  return plan && !rideCrowded(state, plan.board) ? plan : null;
+}
+
+const isTransit = (m: TravelMode): boolean => m === TravelMode.Streetcar || m === TravelMode.ElevatedRail;
+
+/** How a carless citizen makes a leg from (cx, cy) to `to`: chooseMode — but if that's a line whose stop is already
+ *  overflowing, the way they'd go without the line (a long trip drives; it doesn't walk the whole way). */
+export function tripMode(state: AmbientState, map: GameMap, cx: number, cy: number, to: { x: number; y: number }, jam = 0): TravelMode {
+  const pr = state.practices;
+  const mode = chooseMode(map, cx, cy, to.x, to.y, jam, pr.walkStretch, pr.bikeStretch);
+  if (!isTransit(mode) || rideFor(state, map, cx, cy, to, mode)) return mode;
+  return chooseMode(map, cx, cy, to.x, to.y, jam, pr.walkStretch, pr.bikeStretch, false);
+}
+
 /** Send a citizen home: drive its owned car home to park it if it has one out, else walk. */
 export function headHome(state: AmbientState, p: Ped, map: GameMap): void {
   const hx = p.homeTile! % map.width;
   const hy = (p.homeTile! - hx) / map.width;
   const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-  if (!(car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home'))) {
-    p.phase = 'to-home';
-    p.walkTo = { x: hx, y: hy };
-    p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
-    p.mode = TravelMode.Walk;
+  if (car && setDriveLeg(state, p, map, { x: hx, y: hy }, 'to-home')) return;
+  // carless and far: the line home, if one serves both ends
+  const cx = Math.round(p.x);
+  const cy = Math.round(p.y);
+  const ride = car ? null : rideFor(state, map, cx, cy, { x: hx, y: hy }, tripMode(state, map, cx, cy, { x: hx, y: hy }));
+  if (ride) {
+    p.building = undefined;
+    startRide(p, ride, { x: hx, y: hy }, 'to-home');
+    return;
   }
+  p.phase = 'to-home';
+  p.walkTo = { x: hx, y: hy };
+  p.building = undefined; // stops banked on arrival; the home leg carries nothing extra
+  p.mode = TravelMode.Walk;
 }
 
 /**
@@ -196,12 +227,12 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
   const cx = Math.round(p.x);
   const cy = Math.round(p.y);
   for (let step = (p.itinStep ?? 0) + 1; step < itin.length; step++) {
-    const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue);
+    const tripHash = Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0);
+    const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue, Math.imul(tripHash, 0x9e3779b1) >>> 0); // spread over the nearest few
     if (plot && stopReachable(state, map, cx, cy, plot)) {
       const jam = p.carId !== undefined ? 0 : Math.max(jamNear(map, state.traffic, cx, cy), jamNear(map, state.traffic, plot.x, plot.y));
       const pr = state.practices;
-      const tripHash = Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0);
-      let chosen = p.carId !== undefined ? TravelMode.Drive : chooseMode(map, cx, cy, plot.x, plot.y, jam, pr.walkStretch, pr.bikeStretch);
+      let chosen = p.carId !== undefined ? TravelMode.Drive : tripMode(state, map, cx, cy, plot, jam);
       // a commune owns no cars; a parklet took this block's parking — those trips go on foot
       if (chosen === TravelMode.Drive && p.carId === undefined && p.homeTile !== undefined && !homeDrives(map, p.homeTile, tripHash)) chosen = TravelMode.Walk;
       // a drive into gridlock may simply not happen — the errand is forgone or folded into another
@@ -216,12 +247,18 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
       // DRIVE: walk to the owned car, drive it to a parking spot, then walk to the plot. If no car
       // can be had (land-locked), fall through and walk the leg.
       if (mode === TravelMode.Drive && setDriveLeg(state, p, map, plot, 'to-building')) return true;
-      p.phase = 'to-building';
-      p.walkTo = { x: plot.x, y: plot.y };
       p.building = { x: plot.x, y: plot.y };
-      p.mode = mode === TravelMode.Drive ? TravelMode.Walk : mode; // drive unavailable → walk
       p.roadSteps = undefined; // a fresh leg — its tolls accrue anew
       p.wornSteps = undefined;
+      // A LINE: walk to the stop, wait, ride, walk on (riders.ts)
+      const ride = rideFor(state, map, cx, cy, plot, mode);
+      if (ride) {
+        startRide(p, ride, { x: plot.x, y: plot.y }, 'to-building');
+        return true;
+      }
+      p.phase = 'to-building';
+      p.walkTo = { x: plot.x, y: plot.y };
+      p.mode = mode === TravelMode.Drive || isTransit(mode) ? TravelMode.Walk : mode; // drive unavailable → walk
       return true;
     }
   }
@@ -390,6 +427,7 @@ export function applyParkSpot(
   car: Car,
   spot: { x: number; y: number; lotIdx?: number; stallIdx?: number; dir?: number; slot?: number },
 ): void {
+  easeFrom(car, carPose(car)); // it pulls into the stall from where it is, not in one frame
   car.x = spot.x - 0.5;
   car.y = spot.y - 0.5;
   car.tx = car.x;
@@ -523,6 +561,9 @@ export function setDriveLeg(
 
 // --- Spawning ------------------------------------------------------------
 
+/** While fewer than this share of the street target are out, new citizens join their day part-way through. */
+const FILL_SHARE = 0.8;
+
 /** How many daily-itinerary citizens are out right now — counting both active travellers (peds with
  *  an itinerary) and DRIVERS (citizen-cars with an itinerary), so the population cap covers both. */
 export function citizenCount(state: AmbientState): number {
@@ -559,20 +600,29 @@ export function spawnCitizens(state: AmbientState, map: GameMap, rng: Rng): void
     }
     // Stand the citizen at its home's street DOOR (the plot itself isn't walkable).
     const door = plotDoor(map, home.x, home.y);
-    const sx = door ? door.x : -1;
-    const sy = door ? door.y : -1;
+    let sx = door ? door.x : -1;
+    let sy = door ? door.y : -1;
     if (sx < 0) continue; // a hemmed-in home, nowhere to step out
-    const ped: Ped = {
-      x: sx,
-      y: sy,
-      dir: 0,
-      tx: sx,
-      ty: sy,
-      homeTile: map.idx(home.x, home.y),
-      itinerary: itineraryFor(map.built[map.idx(home.x, home.y)]!),
-      itinStep: -1, // advanceItinerary sets the first stop (step 0 = Work)
-    };
-    if (advanceItinerary(state, ped, map)) state.peds.push(ped); // dropped if the district has no stops
+    const itinerary = itineraryFor(map.built[map.idx(home.x, home.y)]!);
+    let itinStep = -1; // advanceItinerary sets the first stop (step 0 = Work)
+    // While the streets fill (a fresh load), a citizen joins their day somewhere along it — just leaving the stop
+    // before — not everyone leaving home for work at once (Maddy 2026-10-08: swarms pathing together).
+    if (citizenCount(state) < target * FILL_SHARE) {
+      const k = rng.nextInt(itinerary.length + 1); // 0: leaving home; k: just left stop k − 1
+      const prev = k > 0 ? nearestOfCategory(map, home.x, home.y, itinerary[k - 1]!, state.landValue, rng.nextInt(1 << 30)) : null;
+      const out = prev ? plotDoor(map, prev.x, prev.y) : null;
+      if (out) {
+        sx = out.x;
+        sy = out.y;
+        itinStep = k - 1;
+      }
+    }
+    const ped: Ped = { x: sx, y: sy, dir: 0, tx: sx, ty: sy, homeTile: map.idx(home.x, home.y), itinerary, itinStep };
+    if (advanceItinerary(state, ped, map)) state.peds.push(ped);
+    else if (itinStep >= 0) {
+      headHome(state, ped, map); // the day's last stop done: on their way home
+      state.peds.push(ped);
+    } // (leaving home with no stops in reach: dropped)
   }
 }
 
@@ -690,7 +740,9 @@ export function spawnBoundPed(state: AmbientState, c: Car, building: { x: number
   // but the Manhattan router walks integer tiles, so the ped steps off from the tile centre.
   const sx = Math.round(c.x);
   const sy = Math.round(c.y);
+  const from = carPose(c);
   state.peds.push({
+    ease: { x: from.x, y: from.y, hx: from.hx, hy: from.hy, n: EASE_SUBSTEPS }, // out of the car, onto the kerb
     x: sx,
     y: sy,
     dir: 0,

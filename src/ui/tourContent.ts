@@ -76,3 +76,18 @@ export function glide(a: { x: number; y: number }, b: { x: number; y: number }, 
   const e = u * u * (3 - 2 * u);
   return { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e };
 }
+
+/** Where to look first: the middle of the built city (the mean of its buildings' centres), or the map's middle if
+ *  nothing is built — not the map's corner, which framed empty wilderness with the city clipped at the edge. */
+export function cityFocus(map: GameMap, parcels: ParcelStore): { x: number; y: number } {
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    sx += p.x + p.width / 2;
+    sy += p.y + p.height / 2;
+    n++;
+  }
+  return n === 0 ? { x: map.width / 2, y: map.height / 2 } : { x: sx / n, y: sy / n };
+}

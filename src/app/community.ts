@@ -11,7 +11,7 @@ import type { Rng } from '../engine/rng';
 import type { AmbientState } from '../live/types';
 import type { CivicState } from '../civic/state';
 import { SEED_BELONGING, SEED_TRUST, SEED_VOICE } from '../civic/state';
-import { ENCAMPMENT_WEAR, POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS } from '../live/tuning';
+import { POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS } from '../live/tuning';
 import type { NeighborhoodMap } from '../civic/neighborhoods';
 import { GATHER_LEAVE, startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
 import { closeTiles } from '../live/network';
@@ -240,7 +240,7 @@ export function createCommunity(deps: CommunityDeps): Community {
     let pv = 0;
     for (const [t, v] of live.policeViolence) if (part.tileToNeighborhood[t] === hood) pv += v;
     let camps = 0;
-    for (const [t, w] of live.wear) if (w >= ENCAMPMENT_WEAR && part.tileToNeighborhood[t] === hood) camps++;
+    for (const [t, n] of live.camps ?? new Map<number, number>()) if (n >= 1 && part.tileToNeighborhood[t] === hood) camps++;
     let mourned = 0;
     for (const m of [...(live.memorials ?? []), ...(live.fallen ?? [])]) if (part.tileToNeighborhood[map.idx(m.x, m.y)] === hood) mourned++;
     const violence = Math.min(1, pv / tiles / (POLICE_VIOLENCE_MAX / 2));
@@ -324,12 +324,14 @@ export function createCommunity(deps: CommunityDeps): Community {
   const holdParty = (part: NeighborhoodMap, hood: number): boolean => {
     const site = partySite(map, parcels, part, hood);
     if (!site || !holdAt('block-party', site, hood, PARTY_LIFE, homesIn(part, hood), PARTY_CROWD, true)) return false;
+    live.events?.push({ kind: 'party', x: site.x, y: site.y, w: site.w, h: site.h });
     deps.news('A block party — the neighbours have closed their street to cars');
     return true;
   };
   const holdFair = (part: NeighborhoodMap, hood: number): boolean => {
     const site = findParcel(map, parcels, part, hood, [BuiltKind.Bazaar, BuiltKind.MakerSpace]);
     if (!site || !holdAt('craft-fair', site, hood, FAIR_LIFE, homesIn(part, hood), FAIR_CROWD, false)) return false;
+    live.events?.push({ kind: 'fair', x: site.x, y: site.y, w: site.w, h: site.h });
     deps.news('A craft fair — stalls out round the bazaar');
     return true;
   };
@@ -349,6 +351,7 @@ export function createCommunity(deps: CommunityDeps): Community {
   const holdFestival = (part: NeighborhoodMap): boolean => {
     const site = findParcel(map, parcels, part, 0, [BuiltKind.Park, BuiltKind.Civic]);
     if (!site || !holdAt('festival', site, 0, FEST_LIFE, homesIn(part, 0), FEST_CROWD, false)) return false;
+    live.events?.push({ kind: 'festival', x: site.x, y: site.y, w: site.w, h: site.h });
     const route = paradeRoute(map, site.x + site.w / 2, site.y + site.h / 2);
     if (route) holdAt('parade', route, 0, FEST_LIFE, homesIn(part, 0), PARADE_CROWD, true);
     deps.news(route ? 'A festival in the park — and a parade down the avenue' : 'A festival in the park');

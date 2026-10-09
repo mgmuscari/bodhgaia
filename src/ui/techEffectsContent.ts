@@ -11,6 +11,7 @@ import { GameMap } from '../engine/map';
 import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
 import { MAKER_RADIUS, MAKER_REPAIR } from '../growth/revival';
+import { POND_REACH } from '../growth/flood';
 import {
   BATTERY_CAPACITY,
   BATTERY_RATE,
@@ -138,13 +139,14 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   const effects: string[] = [];
   const out = plantOutput(kind);
   if (out > 0) effects.push(`Generates ${out} power${plantPollution(kind) > 0 ? ', with smoke' : ', no smoke'}`);
-  if (kind === BuiltKind.EnergyNode) effects.push(`Battery: banks up to ${BATTERY_CAPACITY} of its grid's surplus, gives back up to ${BATTERY_RATE} an hour when power runs short`);
+  if (kind === BuiltKind.EnergyNode) effects.push(`Solar canopy and battery: makes power by day, banks up to ${BATTERY_CAPACITY} of its grid's surplus and gives back up to ${BATTERY_RATE} an hour when power runs short — at night, all it has is what it stored`);
   if (kind === BuiltKind.SolarPlant) effects.push('Follows the sun: full at noon, half at 09:00 and 15:00, nothing 18:00–06:00');
   if (kind === BuiltKind.WindTurbine) effects.push('Gusts hour to hour (0.4–1.6× its rating), blowing harder 20:00–06:00');
   if (isServiceStation(kind)) effects.push(`Fire & health cover within ${COVERAGE_RADIUS} tiles`);
   if (REFUGE_KINDS.has(kind)) effects.push(`Police won't patrol or arrest within ${SAFE_RADIUS} tiles`);
   if (GATHERING_KINDS.has(kind)) effects.push("Gathering place: its neighbourhood's belonging +1 per civic tick");
   if (kind === BuiltKind.WastewaterWorks) effects.push(`Cleans contaminated water within ${WATER_TREAT_RADIUS} tiles`);
+  if (kind === BuiltKind.RetentionPond) effects.push(`Keeps the land within ${POND_REACH} tiles from flooding`);
   if (GREEN_HEAL_KINDS.has(kind)) effects.push(`Heals ground pollution within ${GREEN_HEAL_RADIUS} tiles`);
   if (AMENITY_KINDS.has(kind)) effects.push("Raises its neighbours' land value");
   const eco = influenceOf(kind);

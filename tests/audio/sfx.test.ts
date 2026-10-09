@@ -34,7 +34,6 @@ describe('sfx cues as data', () => {
         expect(n.pitch).toBeLessThanOrEqual(SFX_LIMITS.maxPitch); // warm, never shrill
         expect(n.offset).toBeGreaterThanOrEqual(0);
         expect(n.duration).toBeGreaterThan(0);
-        expect(n.instrument).not.toBe('chant'); // the chant voice is never an alert
       }
       const limit = LONG_CUES.includes(name) ? SFX_LIMITS.maxLongCue : SFX_LIMITS.maxCue;
       expect(cueLength(cue)).toBeLessThanOrEqual(limit);

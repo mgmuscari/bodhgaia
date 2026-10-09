@@ -30,7 +30,9 @@ export interface CivicCaps {
 
 // --- Tuning constants (directional contract only) -------------------------
 const COND_THRESHOLD = 128; // neighborhood condition mean for a belonging bonus
-const ECO_THRESHOLD = 96; // neighborhood eco mean (soil+flora+fauna)/3 bonus gate
+// neighbourhood eco mean (soil+flora+fauna)/3 bonus gate — over every tile, roads and roofs included, so a city
+// neighbourhood reads far below wild land (Maddy's lotus 2026-10-08: 0–23 against wild land's ~72; 96 was out of reach)
+const ECO_THRESHOLD = 24;
 const ISOLATION_FRAGMENTS = 2; // distinct perimeter fragmenting tiles ⇒ isolated
 const ISOLATION_PENALTY = 2; // belonging lost per tick while isolated
 const TRUST_GAIN = 2; // trust gained per tick with a recent repair

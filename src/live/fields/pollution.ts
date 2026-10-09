@@ -43,6 +43,7 @@ import {
 } from '../tuning';
 import { DIR_DX, DIR_DY } from '../geometry';
 import { seedInheritedOccupancy } from './occupancy';
+import { settleCamps } from '../camps';
 import type { AmbientState } from '../types';
 
 /** The world's prevailing wind as an integer unit vector, drawn from the (seeded) ambient rng so it
@@ -165,7 +166,9 @@ export function nearPlayerGreen(map: GameMap, x: number, y: number): boolean {
     for (let dx = -GREEN_HEAL_RADIUS; dx <= GREEN_HEAL_RADIUS; dx++) {
       const nx = x + dx;
       const ny = y + dy;
-      if (map.inBounds(nx, ny) && GREEN_HEAL_KINDS.has(map.built[map.idx(nx, ny)]!)) return true;
+      if (!map.inBounds(nx, ny)) continue;
+      const i = map.idx(nx, ny);
+      if (GREEN_HEAL_KINDS.has(map.built[i]!) || map.deck[i] === BuiltKind.Parklet) return true; // a kerb parklet too
     }
   }
   return false;
@@ -422,4 +425,5 @@ export function seedDecay(state: AmbientState, map: GameMap): void {
   for (let n = 0; n < 60; n++) accumulateWaterRunoff(state, map);
   // …and a century of disinvestment already emptied the redlined homes: the inherited unhoused.
   seedInheritedOccupancy(state, map);
+  settleCamps(state, map); // …who live in the camps by the homes they lost
 }

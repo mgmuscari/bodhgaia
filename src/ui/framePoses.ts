@@ -8,6 +8,7 @@
 // Pure: no DOM, no transcendental Math.
 import { carPose, pedPose, type Pose } from '../live/poses';
 import type { AmbientState, Mover } from '../live/types';
+import { offStreet } from '../live/types';
 
 /** A draw pose sits strictly less than this many tiles from its mover's raw (x, y) on each axis: the
  *  pose rides at most a tile and a half off the sim position, and an interpolated pose is blended from
@@ -57,15 +58,16 @@ export function computeFramePoses(
   view: WorldRect,
   alpha: number,
   onRoadAt: (x: number, y: number) => boolean,
+  laneAt?: (x: number, y: number) => number,
 ): FramePoses {
   const near: WorldRect = { x0: view.x0 - POSE_REACH, y0: view.y0 - POSE_REACH, x1: view.x1 + POSE_REACH, y1: view.y1 + POSE_REACH };
   const cars: Posed[] = [];
-  for (const m of ambient.cars) if (inRect(near, m.x, m.y)) cars.push({ m, pose: carPose(m, alpha) });
+  for (const m of ambient.cars) if (inRect(near, m.x, m.y)) cars.push({ m, pose: carPose(m, alpha, laneAt) });
   const cruisers: Posed[] = [];
-  for (const m of ambient.cruisers) if (inRect(near, m.x, m.y)) cruisers.push({ m, pose: carPose(m, alpha) });
+  for (const m of ambient.cruisers) if (inRect(near, m.x, m.y)) cruisers.push({ m, pose: carPose(m, alpha, laneAt) });
   const peds: Posed[] = [];
   for (const m of ambient.peds) {
-    if (m.phase === 'inside' || m.phase === 'driving') continue; // inside a building, or riding its car
+    if (offStreet(m)) continue; // inside a building, driving its car, or riding a tram or train
     if (inRect(near, m.x, m.y)) peds.push({ m, pose: pedPose(m, onRoadAt, alpha) });
   }
   return { alpha, cars, cruisers, peds, counts: [ambient.cars.length, ambient.cruisers.length, ambient.peds.length] };

@@ -14,6 +14,7 @@
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
+import { PER_CAR } from '../live/riders';
 
 /** Car body colourways (hi, mid, lo). A car's `tint` picks one, modulo the count. */
 const BODIES: ReadonlyArray<readonly [RGB, RGB, RGB]> = [
@@ -84,10 +85,18 @@ const PED_FRAMES = [
   ['.h.', 'sss', 'l.l'],
   ['.h.', 'sss', '.l.'],
 ];
-const BIKE_FRAMES = [
-  ['.h.', 'sss', '.k.', '.k.'],
-  ['.h.', 'sss', '.k.', 'k.k'],
+// Cyclists (Maddy 2026-10-08: the old 3-px rider read as a walker): a rider leaning over a bicycle — h head,
+// s shirt, l leg (pedalling: the frames swap which leg is down), f frame, t tyre. Side view facing east (west is
+// its mirror); head-on for north/south.
+const BIKE_SIDE = [
+  ['....h..', '...ss..', '..s.sf.', 'tlff.ft', '.t...t.'],
+  ['....h..', '...ss..', '..s.sf.', 'tff.lft', '.t...t.'],
 ];
+const BIKE_HEAD_ON = [
+  ['.h.', 'sss', '.s.', 'lf.', '.t.'],
+  ['.h.', 'sss', '.s.', '.fl', '.t.'],
+];
+const mirror = (rows: readonly string[]): string[] => rows.map((r) => [...r].reverse().join(''));
 
 /** The 8-way frame (0 = N, clockwise) nearest a heading — trig-free: a component within tan 22.5° of
  *  zero is "on axis". */
@@ -137,6 +146,30 @@ function smogPuff(size: number, variant: number, shades: readonly [RGB, RGB, RGB
 // Trains: a locomotive (cab window at the nose) and silver carriages, ~0.8 tile long, as wide as the
 // rail gauge. k edge, b body, w window, r/m loco body + roof gear, g windshield.
 const TRAIN_CAR_E = ['.kkkkkkkkkkk.', 'kbbbbbbbbbbbk', 'kbwbwbwbwbwbk', 'kbwbwbwbwbwbk', 'kbbbbbbbbbbbk', '.kkkkkkkkkkk.'];
+// Trams (docs/design/transit.md): a cream car with a red band and a row of windows; the head has its windscreen.
+const TRAM_HEAD_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'kcwcwcwcwcwgk', 'kcwcwcwcwcwgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
+const TRAM_CAR_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrrk', 'kcwcwcwcwcwck', 'kcwcwcwcwcwck', 'krrrrrrrrrrrk', '.kkkkkkkkkkk.'];
+/** Window columns of a passenger car or tram (art x), filled centre-out as riders board. */
+const WINDOW_COLS = [6, 2, 10, 4, 8];
+export const WINDOWS = WINDOW_COLS.length;
+
+/** How many of a car's windows show a rider: none when empty, one for a single rider, all when full. */
+export function windowsLit(riders: number, perCar = PER_CAR): number {
+  if (riders <= 0) return 0;
+  return Math.min(WINDOWS, Math.max(1, Math.ceil((riders / perCar) * WINDOWS)));
+}
+
+/** A car's rows with `n` riders seen from above in its windows — a head in each, in turn, of three tones. */
+function seated(rows: readonly string[], n: number): string[] {
+  const out = [...rows];
+  WINDOW_COLS.slice(0, n).forEach((col, i) => {
+    const row = i % 2 === 0 ? 2 : 3; // staggered between the two window rows, so they read as people
+    out[row] = out[row]!.slice(0, col) + 'xyz'[i % 3] + out[row]!.slice(col + 1);
+  });
+  return out;
+}
+const HEADS = { x: C.roofBrown, y: C.ink, z: C.dirtHi };
+
 const TRAIN_LOCO_E = ['.kkkkkkkkkkk.', 'krrrrrrrrrrgk', 'krmmmmmmmrrgk', 'krmmmmmmmrrgk', 'krrrrrrrrrrgk', '.kkkkkkkkkkk.'];
 
 /** The north-east frame of an east-facing body: the drawing laid along the diagonal, each target pixel
@@ -245,10 +278,25 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   out.set('@sprite/rain/1', glyph(['h', 'h', 'g', 'g', 'g'], { h: C.glassHi, g: C.glass }));
   const carCols = { k: C.slateLo, b: C.paveHi, w: C.glassLo };
   const locoCols = { k: C.roofRedLo, r: C.roofRed, m: C.slate, g: C.glass };
-  for (const [part, rows, cols] of [['car', TRAIN_CAR_E, carCols], ['loco', TRAIN_LOCO_E, locoCols]] as const) {
-    const east = glyph(rows, cols);
-    eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => out.set(`@sprite/train/${part}/${d}`, f));
-  }
+  // each passenger car in WINDOWS+1 loads (…/{d}/{n}: n windows with a rider; the bare key is the empty car)
+  const loads = (key: string, rows: readonly string[], cols: Record<string, RGB>, windows: boolean): void => {
+    for (let n = 0; n <= (windows ? WINDOWS : 0); n++) {
+      const east = glyph(seated(rows, n), { ...cols, ...HEADS });
+      eightWays(east, turnNE(east, 11, 5)).forEach((f, d) => {
+        out.set(`${key}/${d}/${n}`, f);
+        if (n === 0) out.set(`${key}/${d}`, f);
+      });
+    }
+  };
+  loads('@sprite/train/car', TRAIN_CAR_E, carCols, true);
+  loads('@sprite/train/loco', TRAIN_LOCO_E, locoCols, false);
+  const tramCols = { k: C.roofRedLo, r: C.roofRed, c: C.cream, w: C.glass, g: C.glassHi };
+  loads('@sprite/tram/head', TRAM_HEAD_E, tramCols, true);
+  loads('@sprite/tram/car', TRAM_CAR_E, tramCols, true);
+  // a stop's sign at its platform: a plate on a post — green for the tram, blue for the train
+  const STOP = ['sss', 'sds', 'sss', '.p.', '.p.'];
+  out.set('@sprite/transit-stop/tram', glyph(STOP, { s: C.leaf, d: C.cream, p: C.slateLo }));
+  out.set('@sprite/transit-stop/rail', glyph(STOP, { s: C.roofBlue, d: C.cream, p: C.slateLo }));
   BIRD_FRAMES.forEach((rows, f) => out.set(`@sprite/bird/${f}`, glyph(rows, { k: C.ink })));
   SMOG_PX.forEach((size, i) => {
     for (const v of [0, 1]) {
@@ -259,13 +307,24 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   SKIN_TONES.forEach((h, tone) => {
     SHIRTS.forEach((s, shirt) => {
       PED_FRAMES.forEach((rows, f) => out.set(`@sprite/ped/${tone}/${shirt}/${f}`, glyph(rows, { h, s, l: C.slateLo })));
-      BIKE_FRAMES.forEach((rows, f) => out.set(`@sprite/bike/${tone}/${shirt}/${f}`, glyph(rows, { h, s, k: C.ink })));
+      for (let f = 0; f < 2; f++) {
+        const cols = { h, s, l: C.slateLo, f: C.roofRed, t: C.ink };
+        out.set(`@sprite/bike/${tone}/${shirt}/${f}/e`, glyph(BIKE_SIDE[f]!, cols));
+        out.set(`@sprite/bike/${tone}/${shirt}/${f}/w`, glyph(mirror(BIKE_SIDE[f]!), cols));
+        out.set(`@sprite/bike/${tone}/${shirt}/${f}/n`, glyph(BIKE_HEAD_ON[f]!, cols));
+      }
     });
   });
 }
 
 /** The ped/bike sprite key for a stable per-person seed and walk frame. */
-export function personKey(kind: 'ped' | 'bike', seed: number, frame: number): string {
+export function personKey(kind: 'ped' | 'bike', seed: number, frame: number, facing: 'e' | 'w' | 'n' = 'e'): string {
   const s = seed >>> 0;
-  return `@sprite/${kind}/${s % SKIN_TONES.length}/${(s >>> 4) % SHIRTS.length}/${frame & 1}`;
+  const base = `@sprite/${kind}/${s % SKIN_TONES.length}/${(s >>> 4) % SHIRTS.length}/${frame & 1}`;
+  return kind === 'bike' ? `${base}/${facing}` : base;
+}
+
+/** Which way a bicycle is drawn for a heading: side-on east or west, head-on north or south. */
+export function bikeFacing(hx: number, hy: number): 'e' | 'w' | 'n' {
+  return Math.abs(hx) >= Math.abs(hy) ? (hx >= 0 ? 'e' : 'w') : 'n';
 }

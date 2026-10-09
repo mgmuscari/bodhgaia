@@ -4,8 +4,7 @@
 // claim EA affiliation, and must mark itself as a modified version. Read by the help panel and the opening.
 // No DOM / no transcendental Math.
 
-import { CHANT_TEXTS } from '../audio/music/chant';
-import { CHANT_REFERENCE, LICENCES, MUSIC_TRACKS, type MusicTrack } from '../audio/music/tracks';
+import { LICENCES, MUSIC_TRACKS, type MusicTrack } from '../audio/music/tracks';
 
 export interface CreditLink {
   label: string;
@@ -80,7 +79,6 @@ export function creditsBlocks(): CreditsBlock[] {
     { heading: 'Additional terms per GNU GPL Section 7', paragraphs: [...GPL7_TERMS] },
     openingCredits(),
     musicCredits(),
-    chantCredits(),
   ];
 }
 
@@ -103,10 +101,7 @@ function trackLine(t: MusicTrack): string {
     const arr = LICENCES[t.credit.arrangementLicence ?? t.credit.licence].name;
     return `${t.title} — ${t.composer}. MIDI typeset by ${t.credit.typesetter} for the Mutopia Project (${lic}); arranged for ${GAME_NAME} by ${t.credit.arranger}; ${arr}.`;
   }
-  return t.file
-    ? `${t.title} — ${t.composer}. MIDI typeset by ${t.credit.typesetter} for the Mutopia Project; ${lic}.`
-    : `${t.title} — ${t.composer}. A transcription of traditional recitation (not a recording) by ` +
-        `${t.credit.typesetter}; ${lic}.`;
+  return `${t.title} — ${t.composer}. MIDI typeset by ${t.credit.typesetter} for the Mutopia Project; ${lic}.`;
 }
 
 /** The music: each piece with its composer, its typesetter and its licence (BY-SA requires the attribution), plus
@@ -126,28 +121,6 @@ function musicCredits(): CreditsBlock {
       ...MUSIC_TRACKS.map(trackLine),
     ],
     links: [...MUSIC_TRACKS.map((t) => ({ label: `${t.title} (source)`, href: t.credit.source })), ...deeds],
-  };
-}
-
-/** The Pali recitations: what they are (transcriptions, not recordings), the reference for the tone rules, and
- *  each text with its meaning. */
-function chantCredits(): CreditsBlock {
-  return {
-    heading: 'Pali recitation',
-    paragraphs: [
-      'The chants are a transcription of traditional Theravāda recitation, not a recording: the Pali syllables ' +
-        'set on a single reciting tone in the Thai Makhot manner, a long unstopped syllable beginning with s, h, ' +
-        'ch, th, ṭh, kh or ph rising a whole step and falling back, with a pause for breath between phrases. ' +
-        `The tone rules follow "${CHANT_REFERENCE.label}". The Pali texts are the ancient canonical formulas; ` +
-        'the English renderings are our own. They play only in the calm mood, never under game events.',
-      ...CHANT_TEXTS.flatMap((text) => [
-        text.title,
-        ...text.verses.map(
-          (v) => `${v.pali.join(' / ')}${v.repeat && v.repeat > 1 ? ` (×${v.repeat})` : ''} — ${v.meaning}`,
-        ),
-      ]),
-    ],
-    links: [{ label: CHANT_REFERENCE.label, href: CHANT_REFERENCE.href }],
   };
 }
 

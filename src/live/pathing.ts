@@ -32,6 +32,7 @@ import {
   PED_GROUND_BASE,
   PED_GROUND_MIN,
   PED_LOT,
+  PED_YARD,
   PED_LUSH,
   PED_POLL_WEIGHT,
   POLL_MAX,
@@ -41,6 +42,7 @@ import {
   WEAR_MAX,
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
+import { planRide } from './riders';
 import { carPassable, closedTiles, isParkable, isWalkable, isWearable, networkMasks, reachedPlot } from './network';
 
 /** The nearest pedestrian-walkable tile to (x, y) within `maxR` (ring search, the tile itself
@@ -95,6 +97,7 @@ export function pedCost(
     const worn = (wear?.get(i) ?? 0) / WEAR_MAX;
     base = Math.max(PED_GROUND_MIN, PED_GROUND_BASE + flora * PED_LUSH - worn * PED_BEATEN);
   } else if (k === BuiltKind.ParkingLot) base = PED_LOT;
+  else if (k === BuiltKind.Yard) base = PED_YARD; // someone's back yard: only when there is no other way
   else base = 0.9; // transit / built greens (a walk through the park is the point)
   return base + smog;
 }
@@ -477,34 +480,47 @@ export function nearestOfCategory(
   cy: number,
   category: StopCategory,
   landValue?: ReadonlyMap<number, number>,
+  pick?: number,
 ): { x: number; y: number } | null {
-  let bx = -1;
-  let by = -1;
-  let bestScore = 1e9;
-  let bestHash = 0;
+  // the best-scoring tile of each place (a multi-tile plot counts once)
+  const best = new Map<number, { score: number; h: number; x: number; y: number }>();
   for (let y = cy - CITIZEN_TRIP_RADIUS; y <= cy + CITIZEN_TRIP_RADIUS; y++) {
     for (let x = cx - CITIZEN_TRIP_RADIUS; x <= cx + CITIZEN_TRIP_RADIUS; x++) {
       if (!map.inBounds(x, y)) continue;
-      if (stopCategoryOf(map.built[map.idx(x, y)]!) !== category) continue;
+      const i = map.idx(x, y);
+      if (stopCategoryOf(map.built[i]!) !== category) continue;
       // Distance, pulled DOWN by the plot's land value: a prized destination justifies up to LV_PULL
       // extra tiles of travel over a drab nearer one — citizens flow toward the nice parts of town.
       const d = Math.abs(x - cx) + Math.abs(y - cy);
-      const lv = landValue ? sampleField(landValue, map.idx(x, y)) : 0;
+      const lv = landValue ? sampleField(landValue, i) : 0;
       const score = d - (lv / LV_MAX) * LV_PULL;
       // Ties broken by tieHash, NOT scan order — else every equidistant choice skews upper-left
       // (row-major + strict `<`), which clustered trips toward the map's top-left (Maddy).
-      const h = tieHash(map.idx(x, y));
-      const better = score < bestScore - 1e-9;
-      if (better || (score < bestScore + 1e-9 && h < bestHash)) {
-        if (better) bestScore = score;
-        bestHash = h;
-        bx = x;
-        by = y;
-      }
+      const h = tieHash(i);
+      const place = map.parcel[i]! !== 0 ? -map.parcel[i]! : i;
+      const cur = best.get(place);
+      if (!cur || score < cur.score - 1e-9 || (score < cur.score + 1e-9 && h < cur.h)) best.set(place, { score, h, x, y });
     }
   }
-  return bx < 0 ? null : { x: bx, y: by };
+  if (best.size === 0) return null;
+  const ranked = [...best.values()].sort((a, b) => a.score - b.score || a.h - b.h);
+  if (pick === undefined) return { x: ranked[0]!.x, y: ranked[0]!.y };
+  // A trip spreads over the nearest few (Maddy 2026-10-08: a district streamed to one shop): up to SPREAD_PLACES
+  // within SPREAD_SLACK of the best, weighted to the nearest (SPREAD_PLACES : … : 1).
+  const near = ranked.filter((c) => c.score <= ranked[0]!.score + SPREAD_SLACK).slice(0, SPREAD_PLACES);
+  let total = 0;
+  for (let r = 0; r < near.length; r++) total += near.length - r;
+  let u = (pick >>> 0) % total;
+  for (let r = 0; r < near.length; r++) {
+    u -= near.length - r;
+    if (u < 0) return { x: near[r]!.x, y: near[r]!.y };
+  }
+  return { x: near[0]!.x, y: near[0]!.y };
 }
+
+/** How many of the nearest places a trip spreads over, and how much further (score) than the best one may be. */
+const SPREAD_PLACES = 4;
+const SPREAD_SLACK = 6;
 
 /** Is a tile of `mode`'s network within MODE_INFRA_RADIUS of (cx, cy)? (Is this mode served here?) */
 export function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode): boolean {
@@ -523,10 +539,16 @@ export function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode
  *  medium leg with calm/bike infra at both ends — and DRIVE as the fallback when only car infra
  *  exists. So the car-dependent decayed start (stroads) shifts to bikes/transit as the player
  *  builds them: the congestion → mode-shift → bloom loop. Walks if nothing else fits. */
-export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1, bikeStretch = 1): TravelMode {
+export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy: number, jam = 0, walkStretch = 1, bikeStretch = 1, rides = true): TravelMode {
   const d = Math.abs(ox - dx) + Math.abs(oy - dy);
   // a jammed road makes a longer walk or ride worth it (up to twice as far in a full jam)
   const stretch = 1 + (jam < 0 ? 0 : jam > 1 ? 1 : jam);
+  // A ride is the cheap way (Maddy 2026-10-08): whenever a line runs from end to end — the walk to and from its
+  // stops under half the trip — people take it, even for a trip they might have walked or biked
+  for (const family of rides ? (['tram', 'rail'] as const) : []) {
+    const ride = planRide(map, ox, oy, dx, dy, family);
+    if (ride && 2 * ride.walk <= d) return family === 'tram' ? TravelMode.Streetcar : TravelMode.ElevatedRail;
+  }
   // Walkable Streets (crossings, shade, slower cars) stretches how far people will walk
   if (d <= WALK_RANGE * stretch * walkStretch) return TravelMode.Walk;
   for (const mode of MODE_CHOICE_ORDER) {
@@ -536,7 +558,12 @@ export function chooseMode(map: GameMap, ox: number, oy: number, dx: number, dy:
       if (d <= BIKE_RANGE * stretch * bikeStretch) return TravelMode.Bike;
       continue;
     }
-    // rail / streetcar / drive: available when their network serves BOTH ends of the leg.
+    // a line: a ride with stops near BOTH ends (riders.ts — they walk to the stop, wait, ride, walk on)
+    if (mode === TravelMode.Streetcar || mode === TravelMode.ElevatedRail) {
+      if (rides && planRide(map, ox, oy, dx, dy, mode === TravelMode.Streetcar ? 'tram' : 'rail')) return mode;
+      continue;
+    }
+    // drive: available when roads serve BOTH ends of the leg.
     if (infraNear(map, ox, oy, mode) && infraNear(map, dx, dy, mode)) return mode;
   }
   return TravelMode.Walk;

@@ -11,7 +11,7 @@ import { GlowBatch, GLOW_FLOATS, extractLightPoints } from './glowBatch';
 import type { LightPoint } from './glowBatch';
 import { BEAM_REACH, type Beam } from './headlights';
 import { DAYSPEED, dayNightBrightness } from './lighting';
-import { carPose, ambientAlpha } from '../live/poses';
+import { carPose, ambientAlpha, laneOnTile } from '../live/poses';
 import { sharedFramePoses, type Posed } from './framePoses';
 import type { AmbientState, Mover } from '../live/types';
 import type { GameMap } from '../engine/map';
@@ -140,7 +140,8 @@ export class GpuRenderer {
     // The sprite pass's poses for this frame (every mover near the view — a glow from further out can't
     // reach it); posed here only if this pass runs on its own.
     const fp = sharedFramePoses(ambient, alpha);
-    const posed = (list: readonly Mover[]): Posed[] => list.map((m) => ({ m, pose: carPose(m, alpha) }));
+    const laneAt = laneOnTile(this.map);
+    const posed = (list: readonly Mover[]): Posed[] => list.map((m) => ({ m, pose: carPose(m, alpha, laneAt) }));
     if (night > 0.02) {
       for (const { m: c, pose } of fp ? fp.cars : posed(ambient.cars)) {
         if (c.parked) continue;
@@ -218,6 +219,7 @@ export class GpuRenderer {
     base: TexImageSource,
     baseVersion: number,
     patch?: { version: number; rects: readonly { x: number; y: number; w: number; h: number }[] },
+    emission?: { night: TexImageSource; always: TexImageSource },
   ): void {
     if (!this.shader || !this.gl) return;
     this.shader.uploadDirty(this.bridge);
@@ -226,6 +228,7 @@ export class GpuRenderer {
     // A live-mark patch (worn ground, encampments, murk) re-uploads just the rects it re-drew.
     if (baseVersion !== this.lastBaseVersion) {
       this.shader.uploadBase(base);
+      if (emission) this.shader.uploadEmission(emission.night, emission.always); // baked with the base
       this.lastBaseVersion = baseVersion;
       if (patch) this.lastPatchVersion = patch.version;
     } else if (patch && patch.version !== this.lastPatchVersion) {
@@ -235,7 +238,8 @@ export class GpuRenderer {
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
     const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
-    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED });
+    const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED, night });
   }
 
   /** The CCTV inset: a second viewport drawn into `rect` (device px, GL bottom-left origin) of this canvas, AFTER

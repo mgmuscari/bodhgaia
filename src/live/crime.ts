@@ -9,6 +9,7 @@ import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import { isBuildingKind, type ParcelStore } from '../engine/fabric';
 import type { AmbientState } from './types';
+import { offStreet } from './types';
 import { residentDies } from './death';
 import {
   CRIME_BASE,
@@ -18,7 +19,6 @@ import {
   DESPAIR_CAMPS,
   DESPAIR_DECAY,
   DESPAIR_POLICE,
-  ENCAMPMENT_WEAR,
   POLICE_VIOLENCE_MAX,
   REFUGE_KINDS,
   SAFE_RADIUS,
@@ -32,7 +32,7 @@ export function despairAt(state: AmbientState, world: World, x: number, y: numbe
   let camps = 0;
   for (let dy = -3; dy <= 3; dy++) {
     for (let dx = -3; dx <= 3; dx++) {
-      if (map.inBounds(x + dx, y + dy) && (state.wear.get(map.idx(x + dx, y + dy)) ?? 0) >= ENCAMPMENT_WEAR) camps++;
+      if (map.inBounds(x + dx, y + dy) && (state.camps?.get(map.idx(x + dx, y + dy)) ?? 0) >= 1) camps++;
     }
   }
   const seen = new Set<number>();
@@ -71,7 +71,7 @@ export function drawCrime(state: AmbientState, world: World, rng: Rng, hour: num
   state.crimeHour = hour;
   const { map } = world;
   for (const p of state.peds) {
-    if (p.phase === 'inside' || p.phase === 'driving') continue;
+    if (offStreet(p)) continue;
     const x = Math.round(p.x);
     const y = Math.round(p.y);
     if (!map.inBounds(x, y)) continue;

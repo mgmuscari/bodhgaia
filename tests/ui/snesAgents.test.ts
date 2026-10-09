@@ -80,6 +80,18 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     }
   });
 
+  it('trams have their own look: 8 headings, a head with a windscreen and a car, the size of a train car', () => {
+    for (let d = 0; d < 8; d++) {
+      for (const part of ['head', 'car']) {
+        const p = tiles.get(`@sprite/tram/${part}/${d}`)!;
+        expect(p, `tram ${part} ${d}`).toBeDefined();
+        const train = tiles.get(`@sprite/train/car/${d}`)!;
+        expect([p.w, p.h]).toEqual([train.w, train.h]);
+      }
+      expect(tiles.get(`@sprite/tram/head/${d}`)!.data.join()).not.toBe(tiles.get(`@sprite/train/loco/${d}`)!.data.join());
+    }
+  });
+
   it('a crash leaves debris: a few pixels of glass and metal, smaller than a car', () => {
     const d = tiles.get('@sprite/debris')!;
     expect(d).toBeDefined();
@@ -108,14 +120,39 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     }
   });
 
-  it('pedestrians and cyclists are tiny two-frame figures', () => {
-    for (const kind of ['ped', 'bike']) {
-      for (let f = 0; f < 2; f++) {
-        const p = tiles.get(`@sprite/${kind}/0/0/${f}`)!;
-        expect(p, `${kind} ${f}`).toBeDefined();
-        expect(Math.max(p.w, p.h)).toBeLessThanOrEqual(4);
-      }
+  it('pedestrians are tiny two-frame figures', () => {
+    for (let f = 0; f < 2; f++) {
+      const p = tiles.get(`@sprite/ped/0/0/${f}`)!;
+      expect(p, `ped ${f}`).toBeDefined();
+      expect(Math.max(p.w, p.h)).toBeLessThanOrEqual(4);
     }
+  });
+
+  it('cyclists ride real bicycles (Maddy 2026-10-08: they looked like walkers): wheels, both ways, pedalling', () => {
+    const ink = (p: Pixels, x: number, y: number) => {
+      const i = (y * p.w + x) * 4;
+      return p.data[i + 3] && p.data[i] === 24 && p.data[i + 1] === 24 && p.data[i + 2] === 40;
+    };
+    for (let f = 0; f < 2; f++) {
+      const east = tiles.get(`@sprite/bike/0/0/${f}/e`)!;
+      const west = tiles.get(`@sprite/bike/0/0/${f}/w`)!;
+      const head = tiles.get(`@sprite/bike/0/0/${f}/n`)!;
+      expect(east && west && head, `frame ${f}`).toBeTruthy();
+      expect(east.w).toBeGreaterThanOrEqual(6); // a side view is longer than a person is wide
+      expect(east.w).toBeLessThanOrEqual(8);
+      // a tyre at each end, low down
+      const low = [east.h - 1, east.h - 2];
+      expect(low.some((y) => ink(east, 0, y) || ink(east, 1, y)), 'rear tyre').toBe(true);
+      expect(low.some((y) => ink(east, east.w - 1, y) || ink(east, east.w - 2, y)), 'front tyre').toBe(true);
+      // west is east mirrored
+      for (let y = 0; y < east.h; y++) for (let x = 0; x < east.w; x++) {
+        const a = east.data.subarray((y * east.w + x) * 4, (y * east.w + x) * 4 + 4).join();
+        const b = west.data.subarray((y * west.w + (west.w - 1 - x)) * 4, (y * west.w + (west.w - 1 - x)) * 4 + 4).join();
+        expect(a, `(${x},${y})`).toBe(b);
+      }
+      expect(head.w).toBeLessThanOrEqual(3); // head-on, a bike is narrow
+    }
+    expect(tiles.get('@sprite/bike/0/0/0/e')!.data.join()).not.toBe(tiles.get('@sprite/bike/0/0/1/e')!.data.join()); // pedalling
   });
 
   it('every agent pixel is from the one palette', () => {

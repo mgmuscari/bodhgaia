@@ -64,3 +64,25 @@ describe('CctvQueue: one event at a time, deaths before arrests', () => {
     expect(shown).toBeLessThanOrEqual(3);
   });
 });
+
+describe('going there (Maddy 2026-10-08: clicking the feed takes you to it)', () => {
+  it('the main view centres on the event, at a close zoom', async () => {
+    const { cctvGoTo, GO_TO_ZOOM } = await import('../../src/ui/cctvContent');
+    expect(cctvGoTo({ kind: 'fire', x: 10, y: 20, w: 2, h: 2 })).toEqual({ x: 11, y: 21, zoom: GO_TO_ZOOM });
+    expect(GO_TO_ZOOM).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('community events on camera (Maddy 2026-10-08)', () => {
+  it('labels them', () => {
+    expect(cctvLabel({ kind: 'party', x: 0, y: 0, w: 1, h: 1 })).toBe('Block party');
+    expect(cctvLabel({ kind: 'fair', x: 0, y: 0, w: 1, h: 1 })).toBe('Craft fair');
+    expect(cctvLabel({ kind: 'festival', x: 0, y: 0, w: 1, h: 1 })).toBe('Festival');
+  });
+
+  it('a celebration never goes before a death or a disaster', () => {
+    const q = new CctvQueue();
+    q.push([{ kind: 'festival', x: 0, y: 0, w: 1, h: 1 }, { kind: 'fire', x: 1, y: 1, w: 1, h: 1 }], 0);
+    expect(q.current(0)!.kind).toBe('fire');
+  });
+});

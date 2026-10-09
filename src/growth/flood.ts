@@ -8,6 +8,7 @@
 //   under water while the flood stands above its threshold: its distance in, scaled by the ground around it —
 //   paving sheds the rain onto it (lower), greens, gardens, rewilded land and forest soak it up (higher).
 // - A building with water on its footprint loses FLOOD_DAMAGE condition each hour it stands in it.
+// - A retention pond holds the storm: no plain tile within POND_REACH of one floods (Maddy 2026-10-08).
 
 import { BuiltKind, isRoadKind, type ParcelStore } from '../engine/fabric';
 import { LandCover, type GameMap } from '../engine/map';
@@ -20,6 +21,8 @@ export const FLOOD_REACH = 10;
  *  neutral ground). */
 export const FLOOD_CLIMB = 0.1;
 export const FLOOD_RECEDE = 0.08;
+/** A retention pond keeps every plain tile within this many tiles of it dry (Euclidean, from any of its tiles). */
+export const POND_REACH = 8;
 /** Condition a building loses each hour it stands in water. */
 export const FLOOD_DAMAGE = 6;
 /** How much each paved / soaking tile within SOAK_RADIUS moves a tile's threshold (×). */
@@ -92,7 +95,7 @@ function threshold(map: GameMap, t: number, dist: number): number {
       if (!map.inBounds(x + dx, y + dy)) continue;
       const n = map.idx(x + dx, y + dy);
       const k = map.built[n]!;
-      if (SOAKERS.has(k) || (k === BuiltKind.None && map.landCover[n] === LandCover.Forest)) scale += GREEN_SOAK;
+      if (SOAKERS.has(k) || map.deck[n] === BuiltKind.Parklet || (k === BuiltKind.None && map.landCover[n] === LandCover.Forest)) scale += GREEN_SOAK;
       else if (isRoadKind(k) || k === BuiltKind.ParkingLot) scale -= PAVE_SHED;
     }
   }
@@ -117,8 +120,9 @@ export function stepFlood(world: { map: GameMap; parcels: ParcelStore }, f: Floo
   f.lastHour = opts.hour;
   const { map, parcels } = world;
   f.level = opts.heavy ? Math.min(1.5, f.level + FLOOD_CLIMB) : Math.max(0, f.level - FLOOD_RECEDE);
+  const held = pondHeld(map, parcels);
   for (const [t, dist] of f.plain) {
-    const wet = f.level > 0 && threshold(map, t, dist) < f.level;
+    const wet = f.level > 0 && !held.has(t) && threshold(map, t, dist) < f.level;
     if (wet && !f.flooded.has(t)) {
       f.flooded.add(t);
       ev.rose.push(t);
@@ -138,4 +142,23 @@ export function stepFlood(world: { map: GameMap; parcels: ParcelStore }, f: Floo
     ev.underWater.push(i);
   }
   return ev;
+}
+
+/** The tiles a retention pond keeps dry: every tile within POND_REACH of one of its tiles. */
+function pondHeld(map: GameMap, parcels: ParcelStore): Set<number> {
+  const held = new Set<number>();
+  const r2 = POND_REACH * POND_REACH;
+  for (const i of parcels.aliveIndices()) {
+    const p = parcels.get(i);
+    if (p.kind !== BuiltKind.RetentionPond) continue;
+    for (let y = p.y - POND_REACH; y < p.y + p.height + POND_REACH; y++) {
+      for (let x = p.x - POND_REACH; x < p.x + p.width + POND_REACH; x++) {
+        if (!map.inBounds(x, y)) continue;
+        const dx = x < p.x ? p.x - x : x >= p.x + p.width ? x - (p.x + p.width - 1) : 0;
+        const dy = y < p.y ? p.y - y : y >= p.y + p.height ? y - (p.y + p.height - 1) : 0;
+        if (dx * dx + dy * dy <= r2) held.add(map.idx(x, y));
+      }
+    }
+  }
+  return held;
 }

@@ -430,7 +430,7 @@ describe('agent substrate invariants (Maddy: cars park on freeways, peds cross w
 
   it('a train spawns on a rail line and rides it, every car on rail (Maddy: rails need trains)', () => {
     const m = new GameMap(40, 4);
-    for (let x = 1; x <= 38; x++) m.built[m.idx(x, 2)] = BuiltKind.Rail; // ≥ TRAIN_RAIL_PER → one train
+    for (let x = 1; x <= 38; x++) m.built[m.idx(x, 2)] = BuiltKind.Rail; // a long line → it runs trains
     const state = createAmbientState();
     for (let s = 0; s < 80; s++) stepAmbient(state, m, createRng(7), 60);
     expect(state.trains.length).toBeGreaterThan(0);
@@ -2761,16 +2761,19 @@ describe('mode choice (close → walk; car-dependent until calm/transit infra; t
   it('rides elevated rail when a line serves both ends — even far (transit beats driving)', () => {
     const map = new GameMap(60, 10);
     for (let x = 0; x < 60; x++) map.built[map.idx(x, 5)] = BuiltKind.RoadStreet; // roads exist too
-    map.built[map.idx(4, 5)] = BuiltKind.ElevatedRail; // a stop near the origin
-    map.built[map.idx(50, 5)] = BuiltKind.ElevatedRail; // and near the destination
+    for (let x = 4; x <= 50; x++) map.built[map.idx(x, 4)] = BuiltKind.ElevatedRail; // one line…
+    for (const x of [5, 49]) map.built[map.idx(x, 3)] = BuiltKind.RoadStreet; // …stations where streets pass under it
     expect(chooseMode(map, 3, 6, 50, 6)).toBe(TravelMode.ElevatedRail);
   });
 
   it('rides a streetcar when a line serves both ends and there is no rail', () => {
     const map = new GameMap(60, 10);
-    map.built[map.idx(4, 5)] = BuiltKind.Streetcar;
-    map.built[map.idx(49, 5)] = BuiltKind.Streetcar;
+    for (let x = 4; x <= 49; x++) map.built[map.idx(x, 5)] = BuiltKind.Streetcar; // one line (docs/design/transit.md)
     expect(chooseMode(map, 3, 6, 50, 6)).toBe(TravelMode.Streetcar);
+    const lone = new GameMap(60, 10); // two stray track tiles aren't a line anyone can ride
+    lone.built[lone.idx(4, 5)] = BuiltKind.Streetcar;
+    lone.built[lone.idx(49, 5)] = BuiltKind.Streetcar;
+    expect(chooseMode(lone, 3, 6, 50, 6)).not.toBe(TravelMode.Streetcar);
   });
 });
 
@@ -2957,12 +2960,13 @@ describe('canDrive level crossings (Maddy: streetcars must not block cross traff
     expect(canDrive(m, 6, 5, 7, 5)).toBe(true); // …and out the far side ✓
   });
 
-  it('a car may NOT drive ALONG a tram line (no road straight beyond)', () => {
+  it('a car drives ALONG a tram street, alongside the trams (Maddy 2026-10-08: it was closed to cars)', () => {
     const m = new GameMap(12, 8);
     m.built[m.idx(5, 5)] = BuiltKind.RoadStreet;
     m.built[m.idx(6, 5)] = BuiltKind.Streetcar;
-    m.built[m.idx(7, 5)] = BuiltKind.Streetcar; // the tram continues — not a crossing, a line
-    expect(canDrive(m, 5, 5, 6, 5)).toBe(false); // can't enter: the tile beyond is more tram, not road
+    m.built[m.idx(7, 5)] = BuiltKind.Streetcar; // the tram continues — a tram street
+    expect(canDrive(m, 5, 5, 6, 5)).toBe(true);
+    expect(canDrive(m, 6, 5, 7, 5)).toBe(true);
   });
 
   it('a cross street crosses an avenue/streetcar/avenue median (the reported case)', () => {

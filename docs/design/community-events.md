@@ -29,7 +29,7 @@ craft fairs, block parties, festivals, parades, protests, riots.
 
 - `live/events/*`: an hourly draw per neighbourhood from civic + live conditions; an event has a place, a crowd
   (people drawn from the neighbourhood's homes, walking there with `walkPath`), a duration and its effects.
-- `LiveEvent` kinds for the camera and the news; the CCTV inset shows a protest or an uprising, not a party.
+- `LiveEvent` kinds for the camera and the news; the CCTV inset shows every event — celebrations too (Maddy 2026-10-08), ranked with arrests, after deaths and disasters.
 - Art: prayer-flag strings, stalls, tables, placards — palette sprites in `snesAgents`/a sibling module; crowds are
   `@sprite/ped`; an uprising's fires and smoke are the fire module's.
 

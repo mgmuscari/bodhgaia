@@ -68,8 +68,10 @@ export const PED_SPEED = 0.05;
 // rail step returns the U-turn, so the train runs back the other way. Live layer, never hashed.
 export const TRAIN_SPEED = 0.16; // tiles/substep — a touch faster than a car
 export const TRAIN_LEN = 4; // cars per train (head + 3)
-export const TRAIN_CAP = 6; // hard ceiling on concurrent trains
-export const TRAIN_RAIL_PER = 26; // one train per this many rail tiles (so a longer network runs more)
+export const TRAIN_CAP = 48; // hard ceiling on concurrent trams and trains, city-wide
+/** A line runs a vehicle per this many of its tiles (Maddy 2026-10-08: two trams on a long line left hundreds waiting). */
+export const TRAM_EVERY = 8;
+export const TRAIN_EVERY = 12;
 
 // Traffic pileups (Maddy): cars sharing a tile SLOW DOWN, so congestion becomes physical — bunching,
 // crawling bottlenecks — not just the lingering `traffic` field. Each car beyond the first on a tile
@@ -306,6 +308,8 @@ export const PED_BEATEN = 1.5; // subtracted from ground cost at full wear
 export const PED_GROUND_MIN = 6.5; // floor: a fully-beaten path, still well above a jammed stroad (4.0)
 /** Crossing a parking lot on foot: no sidewalk, cars backing out. */
 export const PED_LOT = 1.5;
+/** A back yard is someone's home (Maddy 2026-10-08): a last resort on foot, dearer than a jammed avenue. */
+export const PED_YARD = 5;
 
 /** A worn desire path is convenient underfoot but DEGRADED (brown, littered): a citizen walking it
  *  brings home less wellbeing. A wearable tile counts as wellbeing-degrading once its wear reaches

@@ -3,12 +3,12 @@
 // unhoused can die of exposure at night: once per in-game hour, a share of them scaled by how many there are,
 // at the encampments, never within reach of shelter. Live layer: writes only its own state (never hashed).
 
+import { leftCamp } from './camps';
 import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import { BuiltKind } from '../engine/fabric';
 import type { AmbientState } from './types';
 import {
-  ENCAMPMENT_WEAR,
   EXPOSURE_PER_PERSON_HOUR,
   FALL_SUBSTEPS,
   GRIEF_HEALTH,
@@ -55,8 +55,8 @@ const isNight = (h: number): boolean => h >= NIGHT_FROM || h < NIGHT_TO;
 /** The encampment tiles where nobody is within reach of shelter. */
 function exposedCamps(state: AmbientState, map: GameMap): number[] {
   const out: number[] = [];
-  for (const [t, w] of state.wear) {
-    if (w < ENCAMPMENT_WEAR) continue;
+  for (const [t, n] of state.camps ?? new Map<number, number>()) {
+    if (n < 1) continue;
     const x = t % map.width;
     const y = (t - x) / map.width;
     if (nearKind(map, x, y, BuiltKind.HealingCommons, SHELTER_RADIUS) || nearKind(map, x, y, BuiltKind.TinyHomes, SHELTER_RADIUS)) continue;
@@ -78,7 +78,7 @@ export function stepExposure(state: AmbientState, map: GameMap, rng: Rng): void 
   for (let k = 0; k < n && camps.length > 0 && state.unhoused >= 1; k++) {
     const t = camps[rng.nextInt(camps.length)]!;
     const x = t % map.width;
-    state.unhoused -= 1;
+    leftCamp(state, t, 1);
     residentDies(state, x, (t - x) / map.width);
   }
 }

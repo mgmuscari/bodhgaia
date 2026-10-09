@@ -3,7 +3,7 @@ import { runPipeline } from '../../src/worldgen/pipeline';
 import { terrainStage } from '../../src/worldgen/terrain';
 import { mosesCenturyStage } from '../../src/worldgen/moses';
 import { ecoSeedStage } from '../../src/worldgen/ecoseed';
-import { hashWorld, demolishParcel } from '../../src/engine/fabric';
+import { hashWorld, demolishParcel, BuiltKind } from '../../src/engine/fabric';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { CivicState } from '../../src/civic/state';
@@ -91,10 +91,8 @@ describe('a saved game restores to the same stocks', () => {
 });
 
 describe('save v2: the always-zero traffic layer is retired', () => {
-  it('this build writes v2 and carries no traffic layer', () => {
+  it('this build carries no traffic layer', () => {
     const save = captureGame(parts());
-    expect(SAVE_VERSION).toBe(2);
-    expect(save.version).toBe(2);
     expect(Object.keys(save.world.layers)).not.toContain('traffic');
   });
 
@@ -104,16 +102,46 @@ describe('save v2: the always-zero traffic layer is retired', () => {
     const n = p.world.map.width * p.world.map.height;
     const v1 = { ...v2, version: 1, world: { ...v2.world, layers: { ...v2.world.layers, traffic: encodeBytes(new Uint8Array(n)) } } };
     const save = parseSave(JSON.stringify(v1));
-    expect(save.version).toBe(2);
+    expect(save.version).toBe(SAVE_VERSION);
     expect(Object.keys(save.world.layers)).not.toContain('traffic');
     const fresh = gen(save.seed);
     restoreWorld(fresh, save.world);
     expect(hashWorld(fresh)).toBe(hashWorld(p.world));
   });
 
-  it('refuses a v3 save', () => {
-    const v3 = { ...captureGame(parts()), version: 3 };
-    expect(() => parseSave(JSON.stringify(v3))).toThrow(/newer/);
+  it('refuses a save from a newer build', () => {
+    const newer = { ...captureGame(parts()), version: SAVE_VERSION + 1 };
+    expect(() => parseSave(JSON.stringify(newer))).toThrow(/newer/);
+  });
+});
+
+describe('save v3: parklets moved onto the kerb (Maddy 2026-10-08)', () => {
+  it('this build writes v3', () => {
+    expect(SAVE_VERSION).toBe(3);
+    expect(captureGame(parts()).version).toBe(3);
+  });
+
+  it("a v2 save's parklet lots become pocket parks, once, and nothing else changes", () => {
+    const p = parts();
+    const i = p.world.parcels.aliveIndices().find((j) => p.world.parcels.get(j).width === 1 && p.world.parcels.get(j).height === 1)!;
+    const lot = p.world.parcels.get(i);
+    const as = (kind: number) => {
+      p.world.parcels.setKind(i, kind as BuiltKind);
+      p.world.map.built[p.world.map.idx(lot.x, lot.y)] = kind;
+    };
+    as(BuiltKind.Parklet); // a v2-era parklet lot
+    const v2 = { ...captureGame(p), version: 2 };
+    const save = parseSave(JSON.stringify(v2));
+    const fresh = gen(save.seed);
+    restoreWorld(fresh, save.world);
+    expect(fresh.parcels.get(i).kind).toBe(BuiltKind.Park);
+    expect(fresh.map.built[fresh.map.idx(lot.x, lot.y)]).toBe(BuiltKind.Park);
+    // the rest of the world is as it was
+    as(BuiltKind.Park);
+    expect(hashWorld(fresh)).toBe(hashWorld(p.world));
+    // a v3 save keeps whatever it holds
+    const again = parseSave(JSON.stringify(captureGame({ ...p, world: fresh })));
+    expect(again.world.parcels.kind[i]).toBe(BuiltKind.Park);
   });
 });
 
@@ -141,5 +169,21 @@ describe('the rename (Bodhitropolis → Bodhgaia, 2026-10-07)', () => {
     const old = JSON.stringify({ ...save, format: 'bodhitropolis-save' });
     expect(parseSave(old).seed).toBe('lotus');
     expect(() => parseSave(JSON.stringify({ ...save, format: 'something-else' }))).toThrow(/not a Bodhgaia save/);
+  });
+});
+
+describe('encampments are saved (Maddy 2026-10-08)', () => {
+  it('the camps come back where they were; a save from before them has none until they settle', () => {
+    const p = parts();
+    p.live.camps = new Map([[100, 7], [205, 3.5]]);
+    p.live.unhoused = 10.5;
+    const save = parseSave(JSON.stringify(captureGame(p)));
+    const live = createAmbientState();
+    restoreLive(live, save.live, p.world.map.width);
+    expect([...live.camps!]).toEqual([[100, 7], [205, 3.5]]);
+    const old = { ...save.live, camps: undefined };
+    const live2 = createAmbientState();
+    restoreLive(live2, old, p.world.map.width);
+    expect(live2.camps?.size ?? 0).toBe(0);
   });
 });

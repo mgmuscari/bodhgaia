@@ -4,12 +4,13 @@
 // ui/ambientContent.ts; pure reads of the map (rng only where a step is chosen).
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind, isRoadKind } from '../engine/fabric';
+import { BuiltKind, isRoadKind, railCrossingMask } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { Rng } from '../engine/rng';
 import { CAR_STRAIGHT_WEIGHT, FAUNA_THRESHOLD, LANE_SCAN_CAP } from './tuning';
 import { DIR_DX, DIR_DY, KERB_PULL, STALL_ALONG, opposite } from './geometry';
 import type { Car, Ped } from './types';
+import { offStreet } from './types';
 
 // --- Pure decision helpers (unit-test seams) -----------------------------
 
@@ -251,6 +252,25 @@ export function carTraversable(kind: number): boolean {
   return isCarRoad(kind) || kind === BuiltKind.ParkingLot || kind === BuiltKind.RoadRamp;
 }
 
+/** A streetcar line laid as a street of its own: cars drive it alongside the trams (Maddy 2026-10-08). Not a tram
+ *  MEDIAN — a run between two roads (an avenue / streetcar / avenue), which cross traffic only crosses: its tile
+ *  and the next along both have road on either side (a lone such tile is a tram street meeting a cross street). */
+export function tramStreet(map: GameMap, x: number, y: number): boolean {
+  if (!map.inBounds(x, y) || map.built[map.idx(x, y)] !== BuiltKind.Streetcar) return false;
+  const road = (ax: number, ay: number): boolean => map.inBounds(ax, ay) && isCarRoad(map.built[map.idx(ax, ay)]!);
+  const tram = (ax: number, ay: number): boolean => map.inBounds(ax, ay) && map.built[map.idx(ax, ay)] === BuiltKind.Streetcar;
+  const flankedNS = (ax: number, ay: number): boolean => road(ax, ay - 1) && road(ax, ay + 1);
+  const flankedEW = (ax: number, ay: number): boolean => road(ax - 1, ay) && road(ax + 1, ay);
+  if (flankedNS(x, y) && ((tram(x - 1, y) && flankedNS(x - 1, y)) || (tram(x + 1, y) && flankedNS(x + 1, y)))) return false;
+  if (flankedEW(x, y) && ((tram(x, y - 1) && flankedEW(x, y - 1)) || (tram(x, y + 1) && flankedEW(x, y + 1)))) return false;
+  return true;
+}
+
+/** A tile a car may drive onto: a road, lot or ramp, or a tram street. */
+export function drivable(map: GameMap, x: number, y: number): boolean {
+  return map.inBounds(x, y) && (carTraversable(map.built[map.idx(x, y)]!) || tramStreet(map, x, y));
+}
+
 /** A freeway-family tile for LANE GEOMETRY: a highway or a ramp. A ramp is a freeway tile that also
  *  meets the surface, so for run-length classification it counts as freeway (it must not break the
  *  lane runs around it), even though canDrive treats the ramp itself as a free interchange. */
@@ -282,7 +302,7 @@ export function isLevelCrossable(kind: number): boolean {
  *  NOT a divided road's median. Cars neither spawn on, weave onto, nor turn (at a
  *  junction) onto a median — so the median stays a true no-traffic gap. */
 export function carPassable(map: GameMap, x: number, y: number): boolean {
-  if (!carTraversable(map.built[map.idx(x, y)]!)) return false;
+  if (!drivable(map, x, y)) return false;
   const lane = freewayLane(map, x, y);
   return lane === null || lane.role !== 'median';
 }
@@ -295,6 +315,7 @@ export function isParkable(map: GameMap, x: number, y: number): boolean {
   if (!map.inBounds(x, y)) return false;
   const k = map.built[map.idx(x, y)]!;
   if (!carTraversable(k) || k === BuiltKind.RoadHighway) return false;
+  if (map.deck[map.idx(x, y)] === BuiltKind.Parklet) return false; // a parklet took this kerb's parking
   return map.water[map.idx(x, y)] === 0;
 }
 
@@ -354,14 +375,14 @@ export function alongThrough(lane: { horizontal: boolean }, d: number): boolean 
 export function canDrive(map: GameMap, fx: number, fy: number, tx: number, ty: number): boolean {
   if (!map.inBounds(tx, ty)) return false;
   const toKind = map.built[map.idx(tx, ty)]!;
-  if (!carTraversable(toKind)) {
+  if (!carTraversable(toKind) && !tramStreet(map, tx, ty)) {
     // Level crossing: a car may CROSS an at-grade tram/rail line STRAIGHT through to the drivable
     // tile beyond (a cross street crossing an avenue's streetcar median), but never drive along it.
     if (isLevelCrossable(toKind)) {
       const d = moveDir(fx, fy, tx, ty);
       const bx = tx + DIR_DX[d]!;
       const by = ty + DIR_DY[d]!;
-      return map.inBounds(bx, by) && carTraversable(map.built[map.idx(bx, by)]!);
+      return drivable(map, bx, by);
     }
     return false;
   }
@@ -389,7 +410,7 @@ export function canDrive(map: GameMap, fx: number, fy: number, tx: number, ty: n
       if (d === opposite(L.dir)) return false; // wrong-way along the avenue
       const bx = tx + DIR_DX[d]!; // perpendicular → only as a straight crossing to a road beyond
       const by = ty + DIR_DY[d]!;
-      return map.inBounds(bx, by) && carTraversable(map.built[map.idx(bx, by)]!);
+      return drivable(map, bx, by);
     }
     return true;
   }
@@ -487,7 +508,35 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
   // never drive on/across it, and peds must not cut through it either (Maddy: travelers path through
   // dividers/medians). It's an amenity that lifts the corridor, never a foot route or a destination.
   if (k === BuiltKind.PlantedMedian) return false;
+  // Rail is crossed, never walked along (Maddy 2026-10-08: people walk on the tracks) — a streetcar line is a street
+  if (k === BuiltKind.Rail || k === BuiltKind.ElevatedRail) return railCrossing(map, x, y);
+  // plants, the precinct and ruins are fenced or shut, though they carry no R/C/I/Civic zone (Maddy 2026-10-08:
+  // walkers cut through the gas plant)
+  if (CLOSED_KINDS.has(k)) return false;
   return zoneTypeOf(k) === ZoneType.None;
+}
+
+/** Buildings with no zone that no one walks through. */
+const CLOSED_KINDS: ReadonlySet<number> = new Set([
+  BuiltKind.CoalPlant,
+  BuiltKind.GasPlant,
+  BuiltKind.HydroPlant,
+  BuiltKind.NuclearPlant,
+  BuiltKind.WindTurbine,
+  BuiltKind.SolarPlant,
+  BuiltKind.FusionPlant,
+  BuiltKind.Precinct,
+  BuiltKind.Ruin,
+  BuiltKind.Site, // fenced while it's built
+]);
+
+/** A rail tile a road crosses: at grade (a level crossing), or a street passing under the viaduct. */
+export function railCrossing(map: GameMap, x: number, y: number): boolean {
+  const k = map.built[map.idx(x, y)]!;
+  if (k === BuiltKind.Rail) return railCrossingMask(map, x, y) !== 0;
+  if (k !== BuiltKind.ElevatedRail) return false;
+  const road = (dx: number, dy: number): boolean => map.inBounds(x + dx, y + dy) && isRoadKind(map.built[map.idx(x + dx, y + dy)]!);
+  return (road(0, -1) && road(0, 1)) || (road(-1, 0) && road(1, 0));
 }
 
 /** Has a ped at (px,py) reached its destination PLOT? Adjacent to the exact target tile, OR — for a
@@ -533,7 +582,7 @@ export function adjacentRoad(map: GameMap, x: number, y: number): number {
  */
 export function pedDespawns(map: GameMap, p: Ped): boolean {
   // a gatherer walks a committed route to its gathering and home (live/gatherings.ts) — a routed walker too
-  return p.phase !== 'driving' && p.phase !== 'gathering' && p.walkTo === undefined && pedOffNetwork(map, p);
+  return !offStreet(p) && p.phase !== 'gathering' && p.phase !== 'transit' && p.walkTo === undefined && pedOffNetwork(map, p);
 }
 
 // --- Precomputed network masks (the A* hot loop) ---------------------------
@@ -545,8 +594,8 @@ export function pedDespawns(map: GameMap, p: Ped): boolean {
 // is written directly (`map.built[i] = …`) all over, so the cache can't be told when to refresh: it
 // VALIDATES instead — each lookup compares built/water against a private copy, a word at a time (a
 // few µs on a 96² map, against a search of hundreds). A changed tile re-derives its own walk entry and
-// the drive edges of every tile within MASK_REACH (the furthest canDrive reads: a lane-run scan from
-// the far end of the edge); a large change rebuilds the whole table. Exact by construction — the masks
+// its neighbours' (a rail tile is walkable only where a road crosses it), and the drive edges of every
+// tile within MASK_REACH (the furthest canDrive reads: a lane-run scan from the far end of the edge); a large change rebuilds the whole table. Exact by construction — the masks
 // are the predicates, read through a table.
 
 /** How far (Chebyshev) from an edge's origin canDrive can read: the step, then a freewayLane run scan
@@ -597,7 +646,10 @@ function rebuildAround(map: GameMap, c: MaskCache, changed: readonly number[]): 
   for (const i of changed) {
     const cx = i % W;
     const cy = (i - cx) / W;
-    c.walk[i] = isWalkable(map, cx, cy) ? 1 : 0;
+    // a rail tile's walkability reads its 4-neighbours (is a road crossing it?), so re-derive the 3×3
+    for (let y = Math.max(0, cy - 1); y <= Math.min(H - 1, cy + 1); y++) {
+      for (let x = Math.max(0, cx - 1); x <= Math.min(W - 1, cx + 1); x++) c.walk[y * W + x] = isWalkable(map, x, y) ? 1 : 0;
+    }
     const y1 = Math.min(H - 1, cy + MASK_REACH);
     const x1 = Math.min(W - 1, cx + MASK_REACH);
     for (let y = Math.max(0, cy - MASK_REACH); y <= y1; y++) {

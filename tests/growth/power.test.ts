@@ -419,8 +419,38 @@ describe('energy node batteries (Maddy 2026-10-07: the solar problem)', () => {
     expect(BATTERY_CAPACITY - stored.storage.get(node)!).toBeLessThanOrEqual(BATTERY_RATE + 1e-9);
   });
 
+  it('a node is a solar canopy and a battery (Maddy 2026-10-08): it makes power by day, none at night, and lights the night only with what it stored', () => {
+    const map = new GameMap(12, 4);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 0, y: 1, width: 1, height: 1, kind: BuiltKind.EnergyNode });
+    for (let x = 1; x < 4; x++) placeParcel(map, parcels, { x, y: 1, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 1 });
+    const node = map.idx(0, 1);
+    const noon = computePowerGrid(map, parcels, clock(12), NEUTRAL_POWER_PRACTICES, new Map());
+    expect(noon.capacity).toBeGreaterThan(0);
+    expect(noon.storage.get(node)!).toBeGreaterThan(0); // its own surplus banked
+    const midnight = computePowerGrid(map, parcels, clock(0), NEUTRAL_POWER_PRACTICES, new Map());
+    expect(midnight.capacity).toBe(0); // no sun on the canopy
+    const bare = new GameMap(12, 4);
+    const bareParcels = new ParcelStore();
+    for (let x = 1; x < 4; x++) placeParcel(bare, bareParcels, { x, y: 1, width: 1, height: 1, kind: BuiltKind.HouseSingle, density: 1 });
+    expect(midnight.demand).toBeCloseTo(computePowerGrid(bare, bareParcels, clock(0), NEUTRAL_POWER_PRACTICES, new Map()).demand, 9); // the node draws nothing itself
+    expect(midnight.poweredAnchors.size).toBe(0); // and nothing stored: dark
+    const charged = computePowerGrid(map, parcels, clock(0), NEUTRAL_POWER_PRACTICES, new Map([[node, BATTERY_CAPACITY]]));
+    expect(charged.poweredAnchors.size).toBeGreaterThan(0); // the day's charge lights the night
+  });
+
   it('a static solve (no clock) neither charges nor spends', () => {
     const { map, parcels, node } = town();
     expect(computePowerGrid(map, parcels, undefined, NEUTRAL_POWER_PRACTICES, new Map([[node, 100]])).storage.get(node)).toBe(100);
+  });
+});
+
+describe('a source is not a consumer (Maddy 2026-10-08: the power-out indicator on energy nodes)', () => {
+  it('an energy node feeds the grid; it never reads as unpowered', async () => {
+    const { isPowerConsumer } = await import('../../src/growth/power');
+    const { BuiltKind } = await import('../../src/engine/fabric');
+    expect(isPowerConsumer(BuiltKind.EnergyNode)).toBe(false);
+    expect(isPowerConsumer(BuiltKind.Civic)).toBe(true);
+    expect(isPowerConsumer(BuiltKind.AINode)).toBe(true); // a civic consumer that isn't a source
   });
 });

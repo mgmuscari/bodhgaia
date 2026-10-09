@@ -129,7 +129,7 @@ describe('snes tileset — buildings', () => {
   });
 
   it('structures are ink-outlined (the SNES look) — every 1×1 non-green kind has ink', () => {
-    const greens = new Set([11, 48, 49, 61, 62]);
+    const greens = new Set([11, 48, 49, 61, 62, 66]); // … and the retention pond: open water, no walls
     for (const kind of buildingKinds.filter((k) => !greens.has(k))) {
       expect(hasInk(tiles.get(footprintCellKey(kind, 1, 1, 0, 0, 0))!), `kind ${kind}`).toBe(true);
     }
@@ -661,6 +661,26 @@ describe('polluted water is a palette swap, not marks on the water (Maddy 2026-0
         const rgb = [m.data[i], m.data[i + 1], m.data[i + 2]];
         expect(SNES_PALETTE.some((c) => c[0] === rgb[0] && c[1] === rgb[1] && c[2] === rgb[2])).toBe(true);
       }
+    }
+  });
+
+  it('each murk level has a dithered edge per side, to soften a step in a narrow creek (backlog: 2-tile murk blocks)', () => {
+    const k = waterKeys[0]!;
+    const full = tiles.get(`${k}~m2`)!;
+    for (const [d, near] of [[0, (_x: number, y: number) => y], [1, (x: number) => 15 - x], [2, (_x: number, y: number) => 15 - y], [3, (x: number) => x]] as const) {
+      const e = tiles.get(`${k}~m2~e${d}`);
+      expect(e, `${k}~m2~e${d}`).toBeDefined();
+      let nearOn = 0, farOn = 0;
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const o = (y * 16 + x) * 4;
+        if (e!.data[o + 3] === 0) continue;
+        expect([...e!.data.subarray(o, o + 3)]).toEqual([...full.data.subarray(o, o + 3)]); // the murk tile's own pixels
+        const dist = near(x, y);
+        if (dist <= 1) nearOn++;
+        if (dist >= 6) farOn++;
+      }
+      expect(nearOn).toBeGreaterThan(8); // dense at the edge
+      expect(farOn).toBe(0); // gone by a third of the way in
     }
   });
 

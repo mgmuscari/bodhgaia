@@ -5,7 +5,7 @@
 // only draws.
 
 import { GameMap, Water, LandCover } from '../engine/map';
-import { BuiltKind, isBuildingKind, isTransportKind, transportMask, isRoadKind, deckMask, roadDividerMask, roadCurbMask, railCrossingMask, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
+import { BuiltKind, isBuildingKind, isTransportKind, transportMask, deckMask, roadDividerMask, roadCurbMask, tramKerbMask, railCrossingMask, railCrossingKind, isRoadKind, depaveAsphalt, rampMarkingMask, freewayMedianAxis, freewayAxis, freewayLaneBoundaryMask, freewayCenterLaneAxis, freewayCrossing } from '../engine/fabric';
 import type { WorldState } from '../worldgen/pipeline';
 import { Camera, BASE_TILE } from './camera';
 import { C } from './snesPalette';
@@ -27,10 +27,13 @@ import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { isPowerConsumer } from '../growth/power';
-import { ambientAlpha, movingPose, trainPoses } from '../live/poses';
+import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
-import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, heading8, personKey } from './snesAgents';
+import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, windowsLit } from './snesAgents';
+import { transitFor } from '../live/transit';
+import { ridersAboard } from '../live/riders';
+import { tentsAt } from '../live/camps';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
@@ -121,20 +124,30 @@ function washLevel(v: number): number {
 }
 const GARBAGE_WEAR = 150; // wear at/above which a worn empty tile shows discarded junk
 
-/** What a tile's desire-path wear bakes into the base: beaten earth in three depths, then junk, then tents. */
-function wearMarks(wear: number): { level: number; nJunk: number; nTents: number } {
+/** What a tile bakes into the base: its desire-path wear's beaten earth (three depths) and junk; and the tents of
+ *  the people camped there (live/camps.ts) — tents are people, never wear (Maddy 2026-10-08). */
+function wearMarks(wear: number, people: number): { level: number; nJunk: number; nTents: number } {
+  const nTents = tentsAt(people);
+  const worn = wear >= GARBAGE_WEAR ? (wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1) : 0;
   return {
     level: wear >= 200 ? 3 : wear >= 120 ? 2 : wear >= 50 ? 1 : 0,
-    nJunk: wear >= (GARBAGE_WEAR + ENCAMPMENT_WEAR) / 2 ? 2 : 1,
-    nTents: wear >= ENCAMPMENT_WEAR ? Math.min(3, 1 + Math.floor((wear - ENCAMPMENT_WEAR) / 12)) : 0,
+    nJunk: nTents > 0 ? Math.max(1, worn) : worn,
+    nTents,
   };
 }
 
 /** A signature of exactly what wearMarks draws on a tile (0 = nothing), with or without the encampment layer. */
-function wearSig(wear: number, encampments: boolean): number {
-  const m = wearMarks(wear);
-  if (!encampments || wear < GARBAGE_WEAR) return m.level;
+function wearSig(wear: number, people: number, encampments: boolean): number {
+  const m = wearMarks(wear, people);
+  if (!encampments || (m.nJunk === 0 && m.nTents === 0)) return m.level;
   return m.level | (m.nJunk << 2) | (m.nTents << 4) | 64;
+}
+
+/** The tiles that may carry live marks: worn ground and camps. */
+function markTiles(ambient: AmbientState): number[] {
+  const tiles = new Set<number>(ambient.wear.keys());
+  for (const t of ambient.camps?.keys() ?? []) tiles.add(t);
+  return [...tiles].sort((a, b) => a - b);
 }
 
 /** A device-pixel rect of the base canvas (a patched tile, for the GPU's sub-upload). */
@@ -248,6 +261,9 @@ export class Renderer {
   // Canvas2D base goes transparent. Sprites/decorations/UI still draw on top. The CPU path stays the
   // no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
   private gpuMode = false;
+  // Building light baked with the base, for the GPU (Maddy 2026-10-08): lit windows (night) and furnaces (always).
+  private readonly emitNight: HTMLCanvasElement;
+  private readonly emitAlways: HTMLCanvasElement;
   private baseTexVersion = 0; // bumped each base rebuild so the GPU path knows to re-upload the base texture
   // Cached base pass (terrain + built + overlay) on an offscreen canvas. Rebuilt
   // ONLY when invalidated (map/camera/overlay change), then blitted 1:1 onto the
@@ -305,6 +321,8 @@ export class Renderer {
     this.ctx = canvas.getContext('2d')!;
     this.base = document.createElement('canvas');
     this.baseCtx = this.base.getContext('2d')!;
+    this.emitNight = document.createElement('canvas');
+    this.emitAlways = document.createElement('canvas');
     const ns = (prefix: string): Map<string, AtlasImage> => new Map([...skin].filter(([k]) => k.startsWith(prefix)));
     this.atlas = buildAtlas(skin);
     this.tileVariants = variantCounts([...skin.keys(), ...(skin.lazy?.keys ?? [])]);
@@ -458,7 +476,36 @@ export class Renderer {
     // identity 1:1 blit lands at the exact device pixels (no rescale/blur).
     this.base.width = Math.round(cssWidth * dpr);
     this.base.height = Math.round(cssHeight * dpr);
+    for (const c of [this.emitNight, this.emitAlways]) {
+      c.width = this.base.width;
+      c.height = this.base.height;
+    }
     this.baseDirty = true; // the resized base canvas is cleared → must redraw
+  }
+
+  /** Bake the light-bearing buildings' emission maps into the two emission layers, on the base's grid — the GPU adds
+   *  them over the lit scene (windows by night, furnaces always), so they glow under the agents, not over them. */
+  private bakeEmission(camera: Camera): void {
+    const ts = camera.tileSize;
+    const layers = [this.emitNight, this.emitAlways].map((c) => {
+      const g = c.getContext('2d')!;
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, c.width, c.height);
+      g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      g.imageSmoothingEnabled = false;
+      return g;
+    });
+    for (const b of this.emissiveBuildings) {
+      if (!b.lit) continue;
+      const { dx, dy } = camera.tileOrigin(b.x, b.y);
+      const isPower = b.kind >= 24 && b.kind <= 30; // power plants run 24/7
+      layers[isPower ? 1 : 0]!.drawImage(b.lit, dx, dy, b.w * ts, b.h * ts);
+    }
+  }
+
+  /** The building light layers baked with the base (GPU mode): windows (night-gated) and furnaces (always on). */
+  emissionLayers(): { night: HTMLCanvasElement; always: HTMLCanvasElement } {
+    return { night: this.emitNight, always: this.emitAlways };
   }
 
   /** Mark the cached base pass stale (map/camera/overlay changed). */
@@ -536,6 +583,18 @@ export class Renderer {
         const terrain =
           (murk > 0 ? this.atlas.get(`${picked}~m${murk}`) : undefined) ?? this.atlas.get(picked) ?? this.atlas.get(terrainKey)!;
         ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+        // murkier water next door bleeds a dithered band across the shared edge, so a narrow creek's murk eases
+        // from tile to tile instead of stepping in blocks (snesTileset murkEdge)
+        if (isWater && ambient) {
+          for (let d = 0; d < 4; d++) {
+            const nx = tx + DIR_DX[d]!;
+            const ny = ty + DIR_DY[d]!;
+            if (!map.inBounds(nx, ny) || map.water[map.idx(nx, ny)] === 0) continue;
+            const n = washLevel(murkAt(map, ambient.waterPollution, nx, ny));
+            const edge = n > murk ? this.atlas.get(`${picked}~m${n}~e${d}`) : undefined;
+            if (edge) ctx.drawImage(edge, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+          }
+        }
 
         // ASPHALT GROUND: redlined OPEN ground reads as paved-over disinvestment (env-justice arc);
         // the player DE-PAVES it back to living ground by greening/rewilding nearby (depaveAsphalt
@@ -622,8 +681,11 @@ export class Renderer {
           // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, the road's asphalt band runs
           // ACROSS the track with the rails showing through it; the white stop lines go on top, after.
           const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
-          if (xMask & (N | S)) ink('@road/xband/v', dx, dy); // road runs N–S
-          if (xMask & (E | W)) ink('@road/xband/h', dx, dy); // road runs E–W
+          // in the crossing's own surface: a road's (or quiet street's) asphalt, a bike path's lane, a promenade's pavers
+          const xKind = xMask !== 0 ? railCrossingKind(map, tx, ty) : 0;
+          const band = xKind === BuiltKind.BikePath ? '@road/xband-bike' : xKind === BuiltKind.Promenade ? '@road/xband-ped' : '@road/xband';
+          if (xMask & (N | S)) ink(`${band}/v`, dx, dy); // runs N–S
+          if (xMask & (E | W)) ink(`${band}/h`, dx, dy); // runs E–W
           // Limited-access DIVIDER: a concrete barrier on each edge where a freeway abuts a surface
           // road (a frontage avenue) — you physically can't cross there, only at a ramp. Per-tile
           // (depends on neighbour kinds), drawn OVER the road like the power poles, not an atlas key.
@@ -653,11 +715,14 @@ export class Renderer {
             }
             const sig = signalCorners(map, tx, ty);
             if (sig !== 0) signals.push({ x: tx, y: ty, corners: sig });
-            if (curb !== 0) ink(`@road/curb/${curb}`, dx, dy);
+            // a parklet takes the kerb's place (Maddy 2026-10-08)
+            if (curb !== 0) ink(map.deck[i] === BuiltKind.Parklet ? `@road/parklet/${curb}` : `@road/curb/${curb}`, dx, dy);
+            const kerbs = tramKerbMask(map, tx, ty);
+            if (kerbs !== 0) ink(`@road/kerb/${kerbs}`, dx, dy); // a tram street's small kerbs
 
             // Level-crossing PAINT: the white stop line a road has at a rail/tram crossing, on each
             // road-approach edge (the asphalt band + rails are already laid below/in the rail tile).
-            if (xMask !== 0) ink(`@road/xing/${xMask}`, dx, dy);
+            if (xMask !== 0 && isRoadKind(xKind)) ink(`@road/xing/${xMask}`, dx, dy); // stop lines where cars cross
 
             // Freeway lane markings — ONLY on a WIDE (multi-lane) freeway (a 1-wide highway keeps its
             // own double-yellow). Two parts, neither doubled (Maddy 2026-06-19): (1) a dashed gold
@@ -688,7 +753,7 @@ export class Renderer {
           // reads as grade-separated. Keys through the same atlas tiles as at-grade elev/promenade
           // (deckMask over the deck layer), so no new keyspace.
           const deck = map.deck[i]!;
-          if (deck !== 0) {
+          if (deck !== 0 && deck !== BuiltKind.Parklet) { // a parklet is at grade, drawn in the kerb (above)
             const deckTile = this.atlas.get(builtRenderKey(deck, deckMask(map, tx, ty), 'c', 0));
             if (deckTile) {
               // lift and shadow offset in whole art pixels, the shadow a half-tone dither
@@ -753,23 +818,25 @@ export class Renderer {
       const ps = ts / BASE_TILE; // one art pixel
       const mapW2 = world.map.width;
       const encampments = camera.zoom >= 2 && skinTents.length > 0;
-      for (const [tile, wear] of ambient.wear) {
+      for (const tile of markTiles(ambient)) {
+        const wear = ambient.wear.get(tile) ?? 0;
+        const people = ambient.camps?.get(tile) ?? 0;
         const wx = tile % mapW2;
         const wy = (tile - wx) / mapW2;
         if (near && (wx < near.x0 || wx > near.x1 || wy < near.y0 || wy > near.y1)) continue;
         if (!this.wearShown(camera, wx, wy)) continue;
         if (full) {
-          const sig = wearSig(wear, encampments);
+          const sig = wearSig(wear, people, encampments);
           if (sig !== 0) this.bakedMarks.set(tile, sig);
         }
         const tileHash = Math.imul(((wx * 73856093) ^ (wy * 19349663)) >>> 0, 0x9e3779b1) >>> 0;
         {
           // beaten earth in three depths (no translucent wash over the pixel art)
-          const { level, nJunk, nTents } = wearMarks(wear);
+          const { level, nJunk, nTents } = wearMarks(wear, people);
           const o = camera.tileOrigin(wx, wy);
           const img = level > 0 ? this.sprites.get(`@wear/${level}`) : undefined;
           if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, o.dx, o.dy, ts, ts);
-          if (encampments && wear >= GARBAGE_WEAR) {
+          if (encampments && nJunk + nTents > 0) {
             const pick = (set: AtlasImage[], k: number): AtlasImage =>
               set[(Math.imul((tileHash ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 16) % set.length]!;
             const items = [
@@ -814,10 +881,10 @@ export class Renderer {
     const dirty = new Set<number>();
     const encampments = camera.zoom >= 2 && [0, 1, 2].some((k) => this.sprites.has(`@sprite/tent/${k}`));
     const marks = new Map<number, number>();
-    for (const [tile, wear] of ambient.wear) {
+    for (const tile of markTiles(ambient)) {
       const wx = tile % map.width;
       if (!this.wearShown(camera, wx, (tile - wx) / map.width)) continue;
-      const sig = wearSig(wear, encampments);
+      const sig = wearSig(ambient.wear.get(tile) ?? 0, ambient.camps?.get(tile) ?? 0, encampments);
       if (sig !== 0) marks.set(tile, sig);
       if (sig !== (this.bakedMarks.get(tile) ?? 0)) dirty.add(tile);
     }
@@ -834,7 +901,11 @@ export class Renderer {
       if (k !== 'ocean' && k !== 'lake' && k !== 'river') return;
       const level = washLevel(murkAt(map, ambient.waterPollution, x, y));
       murk.set(j, level);
-      if (level !== (this.bakedMurk.get(j) ?? 0)) dirty.add(j);
+      if (level !== (this.bakedMurk.get(j) ?? 0)) {
+        dirty.add(j);
+        // its neighbours' edges blend toward it (murkEdge): they redraw too
+        for (let d = 0; d < 4; d++) if (map.inBounds(x + DIR_DX[d]!, y + DIR_DY[d]!)) dirty.add(map.idx(x + DIR_DX[d]!, y + DIR_DY[d]!));
+      }
     };
     for (const tile of ambient.waterPollution.keys()) {
       const x = tile % map.width;
@@ -907,6 +978,7 @@ export class Renderer {
     // day-night/grass/clouds); the visible Canvas2D is cleared transparent so the shader shows through.
     if (this.baseDirty) {
       this.drawBase(world, camera, ambient);
+      if (this.gpuMode) this.bakeEmission(camera);
       this.baseDirty = false;
       this.baseTexVersion++; // signals the GPU path to re-upload the base texture
     }
@@ -977,7 +1049,8 @@ export class Renderer {
    *  glow at the DPR transform, culled to the viewport. Cosmetic shell — live-pass tuned. */
   private drawSprites(world: WorldState, camera: Camera, ambient: AmbientState): void {
     const alpha = ambientAlpha(ambient); // interpolate agents between 50 ms substeps
-    const onRoadAt = (x: number, y: number): boolean => world.map.inBounds(x, y) && isRoadKind(world.map.built[world.map.idx(x, y)]!);
+    const onRoadAt = streetAt(world.map);
+    const laneAt = laneOnTile(world.map);
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const ts = camera.tileSize;
@@ -990,7 +1063,7 @@ export class Renderer {
     // Each mover near the view is posed ONCE this frame (culled on its raw position first); the GPU glow
     // pass reuses the same poses (framePoses.ts).
     const cam = camera.screenToWorld(0, 0);
-    const poses = computeFramePoses(ambient, viewRect(cam.wx, cam.wy, ts, w, h, 1), alpha, onRoadAt);
+    const poses = computeFramePoses(ambient, viewRect(cam.wx, cam.wy, ts, w, h, 1), alpha, onRoadAt, laneAt);
     shareFramePoses(ambient, poses);
 
     // (Desire-path WEAR + its JUNK/TENTS are now baked into the cached BASE in drawBase — ground level,
@@ -1169,11 +1242,33 @@ export class Renderer {
 
     // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
     // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
+    // A stop's sign stands on its platform, at the edge by the track — where people wait (docs/design/transit.md).
+    for (const s of transitFor(world.map).lines.flatMap((l) => l.stops)) {
+      const px = s.platform % mapW;
+      const py = (s.platform - px) / mapW;
+      const tx = s.track % mapW;
+      const ty = (s.track - tx) / mapW;
+      const wx = px + 0.5 + (tx - px) * 0.4;
+      const wy = py + 0.5 + (ty - py) * 0.4;
+      const { sx, sy } = camera.worldToScreen(wx, wy);
+      const img = onScreen(sx, sy) ? this.sprites.get(`@sprite/transit-stop/${s.family}`) : undefined;
+      if (img) this.drawArt(ctx, img, wx, wy - 0.15, camera);
+    }
+    // Riders aboard show in the windows, a head a window, more as a car fills (Maddy 2026-10-08: she couldn't tell
+    // whether anyone rode); a train's riders fill the cars behind its loco.
+    const aboard = ridersAboard(ambient);
     for (const tr of ambient.trains) {
+      const n = aboard.get(tr) ?? 0;
+      const seatedCars = tr.family === 'tram' ? tr.cells.length : Math.max(1, tr.cells.length - 1);
+      const lit = windowsLit(n / Math.max(1, seatedCars));
       trainPoses(tr, mapW, alpha).forEach((q, k) => {
         const { sx, sy } = camera.worldToScreen(q.x, q.y);
         if (!onScreen(sx, sy)) return;
-        const img = this.sprites.get(`@sprite/train/${k === 0 ? 'loco' : 'car'}/${heading8(q.hx, q.hy)}`);
+        const img = this.sprites.get(
+          tr.family === 'tram'
+            ? `@sprite/tram/${k === 0 ? 'head' : 'car'}/${heading8(q.hx, q.hy)}/${lit}`
+            : k === 0 ? `@sprite/train/loco/${heading8(q.hx, q.hy)}` : `@sprite/train/car/${heading8(q.hx, q.hy)}/${lit}`,
+        );
         if (img) this.drawArt(ctx, img, q.x, q.y, camera);
         addBody(q.x, q.y, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
       });
@@ -1191,7 +1286,7 @@ export class Renderer {
       const moving = p.tx !== p.x || p.ty !== p.y;
       const frame = moving ? Math.floor(performance.now() / 220 + (seed & 7)) % 2 : 0; // a two-step walk
       const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame));
+      const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame, bike ? bikeFacing(pose.hx, pose.hy) : undefined));
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       if (p.gather && marching.has(p.gather.id)) {
         const sign = this.sprites.get(`@sprite/placard/${seed & 1}`);
@@ -1465,7 +1560,7 @@ export class Renderer {
         // Power plants (24–30) run 24/7 → glow always on; everything else is lit WINDOWS → night-gated.
         const isPower = b.kind >= 24 && b.kind <= 30;
         const a = isPower ? 1 : night;
-        const stat = b.lit;
+        const stat = this.gpuMode ? undefined : b.lit; // on the GPU the steady light is baked with the base
         if (stat && a > 0.02) {
           ctx.globalAlpha = a;
           ctx.drawImage(stat, sx, sy, w, h);

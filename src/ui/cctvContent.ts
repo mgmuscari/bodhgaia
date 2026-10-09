@@ -29,12 +29,35 @@ export function cctvFrame(ev: LiveEvent, vw: number, vh: number): { zoom: number
   return { zoom, cx: ev.x + ev.w / 2, cy: ev.y + ev.h / 2 };
 }
 
-/** The caption under the feed. */
-export function cctvLabel(ev: LiveEvent): string {
-  return ev.kind === 'death' ? 'A resident has died' : ev.kind === 'fire' ? 'Fire' : ev.kind === 'spill' ? 'Toxic spill' : ev.kind === 'flood' ? 'Flood' : ev.kind === 'crash' ? 'Crash' : ev.kind === 'protest' ? 'Protest' : ev.kind === 'uprising' ? 'Uprising' : 'Arrest';
+/** The main view's zoom when the feed is clicked (the guided tour's close view). */
+export const GO_TO_ZOOM = 3;
+
+/** Where clicking the feed takes the main view: the event's centre, close up. */
+export function cctvGoTo(ev: LiveEvent): { x: number; y: number; zoom: number } {
+  return { x: ev.x + ev.w / 2, y: ev.y + ev.h / 2, zoom: GO_TO_ZOOM };
 }
 
-const RANK: Record<LiveEvent['kind'], number> = { death: 0, fire: 1, spill: 1, flood: 1, crash: 1, protest: 1, uprising: 1, arrest: 2 };
+/** The caption under the feed. */
+export function cctvLabel(ev: LiveEvent): string {
+  return LABELS[ev.kind];
+}
+
+const LABELS: Record<LiveEvent['kind'], string> = {
+  death: 'A resident has died',
+  fire: 'Fire',
+  spill: 'Toxic spill',
+  flood: 'Flood',
+  crash: 'Crash',
+  protest: 'Protest',
+  uprising: 'Uprising',
+  arrest: 'Arrest',
+  party: 'Block party',
+  fair: 'Craft fair',
+  festival: 'Festival',
+};
+
+/** Deaths first, then disasters and protest; arrests and celebrations give way to everything else. */
+const RANK: Record<LiveEvent['kind'], number> = { death: 0, fire: 1, spill: 1, flood: 1, crash: 1, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2 };
 
 /** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
  *  only a few wait. */

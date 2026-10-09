@@ -90,6 +90,21 @@ describe('createToolController: selection', () => {
     expect(h.log).toEqual(['refresh', 'refresh']);
   });
 
+  it('opening another category puts the selected tool down; reopening its own keeps it (Maddy 2026-10-08)', () => {
+    const h = setup();
+    const menu = () => h.mount().getMenu();
+    const [a, b] = menu().categories;
+    h.mount().onToggleCategory(a!.id);
+    const tool = menu().rows[0]!.id;
+    h.mount().onSelect(tool);
+    h.mount().onToggleCategory(a!.id); // close its own flyout
+    h.mount().onToggleCategory(a!.id); // and open it again
+    expect(menu().rows.find((r) => r.id === tool)?.selected).toBe(true);
+    h.mount().onToggleCategory(b!.id); // another category
+    expect(menu().open).toBe(b!.id);
+    expect(menu().categories.some((c) => c.hasSelected)).toBe(false); // nothing selected anywhere
+  });
+
   it('prices the fabric from the wallet (read at menu time)', () => {
     const h = setup({ funds: 0 });
     const cat = h.mount().getMenu().categories.find((c) => c.id === 'transit')!.id;

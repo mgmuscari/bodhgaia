@@ -10,6 +10,9 @@
 // rng draws is load-bearing (tests/live/golden.test.ts).
 
 import { stepGatherer } from './gatherings';
+import { stepRider } from './riders';
+import { recordVisit } from './unhoused';
+import { carPose, easeFrom } from './poses';
 import type { GameMap } from '../engine/map';
 import { TravelMode, modeSpeedMult } from '../citizens/modes';
 import type { Rng } from '../engine/rng';
@@ -25,6 +28,7 @@ import {
   WORN_WALK_PENALTY,
 } from './tuning';
 import type { AmbientState, Ped } from './types';
+import { offStreet } from './types';
 import {
   advanceItinerary,
   boardOwnedCar,
@@ -43,7 +47,6 @@ import { layPollution, layTraffic } from './fields/pollution';
 import { advanceMover, commitHeading, pathStep, rerouteIfStuck, spaceClear, uTurnIfStuck } from './motion';
 import { fuelBurn, nearestWalkable, nextStepToward, refuelFor, usesCommittedPath, walkPath } from './pathing';
 import { isWalkable, reachedPlot } from './network';
-import { pedLegLateral } from './poses';
 import { carSpeed, type VehicleCtx } from './cars';
 
 type Phase = NonNullable<Ped['phase']>;
@@ -83,7 +86,7 @@ function finishOnFoot(p: Ped): void {
  * peds 'inside' a building are hidden and exempt. (Maddy: pedestrians crossing water / freeways.)
  */
 function snapToWalkable(map: GameMap, p: Ped): boolean {
-  if (p.phase === 'driving' || p.phase === 'inside' || isWalkable(map, Math.round(p.x), Math.round(p.y))) return true;
+  if (offStreet(p) || isWalkable(map, Math.round(p.x), Math.round(p.y))) return true;
   const w = nearestWalkable(map, Math.round(p.x), Math.round(p.y));
   if (w === null) return false;
   p.x = w.x;
@@ -103,6 +106,10 @@ const stepInside: PedStep = (state, map, _rng, _ctx, p) => {
   if (p.itinerary !== undefined) {
     // A CITIZEN on a daily round: go to the next stop (each leg picks its own mode), or head home.
     if (!advanceItinerary(state, p, map)) headHome(state, p, map); // round done → drive/walk home
+  } else if (p.shelter !== undefined) {
+    // someone unhoused: back to their camp
+    p.phase = 'to-home';
+    p.walkTo = homeXY(map, p.shelter);
   } else if (p.carId !== undefined) {
     // A sim/freight last-mile ped: walk back to its parked car and release it.
     const car = findCar(state, p.carId);
@@ -159,6 +166,7 @@ const stepDriving: PedStep = (state, map, _rng, ctx, p) => {
   p.x = car.x;
   p.y = car.y;
   finishOnFoot(p);
+  easeFrom(p, carPose(car)); // out of the car (drawn where it is pulling in), onto the kerb
   p.fuel = undefined; // fresh walking leg
   return true;
 };
@@ -167,6 +175,8 @@ const PHASE_STEP: Partial<Record<Phase, PedStep>> = {
   inside: stepInside,
   driving: stepDriving,
   gathering: (state, map, rng, _ctx, p) => stepGatherer(state, map, rng, p),
+  transit: (state, map, _rng, _ctx, p) => stepRider(state, map, p),
+  riding: (state, map, _rng, _ctx, p) => stepRider(state, map, p),
 };
 
 // --- walking a leg -------------------------------------------------------------
@@ -233,7 +243,9 @@ function advanceLeg(state: AmbientState, map: GameMap, p: Ped, tgtx: number, tgt
   const speed = PED_SPEED * modeSpeedMult(mode, hereKind);
   if (usesCommittedPath(mode)) {
     commitWalkRoute(state, map, p, tgtx, tgty);
-    return p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y), undefined, pedLegLateral(map, p));
+    // walkers keep their own pace round corners (Maddy 2026-10-08: the vehicles' arc pacing, at the kerb's tight
+    // radius, shot them round at up to 13× a walk)
+    return p.path !== undefined && advanceMover(p, speed, map, (x, y) => pathStep(map, p, x, y), undefined, 0, false);
   }
   // Transit legs (streetcar/elevated) hug their OWN line via the greedy mode-cost step (walkPath
   // doesn't know a tram network; a rider must prefer its rails). Dithering is rare on open lines.
@@ -243,7 +255,8 @@ function advanceLeg(state: AmbientState, map: GameMap, p: Ped, tgtx: number, tgt
     map,
     (x, y, _fromDir, recent) => nextStepToward(map, x, y, tgtx, tgty, recent, state.wear, mode, state.traffic, state.pollution),
     undefined,
-    pedLegLateral(map, p),
+    0,
+    false, // their own pace (see above)
   );
 }
 
@@ -263,6 +276,7 @@ const arriveAtVehicle: PedStep = (state, map, _rng, ctx, p) => {
 /** Reached the building → go inside; a successful visit refuels, and a citizen on a daily round
  *  BANKS the stop's wellbeing at home (less the leg's walk tolls). */
 const arriveAtBuilding: PedStep = (state, map, rng, _ctx, p) => {
+  if (p.shelter !== undefined && p.building) recordVisit(state, map.idx(p.building.x, p.building.y)); // a day out of the camp
   p.phase = 'inside';
   p.dwellInside = INSIDE_DWELL_MIN + rng.nextInt(INSIDE_DWELL_SPAN);
   if (p.building) {

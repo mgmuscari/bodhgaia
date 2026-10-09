@@ -3,6 +3,7 @@
 // join the unhoused for the duration) and they come home when the water goes; the first water brings the camera and
 // the news; the flooded tiles are published for the renderer and for routing.
 
+import { leftHome, wentHome } from '../live/camps';
 import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
@@ -56,14 +57,13 @@ export function createFloodController(deps: FloodDeps): FloodController {
         const n = Math.floor(live.occupancy.get(anchor) ?? 0);
         evacuated.set(anchor, n);
         live.occupancy.set(anchor, 0);
-        live.unhoused += n;
+        leftHome(live, anchor, n);
       }
       for (const [anchor, n] of [...evacuated]) {
         if (under.has(anchor)) continue;
         evacuated.delete(anchor);
-        const back = Math.min(n, Math.floor(live.unhoused));
+        const back = wentHome(live, anchor, Math.min(n, Math.floor(live.unhoused)));
         live.occupancy.set(anchor, (live.occupancy.get(anchor) ?? 0) + back);
-        live.unhoused -= back;
       }
       if (wasDry && ev.rose.length > 0) {
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;

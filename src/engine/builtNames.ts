@@ -49,6 +49,8 @@ const NAME_OF: ReadonlyMap<number, string> = new Map<number, string>([
   [BuiltKind.CompostHub, 'Compost Hub'],
   [BuiltKind.VerticalFarm, 'Vertical Farm'],
   [BuiltKind.WastewaterWorks, 'Wastewater Works'],
+  [BuiltKind.RetentionPond, 'Retention Pond'],
+  [BuiltKind.Site, 'Construction Site'],
   [BuiltKind.EnergyNode, 'Energy Node'],
   [BuiltKind.AINode, 'AI Node'],
   [BuiltKind.ADU, 'Accessory Dwelling'],

@@ -331,12 +331,17 @@ function pedTile(mask: number): Pixels {
 
 /** A level crossing: the road's asphalt band across the track, with the rails (on the rail tile's own
  *  rows) running through it. `axis` is the ROAD's direction; drawn over the rail tile. */
-function crossingBand(axis: 'v' | 'h'): Pixels {
+function crossingBand(axis: 'v' | 'h', surface: 'asphalt' | 'bike' | 'pavers' = 'asphalt'): Pixels {
   const p = blank(T, T);
   for (let a = 0; a < T; a++) {
     for (let b = 4; b <= 11; b++) {
       const [x, y] = axis === 'v' ? [b, a] : [a, b];
-      px(p, x, y, hash2(x, y, 6400) % 7 === 0 ? C.asphaltLo : C.asphalt);
+      // the crossing's own surface: asphalt, a bike path's green lane, a promenade's pavers
+      const c =
+        surface === 'bike' ? (b === 4 || b === 11 ? C.grass : C.leafLo)
+        : surface === 'pavers' ? ((x + y) % 2 === 0 ? C.paveHi : C.pave)
+        : hash2(x, y, 6400) % 7 === 0 ? C.asphaltLo : C.asphalt;
+      px(p, x, y, c);
     }
   }
   for (const r of [5, 10]) {
@@ -378,8 +383,28 @@ function murkTiles(out: Map<string, Pixels>): void {
         if (to) m.data.set(to, o);
       }
       out.set(`${k}~m${i + 1}`, m);
+      for (let d = 0; d < 4; d++) out.set(`${k}~m${i + 1}~e${d}`, murkEdge(m, d));
     });
   }
+}
+
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** Bayer thresholds (of 16) by distance from the edge: dense at it, gone six pixels in. */
+const EDGE_FADE = [14, 11, 8, 5, 3, 1];
+
+/** A murk tile kept only in an ordered-dither band along edge `d` (N=0 E=1 S=2 W=3), the rest transparent: drawn
+ *  over a cleaner neighbour so murk eases across the tile edge instead of stepping (a 1-wide creek showed hard
+ *  2-tile blocks). */
+function murkEdge(m: Pixels, d: number): Pixels {
+  const e: Pixels = { w: m.w, h: m.h, data: new Uint8ClampedArray(m.data) };
+  for (let y = 0; y < m.h; y++) {
+    for (let x = 0; x < m.w; x++) {
+      const dist = d === 0 ? y : d === 1 ? m.w - 1 - x : d === 2 ? m.h - 1 - y : x;
+      const keep = dist < EDGE_FADE.length && BAYER4[(y & 3) * 4 + (x & 3)]! < EDGE_FADE[dist]!;
+      if (!keep) e.data[(y * m.w + x) * 4 + 3] = 0;
+    }
+  }
+  return e;
 }
 
 /** Flood water (disasters.md): the river's own tile in its murky recolour, two variants the renderer alternates for
@@ -446,6 +471,10 @@ function washTiles(out: Map<string, Pixels>): void {
 function transportTiles(out: Map<string, Pixels>): void {
   out.set('@road/xband/v', crossingBand('v'));
   out.set('@road/xband/h', crossingBand('h'));
+  for (const a of ['v', 'h'] as const) {
+    out.set(`@road/xband-bike/${a}`, crossingBand(a, 'bike'));
+    out.set(`@road/xband-ped/${a}`, crossingBand(a, 'pavers'));
+  }
   // full road tiles (lane paint in the palette) + the per-tile street furniture overlays
   snesRoadTiles(out, [1, 2, 3, 7, 10], [1, 2, 3]);
   for (let m = 0; m < 16; m++) {

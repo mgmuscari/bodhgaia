@@ -137,9 +137,10 @@ describe('pedestrian edge cases — U-turns and stepping on/off the road stay sm
     // …and out on the open ground it walks down the middle (no kerb offset)
     const mid = pedPose(at(mover(6, 5, 1, 1) as Mover, 0.5), onRoad);
     expect(mid.y).toBeCloseTo(5.5, 6);
-    // while on the road tile it keeps to the kerb
+    // while on the road tile it keeps to a kerb, not the middle (which kerb is the walker's own sidewalk — the
+    // kerb is fixed to the map since 2026-10-08, not to the walker's right)
     const onKerb = pedPose(at(mover(5, 5, 1, 1) as Mover, 0.5), onRoad);
-    expect(onKerb.y).toBeGreaterThan(5.8);
+    expect(Math.abs(onKerb.y - 5.5)).toBeGreaterThan(0.1);
   });
 });
 
@@ -172,7 +173,7 @@ describe('turning keeps pace (Maddy 2026-09-30: cars turning corners way too slo
   });
 });
 
-import { snapPose, pedLateral } from '../../src/live/poses';
+import { snapPose } from '../../src/live/poses';
 
 describe('snapPose poses the snapshot itself (P2: no per-frame copy of the agent)', () => {
   it('hands the lateral callback the snapshot object, not a copy of the whole mover', () => {
@@ -191,7 +192,7 @@ describe('snapPose poses the snapshot itself (P2: no per-frame copy of the agent
     m.snap = { x: 4.6, y: 5, dir: 1, prevDir: 0, tx: 5, ty: 5 };
     const asOf = { ...m, ...m.snap } as Mover;
     expect(snapPose(m, 0.2)).toEqual(moverPose(asOf, 0.2));
-    const road = (x: number, y: number): boolean => (x + y) % 2 === 0;
-    expect(snapPose(m, (mv) => pedLateral(mv, road))).toEqual(moverPose(asOf, pedLateral(asOf, road)));
+    const profile = (mv: { x: number }) => ({ entry: 0.1, mid: mv.x > 5 ? 0.3 : 0.2, exit: 0.25 }); // a lateral that reads the leg
+    expect(snapPose(m, profile)).toEqual(moverPose(asOf, profile(asOf)));
   });
 });

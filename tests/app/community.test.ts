@@ -79,6 +79,7 @@ describe('a demo', () => {
     const t = town(false);
     expect(t.community.hold('block-party')).toBe(true);
     expect((t.live.gatherings ?? []).map((g) => g.kind)).toEqual(['block-party']);
+    expect(t.live.events?.some((e) => e.kind === 'party')).toBe(true); // and the camera goes
   });
 
   it('can hold a craft fair at a bazaar, and a festival with its parade, whatever the conditions', () => {
