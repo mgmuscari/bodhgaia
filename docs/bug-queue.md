@@ -166,7 +166,9 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   redlined banks, doesn't vanish). Live, non-hashed, deterministic; unit-tested. Cadence/dilution +
   a rain visual are tunable follow-ups. `docs/design/pollution-weather.md`.
 - 🟡 **Unhoused agents — shelter + days** — COUNT (shipped) + ENCAMPMENTS (2026-10-08: the unhoused live in
-  camps, `live/camps.ts`; tents are the people in them, not desire-path wear). REMAINING: per-event
+  camps, `live/camps.ts`; tents are the people in them, not desire-path wear) + DAYS OUT (2026-10-08: from the camps
+  to the commercial streets, thinning commerce's taxes there — `live/unhoused.ts`). Remaining (post-1.0): fuller
+  shelter-anchored rounds, dedicated shelter kinds. REMAINING: per-event
   displacement, shelter-anchored daily rounds, dedicated shelter kinds. `docs/design/unhoused-residents.md`.
 
 ### 5 — Hybrid satellite shader (done — audited 2026-10-08)
