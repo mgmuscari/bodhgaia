@@ -22,15 +22,16 @@ describe('createAudio without WebAudio', () => {
 });
 
 describe('installAudioUnlock', () => {
-  const counting = () => {
+  // The engine counts unlocks, and is "ready" once one lands — until the device sleeps and the browser suspends it.
+  const engineLike = () => {
     let n = 0;
-    const engine = { unlock: () => void n++ } as unknown as AudioEngine;
-    return { engine, count: () => n };
+    const e = { ready: false, unlock: () => void (n++, (e.ready = true)) };
+    return { engine: e as unknown as AudioEngine & { ready: boolean }, count: () => n, sleep: () => void (e.ready = false) };
   };
 
-  it('unlocks on the first pointerdown, once', () => {
+  it('unlocks on the first pointerdown, and not again while the sound runs', () => {
     const t = new EventTarget();
-    const e = counting();
+    const e = engineLike();
     installAudioUnlock(e.engine, t);
     t.dispatchEvent(new Event('pointerdown'));
     t.dispatchEvent(new Event('pointerdown'));
@@ -38,17 +39,42 @@ describe('installAudioUnlock', () => {
     expect(e.count()).toBe(1);
   });
 
-  it('or on the first keydown', () => {
+  it('or on the first keydown — or a finger lifting (phones only count the lift as a gesture)', () => {
+    for (const type of ['keydown', 'touchend', 'pointerup']) {
+      const t = new EventTarget();
+      const e = engineLike();
+      installAudioUnlock(e.engine, t);
+      t.dispatchEvent(new Event(type));
+      expect(e.count(), type).toBe(1);
+    }
+  });
+
+  // Maddy 2026-10-08: "if the device goes to sleep the sound is gone when it wakes back up".
+  it('after the device sleeps (the browser suspends the sound), the next tap brings it back', () => {
     const t = new EventTarget();
-    const e = counting();
+    const e = engineLike();
     installAudioUnlock(e.engine, t);
-    t.dispatchEvent(new Event('keydown'));
-    expect(e.count()).toBe(1);
+    t.dispatchEvent(new Event('pointerdown'));
+    e.sleep();
+    t.dispatchEvent(new Event('pointerdown'));
+    expect(e.count()).toBe(2);
+    expect(e.engine.ready).toBe(true);
+  });
+
+  it('and coming back into view tries at once, without waiting for a tap', () => {
+    const t = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    const e = engineLike();
+    installAudioUnlock(e.engine, t, doc as unknown as Document);
+    t.dispatchEvent(new Event('pointerdown'));
+    e.sleep();
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(e.count()).toBe(2);
   });
 
   it('returns an uninstaller', () => {
     const t = new EventTarget();
-    const e = counting();
+    const e = engineLike();
     const off = installAudioUnlock(e.engine, t);
     off();
     t.dispatchEvent(new Event('pointerdown'));

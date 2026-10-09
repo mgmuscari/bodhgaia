@@ -61,16 +61,25 @@ export function applyAudioSettings(engine: AudioEngine, a: AudioSettings): void 
   engine.setMuted(a.muted);
 }
 
-/** Unlock audio on the first pointerdown/keydown (once). Returns an uninstaller. */
-export function installAudioUnlock(engine: AudioEngine, target: EventTarget = window): () => void {
-  const events = ['pointerdown', 'keydown'] as const;
-  const off = (): void => {
-    for (const e of events) target.removeEventListener(e, onGesture, true);
+/** Unlock audio on a gesture whenever it isn't running: the first one, and again after the device sleeps and the
+ *  browser suspends it (Maddy 2026-10-08: the sound was gone on waking). A finger lifting counts — phones only treat
+ *  the lift as a gesture — and coming back into view tries at once. Returns an uninstaller. */
+export function installAudioUnlock(
+  engine: AudioEngine,
+  target: EventTarget = window,
+  doc: Document | undefined = typeof document === 'undefined' ? undefined : document,
+): () => void {
+  const events = ['pointerdown', 'pointerup', 'touchend', 'keydown'] as const;
+  const onGesture = (): void => {
+    if (!engine.ready) engine.unlock();
   };
-  function onGesture(): void {
-    off();
-    engine.unlock();
-  }
+  const onVisible = (): void => {
+    if (doc?.visibilityState === 'visible') onGesture();
+  };
   for (const e of events) target.addEventListener(e, onGesture, true);
-  return off;
+  doc?.addEventListener('visibilitychange', onVisible);
+  return () => {
+    for (const e of events) target.removeEventListener(e, onGesture, true);
+    doc?.removeEventListener('visibilitychange', onVisible);
+  };
 }
