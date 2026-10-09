@@ -9,6 +9,7 @@
 
 import { blank, disc, hash2, hline, px, rect, vline, type Pixels, type RGB } from './pixelArt';
 import { C } from './snesPalette';
+import { STALL_COLS, STALL_ROWS } from './parkingContent';
 import {
   T, ROOF_RED, ROOF_BLUE, ROOF_BROWN, ROOF_SLATE, ROOF_GREEN, HOUSE_ROOFS, CONCRETE, key,
   lot, place, gable, flat, sawtooth, wall, windows, door, tree, tank, frame,
@@ -127,11 +128,21 @@ const parking: Painter = (W, H) => {
   rect(p, 0, 0, 1, H, C.pave);
   rect(p, W - 1, 0, 1, H, C.paveLo);
   rect(p, 0, H - 1, W, 1, C.paveLo);
-  for (let y = 2; y < H - 2; y += 8) for (let x = 3; x < W - 1; x += 4) vline(p, x, y, y + 4, C.line);
+  // stall lines run EAST–WEST between the rows of cars, which park east–west in a 2 × 3 grid per tile
+  // (parkingContent; Maddy 2026-10-08: the old north–south bays were too narrow for the cars in them) — one run per
+  // column of stalls, the middle left open where the noses meet
+  for (let ty = 0; ty + T <= H; ty += T) {
+    for (let tx = 0; tx + T <= W; tx += T) {
+      for (let r = 1; r < STALL_ROWS; r++) {
+        const y = ty + Math.round((r * T) / STALL_ROWS) - 1;
+        for (let c = 0; c < STALL_COLS; c++) hline(p, tx + (c * T) / STALL_COLS + 1, tx + ((c + 1) * T) / STALL_COLS - 2, y, C.line);
+      }
+    }
+  }
   // attendant's booth + light posts
   const L = blank(W, H);
-  rect(L, W - 5, H - 6, 3, 3, C.paveHi);
-  px(L, W - 4, H - 5, C.glass);
+  rect(L, (W >> 1) - 1, H - 4, 2, 2, C.paveHi); // in the open strip between the bays, never on a parked car
+  px(L, (W >> 1) - 1, H - 4, C.glass);
   for (let x = 1; x < W - 6; x += 16) px(L, x + 1, 1, C.lineYellow);
   place(p, L);
   return p;
