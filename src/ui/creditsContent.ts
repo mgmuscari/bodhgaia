@@ -59,11 +59,15 @@ export const GPL7_TERMS: string[] = [
     'CONSUMER, SO SOME OR ALL OF THE ABOVE EXCLUSIONS AND LIMITATIONS MAY NOT APPLY TO YOU.',
 ];
 
+declare const __APP_VERSION__: string;
+/** The release, from package.json (vite.config `define`). */
+export const GAME_VERSION = __APP_VERSION__;
+
 /** The credits as headed blocks — the help panel renders these in order. */
 export function creditsBlocks(): CreditsBlock[] {
   return [
     {
-      heading: GAME_NAME,
+      heading: `${GAME_NAME} ${GAME_VERSION}`,
       paragraphs: [
         `By ${AUTHOR}. Free software under the GNU General Public License, ${LICENCE}.`,
         `${GAME_NAME} is derived from the old simulator, the GPL release of the original 1989 city simulator. ` +
