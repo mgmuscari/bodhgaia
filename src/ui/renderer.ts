@@ -245,6 +245,12 @@ function footprintPos(map: GameMap, x: number, y: number, pid: number): Footprin
   return borders === 0 ? 'c' : borders === 1 ? 'e' : 'k';
 }
 
+/** Whether the encampments (tents and junk) are drawn: at every zoom, the farthest too (Maddy 2026-10-08) —
+ *  the tents are people; only missing tent art holds them back. */
+export function encampmentsShown(_zoom: number, tentArt: boolean): boolean {
+  return tentArt;
+}
+
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly atlas: Map<string, AtlasImage>;
@@ -829,7 +835,7 @@ export class Renderer {
       const skinJunk = [0, 1, 2, 3].map((i) => this.sprites.get(`@sprite/junk/${i}`)).filter((x): x is AtlasImage => !!x);
       const ps = ts / BASE_TILE; // one art pixel
       const mapW2 = world.map.width;
-      const encampments = camera.zoom >= 2 && skinTents.length > 0;
+      const encampments = encampmentsShown(camera.zoom, skinTents.length > 0);
       for (const tile of markTiles(ambient)) {
         const wear = ambient.wear.get(tile) ?? 0;
         const people = ambient.camps?.get(tile) ?? 0;
@@ -891,7 +897,7 @@ export class Renderer {
   private patchLiveMarks(world: WorldState, camera: Camera, ambient: AmbientState): void {
     const { map } = world;
     const dirty = new Set<number>();
-    const encampments = camera.zoom >= 2 && [0, 1, 2].some((k) => this.sprites.has(`@sprite/tent/${k}`));
+    const encampments = encampmentsShown(camera.zoom, [0, 1, 2].some((k) => this.sprites.has(`@sprite/tent/${k}`)));
     const marks = new Map<number, number>();
     for (const tile of markTiles(ambient)) {
       const wx = tile % map.width;
