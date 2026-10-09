@@ -35,6 +35,12 @@
       /* the browser never zooms the page (Maddy 2026-10-08, mobile): every element pans only — panels still scroll, but
          no pinch or double-tap zoom; the map canvas takes none at all (ui/input.ts: its pinch is the game's zoom) */
       * { touch-action: pan-x pan-y; }
+      /* Safari zooms in on focusing a field smaller than 16 px — and then the page stays zoomed */
+      @media (hover: none) and (pointer: coarse) {
+        input, select, textarea {
+          font-size: 16px;
+        }
+      }
       /* UI kit (uiTheme.ts): every frame is a palette 9-slice drawn at whole-pixel scale */
       body {
         image-rendering: pixelated;
