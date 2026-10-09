@@ -54,8 +54,11 @@ export class Camera {
     this.clampPosition();
   }
 
+  /** A tile's edge in CSS px: zoom × BASE_TILE, rounded to a whole number of DEVICE pixels — at a scale where that
+   *  isn't whole (a 5K display at 225%, or Windows' not-quite 2.2000000476837), tiles of N.25 device px could never
+   *  abut and left a seam every few tiles (Maddy 2026-10-08). At most half a device pixel off the nominal size. */
   get tileSize(): number {
-    return this.zoom * BASE_TILE;
+    return Math.max(1, Math.round(this.zoom * BASE_TILE * this.dpr)) / this.dpr;
   }
 
   worldToScreen(wx: number, wy: number): { sx: number; sy: number } {

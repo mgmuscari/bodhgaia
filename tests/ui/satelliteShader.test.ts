@@ -36,7 +36,7 @@ describe('satelliteShader: fragment contract', () => {
   it('water laps like the flood: per tile in a checker, the art alternates with itself shifted, water onto water only', () => {
     expect(f).toMatch(/if \(type == SAT_WATER\)/);
     expect(f).toMatch(/mod\(floor\(u_time \/ WATER_LAP_S\) \+ wc\.x \+ wc\.y, 2\.0\)/);
-    expect(f).toMatch(/== SAT_WATER\) col = texture\(u_base, v_uv \+ shift\)\.rgb;/);
+    expect(f).toMatch(/== SAT_WATER\) col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_view\)\.rgb;/);
   });
 
   it('maps screen UV through a camera region (origin + view), not the full grid', () => {
@@ -87,14 +87,15 @@ describe('satelliteShader: enum sync (CPU ↔ GPU)', () => {
   });
 });
 
-// Maddy 2026-10-08, Windows on a 5K display: "a little bit of tearing when water animates from side to side". At a
-// fractional display scale the lap's 2-art-pixel shift is not a whole number of base texels, and a LINEAR base blended
-// the shifted water half-way. The shift rounds to whole texels, sampled NEAREST, so it moves the art, never smears it.
-describe('the water lap shifts whole texels', () => {
-  it('rounds the lap offset to the base texture’s own texels', () => {
+// Maddy 2026-10-08, Windows on a 5K display: "a little bit of tearing when water animates from side to side" — and in
+// 1.0.1, rounding the shift to whole texels didn't cure it: at a fractional scale an art pixel is 4.4 device px, so no
+// whole-texel shift is a whole number of art pixels. The lap reads the art pixel two over AT ITS CENTRE: the shifted
+// picture is the art itself, moved exactly two art pixels, at any scale.
+describe('the water lap moves whole art pixels', () => {
+  it('samples the shifted art pixel at its own centre, not the screen pixel shifted by a texel count', () => {
     const src = buildFragmentSource();
-    expect(src).toMatch(/textureSize\(u_base, 0\)/);
-    expect(src).toMatch(/floor\(lap \/ u_view \* baseTexels \+ 0\.5\) \/ baseTexels/);
+    expect(src).toMatch(/col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_view\)\.rgb;/);
+    expect(src).not.toMatch(/baseTexels/);
   });
   it('the base is sampled NEAREST, never blended', async () => {
     const { readFileSync } = await import('node:fs');
