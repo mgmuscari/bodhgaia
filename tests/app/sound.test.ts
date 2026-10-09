@@ -57,3 +57,18 @@ describe('the siren', () => {
     expect(three.level).toBeLessThanOrEqual(0.25); // distant, never piercing
   });
 });
+
+// Maddy 2026-10-08: "the opening song of the game should be Kyabdro".
+import { firstPiece } from '../../src/app/sound';
+import { MUSIC_TRACKS, OPENING_TRACK } from '../../src/audio/music/tracks';
+
+describe('the game opens on Kyabdro', () => {
+  it('the first piece, whatever the hour, is Kyabdro — a track the manifest ships', () => {
+    expect(OPENING_TRACK).toBe('kyabdro-night');
+    expect(firstPiece()).toBe(OPENING_TRACK);
+    expect(MUSIC_TRACKS.find((t) => t.id === OPENING_TRACK)?.title).toBe('Kyabdro');
+  });
+  it('a DEV audition (?track=) still goes first', () => {
+    expect(firstPiece('satie-gymnopedie-1')).toBe('satie-gymnopedie-1');
+  });
+});
