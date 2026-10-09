@@ -1058,6 +1058,20 @@
           bottom: auto;
           right: 8px;
         }
+        /* a third of its size (Maddy 2026-10-08: "way too big on mobile"); the feed is mounted with an inline size.
+           The strip keeps the blinking dot and the time — the event's name is in the news ticker. */
+        #cctv canvas {
+          width: 80px !important;
+          height: 53px !important;
+        }
+        .cctv-caption, .cctv-rec-word {
+          display: none;
+        }
+        .cctv-bar {
+          justify-content: space-between;
+          gap: 4px;
+          padding: 0 4px;
+        }
         /* centred windows taller than the pane lost their top (title, close) above the screen: cap and scroll */
         .settings-panel, .help-panel {
           max-height: calc(100vh - var(--topbar-h) - var(--status-h) - 1rem);

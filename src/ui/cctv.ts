@@ -24,7 +24,11 @@ export function mountCctv(container: HTMLElement): CctvHandle {
   bar.className = 'cctv-bar';
   const rec = document.createElement('span');
   rec.className = 'cctv-rec';
-  rec.textContent = '● REC';
+  rec.textContent = '●';
+  const recWord = document.createElement('span');
+  recWord.className = 'cctv-rec-word'; // dropped on a phone, where the feed is small
+  recWord.textContent = ' REC';
+  rec.append(recWord);
   const caption = document.createElement('span');
   caption.className = 'cctv-caption';
   const time = document.createElement('span');

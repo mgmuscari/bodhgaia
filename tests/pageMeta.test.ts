@@ -113,3 +113,22 @@ describe('the CCTV inset and the colour key never meet on a phone', () => {
     expect(r).toMatch(/bottom:\s*auto/);
   });
 });
+
+// Maddy 2026-10-08: "cctv screen is way too big on mobile, reduce to 1/3 size". On a phone the feed is a third of
+// its width and height; its strip keeps the blinking dot and the time (the event's name is in the news ticker).
+import { CCTV_W, CCTV_H } from '../src/ui/cctvContent';
+describe('the CCTV feed on a phone', () => {
+  const blocks = [...html.matchAll(/@media \(max-width: 760px\) \{([\s\S]*?)\n {6}\}/g)].map((m) => m[1]!).join('\n');
+  /** Every declaration for `sel` in the phone blocks, grouped selectors included. */
+  const rule = (sel: string): string =>
+    [...blocks.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((r) => r[1]!.split(',').map((s) => s.trim()).includes(sel)).map((r) => r[2]!).join(';');
+  it('is a third of its size — overriding the inline size the feed is mounted with', () => {
+    const r = rule('#cctv canvas');
+    expect(r).toMatch(new RegExp(`width:\\s*${Math.round(CCTV_W / 3)}px !important`));
+    expect(r).toMatch(new RegExp(`height:\\s*${Math.round(CCTV_H / 3)}px !important`));
+  });
+  it('its strip drops the caption and the word REC, keeping the dot and the time', () => {
+    expect(rule('.cctv-caption')).toMatch(/display:\s*none/);
+    expect(rule('.cctv-rec-word')).toMatch(/display:\s*none/);
+  });
+});
