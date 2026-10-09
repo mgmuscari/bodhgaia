@@ -6,14 +6,9 @@ global config; this file covers only what is particular to this repo.
 ## What this is
 
 Bodhgaia is a dharmapunk browser city-builder: a deterministic, procedurally
-generated world in TypeScript (Vite + Vitest), in the GPL-3 lineage of the old simulator
-(the open-sourced the classic city-builder Classic, upstream [upstream](https://github.com/upstream),
-git remote `legacy`).
+generated world in TypeScript (Vite + Vitest), GPL-3.0-or-later.
 
-- **Live code is root `src/` / `tests/`.** The legacy ports (`legacy-activity/`,
-  `LegacyCore/`, `legacy-java/`, `turbogears/`, `laszlo/`, `aws/`,
-  `wikimedia/`, `legacy-graphics/`) and `BUGS.txt`/`NOTES.txt`/`PROGRESS.txt`
-  are reference-only.
+- **Code is `src/` / `tests/`.**
 - **`README.md` is the architecture doc** — layers, fabric, the Moses-century
   history stage, the live agent layer. Read it before touching an unfamiliar
   subsystem. Design notes live in `docs/design/`, decisions in `docs/decisions/`.

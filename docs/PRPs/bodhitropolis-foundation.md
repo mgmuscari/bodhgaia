@@ -7,7 +7,7 @@
 ## 1. Context Summary
 
 Build the platform slice for Bodhitropolis, the dharmapunk browser
-city-builder forked from the old simulator: a Vite + TypeScript + Vitest scaffold in
+city-builder: a Vite + TypeScript + Vitest scaffold in
 root `src/`/`tests/`, a deterministic sim kernel (seeded PRNG, fixed-tick
 loop), a layered 128×128 tile map model on typed arrays, a multi-stage
 worldgen pipeline with stage 1 (terrain: elevation noise, downhill rivers,
@@ -19,17 +19,8 @@ it.
 
 ## 2. Codebase Analysis
 
-- **Reference implementation for terrain feel**:
-  `legacy-java/src/legacyj/engine/MapGenerator.java`
-  - Rivers are random walks: `doBRiv()`/`doSRiv()` (lines 255-325) walk a
-    cursor, stamping 9×9 (`BRMatrix`) / 6×6 (`SRMatrix`) water blobs, with
-    probabilistic direction persistence (`PRNG.nextInt(r1+1) < 10` keeps
-    direction; two `> 90` rolls bend it). Lakes are clustered blob stamps
-    (`makeLakes()`, lines 212-237). Trees are random-walk "splashes"
-    (`treeSplash`, line 457) followed by smoothing passes.
-  - We modernize: elevation-first generation with rivers carved downhill from
-    springs. Keep the *feel* (meandering, blobby water bodies, organic forest
-    edges via dithering) — cite the matrices for blob shapes if useful.
+- **Terrain feel**: elevation-first generation with rivers carved downhill from
+  springs — meandering, blobby water bodies, organic forest edges via dithering.
 - **Methodology infrastructure to update**:
   - `scripts/hooks/pre-commit` (line 13) and `scripts/hooks/pre-push`
     (line 13) self-skip when no `*.py` files exist under `src/`/`tests/` and
@@ -278,10 +269,9 @@ map, reload with same seed reproduces it.
 ### Task 10: Developer docs
 **Files:** `README.md` (prepend Bodhitropolis section), `docs/PRDs/bodhitropolis-foundation.md` (status flip after merge — leave DRAFT for now)
 **Approach:** Top-of-README section: project one-liner (dharmapunk
-city-builder, GPL-3 the old simulator lineage), quickstart (`npm install`,
+city-builder, GPL-3), quickstart (`npm install`,
 `npm run dev`, `npx vitest run`), architecture sketch (engine/worldgen/ui
-purity rule), pointer to `dialectic.md` for methodology. Keep the upstream
-the old simulator README content below a divider.
+purity rule), pointer to `dialectic.md` for methodology.
 **Tests:** none (docs).
 **Validation:** `npx vitest run` still green (no code touched).
 

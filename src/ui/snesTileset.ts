@@ -1,4 +1,4 @@
-// The SNES tileset — a code-painted skin channelling the classic city-builder on the Super Famicom (PURE — no DOM, no
+// The SNES tileset — a code-painted skin in the manner of the 16-bit console city-builders (PURE — no DOM, no
 // transcendental Math → pure-ui allowlist). Every tile is drawn here, in integer pixel ops, from ONE
 // shared limited palette: bright saturated grass with dark tufts, round-crowned forest, deep blue water
 // with wave marks, and (later increments) ink-outlined 3/4-view buildings. Deterministic by

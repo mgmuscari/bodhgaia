@@ -1,36 +1,16 @@
-// Credits are a licence-compliance release blocker: the the old simulator GPL carries §7 ADDITIONAL TERMS that every
-// conveyance must include verbatim, alongside the the original publisher copyright notice — and the the classic city-builder trademark
-// may appear nowhere except inside those quoted terms.
+// Credits are a licence-compliance release blocker: the game is GPL-3.0-or-later, and every conveyance names the
+// licence, ships its text and links the source; the music, the opening's words and the type are credited under
+// their own terms. (2026-10-08: the game carries no third-party simulator code or art, and names none.)
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   COPYING_HREF,
-  EA_NOTICE,
-  GPL7_TERMS,
   SOURCE_URL,
   creditsBlocks,
   creditsText,
   openingCreditLine,
 } from '../src/ui/creditsContent';
 import { LICENCES, MUSIC_TRACKS } from '../src/audio/music/tracks';
-
-/** The upstream §7 block, unwrapped from its C comment, one string per paragraph. */
-function upstreamSection7(): string[] {
-  const src = readFileSync('legacy-activity/src/sim/sim.c', 'utf8');
-  const header = src.slice(0, src.indexOf('*/'));
-  const body = header.slice(header.indexOf('ADDITIONAL TERMS per GNU GPL Section 7'));
-  const lines = body.split('\n').map((l) => l.replace(/^\s*\*\s?/, '').trim());
-  const paras: string[] = [];
-  let cur: string[] = [];
-  for (const l of lines.slice(1)) {
-    if (l === '') {
-      if (cur.length) paras.push(cur.join(' '));
-      cur = [];
-    } else cur.push(l);
-  }
-  if (cur.length) paras.push(cur.join(' '));
-  return paras.map((p) => p.replace(/\s+/g, ' '));
-}
 
 describe('credits content', () => {
   const text = creditsText();
@@ -52,40 +32,18 @@ describe('credits content', () => {
     expect(readFileSync('public/COPYING', 'utf8')).toBe(copying); // the conventional name ships too
   });
 
-  it('says what it is derived from, and that it is a modified version', () => {
-    expect(text).toContain('derived from the old simulator, the GPL release of the original 1989 city simulator');
-    expect(text).toMatch(/modified version/);
-  });
-
-  it('carries the the original publisher copyright notice', () => {
-    expect(EA_NOTICE).toContain('Copyright (C) 1989 - 2007 the original publisher Inc.');
-    expect(EA_NOTICE).toMatch(/^the old simulator/);
-    expect(text).toContain(EA_NOTICE);
-  });
-
-  it('carries the GPL §7 additional terms VERBATIM from upstream', () => {
-    const upstream = upstreamSection7();
-    expect(upstream.length).toBeGreaterThanOrEqual(5);
-    expect(GPL7_TERMS).toEqual(upstream);
-    for (const p of GPL7_TERMS) expect(text).toContain(p);
-  });
-
-  it('never says the classic city-builder outside the verbatim §7 terms', () => {
-    let rest = text;
-    for (const p of GPL7_TERMS) rest = rest.split(p).join('');
-    expect(rest).not.toMatch(/sim\s*city/i);
-    expect(openingCreditLine()).not.toMatch(/sim\s*city/i);
+  it('is its own work: the game, the opening\'s words, the music and the type — nothing else (Maddy 2026-10-08)', () => {
+    expect(creditsBlocks().map((b) => b.heading.replace(/ \d+\.\d+\.\d+$/, ''))).toEqual(['Bodhgaia', creditsBlocks()[1]!.heading, 'Music', 'Type']);
   });
 
   it('keeps the language rule (no planning euphemisms as neutral words)', () => {
     expect(text).not.toMatch(/blight|urban renewal|redevelop|revitali/i);
   });
 
-  it('gives the opening a one-line credit naming the licence and the EA notice', () => {
+  it('gives the opening a one-line credit naming the licence and pointing to Help', () => {
     const line = openingCreditLine();
     expect(line).toContain('GPL-3.0-or-later');
-    expect(line).toContain('the old simulator');
-    expect(line).toContain('the original publisher');
+    expect(line).toMatch(/Help/);
   });
 
   it('credits every piece of music: title, composer, typesetter, licence, and links to source + licence', () => {

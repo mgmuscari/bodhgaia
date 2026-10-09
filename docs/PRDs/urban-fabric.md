@@ -31,7 +31,7 @@ rendering, and a placeholder demo stage proving the whole chain end-to-end.
    future tech-tree-era kinds.
 2. **Tile + parcel model** — roads/rail live directly in the existing
    `built` layer (one tile = one kind code). Buildings are *parcels*:
-   multi-tile footprints (1×1 to 3×3) anchored the old simulator-style, with every
+   multi-tile footprints (1×1 to 3×3) anchored classic-city-builder-style, with every
    covered tile carrying the kind code, plus a new `parcel` layer mapping
    tiles to entries in a `ParcelStore` (struct-of-arrays: anchor, footprint,
    kind, density, condition). Condition is the future blight driver.
@@ -44,7 +44,7 @@ rendering, and a placeholder demo stage proving the whole chain end-to-end.
    connection-aware road/rail tiles (16 autotile variants from the neighbor
    mask), per-kind building tiles with footprint-aware variation
    (corner/edge/center) and condition-aware weathering, in the established
-   Bayer-dither warm palette (the classic city-builder × Stardew).
+   Bayer-dither warm palette (classic city-builder × Stardew).
 5. **`fabric-demo` worldgen stage** — a deterministic placeholder stage that
    finds a buildable site near the map center, lays a crossroads, and places
    sample parcels of every kind so `npm run dev` shows the fabric. Clearly
@@ -102,7 +102,7 @@ transcendental Math, seeded rng only, typed arrays, TDD.
   codes would be premature; the parcel layer + store keeps codes flat.
   Risk: two sources of truth (tile kind vs store kind) drifting — placement
   functions are the only writers; tests assert agreement.
-- **Autotile scope creep**: full the old simulator-style road graphics (bridges,
+- **Autotile scope creep**: full classic-city-builder-style road graphics (bridges,
   intersections with rail, diagonals) is a rabbit hole. v1 is 16 mask
   variants per road kind + rail, programmatic.
 - **Renderer perf**: per-frame mask computation is O(visible tiles); cached

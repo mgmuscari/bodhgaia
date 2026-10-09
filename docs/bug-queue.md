@@ -430,7 +430,7 @@ Plan: `~/.claude/plans/love-this-so-far-silly-moonbeam.md`.
 
 ## ACTIVE DIRECTION
 
-**Agent-driven simulation.** Mutate from the classic city-builder's 1989 aggregate/cellular-automata layers into an
+**Agent-driven simulation.** Mutate from the 1989 classic's aggregate/cellular-automata layers into an
 AGENT-DRIVEN sim with the same kinds of layers (traffic, pollution, land value…), emergent from the
 actual travelers. **Determinism: "seeded world, live dynamics"** — worldgen/ecology/civic stay seeded
 + reproducible (N=120 gate over the seeded starting world); dynamic layers live in the live agent

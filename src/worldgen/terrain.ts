@@ -1,6 +1,6 @@
 // Worldgen stage 1: terrain.
 //
-// Elevation-first generation modernizing the the old simulator MapGenerator feel
+// Elevation-first generation with the feel of the classic city-builders' maps
 // (meandering water, organic forest edges) with deterministic, reproducible
 // output. Pipeline of sub-steps, each a pure-ish function over the map:
 //   1. elevation  — fBm height field, normalized to [0, 1]

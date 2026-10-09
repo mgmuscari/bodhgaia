@@ -5,7 +5,7 @@ to take inspiration from donella meadows and dynamical systems in modeling this.
 
 The model lives in `src/economy/model.ts` (pure, headless). Each loop's directional behaviour is pinned in
 `tests/economy/model.test.ts`; mutating a loop's constant fails the suite. This builds on
-[classic-ui-and-economy.md](classic-ui-and-economy.md) §D and its decisions.
+[ui-and-economy.md](ui-and-economy.md) §D and its decisions.
 
 ## Why the old effort fails as a game
 
@@ -20,7 +20,7 @@ growth.
 
 | Stock | Range | Fills from | Drains to | Character |
 |---|---|---|---|---|
-| **Funds** | money | taxes (base × per-class rate) | upkeep of the built fabric, police, projects | the the classic city-builder budget |
+| **Funds** | money | taxes (base × per-class rate) | upkeep of the built fabric, police, projects | the classic city-builders' budget |
 | **Effort** | 0 … capacity | neighbours' free time: households × wellbeing × trust × (1 − burnout) | commons tending (first), then projects | **perishable**: fills to a capacity set by social infrastructure; the excess is time lived, not banked |
 | **Burnout** | 0 … 0.9 | running on empty: demand above regeneration while the reserve is below ⅕ of capacity | rest, slowly | throttles regeneration — the delay that makes over-extension overshoot |
 | **Goodwill** | 0 … 100 | repairs, delivery | harms (blackouts, police violence, takings, displacement) — losses outweigh gains | read from civic trust (one source of truth, see Integration) |

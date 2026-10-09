@@ -19,7 +19,7 @@ Concretely:
   parcels abut, colors vary plot-to-plot, the grain is photographic-but-simplified.
 - **Cartoonish legibility** — clean shapes, **black (or near-black) outlines** around buildings
   and edges, readable at a 16 px tile and at 1–4× zoom.
-- **the 1990s city-builders-era richness** of color/detail, minus the isometric projection.
+- **1990s city-builder richness** of color/detail, minus the isometric projection.
 - **Oakland cues** — Victorian/craftsman bungalows, stucco apartment boxes, flatland industrial,
   the port, hill greenery. (Thematically loaded: this is an anti-Moses, environmental-justice
   game — the art serves "decay / repair / rewild", never the neutral-developer fantasy. See

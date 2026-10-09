@@ -59,7 +59,7 @@ state-machine rewrite) or wait on outside facts (the site URL for og:url/og:imag
 | M11 | main split | tool controller → `app/tools.ts` | done | abc2773d |
 | M12 | main split | sim tick + frame loop → `app/loop.ts`; `main()` ≈ 100 lines of wiring | done | daf84c94 + fcd3db74 (main() 186 lines) |
 | S1 | release | `vite base: './'` — assets load under a subpath of the site (BLOCKER) | done | 204f8c5c |
-| S2 | release | credits: GPL-3.0+, the old simulator © 1989–2007 EA notice + §7 additional terms, source link; ship COPYING (BLOCKER) | done | 979e2bb0 |
+| S2 | release | credits: GPL-3.0+, source link; ship COPYING (BLOCKER) | done | 979e2bb0 |
 | S3 | release | dev hooks (`window.bodhitropolis`) — DECIDED: dev builds only (`import.meta.env.DEV`) | done | bea50446 |
 | S4 | release | phones — DECIDED: a gentle "best on a desktop browser" note on small screens; touch later | done | 1bc3908e |
 | S5 | release | feature-check IndexedDB/CompressionStream; disable Saves with a note | done | ea749939 |
@@ -127,8 +127,8 @@ state-machine rewrite) or wait on outside facts (the site URL for og:url/og:imag
 - Desktop perf is not a blocker: 60 fps, main thread ~88% idle, ~1.5 ms JS/frame. At 4× CPU throttle (phone proxy)
   the hot spots are drawSprites 27%, stepAmbient 20%, pedPose 10%, the reachability chain ~13%.
 - Bundle: 99 KB gzip JS, 344 KB dist total; all art code-painted. No-WebGL falls back to CPU at 60 fps.
-- Licence: the upstream the old simulator GPL carries §7 additional terms — any conveyance must include the EA copyright
-  notice and those terms; no "the classic city-builder" trademark (the bundle has none). The repo is public (github.com/mgmuscari/bodhitropolis).
+- Licence: GPL-3.0-or-later — every conveyance names the licence, ships COPYING and links the source. The repo is
+  public (github.com/mgmuscari/bodhgaia).
 - Main-side hazard: closures over reassigned `let`s (econ, autosave, overlayActive) — extract as factories with getters.
 - Live-side hazard: the live layer is not hashed; add the golden determinism test (Lg) before the field/agent moves.
 
