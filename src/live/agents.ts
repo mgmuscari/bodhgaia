@@ -755,9 +755,33 @@ export function spawnBoundPed(state: AmbientState, c: Car, building: { x: number
   });
 }
 
-/** Find a (parked) car by its id, so a returning pedestrian can rebind to it. */
+/** Per car list: id → position of its first car with that id (rebuilt when the list it indexes has changed). */
+const carIndex = new WeakMap<Car[], Map<number, number>>();
+
+function indexCars(cars: Car[]): Map<number, number> {
+  const ix = new Map<number, number>();
+  for (let i = 0; i < cars.length; i++) {
+    const id = cars[i]!.id;
+    if (!ix.has(id)) ix.set(id, i);
+  }
+  carIndex.set(cars, ix);
+  return ix;
+}
+
+/** Find a (parked) car by its id, so a returning pedestrian can rebind to it. Indexed (the scaling pass, Maddy
+ *  2026-10-08: a scan of every car, per driving walker per substep, was cars × drivers): the index is checked against
+ *  the car at the position it names, and rebuilt when the list moved under it — answering exactly as a scan would. */
 export function findCar(state: AmbientState, id: number): Car | undefined {
-  return state.cars.find((c) => c.id === id);
+  const cars = state.cars;
+  const ix = carIndex.get(cars);
+  if (ix) {
+    const at = ix.get(id);
+    if (at !== undefined && cars[at]?.id === id) return cars[at];
+  }
+  // a miss or a moved list: re-index (a miss is rare — the car is gone, or new since the last index)
+  const fresh = indexCars(cars);
+  const at = fresh.get(id);
+  return at === undefined ? undefined : cars[at];
 }
 
 /** Add `value` (signed) to a home building's health, clamped. */
