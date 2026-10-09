@@ -221,3 +221,58 @@ describe('Camera.tileOrigin — seamless tile placement', () => {
     expect(cam.tileOrigin(10, 7)).toEqual({ dx: Math.floor(sx), dy: Math.floor(sy) });
   });
 });
+
+// Mobile (Maddy 2026-10-08): zoom 1 shows a phone ~24 tiles of 128. On a sharp screen the camera zooms further out,
+// down to one art pixel per device pixel (½ on a 2× screen, ⅓ on a 3×) — still crisp, the whole city in view.
+import { zoomLevels } from '../../src/ui/camera';
+
+describe('zooming out past 1 on sharp screens', () => {
+  it('the levels a display offers: ½ from 2×, ⅓ from 3×, never below one device pixel an art pixel', () => {
+    expect(zoomLevels(1)).toEqual([1, 2, 3, 4]);
+    expect(zoomLevels(1.5)).toEqual([1, 2, 3, 4]);
+    expect(zoomLevels(2)).toEqual([0.5, 1, 2, 3, 4]);
+    expect(zoomLevels(3)).toEqual([1 / 3, 0.5, 1, 2, 3, 4]);
+  });
+
+  it('zooming out from 1 on a 2× screen reaches ½, where an art pixel is one device pixel; then stops', () => {
+    const cam = new Camera({ mapWidth: 128, mapHeight: 128, viewportWidth: 390, viewportHeight: 700, zoom: 1, dpr: 2 });
+    cam.zoomAt(100, 100, -1);
+    expect(cam.zoom).toBe(0.5);
+    expect((cam.tileSize * 2) / BASE_TILE).toBe(1);
+    cam.zoomAt(100, 100, -1);
+    expect(cam.zoom).toBe(0.5);
+    cam.zoomAt(100, 100, +1);
+    expect(cam.zoom).toBe(1);
+  });
+
+  it('on a 1× screen, 1 is still the floor', () => {
+    const cam = new Camera({ mapWidth: 128, mapHeight: 128, viewportWidth: 800, viewportHeight: 600, zoom: 1, dpr: 1 });
+    cam.zoomAt(100, 100, -1);
+    expect(cam.zoom).toBe(1);
+  });
+
+  it('a zoom asked for (a save from a phone, a tour stop) snaps to one this display offers', () => {
+    expect(new Camera({ mapWidth: 64, mapHeight: 64, viewportWidth: 800, viewportHeight: 600, zoom: 0.5, dpr: 1 }).zoom).toBe(1);
+    const cam = new Camera({ mapWidth: 64, mapHeight: 64, viewportWidth: 800, viewportHeight: 600, zoom: 2, dpr: 3 });
+    cam.centerOn(10, 10, 0.3);
+    expect(cam.zoom).toBeCloseTo(1 / 3, 9);
+    cam.centerOn(10, 10, 2.4);
+    expect(cam.zoom).toBe(2);
+  });
+
+  it('a whole map smaller than the screen sits in the middle of it, not pinned to the corner', () => {
+    const cam = new Camera({ mapWidth: 64, mapHeight: 64, viewportWidth: 1400, viewportHeight: 800, zoom: 0.5, dpr: 2 });
+    const ts = cam.tileSize; // 8 css px: the map is 512 px across
+    expect(cam.x).toBeCloseTo((64 - 1400 / ts) / 2, 9);
+    expect(cam.y).toBeCloseTo((64 - 800 / ts) / 2, 9);
+  });
+});
+
+describe('moving to a display of another scale', () => {
+  it('a zoom the new display can’t offer snaps to one it can', () => {
+    const cam = new Camera({ mapWidth: 64, mapHeight: 64, viewportWidth: 800, viewportHeight: 600, zoom: 0.5, dpr: 2 });
+    expect(cam.zoom).toBe(0.5);
+    cam.setDpr(1);
+    expect(cam.zoom).toBe(1);
+  });
+});

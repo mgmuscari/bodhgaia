@@ -2,13 +2,29 @@
 // renderer and input layers are thin shells over this. World coordinates are
 // in tiles (fractional allowed); screen coordinates are in CSS pixels. A tile
 // is BASE_TILE * zoom pixels wide, with zoom an integer in [1, 4] for crisp
-// pixel-art scaling.
+// pixel-art scaling — and, on a sharp screen, ½ or ⅓ (zoomLevels).
 
 import { clamp } from '../engine/clamp';
 
 export const BASE_TILE = 16;
 export const MIN_ZOOM = 1;
 export const MAX_ZOOM = 4;
+
+/** Zoom-outs below 1, offered where an art pixel still covers at least one device pixel. */
+const FRACTIONAL_ZOOMS = [1 / 3, 1 / 2];
+
+/** The zoom levels a display of `dpr` device px per CSS px offers, out to in: below 1 only down to one art pixel per
+ *  device pixel — ½ on a 2× screen, ⅓ on a 3× (Maddy 2026-10-08: a phone at zoom 1 saw ~24 of 128 tiles). */
+export function zoomLevels(dpr: number): number[] {
+  return [...FRACTIONAL_ZOOMS.filter((z) => z * dpr >= 1 - 1e-9), ...[1, 2, 3, 4].filter((z) => z >= MIN_ZOOM && z <= MAX_ZOOM)];
+}
+
+/** The level of `levels` nearest `zoom` (by ratio, so ½ and 1 are as far apart as 1 and 2). */
+function nearestLevel(levels: readonly number[], zoom: number): number {
+  let best = levels[0]!;
+  for (const z of levels) if (Math.abs(Math.log2(z / zoom)) < Math.abs(Math.log2(best / zoom)) - 1e-9) best = z;
+  return best;
+}
 
 export interface CameraOptions {
   mapWidth: number;
@@ -49,8 +65,8 @@ export class Camera {
     this.viewportHeight = opts.viewportHeight;
     this.x = opts.x ?? 0;
     this.y = opts.y ?? 0;
-    this.zoom = clamp(Math.round(opts.zoom ?? 2), MIN_ZOOM, MAX_ZOOM);
     this.dpr = opts.dpr && opts.dpr > 0 ? opts.dpr : 1;
+    this.zoom = nearestLevel(zoomLevels(this.dpr), opts.zoom ?? 2);
     this.clampPosition();
   }
 
@@ -94,7 +110,9 @@ export class Camera {
 
   /** Zoom one integer step (dir +1 in, -1 out), keeping the world point under (sx, sy) fixed. */
   zoomAt(sx: number, sy: number, dir: number): void {
-    const next = clamp(this.zoom + (dir > 0 ? 1 : -1), MIN_ZOOM, MAX_ZOOM);
+    const levels = zoomLevels(this.dpr);
+    const at = levels.indexOf(nearestLevel(levels, this.zoom));
+    const next = levels[clamp(at + (dir > 0 ? 1 : -1), 0, levels.length - 1)]!;
     if (next === this.zoom) return;
     const before = this.screenToWorld(sx, sy);
     this.zoom = next;
@@ -104,12 +122,20 @@ export class Camera {
     this.clampPosition();
   }
 
+  /** The window moved to a display of another scale: tiles re-snap to its device pixels, and a zoom it can't offer
+   *  (½ on a 1× screen) snaps to one it can. */
+  setDpr(dpr: number): void {
+    this.dpr = dpr > 0 ? dpr : 1;
+    this.zoom = nearestLevel(zoomLevels(this.dpr), this.zoom);
+    this.clampPosition();
+  }
+
   /** Center the view on world tile (wx, wy), optionally setting the zoom first
-   *  (rounded to an integer and clamped to [MIN_ZOOM, MAX_ZOOM]). The position is
+   *  (snapped to the nearest level this display offers — zoomLevels). The position is
    *  clamped to the map, so a target near an edge lands as close to centre as the
    *  map allows. The zoom-to-location API behind `window.bodhgaia.focus`. */
   centerOn(wx: number, wy: number, zoom?: number): void {
-    if (zoom !== undefined) this.zoom = clamp(Math.round(zoom), MIN_ZOOM, MAX_ZOOM);
+    if (zoom !== undefined) this.zoom = nearestLevel(zoomLevels(this.dpr), zoom);
     const ts = this.tileSize;
     this.x = wx - this.viewportWidth / ts / 2;
     this.y = wy - this.viewportHeight / ts / 2;
@@ -135,9 +161,10 @@ export class Camera {
 
   private clampPosition(): void {
     const ts = this.tileSize;
-    const maxX = Math.max(0, this.mapWidth - this.viewportWidth / ts);
-    const maxY = Math.max(0, this.mapHeight - this.viewportHeight / ts);
-    this.x = clamp(this.x, 0, maxX);
-    this.y = clamp(this.y, 0, maxY);
+    // a map narrower (or shorter) than the screen sits in the middle of it, not pinned to the corner
+    const spareX = this.mapWidth - this.viewportWidth / ts;
+    const spareY = this.mapHeight - this.viewportHeight / ts;
+    this.x = spareX < 0 ? spareX / 2 : clamp(this.x, 0, spareX);
+    this.y = spareY < 0 ? spareY / 2 : clamp(this.y, 0, spareY);
   }
 }
