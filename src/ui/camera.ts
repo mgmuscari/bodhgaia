@@ -18,6 +18,8 @@ export interface CameraOptions {
   x?: number;
   y?: number;
   zoom?: number;
+  /** Device pixels per CSS pixel (window.devicePixelRatio). Default 1. */
+  dpr?: number;
 }
 
 export interface TileRange {
@@ -36,6 +38,9 @@ export class Camera {
   readonly mapHeight: number;
   viewportWidth: number;
   viewportHeight: number;
+  /** Device pixels per CSS pixel: tile edges snap to whole DEVICE pixels, so a fractional display scale (Windows at
+   *  125–225%) never puts an edge mid-pixel (Maddy 2026-10-08: seams on a 5K display). */
+  dpr: number;
 
   constructor(opts: CameraOptions) {
     this.mapWidth = opts.mapWidth;
@@ -45,6 +50,7 @@ export class Camera {
     this.x = opts.x ?? 0;
     this.y = opts.y ?? 0;
     this.zoom = clamp(Math.round(opts.zoom ?? 2), MIN_ZOOM, MAX_ZOOM);
+    this.dpr = opts.dpr && opts.dpr > 0 ? opts.dpr : 1;
     this.clampPosition();
   }
 
@@ -60,11 +66,14 @@ export class Camera {
   /**
    * Integer screen origin of tile (tx, ty) for the tile grid. floor(worldToScreen) alone lets float
    * error land one tile at 165.9999 → 165 and its neighbour at 166.0000001 → 166, opening a 1-px
-   * background seam between rows; a sub-pixel epsilon snaps both onto the true integer edge.
+   * background seam between rows; a sub-pixel epsilon snaps both onto the true integer edge. The integer is in
+   * DEVICE pixels (returned in CSS px, so a multiple of 1/dpr): at a fractional scale a whole CSS pixel is not a
+   * whole device pixel. Tiles abut whenever tileSize × dpr is whole (every common scale: 1.25, 1.5, 1.75, 2.25…).
    */
   tileOrigin(tx: number, ty: number): { dx: number; dy: number } {
     const ts = this.tileSize;
-    return { dx: Math.floor((tx - this.x) * ts + 1e-6), dy: Math.floor((ty - this.y) * ts + 1e-6) };
+    const d = this.dpr;
+    return { dx: Math.floor((tx - this.x) * ts * d + 1e-6) / d, dy: Math.floor((ty - this.y) * ts * d + 1e-6) / d };
   }
 
   screenToWorld(sx: number, sy: number): { wx: number; wy: number } {

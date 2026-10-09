@@ -34,8 +34,10 @@ export function cameraToShaderView(
   cssHeight: number,
 ): { origin: [number, number]; view: [number, number] } {
   const ts = camera.tileSize;
-  const o = camera.worldToScreen(0, 0); // screen px of world tile (0,0)
-  return { origin: [-o.sx / ts, -o.sy / ts], view: [cssWidth / ts, cssHeight / ts] };
+  // screen px of world tile (0,0), snapped exactly as the base canvas's tiles are (device pixels), so the shader's
+  // per-cell lookups (water, roofs) line up with the baked art they light
+  const o = camera.tileOrigin(0, 0);
+  return { origin: [-o.dx / ts, -o.dy / ts], view: [cssWidth / ts, cssHeight / ts] };
 }
 
 export class GpuRenderer {
