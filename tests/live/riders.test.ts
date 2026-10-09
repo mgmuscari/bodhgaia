@@ -1,6 +1,7 @@
 // Riders (docs/design/transit.md): a long trip with stops near both ends rides the line — walk to the platform,
 // wait there, board a vehicle halted at the stop, ride it out of sight, get off at the stop nearest the destination,
 // walk on. Nobody waits for ever.
+import { tickTransitClock, TRANSIT_RECHECK_SUBSTEPS } from '../../src/live/transit';
 import { describe, it, expect } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, placeTransport } from '../../src/engine/fabric';
@@ -28,6 +29,7 @@ function city() {
 const tick = (c: ReturnType<typeof city>, n: number, vehicles: boolean, each?: () => void) => {
   const rng = createRng('r').fork('r');
   for (let i = 0; i < n; i++) {
+    tickTransitClock(); // as substep() does: the transit cache re-checks the track by this clock
     if (vehicles) spawnTransit(c.state, c.map, rng);
     c.state.trains = c.state.trains.filter((t) => stepTrain(c.map, t, rng));
     const ctx = buildVehicleCtx(c.state, c.map);
@@ -171,7 +173,8 @@ describe('a stop built over (Maddy 2026-10-08: an AI node on a platform — ride
     const py = Math.floor(stop.platform / c.map.width);
     placeParcel(c.map, new ParcelStore(), { x: px, y: py, width: 1, height: 1, kind: BuiltKind.AINode });
     let t = transitFor(c.map);
-    for (let k = 0; k < 40; k++) t = transitFor(c.map); // the cache's re-check
+    for (let k = 0; k < TRANSIT_RECHECK_SUBSTEPS; k++) tickTransitClock(); // a second of substeps: the cache re-checks
+    t = transitFor(c.map);
     for (const s of t.lines.flatMap((l) => l.stops)) expect(s.platform).not.toBe(stop.platform);
   });
 

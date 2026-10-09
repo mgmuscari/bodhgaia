@@ -2,6 +2,7 @@
 // field in a fixed order, and the public stepAmbient that runs it off wall-clock time. Order, cadence
 // and rng draws are load-bearing (tests/live/golden.test.ts). Cut verbatim from ui/ambientContent.ts.
 
+import { tickTransitClock } from './transit';
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { decayField, layField } from '../citizens/field';
@@ -58,6 +59,7 @@ import { snapshotMovers } from './poses';
 // --- The substep + the public stepper ------------------------------------
 
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
+  tickTransitClock(); // the transit cache re-checks the track once a second of substeps, not per caller
   // the fallen and the memorials; the night's exposure deaths (once per in-game hour, with a host clock)
   stepDeaths(state);
   stepExposure(state, map, rng);
