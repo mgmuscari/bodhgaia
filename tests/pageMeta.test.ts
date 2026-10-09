@@ -102,3 +102,14 @@ describe('the windows fit a phone', () => {
     expect(html.lastIndexOf('.budget-panel {')).toBeLessThan(html.indexOf('/* windows on a phone'));
   });
 });
+
+// Maddy 2026-10-08: "cctv frame overlaps legends for info views". On a phone the map pane is ~280 px wide: the CCTV
+// inset (bottom-right) sat on the overlay's colour key (bottom-left). There it moves to the top of the map.
+describe('the CCTV inset and the colour key never meet on a phone', () => {
+  const blocks = [...html.matchAll(/@media \(max-width: 760px\) \{([\s\S]*?)\n {6}\}/g)].map((m) => m[1]!).join('\n');
+  it('the inset sits at the top of the map pane on a narrow screen', () => {
+    const r = /#cctv\s*\{([^}]*)\}/.exec(blocks)?.[1] ?? '';
+    expect(r).toMatch(/top:\s*calc\(var\(--topbar-h\) \+ \d+px\)/);
+    expect(r).toMatch(/bottom:\s*auto/);
+  });
+});

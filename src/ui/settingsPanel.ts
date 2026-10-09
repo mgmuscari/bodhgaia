@@ -6,6 +6,8 @@
 //     an explicit confirm because reloading discards the in-progress city (there is no save).
 //   • Audio (master / music / effects / ambience + mute) — applied INSTANTLY via onAudioChange while dragging.
 
+import { soundStartNote } from './controlsContent';
+import { touchScreen } from './touch';
 import {
   type AudioSettings,
   CAP_PRESETS,
@@ -144,7 +146,7 @@ export function mountSettingsPanel(
     sec.appendChild(r);
     const note = document.createElement('div');
     note.className = 'settings-panel__note';
-    note.textContent = 'Sound starts after your first click or key press (the browser asks for that).';
+    note.textContent = soundStartNote(touchScreen());
     sec.appendChild(note);
     return sec;
   };

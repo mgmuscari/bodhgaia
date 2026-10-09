@@ -1043,6 +1043,26 @@
           box-sizing: border-box;
           overflow-x: auto;
         }
+        /* the Commons: the tree above (scrolling both ways), the chosen practice below — side by side, the 260-px
+           description left the tree a 60-px sliver */
+        .tech-body {
+          flex-direction: column;
+        }
+        /* the CCTV inset to the top of the map: at the bottom it covered the overlay's colour key (Maddy 2026-10-08) */
+        #cctv {
+          top: calc(var(--topbar-h) + 8px);
+          bottom: auto;
+          right: 8px;
+        }
+        /* centred windows taller than the pane lost their top (title, close) above the screen: cap and scroll */
+        .settings-panel, .help-panel {
+          max-height: calc(100vh - var(--topbar-h) - var(--status-h) - 1rem);
+          overflow-y: auto;
+        }
+        .tech-detail {
+          flex: 0 0 auto;
+          max-height: 42%;
+        }
       }
       /* Overlay colour key: bottom-left of the map pane, right of the docked palette and above the status line
          (it used to sit 12px from the window edge, on top of the palette; top-left it would clip the top bar
