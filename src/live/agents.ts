@@ -227,11 +227,11 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
   const cx = Math.round(p.x);
   const cy = Math.round(p.y);
   for (let step = (p.itinStep ?? 0) + 1; step < itin.length; step++) {
-    const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue);
+    const tripHash = Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0);
+    const plot = nearestOfCategory(map, cx, cy, itin[step]!, state.landValue, Math.imul(tripHash, 0x9e3779b1) >>> 0); // spread over the nearest few
     if (plot && stopReachable(state, map, cx, cy, plot)) {
       const jam = p.carId !== undefined ? 0 : Math.max(jamNear(map, state.traffic, cx, cy), jamNear(map, state.traffic, plot.x, plot.y));
       const pr = state.practices;
-      const tripHash = Math.imul(p.homeTile ?? 0, 31) + step * 7919 + (state.serialNext ?? 0);
       let chosen = p.carId !== undefined ? TravelMode.Drive : tripMode(state, map, cx, cy, plot, jam);
       // a commune owns no cars; a parklet took this block's parking — those trips go on foot
       if (chosen === TravelMode.Drive && p.carId === undefined && p.homeTile !== undefined && !homeDrives(map, p.homeTile, tripHash)) chosen = TravelMode.Walk;
@@ -609,7 +609,7 @@ export function spawnCitizens(state: AmbientState, map: GameMap, rng: Rng): void
     // before — not everyone leaving home for work at once (Maddy 2026-10-08: swarms pathing together).
     if (citizenCount(state) < target * FILL_SHARE) {
       const k = rng.nextInt(itinerary.length + 1); // 0: leaving home; k: just left stop k − 1
-      const prev = k > 0 ? nearestOfCategory(map, home.x, home.y, itinerary[k - 1]!, state.landValue) : null;
+      const prev = k > 0 ? nearestOfCategory(map, home.x, home.y, itinerary[k - 1]!, state.landValue, rng.nextInt(1 << 30)) : null;
       const out = prev ? plotDoor(map, prev.x, prev.y) : null;
       if (out) {
         sx = out.x;
