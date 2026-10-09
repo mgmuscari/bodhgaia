@@ -54,3 +54,10 @@ export function controlsLines(touch = false): string[] {
   const keyed = CONTROLS.map((b) => `${b.key.padStart(keyWidth)}  ${b.label}`);
   return [...keyed, ...POINTER_HINTS];
 }
+
+/** Settings' note on when the sound starts: a click or key press, or on a touch screen a tap. */
+export function soundStartNote(touch = false): string {
+  return touch
+    ? 'Sound starts after your first tap (the browser asks for that).'
+    : 'Sound starts after your first click or key press (the browser asks for that).';
+}

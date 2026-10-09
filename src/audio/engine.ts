@@ -198,7 +198,8 @@ export function createSynthEngine(ctx: BaseAudioContext, opts: SynthOptions = {}
     },
     unlock: () => {
       const c = ctx as AudioContext;
-      if (!opts.offline && c.state === 'suspended' && typeof c.resume === 'function') void c.resume().catch(() => {});
+      // suspended (Chrome, after sleep or before a gesture) or interrupted (Safari, after sleep or a call): resume
+      if (!opts.offline && c.state !== 'running' && c.state !== 'closed' && typeof c.resume === 'function') void c.resume().catch(() => {});
     },
     now: () => ctx.currentTime,
     play,

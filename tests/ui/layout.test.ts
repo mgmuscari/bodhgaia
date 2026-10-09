@@ -19,3 +19,19 @@ describe('the map pane sits inside the chrome, never under it', () => {
     expect(layoutVars()).toEqual({ '--sidebar-w': `${SIDEBAR_W}px`, '--topbar-h': `${TOPBAR_H}px`, '--status-h': `${STATUS_H}px` });
   });
 });
+
+// Maddy 2026-10-08: the phone top bar's two rows at 12 px were "very tiny… suggest making the bar taller on mobile".
+import { TOPBAR_H_NARROW, NARROW_W } from '../../src/ui/layout';
+describe('a taller top bar on a phone', () => {
+  it('below the narrow width the bar is taller, and the map pane starts below it', () => {
+    expect(TOPBAR_H_NARROW).toBeGreaterThan(TOPBAR_H);
+    expect(mapPane(390, 844).top).toBe(TOPBAR_H_NARROW);
+    expect(mapPane(390, 844).height).toBe(844 - TOPBAR_H_NARROW - STATUS_H);
+    expect(layoutVars(390)['--topbar-h']).toBe(`${TOPBAR_H_NARROW}px`);
+  });
+  it('a desktop window keeps the slim bar', () => {
+    expect(mapPane(NARROW_W + 1, 900).top).toBe(TOPBAR_H);
+    expect(layoutVars(1440)['--topbar-h']).toBe(`${TOPBAR_H}px`);
+    expect(layoutVars()['--topbar-h']).toBe(`${TOPBAR_H}px`);
+  });
+});

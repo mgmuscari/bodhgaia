@@ -63,10 +63,12 @@ import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
 import { registerServiceWorker } from './app/pwa';
+import { installNoBrowserZoom } from './app/noBrowserZoom';
 
 
 export function main(save: SaveV1 | null = null): void {
   registerServiceWorker(); // installable + offline; a production build checks the site for a new release on launch
+  installNoBrowserZoom(document); // the page never zooms: the map's pinch is the game's
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing #game canvas');
   installUiTheme(); // the pixel UI kit: palette variables, 9-slice frames, pixel font
@@ -134,6 +136,7 @@ export function main(save: SaveV1 | null = null): void {
     hasHealing: () => world.parcels.aliveIndices().some((i) => world.parcels.kindAt(i) === BuiltKind.HealingCommons),
     hidden: () => document.hidden,
     firstTrack: import.meta.env.DEV ? (params.get('track') ?? undefined) : undefined, // DEV: audition a piece
+    intro: openingUp, // the intro plays Kyabdro
   });
   sound.applySettings(settings.current().audio);
   let deniedAt = 0; // a refused drag would repeat per tile — one 'no' per gesture is enough

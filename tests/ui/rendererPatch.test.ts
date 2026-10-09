@@ -18,7 +18,9 @@ function makeFakeContext(log: Call[] | null): unknown {
     lineWidth: 1,
     imageSmoothingEnabled: true,
     setTransform: rec('setTransform'),
-    fillRect: rec('fillRect'),
+    fillRect(...args: unknown[]) {
+      void log?.push(['fillRect', (this as { fillStyle: string }).fillStyle, ...args]);
+    },
     drawImage: rec('drawImage'),
     beginPath: rec('beginPath'),
     rect: rec('rect'),
@@ -55,11 +57,12 @@ const { materializeSkin } = await import('../../src/ui/tilesetLoader');
 const { paintSnesSkin } = await import('../../src/ui/snesTileset');
 const SKIN = materializeSkin(paintSnesSkin());
 
-function setup() {
+function setup(visibleLog: Call[] | null = null) {
   const map = new GameMap(16, 16);
   for (let x = 0; x < 16; x++) map.water[map.idx(x, 15)] = Water.Lake; // a lake along the bottom row
   const world = { map, parcels: new ParcelStore(), seed: 'patch', log: [] as string[] };
   const camera = new Camera({ mapWidth: 16, mapHeight: 16, viewportWidth: 320, viewportHeight: 240, zoom: 2 });
+  nextLog = visibleLog;
   const visible = makeFakeCanvas();
   const r = new Renderer(visible as never, SKIN);
   // the base canvas was the renderer's first createElement → re-point its context at a recording one
@@ -163,14 +166,30 @@ describe('renderer live-mark patches', () => {
     for (const r of rects) expect(near.has(`${r.x},${r.y}`), `${r.x},${r.y}`).toBe(true);
   });
 
-  it('with a base overlay up (it may read live fields) the refresh is a full rebuild, as before', () => {
+  // Maddy 2026-10-08: "info views are currently drawing under the life layer". An overlay is drawn over the people
+  // and cars each frame, never baked into the ground — so it no longer forces the base to rebuild either.
+  it('an info overlay is drawn over the life layer, not into the ground', () => {
+    const visibleLog: Call[] = [];
+    const h = setup(visibleLog);
+    h.ambient.cars.push({ x: 4, y: 4, dir: 1, tx: 5, ty: 4 } as never); // a car on screen: a sprite
+    h.r.setOverlay({ tint: () => [10, 20, 30, 0.5] });
+    h.r.renderFrame(h.world as never, h.camera, h.ambient);
+    const isTint = (c: Call) => c[0] === 'fillRect' && c[1] === 'rgba(10, 20, 30, 0.5)';
+    expect(h.baseLog.some(isTint)).toBe(false); // nothing of it in the ground
+    const fills = visibleLog.map((c, i) => (isTint(c) ? i : -1)).filter((i) => i >= 0);
+    const draws = visibleLog.map((c, i) => (c[0] === 'drawImage' ? i : -1)).filter((i) => i >= 0);
+    expect(fills.length).toBeGreaterThan(0);
+    expect(Math.min(...fills)).toBeGreaterThan(Math.max(...draws)); // after every sprite
+  });
+
+  it('with an overlay up the slow refresh still patches, not rebuilds — the overlay is not in the base', () => {
     const h = setup();
     h.r.setOverlay({ tint: () => [10, 20, 30, 0.5] });
     h.r.renderFrame(h.world as never, h.camera, h.ambient);
     const v = h.r.baseVersion();
     h.r.refreshLiveMarks();
     h.r.renderFrame(h.world as never, h.camera, h.ambient);
-    expect(h.r.baseVersion()).toBe(v + 1);
+    expect(h.r.baseVersion()).toBe(v);
   });
 
   it('a wide change falls back to one full rebuild', () => {

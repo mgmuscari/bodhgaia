@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="./favicon.svg" /><!-- static pixel house; repainted at boot from the tileset (main.ts setPixelFavicon) -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
     <title>Bodhgaia</title>
     <meta name="description" content="A pixel city that was cut apart on purpose: freeways through the neighbourhoods, red lines on the map, smoke downwind. You do not build it. You repair it." />
     <meta name="theme-color" content="#181828" />
@@ -32,6 +32,9 @@
         display: block;
         image-rendering: pixelated;
       }
+      /* the browser never zooms the page (Maddy 2026-10-08, mobile): every element pans only — panels still scroll, but
+         no pinch or double-tap zoom; the map canvas takes none at all (ui/input.ts: its pinch is the game's zoom) */
+      * { touch-action: pan-x pan-y; }
       /* UI kit (uiTheme.ts): every frame is a palette 9-slice drawn at whole-pixel scale */
       body {
         image-rendering: pixelated;
@@ -359,7 +362,7 @@
       /* the opening's title cards: the byline small and spaced, the name large, tracked wide, in the accent */
       .night-credit {
         margin: 0;
-        font-size: 1.5rem;
+        font-size: min(1.5rem, 5vw); /* scales down to fit a phone (Maddy 2026-10-08), never past the desktop size */
         letter-spacing: 0.14em;
         padding-left: 0.14em; /* tracking trails the last letter: balance it so the line stays centred */
         color: var(--ui-text);
@@ -367,7 +370,7 @@
         animation: night-in 1.8s ease both;
       }
       .night-credit-name {
-        font-size: 4rem;
+        font-size: min(4rem, 10vw); /* BODHGAIA, tracked wide, fits a 390-px phone */
         letter-spacing: 0.32em;
         padding-left: 0.32em;
         color: var(--ui-accent);
@@ -391,7 +394,7 @@
         text-shadow: 0 0 18px rgba(240, 200, 120, 0.45);
       }
       .night-title {
-        font-size: 3rem;
+        font-size: min(3rem, 8vw);
         color: #ffe6a8;
         text-shadow: 0 0 24px rgba(255, 210, 140, 0.6);
       }
@@ -714,6 +717,34 @@
         color: var(--ui-text);
         white-space: nowrap;
       }
+      .pulse-seg + .pulse-seg::before {
+        content: '·';
+        margin: 0 0.6em;
+      }
+      /* a phone: the readings sit in a fixed grid — two columns, three rows, each in its own cell — so a number
+         gaining a digit never re-flows the bar (Maddy 2026-10-08: a wrapping line swapped between 2 and 3 rows) */
+      @media (max-width: 760px) {
+        .pulse-dock {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-auto-rows: 1.2em;
+          align-content: center;
+          justify-items: center;
+          column-gap: 0.6em;
+          padding: 0 0.4rem;
+          font-size: 1rem; /* the news ticker's size (Maddy 2026-10-08), in the taller phone bar (ui/layout.ts TOPBAR_H_NARROW) */
+          line-height: 1.2;
+          letter-spacing: 0;
+        }
+        .pulse-seg {
+          max-width: 100%;
+          overflow: hidden;
+          white-space: nowrap;
+        }
+        .pulse-seg + .pulse-seg::before {
+          content: none;
+        }
+      }
       .restoration-panel {
         border: 12px solid transparent;
         border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
@@ -1000,6 +1031,43 @@
       .pulse-dock { cursor: pointer; }
       .saves-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.3rem; margin-top: 0.3rem; }
       .saves-row .budget-line { flex-basis: 100%; }
+      /* windows on a phone (Maddy 2026-10-08: they ran off the right edge): the Budget, Saves and Tech windows span the
+         screen less a margin, over the palette; the centred and docked ones are capped to the screen. After the
+         windows' own rules, so these win. */
+      @media (max-width: 760px) {
+        .budget-panel, .tech-panel {
+          left: 0.5rem;
+          right: 0.5rem;
+          width: auto;
+          box-sizing: border-box;
+        }
+        .settings-panel, .help-panel, .restoration-panel {
+          min-width: 0;
+          max-width: calc(100vw - 1rem);
+          box-sizing: border-box;
+          overflow-x: auto;
+        }
+        /* the Commons: the tree above (scrolling both ways), the chosen practice below — side by side, the 260-px
+           description left the tree a 60-px sliver */
+        .tech-body {
+          flex-direction: column;
+        }
+        /* the CCTV inset to the top of the map: at the bottom it covered the overlay's colour key (Maddy 2026-10-08) */
+        #cctv {
+          top: calc(var(--topbar-h) + 8px);
+          bottom: auto;
+          right: 8px;
+        }
+        /* centred windows taller than the pane lost their top (title, close) above the screen: cap and scroll */
+        .settings-panel, .help-panel {
+          max-height: calc(100vh - var(--topbar-h) - var(--status-h) - 1rem);
+          overflow-y: auto;
+        }
+        .tech-detail {
+          flex: 0 0 auto;
+          max-height: 42%;
+        }
+      }
       /* Overlay colour key: bottom-left of the map pane, right of the docked palette and above the status line
          (it used to sit 12px from the window edge, on top of the palette; top-left it would clip the top bar
          and collide with the Budget window) */

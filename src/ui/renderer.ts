@@ -552,8 +552,7 @@ export class Renderer {
    *  renderFrame patches just the tiles whose mark changed. A base overlay may read live fields, so with one up
    *  this stays a full rebuild. */
   refreshLiveMarks(): void {
-    if (this.overlay) this.baseDirty = true;
-    else this.marksDue = true;
+    this.marksDue = true;
   }
 
   /** The base rects the last live-mark patch re-drew; `version` moves with each patch (the GPU path re-uploads
@@ -834,20 +833,7 @@ export class Renderer {
           }
         }
 
-        // Ecology heatmap: a translucent tint over every visible tile (built or
-        // not). Part of the base — overlay changes call invalidateBase (Task 3).
-        // A SPARSE overlay (dimBase) scrims every un-highlighted tile so its few
-        // strong highlights read as a layer view instead of washing into terrain.
-        if (this.overlay) {
-          const t = this.overlay.tint(i);
-          if (t) {
-            ctx.fillStyle = `rgba(${t[0]}, ${t[1]}, ${t[2]}, ${t[3]})`;
-            ctx.fillRect(dx, dy, ts, ts);
-          } else if (this.overlay.dimBase) {
-            ctx.fillStyle = OVERLAY_DIM_CSS;
-            ctx.fillRect(dx, dy, ts, ts);
-          }
-        }
+        // (The info overlays are drawn over the life layer each frame — drawOverlays — not baked in here.)
       }
     }
 
@@ -1056,6 +1042,7 @@ export class Renderer {
    */
   render(world: WorldState, camera: Camera): void {
     this.composite(world, camera);
+    this.drawOverlays(world, camera, null);
   }
 
   /**
@@ -1076,11 +1063,54 @@ export class Renderer {
     }
     this.composite(world, camera, ambient); // ambient → drawBase bakes wear/junk/tents under the agents
     this.drawSprites(world, camera, ambient);
+    this.drawOverlays(world, camera, ambient); // the info views over the life layer
     if (this.hole) {
       // the CCTV inset is drawn by the GPU in this corner of the map: keep this view's sprites out of it
       const h = this.hole;
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.clearRect(Math.floor(h.x * this.dpr), Math.floor(h.y * this.dpr), Math.ceil(h.w * this.dpr), Math.ceil(h.h * this.dpr));
+    }
+  }
+
+  /** The info views, over the life layer (Maddy 2026-10-08: they drew under it): the selected overlay's tint on every
+   *  visible tile — a sparse one (dimBase) scrimming the rest so its highlights read — and the live Police Violence
+   *  map. Drawn each frame on the visible canvas, so they follow the live fields and never rebuild the base. */
+  private drawOverlays(world: WorldState, camera: Camera, ambient: AmbientState | null): void {
+    if (!this.overlay && !(ambient && this.liveOverlay === 'police')) return;
+    const ctx = this.ctx;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const ts = camera.tileSize;
+    const mapW = world.map.width;
+    if (this.overlay) {
+      const range = camera.visibleTileRange();
+      for (let ty = range.y0; ty <= range.y1; ty++) {
+        for (let tx = range.x0; tx <= range.x1; tx++) {
+          const t = this.overlay.tint(ty * mapW + tx);
+          const fill = t ? `rgba(${t[0]}, ${t[1]}, ${t[2]}, ${t[3]})` : this.overlay.dimBase ? OVERLAY_DIM_CSS : null;
+          if (!fill) continue;
+          const o = camera.tileOrigin(tx, ty);
+          ctx.fillStyle = fill;
+          ctx.fillRect(o.dx, o.dy, ts, ts);
+        }
+      }
+    }
+    if (ambient && this.liveOverlay === 'police') {
+      // Police Violence map (toggled, P): a blood-red stain on every tile where the state has done harm (arrests),
+      // drawn per-frame from the live field so it tracks arrests + decay. The inverse of a crime map — concentrated
+      // in the redlined districts the cruisers hunt.
+      const w = this.cssWidth;
+      const h = this.cssHeight;
+      for (const [tile, v] of ambient.policeViolence) {
+        const vx = tile % mapW;
+        const vy = (tile - vx) / mapW;
+        const { sx, sy } = camera.worldToScreen(vx, vy);
+        if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
+        const t = policeViolenceTint(v);
+        ctx.globalAlpha = t[3];
+        ctx.fillStyle = `rgb(${t[0]},${t[1]},${t[2]})`;
+        ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
+      }
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -1235,22 +1265,7 @@ export class Renderer {
     }
     // (Smog is drawn LAST — the top layer, above cars/peds — see end of drawSprites.)
 
-    // Police Violence map (toggled, P): a blood-red stain on every tile where the state has done
-    // harm (arrests), drawn per-frame from the live field so it tracks arrests + decay. The inverse
-    // of a crime map — concentrated in the redlined districts the cruisers hunt.
-    if (this.liveOverlay === 'police') {
-      for (const [tile, v] of ambient.policeViolence) {
-        const vx = tile % mapW;
-        const vy = (tile - vx) / mapW;
-        const { sx, sy } = camera.worldToScreen(vx, vy);
-        if (sx < -ts || sx > w + ts || sy < -ts || sy > h + ts) continue;
-        const t = policeViolenceTint(v);
-        ctx.globalAlpha = t[3];
-        ctx.fillStyle = `rgb(${t[0]},${t[1]},${t[2]})`;
-        ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
-      }
-      ctx.globalAlpha = 1;
-    }
+    // (The Police Violence map is an info view: drawn over the life layer, in drawOverlays.)
 
     // Police cruisers: a black-and-white car whose roof bar flashes red/blue (two sprite phases); the GPU
     // glow pass casts the flashing pool onto the street around it.

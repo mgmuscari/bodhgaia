@@ -52,3 +52,64 @@ describe('no desktop-only note (index.html)', () => {
     expect(html).not.toMatch(/desktop-note|best on a desktop/i);
   });
 });
+
+// Maddy 2026-10-08: "bodhgaia title is too wide for mobile". The opening's title cards scale with the screen's width
+// (never past their desktop size), so BODHGAIA, its byline and the awakening fit a phone.
+describe('the opening titles fit a phone', () => {
+  /** The font-size of the rule for exactly `sel` that sets one (a grouped selector ending in it sets none). */
+  const size = (sel: string): string => {
+    for (const m of head.matchAll(new RegExp(`(?:^|\\n)\\s*\\${sel}\\s*\\{([^}]*)\\}`, 'g'))) {
+      const f = /font-size:\s*([^;]+);/.exec(m[1]!);
+      if (f) return f[1]!;
+    }
+    return '';
+  };
+  it('each title card’s size is the smaller of its desktop size and a share of the screen width', () => {
+    expect(size('.night-credit-name')).toMatch(/^min\(4rem, [\d.]+vw\)$/);
+    expect(size('.night-credit')).toMatch(/^min\(1\.5rem, [\d.]+vw\)$/);
+    expect(size('.night-title')).toMatch(/^min\(3rem, [\d.]+vw\)$/);
+  });
+  it('BODHGAIA — 8 letters, tracked 0.32em — fits 390 px less its 24 px margins', () => {
+    const vw = Number(/min\(4rem, ([\d.]+)vw\)/.exec(size('.night-credit-name'))![1]);
+    const px = (vw / 100) * 390;
+    const width = 8 * px * (0.6 + 0.32) + px * 0.32; // a generous glyph advance, the tracking, the balancing pad
+    expect(width).toBeLessThanOrEqual(390 - 48);
+  });
+});
+
+// Maddy 2026-10-08: "the budget and other panels are also too wide for mobile, they overflow the right edge".
+describe('the windows fit a phone', () => {
+  const blocks = [...html.matchAll(/@media \(max-width: 760px\) \{([\s\S]*?)\n {6}\}/g)].map((m) => m[1]!);
+  const rulesFor = (sel: string): string =>
+    blocks.flatMap((b) => [...b.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((r) => r[1]!.split(',').map((s) => s.trim()).includes(sel)).map((r) => r[2]!)).join(';');
+  it('the Budget (and Saves) and Tech windows span the screen less a margin, over the palette', () => {
+    for (const sel of ['.budget-panel', '.tech-panel']) {
+      const r = rulesFor(sel);
+      expect(r, sel).toMatch(/left:\s*0\.5rem/);
+      expect(r, sel).toMatch(/right:\s*0\.5rem/);
+      expect(r, sel).toMatch(/width:\s*auto/);
+    }
+  });
+  it('the centred and docked windows are capped to the screen', () => {
+    for (const sel of ['.settings-panel', '.help-panel', '.restoration-panel']) {
+      const r = rulesFor(sel);
+      expect(r, sel).toMatch(/max-width:\s*calc\(100vw - 1rem\)/);
+      expect(r, sel).toMatch(/min-width:\s*0/);
+      expect(r, sel).toMatch(/box-sizing:\s*border-box/);
+    }
+  });
+  it('and come after the windows’ own rules, so they win', () => {
+    expect(html.lastIndexOf('.budget-panel {')).toBeLessThan(html.indexOf('/* windows on a phone'));
+  });
+});
+
+// Maddy 2026-10-08: "cctv frame overlaps legends for info views". On a phone the map pane is ~280 px wide: the CCTV
+// inset (bottom-right) sat on the overlay's colour key (bottom-left). There it moves to the top of the map.
+describe('the CCTV inset and the colour key never meet on a phone', () => {
+  const blocks = [...html.matchAll(/@media \(max-width: 760px\) \{([\s\S]*?)\n {6}\}/g)].map((m) => m[1]!).join('\n');
+  it('the inset sits at the top of the map pane on a narrow screen', () => {
+    const r = /#cctv\s*\{([^}]*)\}/.exec(blocks)?.[1] ?? '';
+    expect(r).toMatch(/top:\s*calc\(var\(--topbar-h\) \+ \d+px\)/);
+    expect(r).toMatch(/bottom:\s*auto/);
+  });
+});

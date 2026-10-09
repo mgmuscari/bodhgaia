@@ -30,3 +30,12 @@ describe('no keyboard hints on a touch screen', () => {
     expect(controlsHint(true)).not.toMatch(/\?|⌨/);
   });
 });
+
+import { soundStartNote } from '../../src/ui/controlsContent';
+describe('the sound note names no key on touch', () => {
+  it('a click or key press on a keyboard; a tap on touch', () => {
+    expect(soundStartNote(false)).toMatch(/click or key press/);
+    expect(soundStartNote(true)).toMatch(/tap/);
+    expect(soundStartNote(true)).not.toMatch(/key|click/);
+  });
+});
