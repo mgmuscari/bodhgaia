@@ -233,10 +233,11 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
 }
 
 /** Drive `frame` from requestAnimationFrame: the body runs, THEN the next frame is requested. */
-/** The shortest time between drawn frames: 30 fps on a touch screen, 60 on a desktop — the agents step 20 times a
- *  second, so neither loses motion, and a 120-Hz display no longer draws twice what anyone sees (Maddy 2026-10-08). */
-export function frameInterval(touch: boolean): number {
-  return 1000 / (touch ? 30 : 60);
+/** The shortest time between drawn frames: 30 fps on every device — the life layer steps 30 times a second, so each
+ *  frame carries exactly one step (Maddy 2026-10-09: a 20-Hz life under 30-fps frames beat — one step, then two — and
+ *  tore the intro's scroll on a phone). `touch` is kept for a device-specific rate, should one be wanted again. */
+export function frameInterval(_touch: boolean): number {
+  return 1000 / 30;
 }
 
 /** A display refresh this close to the cap's interval still counts as due (refresh timestamps jitter). */

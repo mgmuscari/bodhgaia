@@ -215,15 +215,19 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.roadTick % ROAD_CADENCE === 0) stepRoadDecay(state, map);
 }
 
+/** Time owed within this of a whole substep is stepped now, borrowing from the next frame: frames drawn every ~33⅓ ms
+ *  jitter a millisecond or two, and a plain accumulator then gives one frame no step and the next two — the beat
+ *  the 30-step rate exists to end (Maddy 2026-10-09). Steps lock to frames; no time is lost or invented. */
+const STEP_LOCK_MS = SUBSTEP_MS / 4;
+
 /**
- * Advance the ambient state by `dtMs` of wall-clock time, in fixed 50ms substeps.
+ * Advance the ambient state by `dtMs` of wall-clock time, in fixed substeps (SUBSTEP_MS, 30 a second).
  * Clamps `dtMs` to AMBIENT_MAX_FRAME_MS first (so a pathological gap can never spin
- * more than AMBIENT_MAX_FRAME_MS/50 = 20 substeps and hang the frame). Writes ONLY
- * `state`; `map` is read-only.
+ * more than a second's substeps and hang the frame). Writes ONLY `state`; `map` is read-only.
  */
 export function stepAmbient(state: AmbientState, map: GameMap, rng: Rng, dtMs: number): void {
   state.accMs += Math.min(dtMs, AMBIENT_MAX_FRAME_MS);
-  while (state.accMs >= SUBSTEP_MS) {
+  while (state.accMs >= SUBSTEP_MS - STEP_LOCK_MS) {
     state.accMs -= SUBSTEP_MS;
     snapshotMovers(state); // the "before" pose the renderer interpolates from
     liveSubstep(() => substep(state, map, rng)); // the clock: map caches check once inside it

@@ -2,7 +2,7 @@
 // which way it faces — the turn arcs, kerb/lane laterals, and the between-substep interpolation the
 // renderers read. Cut verbatim from ui/ambientContent.ts; pure, no trig (nlerp + sqrt).
 
-import { SUBSTEP_MS } from './tuning';
+import { SUBSTEP_MS, seconds } from './tuning';
 import { DIR_DX, DIR_DY, LANE, PED_CURB } from './geometry';
 import type { AmbientState, Car, Mover, Ped, Train } from './types';
 import type { GameMap } from '../engine/map';
@@ -210,7 +210,7 @@ export function snapshotMovers(state: AmbientState): void {
 
 /** How far (0..1) the display is between the last substep and the next — the interpolation factor. */
 export function ambientAlpha(state: AmbientState): number {
-  return Math.min(1, Math.max(0, state.accMs / SUBSTEP_MS));
+  return Math.min(1, Math.max(0, state.accMs / SUBSTEP_MS)); // (a borrowed step leaves accMs a little below 0)
 }
 
 /** Where a walker keeps to the kerb: a road, or a tram street (Maddy 2026-10-08: walkers down the middle of it). */
@@ -223,7 +223,7 @@ export function streetAt(map: GameMap): (x: number, y: number) => boolean {
 }
 
 /** Substeps a park, an unpark or a step out of a car eases over (~0.5 s). */
-export const EASE_SUBSTEPS = 10;
+export const EASE_SUBSTEPS = seconds(0.5);
 
 /** Start `m` easing in from `from` — the pose it is drawn at now — so a jump in its position (into a stall, out of
  *  one, out of a car) is drawn as a slide (Maddy 2026-10-08: parking snapped to the side of the road). */

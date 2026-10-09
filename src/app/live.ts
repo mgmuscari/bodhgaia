@@ -7,6 +7,7 @@
 // by the sim path alone (its FixedTickLoop clamp owns catch-up), the ambient clock by this layer (stepAmbient's
 // clamp owns catch-up). Turning life off restores the legacy dirty-driven render path (the frame loop reads `on`).
 
+import { perSecond } from '../live/tuning';
 import { createRng, type Rng } from '../engine/rng';
 import type { GameMap } from '../engine/map';
 import type { ParcelStore } from '../engine/fabric';
@@ -32,7 +33,8 @@ export function plantEmitters(map: GameMap, parcels: ParcelStore): { tile: numbe
   const emitters: { tile: number; amount: number }[] = [];
   for (const idx of parcels.aliveIndices()) {
     const p = parcels.get(idx);
-    const amt = plantPollution(p.kind);
+    // the plant table's amounts were tuned per 20-Hz life step: the same smog a second at the life layer's rate
+    const amt = perSecond(plantPollution(p.kind) * 20);
     if (amt <= 0) continue;
     for (let yy = -PLUME_RADIUS; yy < p.height + PLUME_RADIUS; yy++) {
       for (let xx = -PLUME_RADIUS; xx < p.width + PLUME_RADIUS; xx++) {

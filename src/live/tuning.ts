@@ -11,13 +11,28 @@ import { BuiltKind } from '../engine/fabric';
  *  missed visibility reset can never spiral into a synchronous hang. */
 export const AMBIENT_MAX_FRAME_MS = 1000;
 
+/** Life-layer steps a second — one per 30-fps frame, so a frame never carries one step and then two (Maddy 2026-10-09:
+ *  a 20-Hz life under 30-fps frames beat, and tore the intro's scroll on a phone). Every per-step quantity below is
+ *  written in real-world units through seconds()/perSecond(), so this one number sets the rate. */
+export const SUBSTEPS_PER_SEC = 30;
+
 /** Fixed substep size — the simulation cadence for ambient motion. */
-export const SUBSTEP_MS = 50;
+export const SUBSTEP_MS = 1000 / SUBSTEPS_PER_SEC;
+
+/** A duration of `s` seconds, in whole substeps. */
+export function seconds(s: number): number {
+  return Math.round(s * SUBSTEPS_PER_SEC);
+}
+
+/** An amount of `v` per second (a speed in tiles/s, a rate in units/s), as the amount per substep. */
+export function perSecond(v: number): number {
+  return v / SUBSTEPS_PER_SEC;
+}
 
 // Police cruisers patrol the redlined districts from their precincts (the visible
 // face of the over-policing the civic layer models). One per precinct, capped.
 export const CRUISER_CAP = 8;
-export const CRUISER_LIFE = 400; // substeps a patrol runs before recycling back to its precinct (~20s)
+export const CRUISER_LIFE = seconds(20); // substeps a patrol runs before recycling back to its precinct (~20s)
 export const HUNT_RADIUS = 8; // a cruiser homes in on an on-foot citizen within this Manhattan distance
 export const AMBUSH_LEAD = 4; // tiles AHEAD of a citizen's heading an ambush (Pinky) cruiser aims for
 export const SHY_RADIUS = 4; // a shy (Clyde) cruiser only pounces when the citizen is this close, else patrols
@@ -36,13 +51,13 @@ export const REFUGE_KINDS = new Set<number>([
 // Scatter/chase cadence (the Pac-Man ghost rhythm): the fleet alternates between SCATTER (patrol the
 // redlined streets, ignore people) and CHASE (hunt pedestrians + sweep arrests). Mostly chase, with
 // a periodic scatter lull — so the redlined streets pulse between tense calm and active sweeps.
-export const SCATTER_LEN = 140; // substeps of scatter (~7s)
-export const CHASE_LEN = 400; // substeps of chase (~20s)
+export const SCATTER_LEN = seconds(7); // substeps of scatter (~7s)
+export const CHASE_LEN = seconds(20); // substeps of chase (~20s)
 
 // Arrests: a cruiser in a redlined zone takes a nearby citizen off the street FOR NOTHING and
 // drains a person from their household — the violence of over-policing, made tangible. Only in
 // redlined zones (the disparity); the player ends it by defunding (no precinct → no cruisers).
-export const ARREST_CADENCE = 40; // substeps between arrest sweeps (~2s)
+export const ARREST_CADENCE = seconds(2); // substeps between arrest sweeps (~2s)
 export const ARREST_CHANCE_MAX = 0.5; // per cruiser per sweep on FULLY redlined ground (grade 255)
 export const ARREST_RADIUS = 4; // a cruiser seizes an on-foot citizen within this Manhattan distance
 export const ARREST_DRAIN = 1; // people removed from the household per arrest
@@ -52,21 +67,21 @@ export const ARREST_TRAUMA = 60; // wellbeing (buildingHealth) ripped from the h
 // the harm). This is the data behind the Police Violence overlay — the inverse of a crime map.
 export const POLICE_VIOLENCE_MAX = 255;
 export const POLICE_VIOLENCE_LAY = 50; // stain laid at an arrest
-export const POLICE_VIOLENCE_DECAY = 0.05; // per substep (~1/s) — fades slowly, so a hot zone accumulates
+export const POLICE_VIOLENCE_DECAY = perSecond(1); // per substep (~1/s) — fades slowly, so a hot zone accumulates
 
 // Rejection-sampling budget per substep per kind: sample K random tiles and test
 // the spawn predicate, never an O(mapArea) full-map scan (CRITIC-YP1).
 export const SAMPLES_PER_SUBSTEP = 8;
 
 // Float tiles travelled per 50ms substep. Cars are quicker than pedestrians.
-export const CAR_SPEED = 0.12;
-export const PED_SPEED = 0.05;
+export const CAR_SPEED = perSecond(2.4);
+export const PED_SPEED = perSecond(1);
 
 // Trains (Maddy feature: rails need trains). An ambient agent that rides the RAIL network as a snake
 // of cells — the head advances tile to tile, each arrival shifts a new tile onto the head and drops
 // the tail, so the cars follow the exact track (including its curves). It shuttles: at a dead-end the
 // rail step returns the U-turn, so the train runs back the other way. Live layer, never hashed.
-export const TRAIN_SPEED = 0.16; // tiles/substep — a touch faster than a car
+export const TRAIN_SPEED = perSecond(3.2); // tiles/substep — a touch faster than a car
 export const TRAIN_LEN = 4; // cars per train (head + 3)
 export const TRAIN_CAP = 48; // hard ceiling on concurrent trams and trains, city-wide
 /** A line runs a vehicle per this many of its tiles (Maddy 2026-10-08: two trams on a long line left hundreds waiting). */
@@ -109,7 +124,7 @@ export const CURB_RADIUS = 10;
 
 /** Safety cap (substeps) on how long a parked car waits for its pedestrian before leaving
  *  anyway — normally the returning ped releases it sooner. ~30s at 50ms/substep. */
-export const PARK_MAX_WAIT = 600;
+export const PARK_MAX_WAIT = seconds(30);
 
 /** Bounds + decay for the live per-building HEALTH signal: each completed citizen visit
  *  deposits the destination plot's visitValue at the citizen's home, and health eases back
@@ -117,7 +132,7 @@ export const PARK_MAX_WAIT = 600;
 export const HEALTH_MAX = 120;
 // Slow decay so health ACCUMULATES across a home's repeated trips into a persistent,
 // readable signal (a fast decay left most homes flickering back to neutral between visits).
-export const HEALTH_DECAY = 0.02;
+export const HEALTH_DECAY = perSecond(0.4);
 
 /** Transport-MODE threshold: a citizen trip whose committed path is at most this many tiles
  *  is walked (a pedestrian routes the whole way); longer trips drive. So as destinations come
@@ -139,15 +154,15 @@ export const MODE_INFRA_RADIUS = 6;
 
 /** How long a citizen's car lingers "parked at home" after the owner's round ends, before it clears
  *  — a brief visible beat, short enough that retired cars don't pile up into a backlog. */
-export const RETIRED_CAR_LINGER = 90;
+export const RETIRED_CAR_LINGER = seconds(4.5);
 
 /** Live, AGENT-DRIVEN traffic density (0..TRAFFIC_MAX), keyed by road tile: laid by cars as they
  *  actually drive, decayed when they don't. It IS the traffic — the macro pattern emerges from the
  *  agents, not from an aggregate field the sim paints. Cars route AROUND it (CONGESTION_WEIGHT in
  *  the pathfinder) and peds shun it; so building a bypass or calming a street shifts where cars go. */
 export const TRAFFIC_MAX = 255;
-export const TRAFFIC_LAY = 10; // a car adds this to its tile's live traffic per substep it drives there
-export const TRAFFIC_DECAY = 1; // live traffic eases back this much per substep when no car is passing
+export const TRAFFIC_LAY = perSecond(200); // a car adds this to its tile's live traffic per substep it drives there
+export const TRAFFIC_DECAY = perSecond(20); // live traffic eases back this much per substep when no car is passing
 export const CONGESTION_WEIGHT = 3; // how strongly the pathfinder/peds avoid a fully-congested tile
 /** A* search bound — a car-agent's route is the committed least-cost path; abandon past this. */
 export const ROAD_PATH_MAX_ITERS = 4000;
@@ -158,10 +173,10 @@ export const ROAD_PATH_MAX_ITERS = 4000;
  *  through land value (it drags a tile down). Live layer, never hashed — the smog is emergent from
  *  the actual vehicles, not an aggregate field. */
 export const POLL_MAX = 255;
-export const POLL_LAY_BASE = 6; // a car emits this on a surface road per substep it drives there
+export const POLL_LAY_BASE = perSecond(120); // a car emits this on a surface road per substep it drives there
 export const POLL_FREEWAY_MULT = 2; // a freeway carries faster, heavier traffic → twice the emission
-export const POLL_CONGEST = 8; // up to this much MORE on a fully-jammed tile (idling smog)
-export const POLL_DECAY = 0.4; // smog lingers — eases back slower than traffic (TRAFFIC_DECAY = 1) clears
+export const POLL_CONGEST = perSecond(160); // up to this much MORE on a fully-jammed tile (idling smog)
+export const POLL_DECAY = perSecond(8); // smog lingers — eases back slower than traffic (TRAFFIC_DECAY = 1) clears
 export const PED_POLL_WEIGHT = 2.5; // a fully-smoggy tile costs about as much as a stroad to walk
 
 // Prevailing wind: the city has one dominant wind, so smog DRIFTS downwind into plumes instead of
@@ -178,13 +193,13 @@ export const WIND_DIRS: ReadonlyArray<readonly [number, number]> = [
   [-1, 0], // W
   [-1, -1], // NW
 ];
-export const WIND_CADENCE = 8; // substeps between drift passes (~0.4s) — the plume streaks, never teleports
+export const WIND_CADENCE = seconds(0.4); // substeps between drift passes (~0.4s) — the plume streaks, never teleports
 export const WIND_FRACTION = 0.34; // share of a tile's smog carried one tile downwind each drift pass
 export const POLL_DIFFUSE_COEFF = 0.12; // share of a tile's smog that diffuses out (isotropic) each pass
 // Rain (Maddy): an occasional storm washes smog→ground→water, each conversion DILUTED (<1) so the
 // pollution relocates toward the low/redlined banks rather than vanishing. Cadence/dilution are
 // playtest-feel knobs. Deterministic (a fixed cadence, no rng) — stays on the pure-ui allowlist.
-export const RAIN_CADENCE = 560; // substeps between storms (~28s) — "occasional"
+export const RAIN_CADENCE = seconds(28); // substeps between storms (~28s) — "occasional"
 export const RAIN_SMOG_DILUTION = 0.4; // fraction of airborne smog rained down onto the land
 export const RAIN_RUNOFF_DILUTION = 0.5; // fraction of ground pollution mobilised toward water per storm
 
@@ -207,7 +222,7 @@ export const LV_ROAD_PEN = 25; // − the worst nearby crumbling road (disinvest
 //                          the LV↔road feedback settles rather than death-spiralling
 export const LV_COVERAGE_PEN = 30; // − an inhabited plot with NO fire/health station in reach (under-served)
 export const COVERAGE_RADIUS = 6; // a fire station / healing commons covers tiles within this Manhattan radius
-export const LV_CADENCE = 20; // recompute every N substeps (~1s) — a slow, whole-map readout
+export const LV_CADENCE = seconds(1); // recompute every N substeps (~1s) — a slow, whole-map readout
 export const LV_PULL = 10; // tiles of extra distance a max-value destination can justify over a drab one
 
 /** The green / healing / civic-green kinds that lift a neighbour's land value (the goods the player
@@ -241,7 +256,7 @@ export const AMENITY_KINDS: ReadonlySet<number> = new Set([
  *  only how many inhabit it is live. Total occupancy drives the spawn target + home weighting, closing
  *  the loop: more people → more trips → more traffic/pollution → lower land value → decline; healing
  *  reverses it. (Buildings actually appearing/disappearing is the deferred deterministic-growth seam.) */
-export const OCC_CADENCE = 20; // re-evaluate occupancy every ~1s (a slow demographic drift)
+export const OCC_CADENCE = seconds(1); // re-evaluate occupancy every ~1s (a slow demographic drift)
 export const OCC_RATE = 0.25; // people/cadence occupancy moves toward the ceiling / floor at a full signal (gentle)
 // LAND VALUE is the ANCHOR of occupancy (it self-corrects: fewer people → less traffic → higher value).
 // Neutral sits at the decayed car-city's live equilibrium so the start is metastable, not free-falling.
@@ -289,7 +304,7 @@ export const OCC_HEADROOM: ReadonlyMap<number, number> = new Map([
 /** Wellbeing a walking citizen loses per substep spent trudging along a road/stroad — a long
  *  road walk brings home less (the unpleasant commute). Promenades/quiet streets/green cost
  *  nothing. Subtracted from the home deposit on arrival. */
-export const ROAD_WALK_PENALTY = 0.04;
+export const ROAD_WALK_PENALTY = perSecond(0.8);
 
 /** Terrain-aware foot routing over WILD ground (empty land): lush growth is hard to push through
  *  (higher cost), a beaten desire path is easy going (lower cost) — so foot traffic self-reinforces
@@ -315,7 +330,7 @@ export const PED_YARD = 5;
  *  brings home less wellbeing. A wearable tile counts as wellbeing-degrading once its wear reaches
  *  WORN_DEGRADE_MIN; each such substep taxes the home deposit by WORN_WALK_PENALTY. */
 export const WORN_DEGRADE_MIN = 128; // half of WEAR_MAX — clearly a beaten path, not incidental trampling
-export const WORN_WALK_PENALTY = 0.04;
+export const WORN_WALK_PENALTY = perSecond(0.8);
 
 /** Wellbeing a home loses when one of its citizens can't reach its destination on foot — the
  *  pathing dead-ends (e.g. blocked by a freeway) and the citizen gives up: a lost resident. */
@@ -333,10 +348,10 @@ export const FAILED_TRIP_PENALTY = 10;
 // burning out (Maddy): long multi-stop rounds and cross-town trips complete instead of giving up.
 export const FUEL_TANK = 2100;
 export const FUEL_LIMP_HOME = 200; // the reserve granted on give-up, just enough to drag itself home
-export const FUEL_BURN_BASE = 1; // fuel spent per substep on a paved/built/bare tile
-export const FUEL_BURN_LUSH = 0.8; // extra burn at full floraVitality — lush ground is tiring
-export const FUEL_BURN_BEATEN = 0.7; // burn saved on a fully-beaten path — easy underfoot
-export const FUEL_BURN_MIN = 0.3; // floor on per-substep burn
+export const FUEL_BURN_BASE = perSecond(20); // fuel spent per substep on a paved/built/bare tile
+export const FUEL_BURN_LUSH = perSecond(16); // extra burn at full floraVitality — lush ground is tiring
+export const FUEL_BURN_BEATEN = perSecond(14); // burn saved on a fully-beaten path — easy underfoot
+export const FUEL_BURN_MIN = perSecond(6); // floor on per-substep burn
 export const FUEL_REFUEL_BASE = 120; // base fuel a visit hands back
 export const FUEL_REFUEL_PER_VALUE = 30; // × the plot's visitValue (−4..+6): healing refuels lots, industry ~none
 export const GIVE_UP_PENALTY = 4;
@@ -347,18 +362,18 @@ export const GIVE_UP_PENALTY = 4;
  *  (e.g. onto a promenade the player lays down). Live/cosmetic — the deterministic ecology
  *  layers are read, never written. */
 export const WEAR_MAX = 255;
-export const WEAR_RATE = 1.5;
+export const WEAR_RATE = perSecond(30);
 // Slow decay so repeated crossings ACCUMULATE into a bold, persistent desire line instead of
 // a single faint crossing fading at once; the path still regrows over minutes if foot traffic
 // reroutes (e.g. onto a promenade the player lays down).
-export const WEAR_DECAY = 0.02;
+export const WEAR_DECAY = perSecond(0.4);
 
 /** Water-runoff pollution: water tiles are impassable and instead collect runoff from the
  *  ground around them, growing heavily polluted over time. Computed every WATER_RUNOFF_CADENCE
  *  substeps; each ground 4-neighbour sheds RUNOFF_* into the water tile (paved/built/worn ground
  *  sheds most, wild ground least), accumulating toward WATER_POLL_MAX. Live/cosmetic. */
 export const WATER_POLL_MAX = 255;
-export const WATER_RUNOFF_CADENCE = 20;
+export const WATER_RUNOFF_CADENCE = seconds(1);
 export const RUNOFF_URBAN = 2; // a paved/built ground neighbour
 export const RUNOFF_WILD = 0.4; // a wild/empty ground neighbour
 export const RUNOFF_WORN = 2; // extra when that ground is a beaten desire path
@@ -373,7 +388,7 @@ export const WATER_TREAT_AMOUNT = 30; // pollution removed at the works per cade
  *  heals). The real source that then runs off into the creeks. Whole-map scan on a slow cadence;
  *  live/cosmetic, never hashed. */
 export const GROUND_POLL_MAX = 255;
-export const GROUND_RUNOFF_CADENCE = 20; // substeps between ground-contamination passes (matches water)
+export const GROUND_RUNOFF_CADENCE = seconds(1); // substeps between ground-contamination passes (matches water)
 export const GROUND_INDUSTRY = 5; // an industrial tile poisons its own ground, grade-scaled up to 2x
 export const GROUND_PLANT = 6; // a dirty power plant poisons the ground under it
 export const GROUND_SEEP = 1.5; // an industrial/plant NEIGHBOUR seeps into adjacent ground (the plume)
@@ -383,14 +398,14 @@ export const GROUND_DECAY = 0.8; // lingers — contaminated land is slow to rec
 // Abandoned cars: an arrested citizen is removed from the game, so their car is left a DERELICT —
 // dumped on an empty tile (not driven home), where it slowly RUSTS into ground pollution and then
 // disappears, leaving a contaminated patch the player must heal (the toxic legacy of the apparatus).
-export const ABANDONED_DEGRADE_TIME = 2400; // substeps a wreck sits before it has fully rusted away (~2 min)
-export const ABANDONED_GROUND_POLL = 0.35; // ground pollution it leaks per substep (outpaces GROUND_DECAY)
+export const ABANDONED_DEGRADE_TIME = seconds(120); // substeps a wreck sits before it has fully rusted away (~2 min)
+export const ABANDONED_GROUND_POLL = perSecond(7); // ground pollution it leaks per substep (outpaces GROUND_DECAY)
 
 /** Road decay: redlined roads crumble (the city won't maintain the disinvested districts), while
  *  roads in a CARED-FOR neighborhood (land value at/above ROAD_CARED_LV) recover. Crumbling
  *  scales with the road tile's redline grade, so greenlined roads stay sound. Live/non-hashed. */
 export const ROAD_DECAY_MAX = 255;
-export const ROAD_CADENCE = 30; // recompute road decay every N substeps (a slow infrastructure clock)
+export const ROAD_CADENCE = seconds(1.5); // recompute road decay every N substeps (a slow infrastructure clock)
 export const ROAD_CRUMBLE_RATE = 6; // decay added per cadence to a fully redlined, uncared road
 export const ROAD_RECOVER_RATE = 24; // decay removed per cadence where cared-for — recovery clearly
 //                               outpaces crumbling so a healed district's roads visibly mend
@@ -398,8 +413,8 @@ export const ROAD_CARED_LV = 100; // local land value at/above which roads get m
 
 /** Substeps a pedestrian spends INSIDE its destination building before walking back to the
  *  car: a base plus a seeded spread so visitors don't all return together. ~3–13s. */
-export const INSIDE_DWELL_MIN = 60;
-export const INSIDE_DWELL_SPAN = 200;
+export const INSIDE_DWELL_MIN = seconds(3);
+export const INSIDE_DWELL_SPAN = seconds(10);
 
 /** How strongly a car prefers to continue straight through a junction vs. turn (the
  *  weight of the straight-ahead option against each side option). High enough that
@@ -420,22 +435,22 @@ export const FLOCK_MIN = 3;
 export const FLOCK_MAX = 7;
 
 // Boids tuning (sqrt-normalized — no trig). Gentle so a flock stays cohesive.
-export const BIRD_MAX_SPEED = 0.08;
-export const BIRD_COHESION = 0.012;
-export const BIRD_ALIGN = 0.04;
-export const BIRD_SEPARATION = 0.02;
+export const BIRD_MAX_SPEED = perSecond(1.6);
+export const BIRD_COHESION = 4.8 / (SUBSTEPS_PER_SEC * SUBSTEPS_PER_SEC);
+export const BIRD_ALIGN = 0.02684768070825594; // 1 − 0.96^(20/30): the same share of misalignment left after a second as 0.04 at 20 steps/s
+export const BIRD_SEPARATION = 8 / (SUBSTEPS_PER_SEC * SUBSTEPS_PER_SEC);
 export const BIRD_SEP_RADIUS2 = 1.0; // squared tile distance under which separation kicks in
 
 /** Substeps (50 ms each) a held vehicle waits before re-planning its route round the blockage (~2 s). */
-export const STUCK_REPATH = 40;
+export const STUCK_REPATH = seconds(2);
 /** Substeps before a held vehicle turns back the way it came and re-plans from there (~4 s). */
-export const STUCK_UTURN = 80;
+export const STUCK_UTURN = seconds(4);
 /** Substeps before a jammed agent gives up on its current stop and moves on (~6 s). */
-export const STUCK_GIVE_UP = 120;
+export const STUCK_GIVE_UP = seconds(6);
 /** Wellbeing a household loses when one of its citizens abandons a stop to a traffic jam (small). */
 export const JAM_SKIP_PENALTY = 3;
 /** Substeps before a held vehicle squeezes through anyway — breaks circular deadlocks (~8 s). */
-export const STUCK_ESCAPE = 160;
+export const STUCK_ESCAPE = seconds(8);
 
 /** Per-direction cap when measuring a same-kind run: widths are 2–3, so a short cap
  *  ranks the two axes (the shorter run is the road's width) without scanning a whole
@@ -475,9 +490,9 @@ export const RAIL_NOISE = 0.05;
 /** Wear at/above which the heaviest-worn empty tile shows an encampment tent — where the unhoused shelter. */
 export const ENCAMPMENT_WEAR = 225;
 /** Substeps a resident who has died lies on the ground before the memorial takes their place (~3 s). */
-export const FALL_SUBSTEPS = 60;
+export const FALL_SUBSTEPS = seconds(3);
 /** Substeps a street memorial (a candle and flowers) stays where someone died (~2 min). */
-export const MEMORIAL_SUBSTEPS = 2400;
+export const MEMORIAL_SUBSTEPS = seconds(120);
 /** Exposure: the unhoused who die per in-game night hour, per person unhoused (600 unhoused ≈ 2 a night). */
 export const EXPOSURE_PER_PERSON_HOUR = 1 / 2400;
 /** Night, for exposure: from NIGHT_FROM to NIGHT_TO (exclusive). */
@@ -493,11 +508,11 @@ export const LV_RUIN = 12;
 
 // ── Fire trucks (docs/design/disasters.md) ──────────────────────────────────────────────────────────────────
 /** Tiles a truck moves per substep — faster than a car, lights on. */
-export const TRUCK_SPEED = 0.16;
+export const TRUCK_SPEED = perSecond(3.2);
 /** Substeps the crew takes to turn out before the truck leaves the station (~5 s): a fire burns a while first. */
-export const TURNOUT_SUBSTEPS = 100;
+export const TURNOUT_SUBSTEPS = seconds(5);
 /** Substeps a truck sprays before the fire is out (~3 s). */
-export const SPRAY_SUBSTEPS = 60;
+export const SPRAY_SUBSTEPS = seconds(3);
 
 // ── Industrial spills (docs/design/disasters.md) ───────────────────────────────────────────────────────────
 /** Spill chance per industrial works per in-game hour at full condition on clean ground (no practices). Rare in
@@ -513,15 +528,15 @@ export const SPILL_WATER = 200;
 export const SPILL_WATER_RADIUS = 4;
 /** The toxic cloud: its radius (tiles), its drift along the wind per substep, its life (substeps, ~30 s). */
 export const CLOUD_RADIUS = 2.5;
-export const CLOUD_SPEED = 0.03;
-export const CLOUD_SUBSTEPS = 600;
+export const CLOUD_SPEED = perSecond(0.6);
+export const CLOUD_SUBSTEPS = seconds(30);
 /** Smog the cloud lays on each tile under it, per substep (what people breathe), and its own TOXIC smog (what is
  *  seen: the greenish-yellow haze the smog overlay draws), which drifts and spreads like smog and clears at
  *  TOXIC_DECAY a substep. */
-export const CLOUD_SMOG = 3;
-export const CLOUD_TOXIC = 24;
+export const CLOUD_SMOG = perSecond(60);
+export const CLOUD_TOXIC = perSecond(480);
 export const TOXIC_MAX = 255;
-export const TOXIC_DECAY = 0.5;
+export const TOXIC_DECAY = perSecond(10);
 /** Each person outdoors the cloud passes over dies with this chance (one roll each); at most CLOUD_DEATH_MAX. */
 export const CLOUD_DEATH_CHANCE = 0.08;
 export const CLOUD_DEATH_MAX = 3;
@@ -534,7 +549,7 @@ export const CRASH_JAM = 0.6;
  *  fewer cars, fewer jams, fewer crashes. */
 export const CRASH_BASE = 1 / 2400;
 /** Substeps a wreck blocks its lane before it's towed (~30 s). */
-export const CRASH_SUBSTEPS = 600;
+export const CRASH_SUBSTEPS = seconds(30);
 /** The share of crashes that kill someone — the driver, or a walker beside the road. */
 export const CRASH_DEATH = 0.25;
 

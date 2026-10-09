@@ -143,7 +143,9 @@ describe('live layer golden determinism', () => {
     // one more field hashed
     // 2026-10-08 (the scaling pass): land value recomputes one band of rows a substep, not every plot once a second —
     // the same values a second later, but each band at its own moment, so later choices shift
-    expect(first).toBe('cars=3 peds=170 cruisers=4 trains=5 flocks=10 #fc75a4fd');
+    // 2026-10-09: the life layer steps 30 times a second (was 20), every per-step quantity converted to keep the real
+    // pace — the same world, sampled 1.5× as often, so its draws and its digest differ
+    expect(first).toBe('cars=2 peds=169 cruisers=4 trains=5 flocks=13 #e7aac489');
   });
 });
 

@@ -269,18 +269,21 @@ function frameSetupWith(prof: ReturnType<typeof createFrameProfile>) {
   return createFrame({ ...ctx, prof });
 }
 
-// …and 60 on a desktop (Maddy 2026-10-08): a ProMotion Mac drew 120 a second of a city stepping 20.
+// Maddy 2026-10-09: one rate everywhere — the life layer steps 30 times a second and every device draws 30 frames,
+// so each frame carries exactly one step (a 20-Hz life under a 30-fps frame beat: one step, then two).
 import { frameInterval } from '../../src/app/loop';
+import { SUBSTEP_MS } from '../../src/live/tuning';
 describe('frameInterval', () => {
-  it('30 fps on a touch screen, 60 on a desktop', () => {
+  it('30 fps on every device — one frame per life step', () => {
     expect(1000 / frameInterval(true)).toBeCloseTo(30, 6);
-    expect(1000 / frameInterval(false)).toBeCloseTo(60, 6);
+    expect(1000 / frameInterval(false)).toBeCloseTo(30, 6);
+    expect(frameInterval(false)).toBeCloseTo(SUBSTEP_MS, 6);
   });
-  it('a 120-Hz desktop draws 60 frames a second under it', () => {
+  it('a 120-Hz desktop draws 30 frames a second under it', () => {
     const queue: Array<(now: number) => void> = [];
     let drawn = 0;
     runFrames(() => void drawn++, (cb) => void queue.push(cb), frameInterval(false));
     for (let i = 1; i <= 240; i++) queue.shift()!((i * 1000) / 120);
-    expect(drawn / 2).toBeCloseTo(60, 0);
+    expect(drawn / 2).toBeCloseTo(30, 0);
   });
 });

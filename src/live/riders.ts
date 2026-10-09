@@ -10,7 +10,7 @@ import { walkPath } from './pathing';
 import { isWalkable } from './network';
 import { advanceMover, commitHeading, pathStep } from './motion';
 import { DIR_DX, DIR_DY } from './geometry';
-import { FUEL_TANK, PED_SPEED, TRAIN_LEN } from './tuning';
+import { FUEL_TANK, PED_SPEED, TRAIN_LEN, seconds, perSecond } from './tuning';
 import { TRAM_LEN } from './trains';
 import { TravelMode } from '../citizens/modes';
 
@@ -19,12 +19,12 @@ export const STOP_WALK = 8;
 /** Stops nearer each other than this aren't worth riding between (Manhattan, track to track). */
 export const MIN_RIDE = 8;
 /** Substeps a rider waits before giving up and walking (~45 s). */
-export const WAIT_MAX = 900;
+export const WAIT_MAX = seconds(45);
 /** Riders a car carries; a vehicle carries that times its consist (Maddy 2026-10-08: a two-car tram, 64). */
 export const PER_CAR = 32;
 export const capacityOf = (family: LineFamily): number => PER_CAR * (family === 'tram' ? TRAM_LEN : TRAIN_LEN);
 /** Energy a rider gets back each substep aboard — a ride is a rest (Maddy 2026-10-08). */
-export const RIDE_REST = 1;
+export const RIDE_REST = perSecond(20);
 
 export interface Ride {
   family: LineFamily;

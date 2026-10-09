@@ -3,7 +3,7 @@
 // stepping, and the jam relief rungs (re-route, U-turn). Cut verbatim from ui/ambientContent.ts.
 
 import type { GameMap } from '../engine/map';
-import { PILEUP_K, PILEUP_MIN, RECENT_CAP, STUCK_ESCAPE, STUCK_REPATH, STUCK_UTURN } from './tuning';
+import { PILEUP_K, PILEUP_MIN, RECENT_CAP, STUCK_ESCAPE, STUCK_REPATH, STUCK_UTURN, seconds } from './tuning';
 import { DIR_DX, DIR_DY, LANE, laneOffset, opposite } from './geometry';
 import type { AmbientState, Mover } from './types';
 import { roadPath, type TrafficRead } from './pathing';
@@ -38,7 +38,7 @@ export function avoidingTile(traffic: TrafficRead, tile: number): TrafficRead {
 
 /** Substeps between a held vehicle's U-turn attempts once it is stuck enough to try: a failed one used to re-plan
  *  every substep for 40 in a row. */
-export const U_TURN_RETRY = 10;
+export const U_TURN_RETRY = seconds(0.5);
 
 /** Is a vehicle held `stuck` substeps due a U-turn attempt? */
 export function uTurnDue(stuck: number): boolean {
