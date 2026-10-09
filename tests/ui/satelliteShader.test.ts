@@ -36,7 +36,7 @@ describe('satelliteShader: fragment contract', () => {
   it('water laps like the flood: per tile in a checker, the art alternates with itself shifted, water onto water only', () => {
     expect(f).toMatch(/if \(type == SAT_WATER\)/);
     expect(f).toMatch(/mod\(floor\(u_time \/ WATER_LAP_S\) \+ wc\.x \+ wc\.y, 2\.0\)/);
-    expect(f).toMatch(/== SAT_WATER\) col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_view\)\.rgb;/);
+    expect(f).toMatch(/== SAT_WATER\) col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_baseView\)\.rgb;/);
   });
 
   it('maps screen UV through a camera region (origin + view), not the full grid', () => {
@@ -48,7 +48,7 @@ describe('satelliteShader: fragment contract', () => {
   });
 
   it('samples the pixel-art base unwarped — the shader adds light, never motion', () => {
-    expect(f).toContain('texture(u_base, v_uv)');
+    expect(f).toContain('texture(u_base, buv)'); // at the art pixel's centre (artBuffer: one buffer pixel per art pixel)
     expect(f).not.toContain('u_motion');
     expect(f).not.toMatch(/fbm\(/); // no animated noise (water swell, clouds) smearing the pixels
   });
@@ -94,7 +94,7 @@ describe('satelliteShader: enum sync (CPU ↔ GPU)', () => {
 describe('the water lap moves whole art pixels', () => {
   it('samples the shifted art pixel at its own centre, not the screen pixel shifted by a texel count', () => {
     const src = buildFragmentSource();
-    expect(src).toMatch(/col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_view\)\.rgb;/);
+    expect(src).toMatch(/col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_baseView\)\.rgb;/);
     expect(src).not.toMatch(/baseTexels/);
   });
   it('the base is sampled NEAREST, never blended', async () => {
@@ -114,6 +114,6 @@ describe('the map pass skips what does not show', () => {
     expect(f).toMatch(/if \(!onBuilding && shadowStrength > 0\.001\)/);
   });
   it('the night lights are read only at night', () => {
-    expect(f).toMatch(/if \(u_night > 0\.0\) \{\s*vec4 en = texture\(u_emitN, v_uv\);/);
+    expect(f).toMatch(/if \(u_night > 0\.0\) \{\s*vec4 en = texture\(u_emitN, buv\);/);
   });
 });

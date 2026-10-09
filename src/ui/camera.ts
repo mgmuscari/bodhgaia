@@ -73,13 +73,23 @@ export class Camera {
   /** A tile's edge in CSS px: zoom × BASE_TILE, rounded to a whole number of DEVICE pixels — at a scale where that
    *  isn't whole (a 5K display at 225%, or Windows' not-quite 2.2000000476837), tiles of N.25 device px could never
    *  abut and left a seam every few tiles (Maddy 2026-10-08). At most half a device pixel off the nominal size. */
+  /** The position everything is DRAWN (and picked) from: the exact position snapped to whole art pixels, so the
+   *  screen's grid meets the art grid the GPU passes render on (Maddy 2026-10-08, the performance pass). The exact
+   *  x/y keep accumulating (a one-pixel drag still moves the camera); panning shows in art-pixel steps. */
+  get drawX(): number {
+    return Math.floor(this.x * BASE_TILE + 1e-9) / BASE_TILE;
+  }
+  get drawY(): number {
+    return Math.floor(this.y * BASE_TILE + 1e-9) / BASE_TILE;
+  }
+
   get tileSize(): number {
     return Math.max(1, Math.round(this.zoom * BASE_TILE * this.dpr)) / this.dpr;
   }
 
   worldToScreen(wx: number, wy: number): { sx: number; sy: number } {
     const ts = this.tileSize;
-    return { sx: (wx - this.x) * ts, sy: (wy - this.y) * ts };
+    return { sx: (wx - this.drawX) * ts, sy: (wy - this.drawY) * ts };
   }
 
   /**
@@ -92,12 +102,12 @@ export class Camera {
   tileOrigin(tx: number, ty: number): { dx: number; dy: number } {
     const ts = this.tileSize;
     const d = this.dpr;
-    return { dx: Math.floor((tx - this.x) * ts * d + 1e-6) / d, dy: Math.floor((ty - this.y) * ts * d + 1e-6) / d };
+    return { dx: Math.floor((tx - this.drawX) * ts * d + 1e-6) / d, dy: Math.floor((ty - this.drawY) * ts * d + 1e-6) / d };
   }
 
   screenToWorld(sx: number, sy: number): { wx: number; wy: number } {
     const ts = this.tileSize;
-    return { wx: this.x + sx / ts, wy: this.y + sy / ts };
+    return { wx: this.drawX + sx / ts, wy: this.drawY + sy / ts };
   }
 
   /** Pan by a screen-pixel delta (grab-and-drag: content follows the cursor). */
@@ -152,10 +162,10 @@ export class Camera {
   /** Inclusive range of tiles currently visible, clamped to the map. */
   visibleTileRange(): TileRange {
     const ts = this.tileSize;
-    const x0 = clamp(Math.floor(this.x), 0, this.mapWidth - 1);
-    const y0 = clamp(Math.floor(this.y), 0, this.mapHeight - 1);
-    const x1 = clamp(Math.floor(this.x + this.viewportWidth / ts), 0, this.mapWidth - 1);
-    const y1 = clamp(Math.floor(this.y + this.viewportHeight / ts), 0, this.mapHeight - 1);
+    const x0 = clamp(Math.floor(this.drawX), 0, this.mapWidth - 1);
+    const y0 = clamp(Math.floor(this.drawY), 0, this.mapHeight - 1);
+    const x1 = clamp(Math.floor(this.drawX + this.viewportWidth / ts), 0, this.mapWidth - 1);
+    const y1 = clamp(Math.floor(this.drawY + this.viewportHeight / ts), 0, this.mapHeight - 1);
     return { x0, y0, x1, y1 };
   }
 

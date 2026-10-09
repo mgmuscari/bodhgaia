@@ -34,7 +34,7 @@ describe('Camera transforms', () => {
 });
 
 describe('Camera zoomAt', () => {
-  it('keeps the world point under the cursor fixed', () => {
+  it('keeps the world point under the cursor fixed (to within the art pixel the camera draws on)', () => {
     // Large map, interior point -> clamping does not interfere.
     const cam = new Camera({
       mapWidth: 256,
@@ -51,8 +51,9 @@ describe('Camera zoomAt', () => {
     cam.zoomAt(sx, sy, +1);
     expect(cam.zoom).toBe(3);
     const after = cam.screenToWorld(sx, sy);
-    expect(after.wx).toBeCloseTo(before.wx, 6);
-    expect(after.wy).toBeCloseTo(before.wy, 6);
+    // the camera draws from its position snapped to whole art pixels (1/16 tile): the point stays within one
+    expect(Math.abs(after.wx - before.wx)).toBeLessThan(1 / 16);
+    expect(Math.abs(after.wy - before.wy)).toBeLessThan(1 / 16);
   });
 
   it('clamps zoom at the min and max levels', () => {
@@ -274,5 +275,40 @@ describe('moving to a display of another scale', () => {
     expect(cam.zoom).toBe(0.5);
     cam.setDpr(1);
     expect(cam.zoom).toBe(1);
+  });
+});
+
+// The performance pass (Maddy 2026-10-08): the GPU passes render one pixel per ART pixel. For that grid to meet the
+// screen's, the camera draws from its position snapped to whole art pixels — it keeps its exact position (a drag of
+// a pixel still accumulates), but everything is drawn, and picked, from the snapped one.
+import { ART_PX } from '../../src/ui/artGrid';
+describe('the camera draws on the art grid', () => {
+  const cam = () => new Camera({ mapWidth: 128, mapHeight: 128, viewportWidth: 800, viewportHeight: 600, zoom: 3, dpr: 2 });
+  it('tiles start on whole art pixels whatever the exact position', () => {
+    const c = cam();
+    (c as unknown as { x: number }).x = 10.0371;
+    (c as unknown as { y: number }).y = 7.9123;
+    const art = c.tileSize / ART_PX;
+    for (const t of [11, 12, 20]) {
+      const o = c.tileOrigin(t, t);
+      expect(Math.abs(o.dx / art - Math.round(o.dx / art)), `${t}`).toBeLessThan(1e-6);
+      expect(Math.abs(o.dy / art - Math.round(o.dy / art)), `${t}`).toBeLessThan(1e-6);
+    }
+  });
+  it('drawing and picking agree: screen → world → screen round-trips', () => {
+    const c = cam();
+    (c as unknown as { x: number }).x = 10.0371;
+    const w = c.screenToWorld(123, 45);
+    const s = c.worldToScreen(w.wx, w.wy);
+    expect(s.sx).toBeCloseTo(123, 9);
+    expect(s.sy).toBeCloseTo(45, 9);
+  });
+  it('a drag smaller than an art pixel still accumulates', () => {
+    const c = cam();
+    const x0 = c.x;
+    for (let i = 0; i < 10; i++) c.pan(-1, 0); // ten 1-px drags = more than an art pixel (3 css px at zoom 3)
+    expect(c.x).toBeGreaterThan(x0);
+    expect(c.drawX).toBeGreaterThan(x0 - 1e-9);
+    expect(c.drawX).toBeLessThanOrEqual(c.x);
   });
 });

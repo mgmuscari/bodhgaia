@@ -127,7 +127,9 @@ export function createEventsController(deps: EventsDeps): EventsController {
         camera = new Camera({ mapWidth: deps.map.width, mapHeight: deps.map.height, viewportWidth: CCTV_W, viewportHeight: CCTV_H });
       }
       // GPU on: the inset's 2D layer draws only the sprites; its ground is a second viewport on the GPU map
-      const wantGpu = !!deps.main?.gpu();
+      // The inset draws itself on the CPU (its own base, light and night): the main GPU canvas now renders one pixel per
+      // art pixel of the MAIN view (the performance pass, Maddy 2026-10-08), too coarse for an inset at another zoom.
+      const wantGpu = false;
       if (wantGpu !== gpuOn) {
         gpuOn = wantGpu;
         renderer.setGpuMode(gpuOn);
