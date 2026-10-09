@@ -45,6 +45,9 @@ import { DIR_DX, DIR_DY } from './geometry';
 import { planRide } from './riders';
 import { carPassable, closedTiles, isParkable, isWalkable, isWearable, networkMasks, reachedPlot } from './network';
 
+/** The live traffic as path costs read it: a lookup by tile (a Map, or a view over one — motion.avoidingTile). */
+export type TrafficRead = { get(tile: number): number | undefined };
+
 /** The nearest pedestrian-walkable tile to (x, y) within `maxR` (ring search, the tile itself
  *  first), or null if none is in reach. Rescues a ped that was placed OFF the walkable set — on
  *  water, a freeway, or a plot — back onto solid ground rather than leaving it stranded mid-water
@@ -76,7 +79,7 @@ export function pedCost(
   x: number,
   y: number,
   wear?: ReadonlyMap<number, number>,
-  traffic?: ReadonlyMap<number, number>,
+  traffic?: TrafficRead,
   pollution?: ReadonlyMap<number, number>,
 ): number {
   const i = map.idx(x, y);
@@ -146,7 +149,7 @@ export function modeCost(
   x: number,
   y: number,
   wear?: ReadonlyMap<number, number>,
-  traffic?: ReadonlyMap<number, number>,
+  traffic?: TrafficRead,
   pollution?: ReadonlyMap<number, number>,
 ): number {
   const k = map.built[map.idx(x, y)]!;
@@ -169,7 +172,7 @@ export function nextStepToward(
   recent?: readonly number[],
   wear?: ReadonlyMap<number, number>,
   mode: TravelMode = TravelMode.Walk,
-  traffic?: ReadonlyMap<number, number>,
+  traffic?: TrafficRead,
   pollution?: ReadonlyMap<number, number>,
 ): number {
   if (Math.abs(x - tgtx) + Math.abs(y - tgty) <= 1) return -1; // at / adjacent to the target
@@ -195,7 +198,7 @@ export function nextStepToward(
  *  avenues a bit cheaper than streets, and LIVE congestion (the traffic the agents themselves lay)
  *  adds cost so cars route AROUND jams. This is what makes a car-agent prefer the freeway and avoid
  *  a clogged street — the macro traffic pattern emerges from the agents, not an aggregate field. */
-export function driveTileCost(map: GameMap, x: number, y: number, traffic?: ReadonlyMap<number, number>): number {
+export function driveTileCost(map: GameMap, x: number, y: number, traffic?: TrafficRead): number {
   const i = map.idx(x, y);
   const k = map.built[i]!;
   let c = k === BuiltKind.RoadHighway ? 0.5 : k === BuiltKind.RoadAvenue ? 0.8 : 1; // freeways fast
@@ -316,7 +319,7 @@ function searchPath(
   gy: number,
   walk: boolean,
   wear: ReadonlyMap<number, number> | undefined,
-  traffic: ReadonlyMap<number, number> | undefined,
+  traffic: TrafficRead | undefined,
   pollution: ReadonlyMap<number, number> | undefined,
 ): number[] | null {
   const W = map.width;
@@ -369,7 +372,7 @@ export function roadPath(
   sy: number,
   gx: number,
   gy: number,
-  traffic?: ReadonlyMap<number, number>,
+  traffic?: TrafficRead,
 ): number[] | null {
   if (!carPassable(map, sx, sy) || !carPassable(map, gx, gy)) return null;
   const start = map.idx(sx, sy);
@@ -396,7 +399,7 @@ export function walkPath(
   gx: number,
   gy: number,
   wear?: ReadonlyMap<number, number>,
-  traffic?: ReadonlyMap<number, number>,
+  traffic?: TrafficRead,
   pollution?: ReadonlyMap<number, number>,
 ): number[] | null {
   if (!isWalkable(map, sx, sy)) return null;

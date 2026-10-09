@@ -6,7 +6,7 @@ import type { GameMap } from '../engine/map';
 import { PILEUP_K, PILEUP_MIN, RECENT_CAP, STUCK_ESCAPE, STUCK_REPATH, STUCK_UTURN } from './tuning';
 import { DIR_DX, DIR_DY, LANE, laneOffset, opposite } from './geometry';
 import type { AmbientState, Mover } from './types';
-import { roadPath } from './pathing';
+import { roadPath, type TrafficRead } from './pathing';
 import { canDrive, isJunctionTile } from './network';
 import { legPaceFactor } from './poses';
 
@@ -30,21 +30,35 @@ export function congestionCount(dirCounts: readonly number[], dir: number): numb
   return total - (dirCounts[(dir + 2) % 4] ?? 0); // drop the opposite-heading cars
 }
 
+/** The live traffic with one tile priced out — read through on demand. A stuck car's escape used to copy the whole
+ *  traffic map for this (the scaling pass, Maddy 2026-10-08: the cost peaked exactly when the city jammed). */
+export function avoidingTile(traffic: TrafficRead, tile: number): TrafficRead {
+  return { get: (i) => (i === tile ? 1e6 : traffic.get(i)) };
+}
+
+/** Substeps between a held vehicle's U-turn attempts once it is stuck enough to try: a failed one used to re-plan
+ *  every substep for 40 in a row. */
+export const U_TURN_RETRY = 10;
+
+/** Is a vehicle held `stuck` substeps due a U-turn attempt? */
+export function uTurnDue(stuck: number): boolean {
+  return stuck >= STUCK_UTURN && (stuck - STUCK_UTURN) % U_TURN_RETRY === 0;
+}
+
 /**
  * Gridlock relief: a path-following vehicle held at a tile centre for STUCK_REPATH substeps (and every
  * STUCK_REPATH after) re-plans from where it stands to the same destination, with the tile it is stuck
  * behind priced out — so it finds a way round the jam instead of waiting on it forever (Maddy
  * 2026-09-30). Returns true iff it took a new route. Pure given (map, traffic).
  */
-export function rerouteIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<number, number>): boolean {
+export function rerouteIfStuck(map: GameMap, car: Mover, traffic: TrafficRead): boolean {
   const stuck = car.stuck ?? 0;
   if (!car.path || stuck < STUCK_REPATH || stuck % STUCK_REPATH !== 0) return false;
   if (car.x !== Math.round(car.x) || car.y !== Math.round(car.y)) return false; // re-plan from a tile centre only
   const goal = car.path[car.path.length - 1]!;
   const gx = goal % map.width;
   const gy = (goal - gx) / map.width;
-  const avoid = new Map(traffic);
-  avoid.set(map.idx(car.tx, car.ty), 1e6); // the tile it's stuck behind
+  const avoid = avoidingTile(traffic, map.idx(car.tx, car.ty)); // the tile it's stuck behind, priced out
   const path = roadPath(map, car.x, car.y, gx, gy, avoid);
   if (!path || path.length < 2 || path.includes(map.idx(car.tx, car.ty))) return false;
   const nx = path[1]! % map.width;
@@ -63,16 +77,15 @@ export function rerouteIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<nu
  * reverse is legal; never on a one-way lane) and re-plans from there to the same destination, with the
  * jammed tile priced out. Returns true iff it turned.
  */
-export function uTurnIfStuck(map: GameMap, car: Mover, traffic: ReadonlyMap<number, number>): boolean {
-  if (!car.path || (car.stuck ?? 0) < STUCK_UTURN) return false;
+export function uTurnIfStuck(map: GameMap, car: Mover, traffic: TrafficRead): boolean {
+  if (!car.path || !uTurnDue(car.stuck ?? 0)) return false;
   const fx = car.tx - DIR_DX[car.dir]!;
   const fy = car.ty - DIR_DY[car.dir]!;
   if (!map.inBounds(fx, fy) || !canDrive(map, car.tx, car.ty, fx, fy)) return false; // no driving back here
   const goal = car.path[car.path.length - 1]!;
   const gx = goal % map.width;
   const gy = (goal - gx) / map.width;
-  const avoid = new Map(traffic);
-  avoid.set(map.idx(car.tx, car.ty), 1e6);
+  const avoid = avoidingTile(traffic, map.idx(car.tx, car.ty));
   const path = roadPath(map, fx, fy, gx, gy, avoid);
   if (!path || path.includes(map.idx(car.tx, car.ty))) return false;
   car.tx = fx;
