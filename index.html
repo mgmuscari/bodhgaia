@@ -1024,6 +1024,23 @@
       .pulse-dock { cursor: pointer; }
       .saves-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.3rem; margin-top: 0.3rem; }
       .saves-row .budget-line { flex-basis: 100%; }
+      /* windows on a phone (Maddy 2026-10-08: they ran off the right edge): the Budget, Saves and Tech windows span the
+         screen less a margin, over the palette; the centred and docked ones are capped to the screen. After the
+         windows' own rules, so these win. */
+      @media (max-width: 760px) {
+        .budget-panel, .tech-panel {
+          left: 0.5rem;
+          right: 0.5rem;
+          width: auto;
+          box-sizing: border-box;
+        }
+        .settings-panel, .help-panel, .restoration-panel {
+          min-width: 0;
+          max-width: calc(100vw - 1rem);
+          box-sizing: border-box;
+          overflow-x: auto;
+        }
+      }
       /* Overlay colour key: bottom-left of the map pane, right of the docked palette and above the status line
          (it used to sit 12px from the window edge, on top of the palette; top-left it would clip the top bar
          and collide with the Budget window) */

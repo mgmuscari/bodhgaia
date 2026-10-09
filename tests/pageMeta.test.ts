@@ -76,3 +76,29 @@ describe('the opening titles fit a phone', () => {
     expect(width).toBeLessThanOrEqual(390 - 48);
   });
 });
+
+// Maddy 2026-10-08: "the budget and other panels are also too wide for mobile, they overflow the right edge".
+describe('the windows fit a phone', () => {
+  const blocks = [...html.matchAll(/@media \(max-width: 760px\) \{([\s\S]*?)\n {6}\}/g)].map((m) => m[1]!);
+  const rulesFor = (sel: string): string =>
+    blocks.flatMap((b) => [...b.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter((r) => r[1]!.split(',').map((s) => s.trim()).includes(sel)).map((r) => r[2]!)).join(';');
+  it('the Budget (and Saves) and Tech windows span the screen less a margin, over the palette', () => {
+    for (const sel of ['.budget-panel', '.tech-panel']) {
+      const r = rulesFor(sel);
+      expect(r, sel).toMatch(/left:\s*0\.5rem/);
+      expect(r, sel).toMatch(/right:\s*0\.5rem/);
+      expect(r, sel).toMatch(/width:\s*auto/);
+    }
+  });
+  it('the centred and docked windows are capped to the screen', () => {
+    for (const sel of ['.settings-panel', '.help-panel', '.restoration-panel']) {
+      const r = rulesFor(sel);
+      expect(r, sel).toMatch(/max-width:\s*calc\(100vw - 1rem\)/);
+      expect(r, sel).toMatch(/min-width:\s*0/);
+      expect(r, sel).toMatch(/box-sizing:\s*border-box/);
+    }
+  });
+  it('and come after the windows’ own rules, so they win', () => {
+    expect(html.lastIndexOf('.budget-panel {')).toBeLessThan(html.indexOf('/* windows on a phone'));
+  });
+});
