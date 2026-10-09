@@ -26,6 +26,7 @@ import {
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
+import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { isPowerConsumer, windFactor } from '../growth/power';
 import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
@@ -1092,6 +1093,8 @@ export class Renderer {
       }
     }
     for (const [tile, health] of ambient.buildingHealth) {
+      // only over a home that still stands (Maddy 2026-10-08: a bulldozed ruin kept its raincloud)
+      if (zoneTypeOf(world.map.built[tile]!) !== ZoneType.Residential) continue;
       const hx = tile % mapW;
       const hy = (tile - hx) / mapW;
       // icons flag EXCEPTIONS, not every home: a heart for a standout (health ≥ 9, ~1 in 10 on a fresh

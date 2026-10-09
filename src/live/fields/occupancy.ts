@@ -141,7 +141,11 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     expect.set(t, was + (raw - was) * OCC_EXPECT_RATE);
   }
   // a home torn down puts its residents out
-  for (const [t, v] of state.occupancy) if (!next.has(t)) leftHome(state, t, v);
+  for (const [t, v] of state.occupancy) {
+    if (next.has(t)) continue;
+    leftHome(state, t, v);
+    state.buildingHealth.delete(t); // its wellbeing (the status badge) goes with the home
+  }
   state.occupancy = next;
   state.occExpect = expect;
   state.occPasses += 1;

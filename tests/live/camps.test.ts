@@ -123,3 +123,18 @@ describe('no dust camps', () => {
     expect(total(state.camps)).toBeCloseTo(8.1, 9);
   });
 });
+
+describe('a demolished home leaves nothing behind (Maddy 2026-10-08: status icons stayed over a bulldozed ruin)', () => {
+  it('its wellbeing (the happy / suffering badge) goes with it on the next occupancy pass', async () => {
+    const { stepOccupancy } = await import('../../src/live/fields/occupancy');
+    const { map, state } = town();
+    const gone = map.idx(35, 9);
+    state.buildingHealth.set(gone, -9); // a suffering home…
+    state.buildingHealth.set(map.idx(5, 9), 4);
+    state.occupancy.set(gone, 10);
+    state.households = [{ x: 5, y: 9, count: 10 }] as never; // …bulldozed: no longer a home
+    stepOccupancy(state, map);
+    expect(state.buildingHealth.has(gone)).toBe(false);
+    expect(state.buildingHealth.get(map.idx(5, 9))).toBe(4);
+  });
+});
