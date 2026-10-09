@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createEconomyController, AUTOSAVE_HOURS, type EconomyUi, type EconomyDeps } from '../../src/app/economy';
 import { GameMap } from '../../src/engine/map';
-import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
+import { ParcelStore, BuiltKind, placeParcel, placeTransport, demolishParcel } from '../../src/engine/fabric';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { computeNeighborhoods } from '../../src/civic/neighborhoods';
@@ -250,5 +250,30 @@ describe('createEconomyController', () => {
   it('readout reflects the run (funds shown)', () => {
     const { econ } = setup();
     expect(econ.readout()).toContain(money(20_000));
+  });
+});
+
+describe('construction sites rise hour by hour (Maddy 2026-10-08)', () => {
+  it('a laid site draws effort each hour, then stands as its building and says so', () => {
+    let built = 0;
+    const { econ, map, parcels } = setup(null, undefined, { built: () => built++ });
+    placeParcel(map, parcels, { x: 8, y: 5, width: 1, height: 1, kind: BuiltKind.Site });
+    econ.startBuild({ kind: BuiltKind.CompostHub, name: 'Compost Hub', cost: 10, x: 8, y: 5 });
+    econ.runHour();
+    expect(map.getBuilt(8, 5)).toBe(BuiltKind.Site); // still going up
+    for (let h = 0; h < 10; h++) econ.runHour();
+    expect(map.getBuilt(8, 5)).toBe(BuiltKind.CompostHub);
+    expect(built).toBe(1);
+    expect(econ.run().projects).toHaveLength(0);
+  });
+
+  it('a site bulldozed half-built is dropped, its effort gone', () => {
+    const { econ, map, parcels } = setup();
+    const i = placeParcel(map, parcels, { x: 8, y: 5, width: 1, height: 1, kind: BuiltKind.Site });
+    econ.startBuild({ kind: BuiltKind.CompostHub, name: 'Compost Hub', cost: 10, x: 8, y: 5 });
+    econ.runHour();
+    demolishParcel(map, parcels, i);
+    econ.runHour();
+    expect(econ.run().projects).toHaveLength(0);
   });
 });

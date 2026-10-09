@@ -77,7 +77,7 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   over the nearest few (weighted by distance/appeal).
 - ✅ **Energy node charge isn't shown** (inspect readout: `battery N/672`) (2026-10-08) — the battery's charge is invisible; show it in the inspect
   readout and/or a small charge mark on the node.
-- 🟡 **Commons builds don't take time yet** (economy wiring, 2026-09-30) — practices run as projects over
+- ✅ **Commons builds don't take time yet** (2026-10-08: a commons work goes up as a construction site, raised by effort drawn per hour — `economy/run buildProject`; bulldozed half-built: dropped, no refund) (economy wiring, 2026-09-30) — practices run as projects over
   days, but placing a garden/parklet still spends its effort at once. Needs a construction-site state on the
   map (placed, then raised over hours by effort drawn as a project) to honour "projects take time" fully.
 - ✅ **Displacement is counted, not yet enacted** (stale: rent displacement empties real homes since rehoming.md; 2026-10-08 the displaced go to real encampments — `live/camps.ts`) — rent-driven displacement adds to the unhoused count, but

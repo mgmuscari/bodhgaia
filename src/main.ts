@@ -160,6 +160,12 @@ export function main(save: SaveV1 | null = null): void {
     voiceAt: (t) => neighborhoodVoice(civic, deps.partition, t),
     displace: (amount, protectionAt) => displaceFromHomes(live.state, world.map, amount, protectionAt),
     autosave: () => saves.autosave(), // read at call time (loading a slot blanks autosave first)
+    built: () => {
+      // a construction site became its building: it may draw or make power, and the base must show it
+      power.recompute();
+      live.recomputePlantEmitters();
+      markDirty();
+    },
     ui: {
       practiceGranted: (id) => {
         lessons.offer(id); // its mechanic's lesson, the first time (plays when the screen is free)
@@ -228,6 +234,7 @@ export function main(save: SaveV1 | null = null): void {
     },
     techPanel: () => mounted.tech,
     inspect: (info, tx, ty) => inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors, power.grid().storage),
+    siteLaid: (site) => economy.startBuild(site), // a commons work rises as the commons pays for it
     placed: () => {
       power.recompute(); // a new plant lights its district
       live.recomputePlantEmitters(); // a placed/bulldozed dirty plant changes the smog sources

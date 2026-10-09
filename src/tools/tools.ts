@@ -138,6 +138,7 @@ function bulldozeTarget(world: ToolWorld, x: number, y: number): number {
  *  removal pays salvage, and volunteer works take funds first and the shortfall in effort. Funds may come
  *  back negative (a credit). */
 export function chargeFor(world: ToolWorld, tool: ToolDef, x: number, y: number, wallet: Wallet): { effort: number; funds: number } {
+  if (tool.id.startsWith('build-') && isSiteKind(tool.kind)) return { effort: 0, funds: 0 }; // paid as it rises
   const sticker = toolPrice(tool);
   let volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
   if (tool.id === 'bulldoze') {
@@ -180,6 +181,14 @@ export interface ApplyResult {
   reason?: ToolReason;
   /** Inspect-only: a human-readable line describing the tile. */
   info?: string;
+  /** A commons work laid as a construction site: what it will become, where, and the effort it will draw. */
+  site?: { kind: BuiltKind; x: number; y: number; cost: number; name: string };
+}
+
+/** A commons work (a lot of its own) goes up as a construction site, paid in effort as it rises (Maddy 2026-10-08);
+ *  the parklet sits on the kerb and stays immediate. */
+export function isSiteKind(kind: number | undefined): boolean {
+  return kind !== undefined && kind !== BuiltKind.Parklet && isCommonsKind(kind) && isBuildingKind(kind);
 }
 
 const BULLDOZE_COST = 1;
@@ -426,8 +435,8 @@ export function previewTool(
   const g = geometryValid(world, tool, x, y);
   if (!g.valid) return g;
   if (!wallet) {
-    // no economy attached: the original single-purse pricing (effort for everything)
-    if (tool.cost > tech.effort) return { valid: false, reason: 'effort' };
+    // no economy attached: the original single-purse pricing (effort for everything) — a site pays as it rises
+    if (tool.cost > tech.effort && !(tool.id.startsWith('build-') && isSiteKind(tool.kind))) return { valid: false, reason: 'effort' };
     return { valid: true };
   }
   const price = chargeFor(world, tool, x, y, wallet);
@@ -495,7 +504,7 @@ export function applyTool(
     const price = chargeFor(world, tool, x, y, wallet);
     if (!tech.spend(price.effort)) return { ok: false, reason: 'effort' };
     wallet.funds -= price.funds;
-  } else if (!tech.spend(tool.cost)) return { ok: false, reason: 'effort' };
+  } else if (!(tool.id.startsWith('build-') && isSiteKind(tool.kind)) && !tech.spend(tool.cost)) return { ok: false, reason: 'effort' };
 
   const { map, parcels } = world;
   if (tool.id === 'bulldoze') {
@@ -524,6 +533,11 @@ export function applyTool(
     placeParklet(map, x, y); // on the road's kerb, in its deck
   } else if (kind === BuiltKind.ADU) {
     buildOnYard(map, parcels, x, y, kind); // the yard's lot becomes the cottage's
+  } else if (isSiteKind(kind)) {
+    // a commons work goes up as a site; the city raises it as the commons pays (economy buildProject)
+    const fp = tool.footprint!;
+    placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind: BuiltKind.Site });
+    return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name } };
   } else if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
     placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });

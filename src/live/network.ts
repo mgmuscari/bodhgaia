@@ -527,6 +527,7 @@ const CLOSED_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.FusionPlant,
   BuiltKind.Precinct,
   BuiltKind.Ruin,
+  BuiltKind.Site, // fenced while it's built
 ]);
 
 /** A rail tile a road crosses: at grade (a level crossing), or a street passing under the viaduct. */

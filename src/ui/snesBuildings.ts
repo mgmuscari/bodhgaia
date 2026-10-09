@@ -386,6 +386,32 @@ const retentionPond: Painter = (W, H, v) => {
   return p;
 };
 
+/** A construction site (Maddy 2026-10-08: commons projects take time): bare earth behind an orange-and-white
+ *  barrier fence, a scaffold frame going up and a stack of timber. */
+const site: Painter = (W, H, v) => {
+  const p = lot(W, H, 'dirt', 670 + v);
+  for (let a = 0; a < W; a++) {
+    const c = (a >> 1) % 2 === 0 ? C.signal : C.paveHi; // the barrier, in stripes
+    px(p, a, 0, c);
+    px(p, a, H - 1, c);
+  }
+  for (let a = 0; a < H; a++) {
+    const c = (a >> 1) % 2 === 0 ? C.signal : C.paveHi;
+    px(p, 0, a, c);
+    px(p, W - 1, a, c);
+  }
+  const L = blank(W, H);
+  const x0 = 3;
+  const y0 = 3;
+  const x1 = W - 6;
+  const y1 = H - 5;
+  for (let x = x0; x <= x1; x++) for (const y of [y0, (y0 + y1) >> 1, y1]) px(L, x, y, C.slate); // scaffold boards
+  for (let y = y0; y <= y1; y++) for (const x of [x0, x1]) px(L, x, y, C.slateLo); // its poles
+  for (let k = 0; k < 3; k++) hline(L, W - 5, W - 3, H - 4 + k - 1, k % 2 ? C.roofBrown : C.roofBrownHi); // timber
+  place(p, L);
+  return p;
+};
+
 const energyNode: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 530 + v);
   const L = blank(W, H);
@@ -640,6 +666,7 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [51, [verticalFarm, 1]],
   [52, [wastewater, 1]],
   [66, [retentionPond, 2]],
+  [67, [site, 1]],
   [53, [energyNode, 1]],
   [54, [aiNode, 1]],
   [55, [adu, 2]],
