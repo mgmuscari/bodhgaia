@@ -85,11 +85,11 @@ describe('the opening’s words are credited (Maddy 2026-10-08)', () => {
   });
 });
 
-describe('the credits name the release (1.0.4)', () => {
+describe('the credits name the release (1.0.5)', () => {
   it("leads with the game's name and its version, from package.json", async () => {
     const { readFileSync } = await import('node:fs');
     const version = JSON.parse(readFileSync('package.json', 'utf8')).version as string;
-    expect(version).toBe('1.0.4');
+    expect(version).toBe('1.0.5');
     expect(creditsBlocks()[0]!.heading).toBe(`Bodhgaia ${version}`);
   });
 });

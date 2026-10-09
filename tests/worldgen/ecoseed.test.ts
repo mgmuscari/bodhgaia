@@ -7,7 +7,7 @@ import { ecoSeedStage, ECO_SEED_WOUND, seedEcology } from '../../src/worldgen/ec
 import { hashWorld, BuiltKind, ParcelStore } from '../../src/engine/fabric';
 import { distanceField } from '../../src/worldgen/fields';
 import { parseChronicle } from '../../src/worldgen/chronicle';
-import { eraHeadline } from '../../src/ui/openingContent';
+import { eraLine } from '../../src/ui/openingContent';
 import { createRng } from '../../src/engine/rng';
 
 // ecoSeedStage seeds the three ecology layers as deterministic functions of the
@@ -138,8 +138,8 @@ describe('ecoSeedStage: era5 wound is RECORDED but not the headline', () => {
 
     // DISPLAY guard: the one rendered headline for era 5 stays the Moses
     // disinvestment line — the wound is recorded, never shown here.
-    const headline = eraHeadline(era5!);
-    expect(headline).toContain('disinvestment');
+    const headline = eraLine(era5!, { w: 128, h: 128 });
+    expect(headline).toMatch(/disinvest/i);
     expect(headline).not.toContain('the land kept the bill');
   });
 });
