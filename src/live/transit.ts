@@ -4,6 +4,7 @@
 // neighbour off the track: the platform people wait on. Pure reads of the map, deterministic,
 // never hashed; the live layer recomputes them when the fabric changes.
 
+import { liveClock, tickLiveClock } from './clock';
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { isWalkable, railCrossing } from './network';
@@ -131,13 +132,10 @@ const CACHE = new WeakMap<GameMap, Cached>();
  *  rider asks twice a substep, so a call count made the full-map scans grow with the riders (the scaling pass, Maddy
  *  2026-10-08). */
 export const TRANSIT_RECHECK_SUBSTEPS = 20;
-let clock = 0;
 let scans = 0;
 
-/** Advance the transit clock one substep (step.ts calls it at the top of each). */
-export function tickTransitClock(): void {
-  clock++;
-}
+/** Advance the live clock one substep (step.ts calls it at the top of each) — the transit cache's clock. */
+export const tickTransitClock = tickLiveClock;
 
 /** How many times the track has been scanned (tests: the re-check is by time, not by callers). */
 export function transitScans(): number {
@@ -156,6 +154,7 @@ function trackSignature(map: GameMap): number {
 /** The map's lines and stops, rebuilt when its track changes (re-checked every RECHECK calls). */
 export function transitFor(map: GameMap): Transit {
   let c = CACHE.get(map);
+  const clock = liveClock();
   if (c && clock - c.checkedAt < TRANSIT_RECHECK_SUBSTEPS) return c;
   scans++;
   const sig = trackSignature(map);

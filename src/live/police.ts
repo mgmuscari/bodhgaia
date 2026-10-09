@@ -29,7 +29,7 @@ import { DIR_DX, DIR_DY } from './geometry';
 import type { AmbientState, Mover, Ped } from './types';
 import { offStreet } from './types';
 import { advanceMover, blockedAhead } from './motion';
-import { adjacentRoad, canDrive, carPassable } from './network';
+import { adjacentRoad, canDrive, carPassable, mapEpoch } from './network';
 import { abandonOwnedCar, depositHealth } from './agents';
 
 /** The set of tiles within SAFE_RADIUS of any community-power building — refuge the cruisers avoid
@@ -49,6 +49,32 @@ export function buildSafeZones(map: GameMap): Set<number> {
     }
   }
   return safe;
+}
+
+/** The precincts and refuges of a map, by its epoch (the scaling pass, Maddy 2026-10-08: both were re-scanned from
+ *  the whole map 20 times a second). */
+const policeMap = new WeakMap<GameMap, { epoch: number; precincts: number[]; safe: Set<number> }>();
+
+function policeCache(map: GameMap): { epoch: number; precincts: number[]; safe: Set<number> } {
+  const epoch = mapEpoch(map);
+  let c = policeMap.get(map);
+  if (!c || c.epoch !== epoch) {
+    const precincts: number[] = [];
+    for (let i = 0; i < map.built.length; i++) if (map.built[i] === BuiltKind.Precinct) precincts.push(i);
+    c = { epoch, precincts, safe: buildSafeZones(map) };
+    policeMap.set(map, c);
+  }
+  return c;
+}
+
+/** The map's precinct tiles (cached until something is built). */
+export function precinctsOf(map: GameMap): readonly number[] {
+  return policeCache(map).precincts;
+}
+
+/** The refuges the cruisers avoid (cached until something is built). */
+export function safeZonesFor(map: GameMap): ReadonlySet<number> {
+  return policeCache(map).safe;
 }
 
 /** The fleet-wide police phase for a substep counter: 'scatter' (patrol, no hunting/arrests) or
@@ -74,8 +100,7 @@ export function arrestChance(grade: number): number {
  * Renderer-side; reads the built layer, writes only state.cruisers.
  */
 export function spawnCruisers(state: AmbientState, map: GameMap, rng: Rng): void {
-  const precincts: number[] = [];
-  for (let i = 0; i < map.built.length; i++) if (map.built[i] === BuiltKind.Precinct) precincts.push(i);
+  const precincts = precinctsOf(map);
   if (precincts.length === 0) return;
   const target = Math.min(CRUISER_CAP, Math.ceil(precincts.length / 4)); // ≈ one per 2x2 precinct
   let guard = precincts.length;

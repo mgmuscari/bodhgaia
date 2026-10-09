@@ -2,7 +2,7 @@
 // field in a fixed order, and the public stepAmbient that runs it off wall-clock time. Order, cadence
 // and rng draws are load-bearing (tests/live/golden.test.ts). Cut verbatim from ui/ambientContent.ts.
 
-import { tickTransitClock } from './transit';
+import { liveSubstep } from './clock';
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { decayField, layField } from '../citizens/field';
@@ -32,7 +32,7 @@ import type { AmbientState } from './types';
 import { spawnCitizens } from './agents';
 import { buildVehicleCtx, stepCar } from './cars';
 import { stepPed } from './peds';
-import { buildSafeZones, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
+import { safeZonesFor, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
 import { stepDeaths, stepExposure } from './death';
 import { stepWanderer } from './wanderer';
 import { stepTrucks } from './trucks';
@@ -59,7 +59,6 @@ import { snapshotMovers } from './poses';
 // --- The substep + the public stepper ------------------------------------
 
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
-  tickTransitClock(); // the transit cache re-checks the track once a second of substeps, not per caller
   // the fallen and the memorials; the night's exposure deaths (once per in-game hour, with a host clock)
   stepDeaths(state);
   stepExposure(state, map, rng);
@@ -103,7 +102,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   //     and active sweeps (the ghost cadence).
   state.policeTick += 1;
   // Community safe-zones the cruisers avoid + never sweep (built fresh only when there ARE cruisers).
-  const safe = state.cruisers.length > 0 ? buildSafeZones(map) : undefined;
+  const safe = state.cruisers.length > 0 ? safeZonesFor(map) : undefined; // cached until something is built
   stepCruisers(state, map, rng, safe, ctx.moverGrid);
   state.arrestTick += 1;
   if (state.arrestTick % ARREST_CADENCE === 0 && policePhase(state.policeTick) === 'chase') {
@@ -227,6 +226,6 @@ export function stepAmbient(state: AmbientState, map: GameMap, rng: Rng, dtMs: n
   while (state.accMs >= SUBSTEP_MS) {
     state.accMs -= SUBSTEP_MS;
     snapshotMovers(state); // the "before" pose the renderer interpolates from
-    substep(state, map, rng);
+    liveSubstep(() => substep(state, map, rng)); // the clock: map caches check once inside it
   }
 }
