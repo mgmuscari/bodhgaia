@@ -276,5 +276,6 @@ export function bridge(a: BridgeFrom, b: BridgeTo): MidiPiece {
       push(t1 - half, half * 0.9, next.upper[2]!, vel * 0.7, 0, nextIns.lead);
     }
   });
+  notes.sort((x, y) => x.time - y.time || x.pitch - y.pitch);
   return { notes, duration: beatAt[beats]!, tempo: { start: bpmA, end: bpmB } };
 }
