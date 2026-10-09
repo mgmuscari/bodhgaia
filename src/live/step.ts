@@ -43,7 +43,7 @@ import { advanceFlock, flockTile, spawnFlocks } from './birds';
 import { stepOccupancy } from './fields/occupancy';
 import { settleCamps } from './camps';
 import { fadeVisits, spawnUnhoused } from './unhoused';
-import { computeCoverage, recomputeLandValue, stepRoadDecay } from './fields/landValue';
+import { computeCoverage, recomputeLandValueBand, stepRoadDecay } from './fields/landValue';
 import {
   accumulateGroundPollution,
   accumulateWaterRunoff,
@@ -194,10 +194,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // 7. Land value: on a slow cadence, recompute each plot's desirability from the healed land +
   //    amenities minus the live nuisances. A readout over the other layers — derived, not laid.
   state.lvTick += 1;
-  if (state.lvTick % LV_CADENCE === 0) {
-    state.coverage = computeCoverage(map); // refresh fire/health coverage before land value reads it
-    recomputeLandValue(state, map);
-  }
+  const lvBand = state.lvTick % LV_CADENCE;
+  if (lvBand === 0) state.coverage = computeCoverage(map); // refresh fire/health coverage before land value reads it
+  // one band of rows a substep — the map once a second, without a once-a-second spike (the scaling pass)
+  recomputeLandValueBand(state, map, lvBand, LV_CADENCE);
 
   // 8. Population: on a slow cadence, drift each home's occupancy toward its capacity (prized/clean/
   //    healthy) or empty (decayed/smoggy). Runs AFTER land value so it reads the fresh field. The

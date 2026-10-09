@@ -125,12 +125,28 @@ export function landValueAt(
  *  out. Whole-map scan — gated to LV_CADENCE by the caller (a slow, cheap readout). */
 export function recomputeLandValue(state: AmbientState, map: GameMap): void {
   state.landValue.clear();
+  recomputeRows(state, map, 0, map.height);
+}
+
+/** Band `k` of `bands` (rows [k·H/bands, (k+1)·H/bands)): its plots recomputed, its demolished plots dropped. The step
+ *  runs one band a substep, so a second of substeps covers the map exactly as recomputeLandValue did — without the
+ *  once-a-second spike of every plot's neighbourhood in one substep (the scaling pass, Maddy 2026-10-08). */
+export function recomputeLandValueBand(state: AmbientState, map: GameMap, k: number, bands: number): void {
+  const y0 = Math.floor((k * map.height) / bands);
+  const y1 = Math.floor(((k + 1) * map.height) / bands);
+  recomputeRows(state, map, y0, y1, true);
+}
+
+/** Recompute rows [y0, y1); `drop` deletes the value of any tile there that is no longer a plot. */
+function recomputeRows(state: AmbientState, map: GameMap, y0: number, y1: number, drop = false): void {
   const W = map.width;
-  const H = map.height;
-  for (let y = 0; y < H; y++) {
+  for (let y = y0; y < y1; y++) {
     for (let x = 0; x < W; x++) {
       const i = map.idx(x, y);
-      if (zoneTypeOf(map.built[i]!) === ZoneType.None) continue; // only inhabited plots carry a value
+      if (zoneTypeOf(map.built[i]!) === ZoneType.None) {
+        if (drop) state.landValue.delete(i); // demolished since its band last came round
+        continue; // only inhabited plots carry a value
+      }
       state.landValue.set(
         i,
         landValueAt(

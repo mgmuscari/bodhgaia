@@ -141,7 +141,9 @@ describe('live layer golden determinism', () => {
     // 2026-10-08: the unhoused go out on their day from the camps to the commercial streets — new walkers, new draws
     // 2026-10-08: a train remembers the tile its tail left (Train.behind, for the last car's bend) — same motion,
     // one more field hashed
-    expect(first).toBe('cars=9 peds=171 cruisers=4 trains=5 flocks=6 #8326fd8e');
+    // 2026-10-08 (the scaling pass): land value recomputes one band of rows a substep, not every plot once a second —
+    // the same values a second later, but each band at its own moment, so later choices shift
+    expect(first).toBe('cars=3 peds=170 cruisers=4 trains=5 flocks=10 #fc75a4fd');
   });
 });
 
