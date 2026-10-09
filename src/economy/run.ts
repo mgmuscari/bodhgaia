@@ -4,6 +4,8 @@
 
 import { stepEconomy, type CityReading, type EconomyState, type Levers } from './model';
 import { advanceProjects, startProject, type Project } from './projects';
+import type { GameMap } from '../engine/map';
+import { BuiltKind } from '../engine/fabric';
 
 /** The player's standing levers (the per-hour project spends are filled in each hour). */
 export type StandingLevers = Pick<Levers, 'tax' | 'police'>;
@@ -40,3 +42,28 @@ export function practiceProject(node: { id: string; name: string; cost: number }
     payload: { practice: node.id },
   });
 }
+
+/** Effort a construction site takes in an hour (Maddy 2026-10-08): a commons work rises as the commons pays for it. */
+export const SITE_EFFORT_PER_HOUR = 2;
+
+/** Raising a commons work at (x, y): its cost in effort, drawn SITE_EFFORT_PER_HOUR an hour; done, the site there
+ *  becomes `kind` (the city calls finishSite on completion). */
+export function buildProject(spec: { kind: number; name: string; cost: number; x: number; y: number }): Project {
+  return startProject({
+    id: `build-${spec.kind}@${spec.x},${spec.y}`,
+    label: `Raising ${spec.name}`,
+    effort: spec.cost,
+    funds: 0,
+    hours: Math.ceil(spec.cost / SITE_EFFORT_PER_HOUR),
+    payload: { site: { x: spec.x, y: spec.y, kind: spec.kind } },
+  });
+}
+
+/** The projects still worth working: a site bulldozed before it was done drops out — its effort is not refunded. */
+export function liveProjects(projects: readonly Project[], map: GameMap): Project[] {
+  return projects.filter((p) => {
+    const site = (p.payload as { site?: { x: number; y: number } } | null)?.site;
+    return !site || (map.inBounds(site.x, site.y) && map.built[map.idx(site.x, site.y)] === BuiltKind.Site);
+  });
+}
+

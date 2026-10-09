@@ -112,6 +112,9 @@ export const BuiltKind = {
   Ruin: 65,
   // A retention pond (Maddy 2026-10-08): holds storm water, so the land around it doesn't flood.
   RetentionPond: 66,
+  // A construction site (Maddy 2026-10-08): a commons work being raised — fenced, no effects — until the effort is
+  // paid (economy/run buildProject), when finishSite turns it into the building.
+  Site: 67,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -691,6 +694,19 @@ export function layYardFor(map: GameMap, store: ParcelStore, x: number, y: numbe
   const t = yardTileFor(map, x, y);
   if (!t) return false;
   return placeParcel(map, store, { x: t.x, y: t.y, width: 1, height: 1, kind: BuiltKind.Yard }) !== -1;
+}
+
+/** A construction site at (x, y) becomes the building it was raising: its footprint's built kind and its parcel
+ *  kind, in place, at full condition. False (writing nothing) if there's no site there any more (bulldozed). */
+export function finishSite(map: GameMap, store: ParcelStore, x: number, y: number, kind: BuiltKind): boolean {
+  if (!map.inBounds(x, y)) return false;
+  const pid = map.parcel[map.idx(x, y)]!;
+  if (pid === 0 || store.get(pid - 1).kind !== BuiltKind.Site) return false;
+  const p = store.get(pid - 1);
+  for (let dy = 0; dy < p.height; dy++) for (let dx = 0; dx < p.width; dx++) map.built[map.idx(p.x + dx, p.y + dy)] = kind;
+  store.setKind(pid - 1, kind);
+  store.setCondition(pid - 1, 255);
+  return true;
 }
 
 /** Build `to` (an accessory dwelling) on the yard at (x, y), in place: the yard's lot becomes the building's. */

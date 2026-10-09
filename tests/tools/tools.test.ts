@@ -246,8 +246,10 @@ describe('availableTools: rezone tools (building-target 3-way gate)', () => {
     expect(ids(tech)).toContain('build-61');
     expect(ids(tech)).toContain('convert-61'); // and rezoning stays
     const world = freshWorld();
-    expect(applyTool(world, tech, toolDef('build-61')!, 3, 3).ok).toBe(true);
-    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Park);
+    const r = applyTool(world, tech, toolDef('build-61')!, 3, 3);
+    expect(r.ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site); // it goes up as a site (commons take time)
+    expect(r.site?.kind).toBe(BuiltKind.Park);
     expect(world.parcels.aliveCount()).toBe(1);
   });
 
@@ -680,5 +682,28 @@ describe('parking lots are placeable (Maddy 2026-10-08)', () => {
     expect(applyTool(world, tech, tool, 4, 3).ok).toBe(true);
     expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.ParkingLot);
     expect(parkingLots(world.map)).toHaveLength(2); // a lot per tile (parkingContent)
+  });
+});
+
+describe('commons works go up as construction sites (Maddy 2026-10-08)', () => {
+  it('placing a community garden lays a site, asks no effort up front, and says what it will become', () => {
+    const tech = freshTech(0); // no effort at all: the commons pays as it goes
+    for (const id of ['soil-and-soul', 'urban-composting', 'walkable-streets', 'road-diets', 'community-gardens']) tech.unlock(id);
+    const world = freshWorld();
+    const tool = toolDef(`build-${BuiltKind.CommunityGarden}`)!;
+    const r = applyTool(world, tech, tool, 3, 3);
+    expect(r.ok).toBe(true);
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site);
+    expect(r.site).toEqual({ kind: BuiltKind.CommunityGarden, x: 3, y: 3, cost: tool.cost, name: tool.name });
+    expect(tech.effort).toBe(0);
+  });
+
+  it('a pocket park built on open land goes up as a site too', () => {
+    const world = freshWorld();
+    const tech = freshTech(1000);
+    for (const id of ['walkable-streets', 'road-diets', 'parklets', 'pocket-parks']) tech.unlock(id);
+    const r = applyTool(world, tech, toolDef('build-61')!, 3, 3); // a pocket park on open land: a site too
+    expect(world.map.getBuilt(3, 3)).toBe(BuiltKind.Site);
+    expect(r.site?.kind).toBe(BuiltKind.Park);
   });
 });

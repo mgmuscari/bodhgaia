@@ -8,7 +8,7 @@
 // call time (the saves wiring blanks it on load / new city).
 
 import type { GameMap } from '../engine/map';
-import type { ParcelStore } from '../engine/fabric';
+import { finishSite, type BuiltKind, type ParcelStore } from '../engine/fabric';
 import type { TechState } from '../tech/state';
 import type { CivicState } from '../civic/state';
 import type { PowerGrid } from '../growth/power';
@@ -18,7 +18,7 @@ import { wellbeing } from '../tech/effort';
 import { TRUST_FLOOR } from '../civic/dynamics';
 import { createEconomy, effortCapacity, mourn, cheer, loanOffer, takeLoan, ECON, type CityReading, type EconomyState } from '../economy/model';
 import { homeProtections, readCity, type CityInputs } from '../economy/readings';
-import { economyHour, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
+import { buildProject, economyHour, liveProjects, practiceProject, practiceTerms, DEFAULT_LEVERS, type EconomyRun } from '../economy/run';
 import { projectProgress } from '../economy/projects';
 import { economyLine } from '../ui/economyContent';
 import { budgetView, type BudgetView } from '../ui/budgetContent';
@@ -63,6 +63,8 @@ export interface EconomyDeps {
   powerGrid: () => PowerGrid;
   /** A resumed game's run (null → a new city, primed on its first hour with occupancy). */
   initial: EconomyRun | null;
+  /** A construction site was finished and stands as its building now (rebuild the base, re-solve power…). */
+  built?: () => void;
   /** Called every AUTOSAVE_HOURS hours — the caller resolves the current autosave at call time. */
   autosave: () => void;
   ui: EconomyUi;
@@ -76,6 +78,8 @@ export interface EconomyDeps {
 }
 
 export interface EconomyController {
+  /** Start raising a construction site: its effort is drawn hour by hour (economy/run buildProject). */
+  startBuild(site: { kind: number; name: string; cost: number; x: number; y: number }): void;
   /** The current run (replaced by every step and lever). */
   run(): EconomyRun;
   /** Funds as a get/set view (tools buy the fabric through it). */
@@ -170,6 +174,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     const before = econ.state.funds;
     const hadRelief = econ.state.reliefTaken;
     const displacedBefore = econ.state.displaced;
+    econ = { ...econ, projects: liveProjects(econ.projects, map) }; // a site bulldozed before it was done: dropped
     const r = economyHour(econ, city);
     econ = r.run;
     // rent's displaced leave real homes, the unprotected on dear land first (rehoming.md)
@@ -189,16 +194,24 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
         civic.setValues(id, { ...v, trust: Math.max(TRUST_FLOOR, Math.min(255, v.trust + econ.state.shock * 2.55)) });
       }
     }
+    let raised = false;
     for (const done of r.completed) {
       const practice = (done.payload as { practice?: string } | null)?.practice;
       if (practice && tech.grant(practice)) ui.practiceGranted(practice);
+      // a construction site paid in full becomes its building
+      const site = (done.payload as { site?: { x: number; y: number; kind: BuiltKind } } | null)?.site;
+      if (site && finishSite(map, parcels, site.x, site.y, site.kind)) raised = true;
     }
+    if (raised) deps.built?.();
     ui.hourRefreshed(reliefNow); // refreshes; the relief grant opens the Budget window with its strings
     if (econ.state.tick % AUTOSAVE_HOURS === 0) deps.autosave();
     ui.pulse();
   };
 
   return {
+    startBuild: (site) => {
+      econ = { ...econ, projects: [...econ.projects, buildProject(site)] };
+    },
     run: () => econ,
     wallet: {
       get funds() {

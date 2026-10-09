@@ -76,6 +76,7 @@ const BUILDING_RENDER_KINDS: readonly number[] = [
   BuiltKind.VerticalFarm,
   BuiltKind.WastewaterWorks,
   BuiltKind.RetentionPond,
+  BuiltKind.Site,
   BuiltKind.EnergyNode,
   BuiltKind.AINode,
   BuiltKind.ADU,
