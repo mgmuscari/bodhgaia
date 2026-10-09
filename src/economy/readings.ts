@@ -156,7 +156,14 @@ export const LAND_TRUST_ANCHORS: ReadonlySet<number> = new Set<number>([BuiltKin
 /** The kinds Craft Fairs counts. */
 export const CRAFT_KINDS: ReadonlySet<number> = new Set<number>([BuiltKind.Bazaar, BuiltKind.MakerSpace]);
 
+/** At most this share of a commercial lot's tax base is lost to the unhoused spending their days there, reached at
+ *  UNHOUSED_VISITS_FULL recent visits. */
+export const UNHOUSED_TAX_DRAG = 0.25;
+export const UNHOUSED_VISITS_FULL = 20;
+
 export interface CityInputs {
+  /** Recent visits by the unhoused at a tile (live/unhoused.ts). Absent ⇒ none. */
+  unhousedVisitsAt?(tile: number): number;
   map: GameMap;
   parcels: ParcelStore;
   /** Live households/workers at a parcel's anchor tile. */
@@ -241,7 +248,11 @@ export function readCity(inp: CityInputs): CityReading {
       if (COMMERCIAL.has(p.kind)) {
         const crowd = p.kind !== BuiltKind.Bazaar && nearBazaar(p) ? BAZAAR_LIFT : 1;
         const line = nearElevatedRail(map, p, RAIL_COMMERCE_RADIUS) ? RAIL_COMMERCE_LIFT : 1;
-        base.c += jobs * lv * BASE_PER_UNIT.c * crowd * line;
+        // where the city's unhoused spend their days, its commercial base thins (Maddy 2026-10-08)
+        let visits = 0;
+        if (inp.unhousedVisitsAt) for (let dy = 0; dy < p.height; dy++) for (let dx = 0; dx < p.width; dx++) visits += inp.unhousedVisitsAt(map.idx(p.x + dx, p.y + dy));
+        const street = 1 - UNHOUSED_TAX_DRAG * Math.min(1, visits / UNHOUSED_VISITS_FULL);
+        base.c += jobs * lv * BASE_PER_UNIT.c * crowd * line * street;
       }
       else base.i += jobs * BASE_PER_UNIT.i; // assessed on output: industry's land value is its own victim
     }

@@ -58,6 +58,7 @@ export interface EconomyDeps {
     occupancy: { get(tile: number): number | undefined };
     landValue: { get(tile: number): number | undefined };
     policeViolence: { values(): Iterable<number> };
+    unhousedVisits?: { get(tile: number): number | undefined };
   };
   powerGrid: () => PowerGrid;
   /** A resumed game's run (null → a new city, primed on its first hour with occupancy). */
@@ -118,6 +119,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     parcels,
     occupancyAt: (t) => live.occupancy.get(t),
     landValueAt: (t) => live.landValue.get(t),
+    unhousedVisitsAt: (t) => live.unhousedVisits?.get(t) ?? 0,
     wellbeing: wellbeing01(),
     extraInfra: tech.effects().socialInfra,
     practices: tech.effects(),

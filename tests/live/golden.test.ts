@@ -138,8 +138,8 @@ describe('live layer golden determinism', () => {
   });
 
   it('matches the pinned digest (a pure refactor must leave this byte-identical)', () => {
-    // 2026-10-08: trips spread over the nearest few places of a kind, not always the single nearest
-    expect(first).toBe('cars=3 peds=124 cruisers=4 trains=5 flocks=7 #c02e8973');
+    // 2026-10-08: the unhoused go out on their day from the camps to the commercial streets — new walkers, new draws
+    expect(first).toBe('cars=9 peds=171 cruisers=4 trains=5 flocks=6 #92635bab');
   });
 });
 
