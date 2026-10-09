@@ -59,7 +59,10 @@ export function createView(deps: ViewDeps): View {
   const dpr = (): number => window.devicePixelRatio || 1;
   // the map pane sits right of the docked tool palette, never under it
   // the map pane sits inside the chrome (top bar, palette, status line) — never under it
-  for (const [k, v] of Object.entries(layoutVars())) document.documentElement.style.setProperty(k, v);
+  const applyLayout = (): void => {
+    for (const [k, v] of Object.entries(layoutVars(window.innerWidth))) document.documentElement.style.setProperty(k, v);
+  };
+  applyLayout();
   let cssWidth = mapPane(window.innerWidth, window.innerHeight).width;
   let cssHeight = mapPane(window.innerWidth, window.innerHeight).height;
   const camera = new Camera({
@@ -151,6 +154,7 @@ export function createView(deps: ViewDeps): View {
       markDirty();
     },
     resize: () => {
+      applyLayout(); // a phone's top bar is taller
       cssWidth = mapPane(window.innerWidth, window.innerHeight).width;
       cssHeight = mapPane(window.innerWidth, window.innerHeight).height;
       camera.setViewport(cssWidth, cssHeight);

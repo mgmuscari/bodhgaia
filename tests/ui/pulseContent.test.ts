@@ -38,7 +38,7 @@ describe('pulseLine', () => {
 // shown as its segments, which wrap onto two rows on a narrow screen.
 import { pulseSegments } from '../../src/ui/pulseContent';
 import { readFileSync } from 'node:fs';
-import { TOPBAR_H } from '../../src/ui/layout';
+import { TOPBAR_H_NARROW } from '../../src/ui/layout';
 
 describe('the top bar on a narrow screen', () => {
   it('splits the line into its segments, each whole', () => {
@@ -58,8 +58,11 @@ describe('the top bar on a narrow screen', () => {
     const rule = narrow![2]!;
     expect(rule).toMatch(/flex-wrap:\s*wrap/);
     expect(rule).toMatch(/white-space:\s*normal/);
-    const size = Number(/font-size:\s*([\d.]+)px/.exec(rule)![1]);
+    // the news ticker's size (Maddy 2026-10-08: 12 px was "very tiny… keep font same size as news ticker")
+    expect(rule).toMatch(/font-size:\s*1rem/);
+    const size = 20; // 1rem: the root size (index.html html { font-size: 20px })
     const lh = Number(/line-height:\s*([\d.]+);/.exec(rule)![1]);
-    expect(2 * size * lh).toBeLessThanOrEqual(TOPBAR_H - 2 * 10); // two rows inside the 10-px frame
+    // measured in a 390-px frame: at the ticker's size the readout takes three rows — they fit inside the frame
+    expect(3 * size * lh).toBeLessThanOrEqual(TOPBAR_H_NARROW - 2 * 10);
   });
 });
