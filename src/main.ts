@@ -46,6 +46,7 @@ import { mountNightOverlay } from './ui/openingNight';
 import { createNightOpening } from './app/openingNight';
 import { cityFocus, tourStops } from './ui/tourContent';
 import { worstSpots } from './ui/tutorialContent';
+import { touchScreen } from './ui/touch';
 import { mountTutorial } from './ui/tutorial';
 import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
@@ -225,7 +226,7 @@ export function main(save: SaveV1 | null = null): void {
     markPreviewDirty,
     mount: (d) => mountToolbar(document.body, d),
     meta: {
-      buttons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
+      buttons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags(), !touchScreen()),
       onMeta: (id) => {
         if (id === 'life') setAmbient(!live.on);
         else if (isPanelId(id)) panels.toggle(id);

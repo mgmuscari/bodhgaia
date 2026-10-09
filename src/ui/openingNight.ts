@@ -3,6 +3,7 @@
 // camera is the opening's) with an "Esc to skip" hint; the mantra and the awakening over the dimmed city.
 
 import { MANTRA, type Epigraph } from './openingScript';
+import { touchScreen } from './touch';
 import type { NightUi } from '../app/openingNight';
 
 export function mountNightOverlay(container: HTMLElement): NightUi {
@@ -13,7 +14,8 @@ export function mountNightOverlay(container: HTMLElement): NightUi {
   const hint = document.createElement('div');
   hint.className = 'night-hint';
   hint.textContent = 'Esc to skip';
-  root.append(stage, hint);
+  root.append(stage);
+  if (!touchScreen()) root.append(hint); // no Esc on a touch screen (Maddy 2026-10-08)
   container.appendChild(root);
 
   let advance: () => void = () => {};

@@ -47,8 +47,11 @@ export function metaButtons(
   activeOverlay: { kind: OverlayKind } | null,
   ambientOn: boolean,
   open: { restore?: boolean; settings?: boolean; help?: boolean; budget?: boolean; saves?: boolean } = {},
+  /** Show each button's hotkey in its label; false on a touch screen, which has no keys (Maddy 2026-10-08). */
+  keys = true,
 ): MetaButton[] {
-  const b = (id: MetaButton['id'], active: boolean): MetaButton => ({ id, label: META_LABELS[id], art: `@ui/${id}`, active });
+  const label = (id: MetaButton['id']): string => (keys ? META_LABELS[id] : META_LABELS[id].replace(/ \([^)]{1,3}\)$/, ''));
+  const b = (id: MetaButton['id'], active: boolean): MetaButton => ({ id, label: label(id), art: `@ui/${id}`, active });
   return [
     b('budget', open.budget ?? false),
     b('tech', panelOpen),

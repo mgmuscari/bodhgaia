@@ -4,7 +4,8 @@
 // live in the pure controlsContent.ts. Toggled by the hint click, the ✕, or the '?'/'h' key. Below the controls,
 // the Credits (licence notice + GPL §7 terms, from the pure creditsContent.ts) — required on every conveyance.
 
-import { controlsLines } from './controlsContent';
+import { controlsHint, controlsLines } from './controlsContent';
+import { touchScreen } from './touch';
 import { creditsBlocks } from './creditsContent';
 import { panelVisibility, type PanelHandle } from './panelHandle';
 
@@ -20,8 +21,9 @@ export function mountHelpPanel(container: HTMLElement, deps: HelpPanelDeps = {})
   // The discoverable entry point — always on screen until the panel is open.
   const hint = document.createElement('button');
   hint.className = 'controls-hint';
-  hint.textContent = '⌨ Controls  ?';
-  hint.title = 'Show controls (?)';
+  const touch = touchScreen(); // no keys on a touch screen: none named (Maddy 2026-10-08)
+  hint.textContent = controlsHint(touch);
+  hint.title = touch ? 'Show controls' : 'Show controls (?)';
   container.appendChild(hint);
 
   const panel = document.createElement('div');
@@ -30,7 +32,7 @@ export function mountHelpPanel(container: HTMLElement, deps: HelpPanelDeps = {})
   const close = document.createElement('div');
   close.className = 'help-panel__close';
   close.textContent = '✕';
-  close.title = 'Close (?)';
+  close.title = touch ? 'Close' : 'Close (?)';
   panel.appendChild(close);
 
   const title = document.createElement('div');
@@ -45,7 +47,7 @@ export function mountHelpPanel(container: HTMLElement, deps: HelpPanelDeps = {})
 
   const body = document.createElement('div');
   body.className = 'help-panel__body';
-  body.textContent = controlsLines().join('\n');
+  body.textContent = controlsLines(touch).join('\n');
   scroll.appendChild(body);
 
   if (deps.onReplayLessons) {
