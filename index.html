@@ -396,6 +396,17 @@
         color: rgba(232, 226, 204, 0.55);
         font-size: 0.85rem;
       }
+      /* on a touch screen the hint is a button: big enough for a thumb */
+      .night-skip {
+        font: inherit;
+        font-size: 1rem;
+        padding: 10px 18px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(232, 226, 204, 0.35);
+        border-radius: 4px;
+        color: rgba(232, 226, 204, 0.8);
+        pointer-events: auto;
+      }
       @keyframes night-in {
         from {
           opacity: 0;
