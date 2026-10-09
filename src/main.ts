@@ -34,7 +34,7 @@ import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/
 import { createToolController } from './app/tools';
 import { createSaves } from './app/saves';
 import { installKeys } from './app/keys';
-import { createFrameProfile, createSimTick, createFrame, runFrames } from './app/loop';
+import { createFrameProfile, createSimTick, createFrame, frameInterval, runFrames } from './app/loop';
 import { createSound } from './app/sound';
 import { createNews } from './app/news';
 import { isPowerConsumer } from './growth/power';
@@ -575,8 +575,8 @@ export function main(save: SaveV1 | null = null): void {
     },
     afterGpu: (now) => events.gpuPass(now),
   });
-  // 30 fps on a touch screen: nothing moves faster than 20 steps a second, and a phone heated drawing 120 (Maddy 2026-10-08)
-  runFrames(frame, (cb) => window.requestAnimationFrame(cb), touchScreen() ? 1000 / 30 : 0);
+  // 30 fps on a touch screen, 60 on a desktop: nothing moves faster than 20 steps a second (Maddy 2026-10-08)
+  runFrames(frame, (cb) => window.requestAnimationFrame(cb), frameInterval(touchScreen()));
 }
 
 // Boot: resume the game in progress (the CURRENT slot, kept by autosave) unless `?new` asks for a fresh city;

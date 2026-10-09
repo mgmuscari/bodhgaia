@@ -268,3 +268,19 @@ function frameSetupWith(prof: ReturnType<typeof createFrameProfile>) {
   const ctx = lastCtx!;
   return createFrame({ ...ctx, prof });
 }
+
+// …and 60 on a desktop (Maddy 2026-10-08): a ProMotion Mac drew 120 a second of a city stepping 20.
+import { frameInterval } from '../../src/app/loop';
+describe('frameInterval', () => {
+  it('30 fps on a touch screen, 60 on a desktop', () => {
+    expect(1000 / frameInterval(true)).toBeCloseTo(30, 6);
+    expect(1000 / frameInterval(false)).toBeCloseTo(60, 6);
+  });
+  it('a 120-Hz desktop draws 60 frames a second under it', () => {
+    const queue: Array<(now: number) => void> = [];
+    let drawn = 0;
+    runFrames(() => void drawn++, (cb) => void queue.push(cb), frameInterval(false));
+    for (let i = 1; i <= 240; i++) queue.shift()!((i * 1000) / 120);
+    expect(drawn / 2).toBeCloseTo(60, 0);
+  });
+});
