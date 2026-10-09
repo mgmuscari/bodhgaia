@@ -33,3 +33,23 @@ describe('smog is pixel art', () => {
     expect(src).toMatch(/vec2\(0\.0, 1\.0 \/ ART_PX\)/);
   });
 });
+
+// The performance pass (Maddy 2026-10-08: "this game heats up phones"). Measured: the smog pass cost ~1.2 ms of GPU per
+// frame at 2800×1276 — the most of any pass — because every pixel ran the cloud noise three times before asking
+// whether its air was dirty. Clean air now leaves at once, and a sky with no smog at all isn't drawn.
+import { smogShows } from '../../src/ui/smogOverlay';
+describe('smog costs nothing where there is none', () => {
+  it('the fragment reads the air before any noise, and leaves at once where it is clean', () => {
+    const main = src.slice(src.indexOf('void main()'));
+    const air = main.indexOf('airAt(cell)');
+    expect(air).toBeGreaterThan(-1);
+    expect(air).toBeLessThan(main.indexOf('cloudAt('));
+    expect(main.slice(air, main.indexOf('cloudAt('))).toMatch(/return;/);
+  });
+  it('no tile past the haze or toxic threshold: the pass is skipped', () => {
+    expect(smogShows(new Map(), new Map())).toBe(false);
+    expect(smogShows(new Map([[5, 30]]), new Map([[6, 8]]))).toBe(false); // faint road haze, faint spill: nothing drawn
+    expect(smogShows(new Map([[5, 60]]), undefined)).toBe(true);
+    expect(smogShows(new Map(), new Map([[6, 20]]))).toBe(true);
+  });
+});

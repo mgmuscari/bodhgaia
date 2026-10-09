@@ -135,8 +135,10 @@ function frameSetup(opts: { liveOn?: boolean; gpu?: boolean; hidden?: boolean; c
     hidden: () => opts.hidden ?? false,
     syncDock: () => log.push('syncDock'),
   };
+  lastCtx = ctx;
   return { frame: createFrame(ctx), log, isDirty: () => dirty, setChanged: () => (changed = true) };
 }
+let lastCtx: FrameCtx | null = null;
 
 describe('createFrame', () => {
   it('steps the clocks in order, then composites the live frame (base refresh on the 2 s cadence)', () => {
@@ -204,5 +206,81 @@ describe('runFrames', () => {
     expect(seen).toEqual([1, 2]);
     expect(() => queue.shift()!(3)).toThrow('boom');
     expect(queue).toEqual([]);
+  });
+});
+
+// Maddy 2026-10-08: "this game heats up phones". Drawing ran on every display refresh — 120 Hz on newer phones —
+// though nothing moves faster than the live layer's 20 steps a second. On a touch screen it is capped at 30 fps.
+describe('runFrames with a frame cap', () => {
+  const drive = (hz: number, seconds: number, minFrameMs: number) => {
+    const queue: Array<(now: number) => void> = [];
+    let drawn = 0;
+    runFrames(() => void drawn++, (cb) => void queue.push(cb), minFrameMs);
+    for (let i = 1; i <= hz * seconds; i++) queue.shift()!((i * 1000) / hz);
+    return drawn / seconds;
+  };
+  it('a 120-Hz display draws 30 frames a second under a 30-fps cap; a 60-Hz one too', () => {
+    expect(drive(120, 2, 1000 / 30)).toBeCloseTo(30, 0);
+    expect(drive(60, 2, 1000 / 30)).toBeCloseTo(30, 0);
+  });
+  it('a refresh slower than the cap draws every frame', () => {
+    expect(drive(24, 2, 1000 / 30)).toBeCloseTo(24, 0);
+  });
+  it('no cap: every refresh, as before', () => {
+    expect(drive(120, 1, 0)).toBe(120);
+  });
+});
+
+// The performance pass (Maddy 2026-10-08): measure first. A DEV profiler times each phase of the frame — rolling
+// averages per phase — so the cost of the economy, the sim, the agents, the 2D draw and each GPU pass can be read.
+import { createFrameProfile } from '../../src/app/loop';
+describe('the frame profiler', () => {
+  it('times each phase of a frame, as a rolling average', () => {
+    let t = 0;
+    const clock = () => t;
+    const prof = createFrameProfile(clock, 4);
+    prof.phase('live', () => (t += 1));
+    prof.phase('live', () => (t += 3));
+    prof.phase('render2d', () => (t += 2));
+    prof.endFrame();
+    const r = prof.report();
+    expect(r.live).toBeCloseTo(4, 6); // 1 + 3 ms in one frame
+    expect(r.render2d).toBeCloseTo(2, 6);
+    expect(r.frames).toBe(1);
+  });
+
+  it('a frame given a profiler times its phases; without one it runs as before', () => {
+    let t = 0;
+    const prof = createFrameProfile(() => (t += 1), 8);
+    const { frame, log } = frameSetup({ gpu: true });
+    frame(1016);
+    expect(log.length).toBeGreaterThan(0); // unprofiled: unchanged
+    const profiled = frameSetupWith(prof);
+    profiled(1016);
+    const r = prof.report();
+    for (const k of ['econ', 'sim', 'live', 'render2d', 'gpuMap', 'gpuGlow', 'smog']) expect(r[k], k).toBeGreaterThan(0);
+  });
+});
+
+function frameSetupWith(prof: ReturnType<typeof createFrameProfile>) {
+  const s = frameSetup({ gpu: true });
+  void s;
+  const ctx = lastCtx!;
+  return createFrame({ ...ctx, prof });
+}
+
+// …and 60 on a desktop (Maddy 2026-10-08): a ProMotion Mac drew 120 a second of a city stepping 20.
+import { frameInterval } from '../../src/app/loop';
+describe('frameInterval', () => {
+  it('30 fps on a touch screen, 60 on a desktop', () => {
+    expect(1000 / frameInterval(true)).toBeCloseTo(30, 6);
+    expect(1000 / frameInterval(false)).toBeCloseTo(60, 6);
+  });
+  it('a 120-Hz desktop draws 60 frames a second under it', () => {
+    const queue: Array<(now: number) => void> = [];
+    let drawn = 0;
+    runFrames(() => void drawn++, (cb) => void queue.push(cb), frameInterval(false));
+    for (let i = 1; i <= 240; i++) queue.shift()!((i * 1000) / 120);
+    expect(drawn / 2).toBeCloseTo(60, 0);
   });
 });

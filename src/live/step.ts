@@ -2,6 +2,7 @@
 // field in a fixed order, and the public stepAmbient that runs it off wall-clock time. Order, cadence
 // and rng draws are load-bearing (tests/live/golden.test.ts). Cut verbatim from ui/ambientContent.ts.
 
+import { liveSubstep } from './clock';
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { decayField, layField } from '../citizens/field';
@@ -31,7 +32,7 @@ import type { AmbientState } from './types';
 import { spawnCitizens } from './agents';
 import { buildVehicleCtx, stepCar } from './cars';
 import { stepPed } from './peds';
-import { buildSafeZones, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
+import { safeZonesFor, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
 import { stepDeaths, stepExposure } from './death';
 import { stepWanderer } from './wanderer';
 import { stepTrucks } from './trucks';
@@ -42,7 +43,7 @@ import { advanceFlock, flockTile, spawnFlocks } from './birds';
 import { stepOccupancy } from './fields/occupancy';
 import { settleCamps } from './camps';
 import { fadeVisits, spawnUnhoused } from './unhoused';
-import { computeCoverage, recomputeLandValue, stepRoadDecay } from './fields/landValue';
+import { computeCoverage, recomputeLandValueBand, stepRoadDecay } from './fields/landValue';
 import {
   accumulateGroundPollution,
   accumulateWaterRunoff,
@@ -101,7 +102,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   //     and active sweeps (the ghost cadence).
   state.policeTick += 1;
   // Community safe-zones the cruisers avoid + never sweep (built fresh only when there ARE cruisers).
-  const safe = state.cruisers.length > 0 ? buildSafeZones(map) : undefined;
+  const safe = state.cruisers.length > 0 ? safeZonesFor(map) : undefined; // cached until something is built
   stepCruisers(state, map, rng, safe, ctx.moverGrid);
   state.arrestTick += 1;
   if (state.arrestTick % ARREST_CADENCE === 0 && policePhase(state.policeTick) === 'chase') {
@@ -193,10 +194,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // 7. Land value: on a slow cadence, recompute each plot's desirability from the healed land +
   //    amenities minus the live nuisances. A readout over the other layers — derived, not laid.
   state.lvTick += 1;
-  if (state.lvTick % LV_CADENCE === 0) {
-    state.coverage = computeCoverage(map); // refresh fire/health coverage before land value reads it
-    recomputeLandValue(state, map);
-  }
+  const lvBand = state.lvTick % LV_CADENCE;
+  if (lvBand === 0) state.coverage = computeCoverage(map); // refresh fire/health coverage before land value reads it
+  // one band of rows a substep — the map once a second, without a once-a-second spike (the scaling pass)
+  recomputeLandValueBand(state, map, lvBand, LV_CADENCE);
 
   // 8. Population: on a slow cadence, drift each home's occupancy toward its capacity (prized/clean/
   //    healthy) or empty (decayed/smoggy). Runs AFTER land value so it reads the fresh field. The
@@ -225,6 +226,6 @@ export function stepAmbient(state: AmbientState, map: GameMap, rng: Rng, dtMs: n
   while (state.accMs >= SUBSTEP_MS) {
     state.accMs -= SUBSTEP_MS;
     snapshotMovers(state); // the "before" pose the renderer interpolates from
-    substep(state, map, rng);
+    liveSubstep(() => substep(state, map, rng)); // the clock: map caches check once inside it
   }
 }

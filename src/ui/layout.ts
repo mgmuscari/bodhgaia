@@ -43,3 +43,13 @@ export function mapPane(innerW: number, innerH: number): PaneRect {
 export function layoutVars(innerW = Infinity): Record<string, string> {
   return { '--sidebar-w': `${SIDEBAR_W}px`, '--topbar-h': `${topbarH(innerW)}px`, '--status-h': `${STATUS_H}px` };
 }
+
+/** The most device pixels per CSS pixel the canvases render at on a touch screen: pixel art gains nothing past 2×,
+ *  and a 3× phone drew 2.25× the pixels for none (Maddy 2026-10-08: "this game heats up phones"). */
+export const TOUCH_MAX_SCALE = 2;
+
+/** The canvases' render scale for a display of `devicePixelRatio`: its own, capped on a touch screen. */
+export function renderScale(devicePixelRatio: number, touch: boolean): number {
+  const d = devicePixelRatio > 0 ? devicePixelRatio : 1;
+  return touch ? Math.min(d, TOUCH_MAX_SCALE) : d;
+}

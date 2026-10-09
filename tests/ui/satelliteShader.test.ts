@@ -36,7 +36,7 @@ describe('satelliteShader: fragment contract', () => {
   it('water laps like the flood: per tile in a checker, the art alternates with itself shifted, water onto water only', () => {
     expect(f).toMatch(/if \(type == SAT_WATER\)/);
     expect(f).toMatch(/mod\(floor\(u_time \/ WATER_LAP_S\) \+ wc\.x \+ wc\.y, 2\.0\)/);
-    expect(f).toMatch(/== SAT_WATER\) col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_view\)\.rgb;/);
+    expect(f).toMatch(/== SAT_WATER\) col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_baseView\)\.rgb;/);
   });
 
   it('maps screen UV through a camera region (origin + view), not the full grid', () => {
@@ -48,7 +48,7 @@ describe('satelliteShader: fragment contract', () => {
   });
 
   it('samples the pixel-art base unwarped — the shader adds light, never motion', () => {
-    expect(f).toContain('texture(u_base, v_uv)');
+    expect(f).toContain('texture(u_base, buv)'); // at the art pixel's centre (artBuffer: one buffer pixel per art pixel)
     expect(f).not.toContain('u_motion');
     expect(f).not.toMatch(/fbm\(/); // no animated noise (water swell, clouds) smearing the pixels
   });
@@ -94,7 +94,7 @@ describe('satelliteShader: enum sync (CPU ↔ GPU)', () => {
 describe('the water lap moves whole art pixels', () => {
   it('samples the shifted art pixel at its own centre, not the screen pixel shifted by a texel count', () => {
     const src = buildFragmentSource();
-    expect(src).toMatch(/col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_view\)\.rgb;/);
+    expect(src).toMatch(/col = texture\(u_base, \(ga \+ lap - u_origin\) \/ u_baseView\)\.rgb;/);
     expect(src).not.toMatch(/baseTexels/);
   });
   it('the base is sampled NEAREST, never blended', async () => {
@@ -103,5 +103,17 @@ describe('the water lap moves whole art pixels', () => {
     const upload = code.slice(code.indexOf('uploadBase('), code.indexOf('texImage2D', code.indexOf('uploadBase(')));
     expect(upload).toMatch(/TEXTURE_MAG_FILTER, gl\.NEAREST/);
     expect(upload).not.toMatch(/gl\.LINEAR/);
+  });
+});
+
+// The performance pass (Maddy 2026-10-08): the map pass is ~10 texture reads a pixel, six of them the shadow march —
+// which ran even at night, when the shadows are nothing. The march and the night lights run only when they show.
+describe('the map pass skips what does not show', () => {
+  const f = buildFragmentSource();
+  it('no shadow march when there are no shadows (night)', () => {
+    expect(f).toMatch(/if \(!onBuilding && shadowStrength > 0\.001\)/);
+  });
+  it('the night lights are read only at night', () => {
+    expect(f).toMatch(/if \(u_night > 0\.0\) \{\s*vec4 en = texture\(u_emitN, buv\);/);
   });
 });

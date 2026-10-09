@@ -3,6 +3,7 @@
 // grid-following movers, kerb stalls, and the despawn predicates. Cut verbatim from
 // ui/ambientContent.ts; pure reads of the map (rng only where a step is chosen).
 
+import { inLiveSubstep, liveClock } from './clock';
 import type { GameMap } from '../engine/map';
 import { BuiltKind, isRoadKind, railCrossingMask } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
@@ -617,6 +618,15 @@ interface MaskCache extends NetworkMasks {
   builtCopyWords: Int32Array;
   waterWords: Int32Array;
   waterCopyWords: Int32Array;
+  /** The live clock when built/water were last compared, and a count that moves whenever they had changed. */
+  checkedAt: number;
+  epoch: number;
+}
+
+let checks = 0;
+/** How many times a map has been compared against its masks' copy (tests: once a substep, not once a search). */
+export function maskChecks(): number {
+  return checks;
 }
 
 const maskCache = new WeakMap<GameMap, MaskCache>();
@@ -701,19 +711,35 @@ export function networkMasks(map: GameMap): NetworkMasks {
       builtCopyWords: words(built),
       waterWords: words(map.water),
       waterCopyWords: words(water),
+      checkedAt: liveClock(),
+      epoch: 0,
     };
     maskCache.set(map, c);
     rebuildAll(map, c);
     return c;
   }
+  // once a substep (the scaling pass, Maddy 2026-10-08: every A* compared the whole map first); outside one (an
+  // event's dispatch right after the sim changed the map) every call checks, as before
+  const clock = liveClock();
+  if (inLiveSubstep() && c.checkedAt === clock) return c;
+  c.checkedAt = clock;
+  checks++;
   const changed: number[] = [];
   diffInto(map.built, c.built, c.builtWords, c.builtCopyWords, changed);
   diffInto(map.water, c.water, c.waterWords, c.waterCopyWords, changed);
   if (changed.length === 0) return c;
+  c.epoch++;
   const area = (2 * MASK_REACH + 1) * (2 * MASK_REACH + 1);
   if (changed.length * area >= c.walk.length) rebuildAll(map, c);
   else rebuildAround(map, c, changed);
   return c;
+}
+
+/** A number that moves whenever the map's built/water layers have changed (checked at most once a substep): caches
+ *  derived from the map — the police's precincts and refuges — key on it instead of rescanning. */
+export function mapEpoch(map: GameMap): number {
+  networkMasks(map);
+  return maskCache.get(map)!.epoch;
 }
 
 /** Tiles closed to routing on a map, kept per source (the flood, a block party…): a source closes its tiles to

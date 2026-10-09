@@ -34,7 +34,7 @@ import { createPanelRegistry, createPulse, isPanelId, mountPanels } from './app/
 import { createToolController } from './app/tools';
 import { createSaves } from './app/saves';
 import { installKeys } from './app/keys';
-import { createSimTick, createFrame, runFrames } from './app/loop';
+import { createFrameProfile, createSimTick, createFrame, frameInterval, runFrames } from './app/loop';
 import { createSound } from './app/sound';
 import { createNews } from './app/news';
 import { isPowerConsumer } from './growth/power';
@@ -141,8 +141,11 @@ export function main(save: SaveV1 | null = null): void {
   sound.applySettings(settings.current().audio);
   let deniedAt = 0; // a refused drag would repeat per tile — one 'no' per gesture is enough
 
+  // DEV: time each phase of the frame (window.bodhgaia.prof()) — stripped from the release build
+  const frameProfile = import.meta.env.DEV ? createFrameProfile() : undefined;
   if (import.meta.env.DEV) {
     installDevHandle({
+      prof: () => frameProfile!.report(),
       camera,
       world,
       ambient: live.state,
@@ -546,6 +549,7 @@ export function main(save: SaveV1 | null = null): void {
     },
   });
   const frame = createFrame({
+    prof: frameProfile,
     start: performance.now(),
     power,
     economy,
@@ -571,7 +575,8 @@ export function main(save: SaveV1 | null = null): void {
     },
     afterGpu: (now) => events.gpuPass(now),
   });
-  runFrames(frame, (cb) => window.requestAnimationFrame(cb));
+  // 30 fps on a touch screen, 60 on a desktop: nothing moves faster than 20 steps a second (Maddy 2026-10-08)
+  runFrames(frame, (cb) => window.requestAnimationFrame(cb), frameInterval(touchScreen()));
 }
 
 // Boot: resume the game in progress (the CURRENT slot, kept by autosave) unless `?new` asks for a fresh city;

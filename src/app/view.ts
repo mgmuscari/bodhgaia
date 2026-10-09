@@ -14,7 +14,8 @@ import type { SkinImages } from '../ui/tilesetLoader';
 import { Renderer } from '../ui/renderer';
 import { GpuRenderer } from '../ui/gpuRenderer';
 import { SmogOverlay } from '../ui/smogOverlay';
-import { mapPane, layoutVars } from '../ui/layout';
+import { mapPane, layoutVars, renderScale } from '../ui/layout';
+import { touchScreen } from '../ui/touch';
 import { materializeSkin } from '../ui/tilesetLoader';
 import { paintSnesSkin } from '../ui/snesTileset';
 import { footprintCellKey } from '../ui/renderKey';
@@ -56,7 +57,8 @@ export interface View {
 
 export function createView(deps: ViewDeps): View {
   const { canvas, map } = deps;
-  const dpr = (): number => window.devicePixelRatio || 1;
+  // the canvases' render scale: the display's own, capped at 2× on a touch screen (ui/layout.ts renderScale)
+  const dpr = (): number => renderScale(window.devicePixelRatio, touchScreen());
   // the map pane sits right of the docked tool palette, never under it
   // the map pane sits inside the chrome (top bar, palette, status line) — never under it
   const applyLayout = (): void => {

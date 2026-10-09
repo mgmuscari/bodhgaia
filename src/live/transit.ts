@@ -4,6 +4,7 @@
 // neighbour off the track: the platform people wait on. Pure reads of the map, deterministic,
 // never hashed; the live layer recomputes them when the fabric changes.
 
+import { liveClock, tickLiveClock } from './clock';
 import type { GameMap } from '../engine/map';
 import { BuiltKind } from '../engine/fabric';
 import { isWalkable, railCrossing } from './network';
@@ -123,11 +124,23 @@ export interface Transit {
 
 interface Cached extends Transit {
   sig: number;
-  calls: number;
+  /** The transit clock when the track was last checked. */
+  checkedAt: number;
 }
 const CACHE = new WeakMap<GameMap, Cached>();
-/** Calls between re-checks of the track for changes (the scan is cheap but not per-vehicle cheap). */
-const RECHECK = 20;
+/** Substeps between re-checks of the track for changes — once a second. By the clock, not by calls: every transit
+ *  rider asks twice a substep, so a call count made the full-map scans grow with the riders (the scaling pass, Maddy
+ *  2026-10-08). */
+export const TRANSIT_RECHECK_SUBSTEPS = 20;
+let scans = 0;
+
+/** Advance the live clock one substep (step.ts calls it at the top of each) — the transit cache's clock. */
+export const tickTransitClock = tickLiveClock;
+
+/** How many times the track has been scanned (tests: the re-check is by time, not by callers). */
+export function transitScans(): number {
+  return scans;
+}
 
 function trackSignature(map: GameMap): number {
   let h = 0;
@@ -141,10 +154,15 @@ function trackSignature(map: GameMap): number {
 /** The map's lines and stops, rebuilt when its track changes (re-checked every RECHECK calls). */
 export function transitFor(map: GameMap): Transit {
   let c = CACHE.get(map);
-  if (c && ++c.calls % RECHECK !== 0) return c;
+  const clock = liveClock();
+  if (c && clock - c.checkedAt < TRANSIT_RECHECK_SUBSTEPS) return c;
+  scans++;
   const sig = trackSignature(map);
   // the track is unchanged — but a platform built over (Maddy 2026-10-08: an AI node on one) moves its stop too
-  if (c && c.sig === sig && c.lines.every((l) => l.stops.every((s) => platformOk(map, s.platform)))) return c;
+  if (c && c.sig === sig && c.lines.every((l) => l.stops.every((s) => platformOk(map, s.platform)))) {
+    c.checkedAt = clock;
+    return c;
+  }
   const lines = transitLines(map);
   const stopAt = new Map<number, Stop>();
   const lineOf = new Int32Array(map.width * map.height).fill(-1);
@@ -152,7 +170,7 @@ export function transitFor(map: GameMap): Transit {
     for (const t of l.tiles) lineOf[t] = l.id;
     for (const s of l.stops) stopAt.set(s.track, s);
   }
-  c = { lines, stopAt, lineOf, sig, calls: 0 };
+  c = { lines, stopAt, lineOf, sig, checkedAt: clock };
   CACHE.set(map, c);
   return c;
 }

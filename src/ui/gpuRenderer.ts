@@ -5,6 +5,7 @@
 // stays the no-WebGL fallback.
 //
 // IO module (touches WebGL/DOM) — not on the pure-ui allowlist.
+import { artBuffer, type ArtBuffer } from './artGrid';
 import { GridTextureBridge } from './gridTextureBridge';
 import { SatelliteShader } from './satelliteShader';
 import { GlowBatch, GLOW_FLOATS, extractLightPoints } from './glowBatch';
@@ -73,8 +74,9 @@ export class GpuRenderer {
   mount(): HTMLCanvasElement {
     const canvas = document.createElement('canvas');
     canvas.id = 'gpu-base';
-    canvas.style.cssText =
-      'position:fixed;top:var(--topbar-h);left:var(--sidebar-w);width:calc(100% - var(--sidebar-w));height:calc(100% - var(--topbar-h) - var(--status-h));display:block;pointer-events:none;z-index:0;'; // the map pane, right of the tool palette — a canvas needs an explicit CSS size, or it displays at its (DPR-scaled) buffer size
+    // at the map pane's top-left, one pixel per ART pixel stretched (sharp) to whole art pixels — at most one past the
+    // pane, under everything else (artBuffer; the performance pass, Maddy 2026-10-08)
+    canvas.style.cssText = 'position:fixed;top:var(--topbar-h);left:var(--sidebar-w);display:block;pointer-events:none;z-index:0;image-rendering:pixelated;';
     const gl = canvas.getContext('webgl2');
     if (!gl) throw new Error('WebGL2 unavailable');
     document.body.prepend(canvas);
@@ -100,7 +102,7 @@ export class GpuRenderer {
     const gl = this.gl;
     if (!gl) return;
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
-    const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
+    const { origin, view } = artBuffer(camera, cssWidth, cssHeight); // the same buffer render() fitted
     this.renderGlow(ambient, origin, view, timeSec, night, buildings, beams);
     gl.disable(gl.BLEND); // leave blend OFF so the next frame's opaque base pass isn't additive
   }
@@ -200,11 +202,23 @@ export class GpuRenderer {
     this.glow.render(g, n, origin, view);
   }
 
-  resize(cssWidth: number, cssHeight: number, dpr: number): void {
-    if (!this.canvas || !this.gl) return;
-    this.canvas.width = Math.round(cssWidth * dpr);
-    this.canvas.height = Math.round(cssHeight * dpr);
-    this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+  /** The pane resized: the buffer follows on the next render (it is sized by the camera's zoom too — artBuffer). */
+  resize(_cssWidth: number, _cssHeight: number, _dpr: number): void {}
+
+  /** Size the canvas to this view's art-pixel buffer (only when it changed) and return its mapping. */
+  private fit(camera: Camera, cssWidth: number, cssHeight: number): ArtBuffer {
+    const b = artBuffer(camera, cssWidth, cssHeight);
+    const c = this.canvas!;
+    if (c.width !== b.w || c.height !== b.h) {
+      c.width = b.w;
+      c.height = b.h;
+    }
+    const cw = `${b.cssW}px`;
+    const ch = `${b.cssH}px`;
+    if (c.style.width !== cw) c.style.width = cw;
+    if (c.style.height !== ch) c.style.height = ch;
+    this.gl!.viewport(0, 0, b.w, b.h);
+    return b;
   }
 
   /** Re-pack the world grid (call on a built-layer change / markDirty). The upload happens lazily in
@@ -237,11 +251,11 @@ export class GpuRenderer {
       this.shader.uploadBaseRects(base, patch.rects);
       this.lastPatchVersion = patch.version;
     }
+    const { origin, view, baseView } = this.fit(camera, cssWidth, cssHeight);
     this.gl.clearColor(0.078, 0.071, 0.122, 1); // #14121f — matches the Canvas2D base bg out-of-map
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
-    const { origin, view } = cameraToShaderView(camera, cssWidth, cssHeight);
     const night = Math.min(1, Math.max(0, (0.8 - dayNightBrightness(timeSec)) / 0.3));
-    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, dayspeed: DAYSPEED, night });
+    this.shader.render({ time: timeSec, sun: SUN, shadow: SHADOW_STRENGTH, origin, view, baseView, dayspeed: DAYSPEED, night });
   }
 
   /** The CCTV inset: a second viewport drawn into `rect` (device px, GL bottom-left origin) of this canvas, AFTER

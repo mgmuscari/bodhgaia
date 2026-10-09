@@ -48,7 +48,8 @@ uniform float u_night;     // 0 day … 1 night: how much the windows show
 uniform float u_emitOn;    // 1 when the emission layers are uploaded for this view
 uniform vec2 u_grid;      // data-texture size in cells (for sampling normalization)
 uniform vec2 u_origin;    // top-left visible world cell (camera pan)
-uniform vec2 u_view;      // visible window size in cells (camera zoom)
+uniform vec2 u_view;      // the buffer's span in cells (camera zoom) — the buffer is one pixel per art pixel (artBuffer)
+uniform vec2 u_baseView;  // the cached base's span in cells: it covers exactly the view, from the same origin
 uniform float u_time;     // seconds, for the day/night sun arc
 uniform vec2 u_sun;       // sun direction in tile space (shadows trace toward it)
 uniform float u_shadow;   // shadow strength 0..1
@@ -67,10 +68,12 @@ void main() {
     fragColor = vec4(0.04, 0.05, 0.06, 1.0); // letterbox backdrop outside the world
     return;
   }
-  // ALBEDO = the CPU-baked per-cell pixel art (terrain + building + lines/markings/props already
-  // composited by the CPU base pass), unanimated — the GPU adds only light: day/night and shadows.
-  vec3 col = texture(u_base, v_uv).rgb;
   vec2 ga = artPixel(g); // light is evaluated once per ART pixel, never across one
+  // ALBEDO = the CPU-baked per-cell pixel art (terrain + building + lines/markings/props already composited by the CPU
+  // base pass), read at this art pixel's centre — the buffer is one pixel per art pixel (the performance pass, Maddy
+  // 2026-10-08), the base one per device pixel over the view
+  vec2 buv = (ga - u_origin) / u_baseView;
+  vec3 col = texture(u_base, buv).rgb;
   int type = int(cell(floor(ga)).r * 255.0 + 0.5); // this cell's kind (roofs take no cast shadow)
   // Water laps (Maddy 2026-10-08: the water tiles animated the way the flood is): per tile in a checker, every
   // WATER_LAP_S the art alternates with itself shifted WATER_LAP_PX art pixels, so the wave crests lap back and
@@ -81,7 +84,7 @@ void main() {
       vec2 lap = vec2(WATER_LAP_PX / ART_PX, 0.0);
       // the art pixel two over, read at ITS centre: the lap moves the art by whole art pixels at any display scale
       // (a screen-pixel shift tore at fractional scales, where an art pixel is a fraction of device px — Maddy 2026-10-08)
-      if (int(cell(floor(ga + lap)).r * 255.0 + 0.5) == SAT_WATER) col = texture(u_base, (ga + lap - u_origin) / u_view).rgb;
+      if (int(cell(floor(ga + lap)).r * 255.0 + 0.5) == SAT_WATER) col = texture(u_base, (ga + lap - u_origin) / u_baseView).rgb;
     }
   }
 
@@ -107,7 +110,7 @@ void main() {
   // are skipped (the art carries its own drop shadows).
   float shadow = 1.0;
   bool onBuilding = type >= SAT_RESIDENTIAL && type <= SAT_POWER;
-  if (!onBuilding) {
+  if (!onBuilding && shadowStrength > 0.001) { // at night the shadows are nothing: skip the march (six reads)
     vec2 stepv = normalize(sun);
     for (int i = 1; i <= 6; i++) {
       float d = float(i) / 6.0 * SHADOW_REACH * shadowLen;
@@ -132,9 +135,12 @@ void main() {
   // Building light (Maddy 2026-10-08: building lights on the GPU): the windows and furnaces baked with the base,
   // added AFTER the night's dimming, so a lit window glows on a dark street
   if (u_emitOn > 0.5) {
-    vec4 en = texture(u_emitN, v_uv);
-    vec4 ea = texture(u_emitA, v_uv);
-    col += en.rgb * en.a * u_night + ea.rgb * ea.a;
+    vec4 ea = texture(u_emitA, buv);
+    col += ea.rgb * ea.a;
+    if (u_night > 0.0) {
+      vec4 en = texture(u_emitN, buv);
+      col += en.rgb * en.a * u_night; // the night windows: read only when it is night
+    }
   }
   fragColor = vec4(col, 1.0);
 }`;
@@ -171,6 +177,7 @@ export class SatelliteShader {
   private readonly uGrid: WebGLUniformLocation | null;
   private readonly uOrigin: WebGLUniformLocation | null;
   private readonly uView: WebGLUniformLocation | null;
+  private readonly uBaseView: WebGLUniformLocation | null;
   private readonly uTime: WebGLUniformLocation | null;
   private readonly uSun: WebGLUniformLocation | null;
   private readonly uShadow: WebGLUniformLocation | null;
@@ -208,6 +215,7 @@ export class SatelliteShader {
     this.uGrid = gl.getUniformLocation(program, 'u_grid');
     this.uOrigin = gl.getUniformLocation(program, 'u_origin');
     this.uView = gl.getUniformLocation(program, 'u_view');
+    this.uBaseView = gl.getUniformLocation(program, 'u_baseView');
     this.uTime = gl.getUniformLocation(program, 'u_time');
     this.uSun = gl.getUniformLocation(program, 'u_sun');
     this.uShadow = gl.getUniformLocation(program, 'u_shadow');
@@ -301,6 +309,8 @@ export class SatelliteShader {
     shadow?: number;
     origin?: readonly [number, number];
     view?: readonly [number, number];
+    /** The cached base's span in cells (it covers the view); omitted: the same as `view`. */
+    baseView?: readonly [number, number];
     dayspeed?: number;
     /** Which baked base to sample: the main view's (default) or the CCTV inset's. */
     slot?: 'main' | 'inset';
@@ -317,6 +327,8 @@ export class SatelliteShader {
     if (this.uGrid) gl.uniform2f(this.uGrid, this.gridW, this.gridH);
     if (this.uOrigin) gl.uniform2f(this.uOrigin, opts.origin?.[0] ?? 0, opts.origin?.[1] ?? 0);
     if (this.uView) gl.uniform2f(this.uView, opts.view?.[0] ?? this.gridW, opts.view?.[1] ?? this.gridH);
+    const bv = opts.baseView ?? opts.view;
+    if (this.uBaseView) gl.uniform2f(this.uBaseView, bv?.[0] ?? this.gridW, bv?.[1] ?? this.gridH);
     if (this.uTime) gl.uniform1f(this.uTime, opts.time);
     if (this.uSun) gl.uniform2f(this.uSun, opts.sun[0], opts.sun[1]);
     if (this.uShadow) gl.uniform1f(this.uShadow, opts.shadow ?? 0.45);

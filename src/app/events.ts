@@ -3,6 +3,8 @@
 // effort; the neighbourhood's belonging; grief in the homes nearby; a line in the news), and every event is
 // queued for the CCTV inset in the lower right, which shows it for a few seconds at the closest zoom that fits.
 
+import { renderScale } from '../ui/layout';
+import { touchScreen } from '../ui/touch';
 import type { GameMap } from '../engine/map';
 import type { WorldState } from '../worldgen/pipeline';
 import type { CivicState } from '../civic/state';
@@ -99,7 +101,7 @@ export function createEventsController(deps: EventsDeps): EventsController {
     const box = cctv.canvas.getBoundingClientRect();
     hole = {
       css: { x: box.left - pane.left, y: box.top - pane.top, w: box.width, h: box.height },
-      gl: toGlRect(box, pane, window.devicePixelRatio || 1),
+      gl: toGlRect(box, pane, renderScale(window.devicePixelRatio, touchScreen())),
     };
     main.renderer.setHole(gpuOn ? hole.css : null);
   };
@@ -121,11 +123,13 @@ export function createEventsController(deps: EventsDeps): EventsController {
       if (!ev) return close();
       if (!renderer) {
         renderer = new Renderer(cctv.canvas, deps.skin);
-        renderer.resize(CCTV_W, CCTV_H, window.devicePixelRatio || 1);
+        renderer.resize(CCTV_W, CCTV_H, renderScale(window.devicePixelRatio, touchScreen()));
         camera = new Camera({ mapWidth: deps.map.width, mapHeight: deps.map.height, viewportWidth: CCTV_W, viewportHeight: CCTV_H });
       }
       // GPU on: the inset's 2D layer draws only the sprites; its ground is a second viewport on the GPU map
-      const wantGpu = !!deps.main?.gpu();
+      // The inset draws itself on the CPU (its own base, light and night): the main GPU canvas now renders one pixel per
+      // art pixel of the MAIN view (the performance pass, Maddy 2026-10-08), too coarse for an inset at another zoom.
+      const wantGpu = false;
       if (wantGpu !== gpuOn) {
         gpuOn = wantGpu;
         renderer.setGpuMode(gpuOn);
