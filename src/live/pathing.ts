@@ -480,34 +480,47 @@ export function nearestOfCategory(
   cy: number,
   category: StopCategory,
   landValue?: ReadonlyMap<number, number>,
+  pick?: number,
 ): { x: number; y: number } | null {
-  let bx = -1;
-  let by = -1;
-  let bestScore = 1e9;
-  let bestHash = 0;
+  // the best-scoring tile of each place (a multi-tile plot counts once)
+  const best = new Map<number, { score: number; h: number; x: number; y: number }>();
   for (let y = cy - CITIZEN_TRIP_RADIUS; y <= cy + CITIZEN_TRIP_RADIUS; y++) {
     for (let x = cx - CITIZEN_TRIP_RADIUS; x <= cx + CITIZEN_TRIP_RADIUS; x++) {
       if (!map.inBounds(x, y)) continue;
-      if (stopCategoryOf(map.built[map.idx(x, y)]!) !== category) continue;
+      const i = map.idx(x, y);
+      if (stopCategoryOf(map.built[i]!) !== category) continue;
       // Distance, pulled DOWN by the plot's land value: a prized destination justifies up to LV_PULL
       // extra tiles of travel over a drab nearer one — citizens flow toward the nice parts of town.
       const d = Math.abs(x - cx) + Math.abs(y - cy);
-      const lv = landValue ? sampleField(landValue, map.idx(x, y)) : 0;
+      const lv = landValue ? sampleField(landValue, i) : 0;
       const score = d - (lv / LV_MAX) * LV_PULL;
       // Ties broken by tieHash, NOT scan order — else every equidistant choice skews upper-left
       // (row-major + strict `<`), which clustered trips toward the map's top-left (Maddy).
-      const h = tieHash(map.idx(x, y));
-      const better = score < bestScore - 1e-9;
-      if (better || (score < bestScore + 1e-9 && h < bestHash)) {
-        if (better) bestScore = score;
-        bestHash = h;
-        bx = x;
-        by = y;
-      }
+      const h = tieHash(i);
+      const place = map.parcel[i]! !== 0 ? -map.parcel[i]! : i;
+      const cur = best.get(place);
+      if (!cur || score < cur.score - 1e-9 || (score < cur.score + 1e-9 && h < cur.h)) best.set(place, { score, h, x, y });
     }
   }
-  return bx < 0 ? null : { x: bx, y: by };
+  if (best.size === 0) return null;
+  const ranked = [...best.values()].sort((a, b) => a.score - b.score || a.h - b.h);
+  if (pick === undefined) return { x: ranked[0]!.x, y: ranked[0]!.y };
+  // A trip spreads over the nearest few (Maddy 2026-10-08: a district streamed to one shop): up to SPREAD_PLACES
+  // within SPREAD_SLACK of the best, weighted to the nearest (SPREAD_PLACES : … : 1).
+  const near = ranked.filter((c) => c.score <= ranked[0]!.score + SPREAD_SLACK).slice(0, SPREAD_PLACES);
+  let total = 0;
+  for (let r = 0; r < near.length; r++) total += near.length - r;
+  let u = (pick >>> 0) % total;
+  for (let r = 0; r < near.length; r++) {
+    u -= near.length - r;
+    if (u < 0) return { x: near[r]!.x, y: near[r]!.y };
+  }
+  return { x: near[0]!.x, y: near[0]!.y };
 }
+
+/** How many of the nearest places a trip spreads over, and how much further (score) than the best one may be. */
+const SPREAD_PLACES = 4;
+const SPREAD_SLACK = 6;
 
 /** Is a tile of `mode`'s network within MODE_INFRA_RADIUS of (cx, cy)? (Is this mode served here?) */
 export function infraNear(map: GameMap, cx: number, cy: number, mode: TravelMode): boolean {
