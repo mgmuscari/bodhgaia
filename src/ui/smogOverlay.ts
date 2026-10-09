@@ -3,8 +3,8 @@
 // Canvas2D sprite/UI canvas (z-index 2 > #game z-index 1 > #gpu-base z-index 0), so the haze drifts over
 // buildings AND sprites — the atmospheric layer the CPU drew last in drawSprites, now on the GPU.
 //
-// It samples the live air-pollution field (uploaded as an R8 texture from ambient.pollution) and
-// billows wind-drifted fBm haze where pollution is high. Replaces the per-tile CPU smog-sprite draw in
+// It samples the live air-pollution field (uploaded as an RG8 texture from ambient.pollution and a spill's toxic
+// smog) and paints pixel-art clouds where the air is bad (buildSmogFragment). Replaces the per-tile CPU smog-sprite draw in
 // GPU mode (that path is gated off in the renderer); the CPU path remains the no-WebGL fallback.
 //
 // IO module (WebGL/DOM) — not on the pure-ui allowlist.
@@ -14,6 +14,8 @@ import { ART_GRID_GLSL } from './artGrid';
 import type { Camera } from './camera';
 import { dayNightBrightness } from './lighting';
 import { gameSec } from './gameTime';
+import { C } from './snesPalette';
+import type { RGB } from './pixelArt';
 
 /** The haze's light: the ground's day/night brightness, never quite black (a haze still catches the street lights). */
 const nightLight = (): number => Math.max(0.3, dayNightBrightness(gameSec()));
@@ -26,8 +28,18 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLSh
   return s;
 }
 
-/** Fragment: sample pollution at the world cell, billow wind-drifted fBm haze, output translucent
- *  grey-brown smog (normal alpha-blended over the page below). Pollution < threshold → fully clear. */
+/** Opacity steps of the haze — thin, then thick where the air is worse — and of a spill's toxic cloud. The canvas
+ *  is drawn without blending (each pixel written once over a cleared canvas), so these are the opacities seen. */
+export const SMOG_ALPHAS = [0.3, 0.46] as const;
+export const TOXIC_ALPHAS = [0.62, 0.82] as const;
+
+const glslRgb = (c: RGB): string => `vec3(${c.map((v) => (v / 255).toFixed(4)).join(', ')})`;
+
+/** Fragment: smog and toxic clouds as pixel art (Maddy 2026-10-08). At each art pixel a low-octave noise shape,
+ *  drifting a whole art pixel at a time with the wind, is cut by a threshold the pollution there lowers — dirtier
+ *  air, more cloud. Inside, the tone is picked like the sprites' (lit from above, shadowed below — by whether the
+ *  art pixel above or below is still cloud) from the shared palette, and the opacity is one of two steps. No
+ *  colour or opacity is ever blended: hard-edged shapes, three tones. */
 export function buildSmogFragment(): string {
   return `#version 300 es
 precision highp float;
@@ -41,30 +53,48 @@ uniform float u_light;    // the day/night light (1 at noon) — haze darkens at
 in vec2 v_uv;
 out vec4 fragColor;
 ${ART_GRID_GLSL}
+const vec3 SMOG_HI = ${glslRgb(C.slateHi)};
+const vec3 SMOG_MID = ${glslRgb(C.slate)};
+const vec3 SMOG_LO = ${glslRgb(C.slateLo)};
+const vec3 TOX_HI = ${glslRgb(C.meadowHi)};
+const vec3 TOX_MID = ${glslRgb(C.meadow)};
+const vec3 TOX_LO = ${glslRgb(C.grassMid)};
 float hash21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
-float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);float a=hash21(i),b=hash21(i+vec2(1,0)),c=hash21(i+vec2(0,1)),d=hash21(i+vec2(1,1));vec2 u=f*f*(3.0-2.0*f);return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}
-float fbm(vec2 p){float s=0.0,a=0.5;for(int i=0;i<5;i++){s+=a*vnoise(p);p*=2.0;a*=0.5;}return s;}
+float lerp(float a,float b,float t){return a+(b-a)*t;}
+float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.0-2.0*f);
+  return lerp(lerp(hash21(i),hash21(i+vec2(1,0)),u.x),lerp(hash21(i+vec2(0,1)),hash21(i+vec2(1,1)),u.x),u.y);}
+// three octaves only: round, puffy shapes, not single-pixel speckle
+float puff(vec2 p){return 0.57*vnoise(p)+0.29*vnoise(p*2.03)+0.14*vnoise(p*4.01);}
+vec2 drift;
+// pollution at an art pixel, sampled slightly UPWIND so a plume streams downwind from its source
+vec2 airAt(vec2 cell){return texture(u_poll, (cell - u_wind * 0.6 + 0.5) / u_grid).rg;}
+// how thick the smog (x) and the toxic cloud (y) are at an art pixel: 0 = clear, 1 = thin, 2 = thick
+vec2 cloudAt(vec2 cell){
+  vec2 air = airAt(cell);
+  float sd = clamp((air.r - 0.16) / 0.84, 0.0, 1.0);
+  float td = clamp((air.g - 0.04) / 0.35, 0.0, 1.0);
+  vec2 q = (cell - drift) * 0.7;
+  float s = sd > 0.0 && puff(q) > 0.74 - 0.42 * sd ? (sd > 0.55 ? 2.0 : 1.0) : 0.0;
+  float t = td > 0.0 && puff(q * 1.1 + vec2(37.0, 11.0)) > 0.66 - 0.5 * td ? (td > 0.5 ? 2.0 : 1.0) : 0.0;
+  return vec2(s, t);
+}
 void main(){
-  vec2 cell = artPixel(u_origin + v_uv * u_view); // haze steps per art pixel
-  // sample pollution slightly UPWIND so the plume reads as streaming downwind from its source
-  vec2 at = (cell - u_wind * 0.6 + 0.5) / u_grid;
-  float poll = texture(u_poll, at).r;
-  float tox = texture(u_poll, at).g;
-  if (poll < 0.16 && tox < 0.06) { fragColor = vec4(0.0); return; }
-  vec2 q = cell * 0.5 - u_wind * u_time * 0.5;       // billowing, drifting with the wind
-  float h = fbm(q + fbm(q * 0.5));
-  float dens = clamp((poll - 0.16) / 0.84, 0.0, 1.0);
-  float a = dens * (0.12 + 0.55 * h) * 0.62;
-  vec3 col = mix(vec3(0.50, 0.48, 0.45), vec3(0.63, 0.60, 0.55), h); // grey-brown industrial haze
-  a = clamp(a, 0.0, 0.7);
-  // a spill's toxic smog: the same billow, denser and greenish-yellow (the palette's meadows), over the haze
-  // (the canvas blend squares alpha on the way out, so the toxic density runs high to read intense)
-  float td = clamp((tox - 0.04) / 0.35, 0.0, 1.0);
-  float ta = clamp(td * (0.62 + 0.45 * h), 0.0, 0.96);
-  vec3 tcol = mix(vec3(0.66, 0.76, 0.20), vec3(0.86, 0.86, 0.30), h);
-  float outA = ta + a * (1.0 - ta);
-  vec3 lit = outA > 0.0 ? (tcol * ta + col * a * (1.0 - ta)) / outA * u_light : vec3(0.0);
-  fragColor = outA > 0.0 ? vec4(lit, outA) : vec4(0.0);
+  drift = floor(u_wind * u_time * 0.6 * ART_PX) / ART_PX;
+  vec2 cell = artPixel(u_origin + v_uv * u_view);
+  vec2 here = cloudAt(cell);
+  if (here.x == 0.0 && here.y == 0.0) { fragColor = vec4(0.0); return; }
+  vec2 up = cloudAt(cell - vec2(0.0, 1.0 / ART_PX));
+  vec2 down = cloudAt(cell + vec2(0.0, 1.0 / ART_PX));
+  vec3 col;
+  float a;
+  if (here.y > 0.0) {
+    col = up.y == 0.0 ? TOX_HI : down.y == 0.0 ? TOX_LO : TOX_MID;
+    a = here.y > 1.0 ? ${TOXIC_ALPHAS[1].toFixed(3)} : ${TOXIC_ALPHAS[0].toFixed(3)};
+  } else {
+    col = up.x == 0.0 ? SMOG_HI : down.x == 0.0 ? SMOG_LO : SMOG_MID;
+    a = here.x > 1.0 ? ${SMOG_ALPHAS[1].toFixed(3)} : ${SMOG_ALPHAS[0].toFixed(3)};
+  }
+  fragColor = vec4(col * u_light, a);
 }`;
 }
 
@@ -106,8 +136,7 @@ export class SmogOverlay {
     gl.useProgram(program);
     gl.uniform1i(gl.getUniformLocation(program, 'u_poll'), 0);
     for (const n of ['u_grid', 'u_origin', 'u_view', 'u_time', 'u_wind', 'u_light']) this.u[n] = gl.getUniformLocation(program, n);
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.disable(gl.BLEND); // one write per pixel over a cleared canvas: the opacity drawn is the opacity seen
     // R8 pollution texture (LINEAR so the haze gradients smoothly across tiles).
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.pollTex);

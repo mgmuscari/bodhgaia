@@ -46,7 +46,7 @@ describe('every light/shadow/haze shader samples on the art grid', () => {
     expect(buildSmogFragment()).toContain(ART_GRID_GLSL);
     expect(buildSmogFragment()).toMatch(/vec2 cell = artPixel\(/);
     // a spill's toxic smog rides the same texture (green channel) and the same art-pixel billow
-    expect(buildSmogFragment()).toMatch(/float tox = texture\(u_poll, .*\)\.g;/);
+    expect(buildSmogFragment()).toMatch(/texture\(u_poll, .*\)\.rg;/);
     // and both hazes darken with the night like everything else (Maddy 2026-10-08: the toxic cloud glowed at night)
     expect(buildSmogFragment()).toMatch(/uniform float u_light;/);
     expect(buildSmogFragment()).toMatch(/\* u_light/);
