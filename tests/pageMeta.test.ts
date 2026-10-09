@@ -52,3 +52,27 @@ describe('no desktop-only note (index.html)', () => {
     expect(html).not.toMatch(/desktop-note|best on a desktop/i);
   });
 });
+
+// Maddy 2026-10-08: "bodhgaia title is too wide for mobile". The opening's title cards scale with the screen's width
+// (never past their desktop size), so BODHGAIA, its byline and the awakening fit a phone.
+describe('the opening titles fit a phone', () => {
+  /** The font-size of the rule for exactly `sel` that sets one (a grouped selector ending in it sets none). */
+  const size = (sel: string): string => {
+    for (const m of head.matchAll(new RegExp(`(?:^|\\n)\\s*\\${sel}\\s*\\{([^}]*)\\}`, 'g'))) {
+      const f = /font-size:\s*([^;]+);/.exec(m[1]!);
+      if (f) return f[1]!;
+    }
+    return '';
+  };
+  it('each title card’s size is the smaller of its desktop size and a share of the screen width', () => {
+    expect(size('.night-credit-name')).toMatch(/^min\(4rem, [\d.]+vw\)$/);
+    expect(size('.night-credit')).toMatch(/^min\(1\.5rem, [\d.]+vw\)$/);
+    expect(size('.night-title')).toMatch(/^min\(3rem, [\d.]+vw\)$/);
+  });
+  it('BODHGAIA — 8 letters, tracked 0.32em — fits 390 px less its 24 px margins', () => {
+    const vw = Number(/min\(4rem, ([\d.]+)vw\)/.exec(size('.night-credit-name'))![1]);
+    const px = (vw / 100) * 390;
+    const width = 8 * px * (0.6 + 0.32) + px * 0.32; // a generous glyph advance, the tracking, the balancing pad
+    expect(width).toBeLessThanOrEqual(390 - 48);
+  });
+});

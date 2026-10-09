@@ -359,7 +359,7 @@
       /* the opening's title cards: the byline small and spaced, the name large, tracked wide, in the accent */
       .night-credit {
         margin: 0;
-        font-size: 1.5rem;
+        font-size: min(1.5rem, 5vw); /* scales down to fit a phone (Maddy 2026-10-08), never past the desktop size */
         letter-spacing: 0.14em;
         padding-left: 0.14em; /* tracking trails the last letter: balance it so the line stays centred */
         color: var(--ui-text);
@@ -367,7 +367,7 @@
         animation: night-in 1.8s ease both;
       }
       .night-credit-name {
-        font-size: 4rem;
+        font-size: min(4rem, 10vw); /* BODHGAIA, tracked wide, fits a 390-px phone */
         letter-spacing: 0.32em;
         padding-left: 0.32em;
         color: var(--ui-accent);
@@ -391,7 +391,7 @@
         text-shadow: 0 0 18px rgba(240, 200, 120, 0.45);
       }
       .night-title {
-        font-size: 3rem;
+        font-size: min(3rem, 8vw);
         color: #ffe6a8;
         text-shadow: 0 0 24px rgba(255, 210, 140, 0.6);
       }
