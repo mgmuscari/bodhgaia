@@ -1000,45 +1000,6 @@
       .pulse-dock { cursor: pointer; }
       .saves-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.3rem; margin-top: 0.3rem; }
       .saves-row .budget-line { flex-basis: 100%; }
-      /* Desktop-only note: hidden by default, shown on narrow screens, dismissed by its checkbox (no script).
-         Fallbacks cover the moment before uiTheme.ts installs the palette variables. */
-      .desktop-note-toggle {
-        position: absolute;
-        opacity: 0;
-        pointer-events: none;
-      }
-      .desktop-note {
-        display: none;
-      }
-      @media (max-width: 700px) {
-        .desktop-note {
-          display: block;
-          position: fixed;
-          left: 0.5rem;
-          right: 0.5rem;
-          top: 0.5rem;
-          z-index: 20;
-          border: 12px solid var(--ui-panel, rgb(40, 72, 136));
-          border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
-          background: var(--ui-panel, rgb(40, 72, 136));
-          padding: 0.3rem 2.2rem 0.3rem 0.5rem;
-          font-family: var(--ui-font, ui-monospace, monospace);
-          font-size: 1rem;
-          line-height: 1.3;
-          color: var(--ui-text, rgb(240, 224, 184));
-        }
-        .desktop-note__close {
-          position: absolute;
-          right: 0.2rem;
-          top: 0.1rem;
-          padding: 0 0.3rem;
-          color: var(--ui-accent, rgb(232, 184, 56));
-          cursor: pointer;
-        }
-      }
-      #desktop-note-dismiss:checked + .desktop-note {
-        display: none;
-      }
       /* Overlay colour key: bottom-left of the map pane, right of the docked palette and above the status line
          (it used to sit 12px from the window edge, on top of the palette; top-left it would clip the top bar
          and collide with the Budget window) */
@@ -1065,12 +1026,6 @@
   </head>
   <body>
     <canvas id="game"></canvas>
-    <!-- Small screens: a static, script-free note (the checkbox + label dismiss it). Touch support is later. -->
-    <input type="checkbox" id="desktop-note-dismiss" class="desktop-note-toggle" />
-    <div class="desktop-note" role="note">
-      <label for="desktop-note-dismiss" class="desktop-note__close" title="Dismiss">✕</label>
-      Bodhgaia is best on a desktop browser — a mouse, a keyboard and a wide window.
-    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
