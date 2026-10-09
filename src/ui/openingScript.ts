@@ -63,3 +63,9 @@ export const OPENING_TIMING = {
   vowMs: 8500,
   glideShare: 0.65,
 } as const;
+
+/** How the opening offers to be skipped: the Esc hint on a keyboard; on a touch screen, which has no Esc, a Skip button
+ *  in its place (Maddy 2026-10-08). */
+export function skipControl(touch: boolean): { kind: 'hint' | 'button'; text: string } {
+  return touch ? { kind: 'button', text: 'Skip' } : { kind: 'hint', text: 'Esc to skip' };
+}

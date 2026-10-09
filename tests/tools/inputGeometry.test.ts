@@ -138,3 +138,25 @@ describe('wheel zoom accumulates', () => {
     expect(wheelZoom(half.acc, WHEEL_STEP_PX / 2, 0).steps).toBe(0);
   });
 });
+
+// Touch screens send no wheel: a pinch zooms in the same whole steps (Maddy 2026-10-08, mobile).
+import { pinchZoom, PINCH_STEP } from '../../src/tools/inputGeometry';
+
+describe('pinchZoom — a pinch steps the zoom like wheel notches', () => {
+  it('spreading the fingers by a step’s ratio zooms in one level, from the new spread', () => {
+    expect(pinchZoom(100, 100 * PINCH_STEP)).toEqual({ steps: 1, base: 100 * PINCH_STEP });
+  });
+  it('closing them by the same ratio zooms out', () => {
+    expect(pinchZoom(100, 100 / PINCH_STEP)).toEqual({ steps: -1, base: 100 / PINCH_STEP });
+  });
+  it('a small wobble does nothing', () => {
+    expect(pinchZoom(100, 110)).toEqual({ steps: 0, base: 100 });
+    expect(pinchZoom(100, 90)).toEqual({ steps: 0, base: 100 });
+  });
+  it('a wide spread can take several levels at once', () => {
+    expect(pinchZoom(100, 300).steps).toBe(3);
+  });
+  it('a degenerate spread (fingers together) never divides by zero', () => {
+    expect(pinchZoom(0, 50).steps).toBe(0);
+  });
+});

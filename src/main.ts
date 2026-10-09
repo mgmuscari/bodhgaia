@@ -46,6 +46,7 @@ import { mountNightOverlay } from './ui/openingNight';
 import { createNightOpening } from './app/openingNight';
 import { cityFocus, tourStops } from './ui/tourContent';
 import { worstSpots } from './ui/tutorialContent';
+import { touchScreen } from './ui/touch';
 import { mountTutorial } from './ui/tutorial';
 import { createTutorial, type Tutorial } from './app/tutorial';
 import { createLessons } from './app/lessons';
@@ -61,9 +62,11 @@ import { createCommunity } from './app/community';
 import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
+import { registerServiceWorker } from './app/pwa';
 
 
 export function main(save: SaveV1 | null = null): void {
+  registerServiceWorker(); // installable + offline; a production build checks the site for a new release on launch
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing #game canvas');
   installUiTheme(); // the pixel UI kit: palette variables, 9-slice frames, pixel font
@@ -225,7 +228,7 @@ export function main(save: SaveV1 | null = null): void {
     markPreviewDirty,
     mount: (d) => mountToolbar(document.body, d),
     meta: {
-      buttons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags()),
+      buttons: () => metaButtons(panels.isOpen('tech'), overlays.active(), live.on, panels.openFlags(), !touchScreen()),
       onMeta: (id) => {
         if (id === 'life') setAmbient(!live.on);
         else if (isPanelId(id)) panels.toggle(id);

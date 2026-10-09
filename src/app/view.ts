@@ -154,7 +154,7 @@ export function createView(deps: ViewDeps): View {
       cssWidth = mapPane(window.innerWidth, window.innerHeight).width;
       cssHeight = mapPane(window.innerWidth, window.innerHeight).height;
       camera.setViewport(cssWidth, cssHeight);
-      camera.dpr = dpr(); // the window may have moved to a display at another scale
+      camera.setDpr(dpr()); // the window may have moved to a display at another scale
       renderer.resize(cssWidth, cssHeight, dpr());
       gpuRenderer?.resize(cssWidth, cssHeight, dpr());
       smogOverlay?.resize(cssWidth, cssHeight, dpr());

@@ -2,7 +2,8 @@
 // whole window: the epigraph cards on a dark screen; during the walk a clear pane that only holds the pointer (the
 // camera is the opening's) with an "Esc to skip" hint; the mantra and the awakening over the dimmed city.
 
-import { MANTRA, type Epigraph } from './openingScript';
+import { MANTRA, skipControl, type Epigraph } from './openingScript';
+import { touchScreen } from './touch';
 import type { NightUi } from '../app/openingNight';
 
 export function mountNightOverlay(container: HTMLElement): NightUi {
@@ -10,14 +11,22 @@ export function mountNightOverlay(container: HTMLElement): NightUi {
   root.className = 'night-overlay night-dark';
   const stage = document.createElement('div');
   stage.className = 'night-stage';
-  const hint = document.createElement('div');
-  hint.className = 'night-hint';
-  hint.textContent = 'Esc to skip';
+  // the way out: the Esc hint on a keyboard, a Skip button on a touch screen, which has no Esc (Maddy 2026-10-08)
+  const control = skipControl(touchScreen());
+  const hint = document.createElement(control.kind === 'button' ? 'button' : 'div');
+  hint.className = control.kind === 'button' ? 'night-hint night-skip' : 'night-hint';
+  hint.textContent = control.text;
   root.append(stage, hint);
   container.appendChild(root);
 
   let advance: () => void = () => {};
   let skip: () => void = () => {};
+  if (control.kind === 'button') {
+    hint.addEventListener('click', (e) => {
+      e.stopPropagation(); // a tap on Skip skips; anywhere else advances
+      skip();
+    });
+  }
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
       e.preventDefault();

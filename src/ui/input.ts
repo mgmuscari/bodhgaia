@@ -12,7 +12,7 @@
 
 import { Camera } from './camera';
 import { isEditableTarget } from './keyMap';
-import { classifyPointer, lineTiles, wheelZoom } from '../tools/inputGeometry';
+import { classifyPointer, lineTiles, pinchZoom, wheelZoom } from '../tools/inputGeometry';
 
 const ARROW_PAN_PX = 48;
 /** A wheel pause longer than this starts a fresh zoom gesture. */
@@ -57,12 +57,46 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
   let hoverX = Number.NaN;
   let hoverY = Number.NaN;
 
+  // Touch (Maddy 2026-10-08, mobile): the browser leaves touches on the map to the game — no page zoom or scroll —
+  // and two fingers pinch the map's own zoom (whole levels, like the wheel) round the point between them, panning as
+  // they move together. Once a second finger lands, the gesture is a pinch until every finger lifts: no tool applies
+  // and a lone remaining finger doesn't pan.
+  if (canvas.style) canvas.style.touchAction = 'none';
+  const touches = new Map<number, { x: number; y: number }>();
+  let pinching = false;
+  let pinchBase = 0;
+  let pinchMidX = 0;
+  let pinchMidY = 0;
+  const pinchNow = (): { spread: number; mx: number; my: number } => {
+    const [a, b] = [...touches.values()];
+    return { spread: Math.hypot(b!.x - a!.x, b!.y - a!.y), mx: (a!.x + b!.x) / 2, my: (a!.y + b!.y) / 2 };
+  };
+
   const tileUnder = (sx: number, sy: number): { tx: number; ty: number } => {
     const { wx, wy } = camera.screenToWorld(sx, sy);
     return { tx: Math.floor(wx), ty: Math.floor(wy) };
   };
 
   canvas.addEventListener('pointerdown', (e) => {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* best-effort */
+    }
+    if (touches.size >= 2) {
+      // a second finger: the gesture is a pinch — whatever the first finger began (a tool, a pan) is dropped
+      pinching = true;
+      dragging = false;
+      suppressPan = false;
+      const p = pinchNow();
+      pinchBase = p.spread;
+      pinchMidX = p.mx;
+      pinchMidY = p.my;
+      handlers.clearHover();
+      return;
+    }
+    if (pinching) return;
     dragging = true;
     // Anchor both the press point (for click/drag classification + the line-tool
     // start tile) and the pan reference in client space — pointerdown is pre-capture
@@ -84,6 +118,16 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
   });
 
   canvas.addEventListener('pointerup', (e) => {
+    touches.delete(e.pointerId);
+    if (pinching) {
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch {
+        /* best-effort */
+      }
+      if (touches.size === 0) pinching = false;
+      return;
+    }
     if (!dragging) return;
     dragging = false;
     try {
@@ -115,14 +159,30 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
   // Safety net: a window-level release clears the drag even if the canvas pointerup is missed (capture
   // not granted + released off-canvas). Fires AFTER the canvas handler for captured pointers, so it's a
   // no-op in the normal case and never applies a tool on its own.
-  const endDrag = (): void => {
+  const endDrag = (e: PointerEvent): void => {
     dragging = false;
     suppressPan = false;
+    touches.delete(e.pointerId); // a finger lifted off the canvas, or cancelled
+    if (touches.size === 0) pinching = false;
   };
   window.addEventListener('pointerup', endDrag);
   window.addEventListener('pointercancel', endDrag);
 
   canvas.addEventListener('pointermove', (e) => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinching) {
+      if (touches.size < 2) return; // the last finger of a pinch: no pan, no tool
+      const p = pinchNow();
+      camera.pan(p.mx - pinchMidX, p.my - pinchMidY);
+      pinchMidX = p.mx;
+      pinchMidY = p.my;
+      const r = pinchZoom(pinchBase, p.spread);
+      pinchBase = r.base;
+      const rect = canvas.getBoundingClientRect();
+      for (let i = 0; i < Math.abs(r.steps); i++) camera.zoomAt(p.mx - rect.left, p.my - rect.top, Math.sign(r.steps));
+      handlers.onChange();
+      return;
+    }
     if (dragging) {
       // If a move arrives with NO button held, the pointerup was missed (capture failed + released
       // off-canvas) — stop the drag instead of panning forever with the cursor (Maddy playtest bug). Only

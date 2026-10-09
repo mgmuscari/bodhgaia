@@ -34,8 +34,22 @@ export const POINTER_HINTS: string[] = [
   'Click — use the selected tool',
 ];
 
-/** One aligned `key  label` line per binding, then the pointer hints — the help-panel body. */
-export function controlsLines(): string[] {
+/** Touch gestures — the whole of "how do I play this" on a touch screen, which has no keys or mouse. */
+export const TOUCH_HINTS: string[] = [
+  'Drag — pan the map',
+  'Pinch — zoom in/out',
+  'Tap — use the selected tool',
+];
+
+/** The help panel's entry point: names its key, except on a touch screen. */
+export function controlsHint(touch = false): string {
+  return touch ? 'Controls' : '⌨ Controls  ?';
+}
+
+/** One aligned `key  label` line per binding, then the pointer hints — the help-panel body. On a touch screen, the
+ *  touch gestures alone (Maddy 2026-10-08: no shortcut keys rendered on mobile). */
+export function controlsLines(touch = false): string[] {
+  if (touch) return TOUCH_HINTS;
   const keyWidth = CONTROLS.reduce((w, b) => Math.max(w, b.key.length), 0);
   const keyed = CONTROLS.map((b) => `${b.key.padStart(keyWidth)}  ${b.label}`);
   return [...keyed, ...POINTER_HINTS];
