@@ -371,7 +371,8 @@ export interface AmbientState {
   memorials?: { x: number; y: number; age: number }[];
   /** The opening's night walker (bodhgaia-opening.md): one unhoused resident the camera follows until they die.
    *  Position in tiles; `path` is the current foot route (tile indices), `i` the next waypoint. */
-  wanderer?: { x: number; y: number; path: number[]; i: number; age: number; life: number; seed: number };
+  /** The opening's night walker; px/py: where it stood before the latest substep (it is drawn between the two). */
+  wanderer?: { x: number; y: number; px?: number; py?: number; path: number[]; i: number; age: number; life: number; seed: number };
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
   /** A storm, while one lasts (app/weather.ts): rain on screen and in the ears; a heavy one floods the low land. */

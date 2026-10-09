@@ -335,3 +335,12 @@ export function pedPose(p: Ped, onRoadAt: (x: number, y: number) => boolean, alp
   if (alpha >= 1 || !p.snap) return eased(p, now, alpha);
   return eased(p, blendPose(walkPose(p.snap, side, onRoadAt), now, alpha), alpha); // (a teleport isn't blended: it lands)
 }
+
+/** Where the opening's night walker is DRAWN: between where it stood before the latest substep and where it stands,
+ *  `alpha` of the way — like every other agent. The intro's camera follows this, so the map scrolls evenly under it
+ *  (Maddy 2026-10-08: following the raw 20-Hz steps at 30 fps, the map jittered against the moving people). */
+export function wandererPose(w: { x: number; y: number; px?: number; py?: number }, alpha: number): { x: number; y: number } {
+  const px = w.px ?? w.x;
+  const py = w.py ?? w.y;
+  return { x: px + (w.x - px) * alpha, y: py + (w.y - py) * alpha };
+}

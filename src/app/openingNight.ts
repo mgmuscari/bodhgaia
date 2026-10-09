@@ -5,6 +5,7 @@
 // goes — nobody dies). Driven once per frame; the overlay (NightUi) and the clock arrive as deps so the sequence
 // is testable without a DOM.
 
+import { ambientAlpha, wandererPose } from '../live/poses';
 import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import type { AmbientState } from '../live/types';
@@ -130,7 +131,11 @@ export function createNightOpening(deps: NightDeps): NightOpening {
         }
         case 'walk': {
           const w = live.wanderer;
-          if (w) return deps.follow(w.x + 0.5, w.y + 0.5);
+          if (w) {
+            // follow where they are DRAWN, between steps — the raw 20-Hz steps made the map judder at 30 fps
+            const p = wandererPose(w, ambientAlpha(live));
+            return deps.follow(p.x + 0.5, p.y + 0.5);
+          }
           const f = live.fallen?.at(-1) ?? live.memorials?.at(-1);
           phase = { kind: 'hold', since: now, x: f ? f.x : 0, y: f ? f.y : 0 };
           return;
