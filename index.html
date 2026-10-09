@@ -1058,13 +1058,13 @@
           bottom: auto;
           right: 8px;
         }
-        /* a third of its size (Maddy 2026-10-08: "way too big on mobile"); the feed is mounted with an inline size.
-           The strip keeps the blinking dot and the time — the event's name is in the news ticker. */
+        /* a third of its area — each side ÷ √3 (Maddy 2026-10-08: "way too big on mobile", then a third of the width
+           was "too small"); the feed is mounted with an inline size. The strip drops the word REC. */
         #cctv canvas {
-          width: 80px !important;
-          height: 53px !important;
+          width: 139px !important;
+          height: 92px !important;
         }
-        .cctv-caption, .cctv-rec-word {
+        .cctv-rec-word {
           display: none;
         }
         .cctv-bar {
