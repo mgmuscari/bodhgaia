@@ -72,6 +72,11 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   across bays and ponds, but a 1-tile-wide creek can still show a 2-tile murk rectangle. Consider letting
   murk fade across a tile (shore-style edge overlay keyed on neighbour level) rather than per-tile only.
 - ✅ **favicon 404** — the tab icon is a painted house tile, set at boot.
+- 🟡 **Trips converge on one plot** (2026-10-08, from the walker-stream diagnosis) — every citizen goes to the
+  NEAREST plot of a category, so a district streams to one shop/workplace (77 to one shop in lotus). Spread choice
+  over the nearest few (weighted by distance/appeal).
+- 🟡 **Energy node charge isn't shown** (2026-10-08) — the battery's charge is invisible; show it in the inspect
+  readout and/or a small charge mark on the node.
 - 🟡 **Commons builds don't take time yet** (economy wiring, 2026-09-30) — practices run as projects over
   days, but placing a garden/parklet still spends its effort at once. Needs a construction-site state on the
   map (placed, then raised over hours by effort drawn as a project) to honour "projects take time" fully.
