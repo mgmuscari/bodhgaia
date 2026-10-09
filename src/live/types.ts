@@ -70,6 +70,8 @@ export interface Mover {
    *  a trip leaves a residential plot. The destination's visit wellbeing is deposited here on
    *  return. Undefined ⇒ a non-residential (freight) trip — no home, no health deposit. */
   homeTile?: number;
+  /** An unhoused person's camp (live/unhoused.ts): they set out from it and come back to it, in place of a home. */
+  shelter?: number;
   /** For a street-parked car: the direction (0=N/1=E/2=S/3=W) toward its curb (the adjacent
    *  non-road tile), so the renderer draws it hugging the kerb instead of in the lane. */
   curbDir?: number;
@@ -344,6 +346,8 @@ export interface AmbientState {
   /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
    *  people back from it; it never moves without a cause. */
   unhoused: number;
+  /** Commercial places the unhoused spent their days at (live/unhoused.ts): tile → visits, fading. */
+  unhousedVisits?: Map<number, number>;
   /** Where the unhoused live (live/camps.ts): encampment tile → people. Sums to `unhoused` once settled. */
   camps?: Map<number, number>;
   /** People put out of homes since the last settle (home tile → people), and people re-housed (home tile → people). */

@@ -11,6 +11,7 @@
 
 import { stepGatherer } from './gatherings';
 import { stepRider } from './riders';
+import { recordVisit } from './unhoused';
 import { carPose, easeFrom } from './poses';
 import type { GameMap } from '../engine/map';
 import { TravelMode, modeSpeedMult } from '../citizens/modes';
@@ -105,6 +106,10 @@ const stepInside: PedStep = (state, map, _rng, _ctx, p) => {
   if (p.itinerary !== undefined) {
     // A CITIZEN on a daily round: go to the next stop (each leg picks its own mode), or head home.
     if (!advanceItinerary(state, p, map)) headHome(state, p, map); // round done → drive/walk home
+  } else if (p.shelter !== undefined) {
+    // someone unhoused: back to their camp
+    p.phase = 'to-home';
+    p.walkTo = homeXY(map, p.shelter);
   } else if (p.carId !== undefined) {
     // A sim/freight last-mile ped: walk back to its parked car and release it.
     const car = findCar(state, p.carId);
@@ -271,6 +276,7 @@ const arriveAtVehicle: PedStep = (state, map, _rng, ctx, p) => {
 /** Reached the building → go inside; a successful visit refuels, and a citizen on a daily round
  *  BANKS the stop's wellbeing at home (less the leg's walk tolls). */
 const arriveAtBuilding: PedStep = (state, map, rng, _ctx, p) => {
+  if (p.shelter !== undefined && p.building) recordVisit(state, map.idx(p.building.x, p.building.y)); // a day out of the camp
   p.phase = 'inside';
   p.dwellInside = INSIDE_DWELL_MIN + rng.nextInt(INSIDE_DWELL_SPAN);
   if (p.building) {
