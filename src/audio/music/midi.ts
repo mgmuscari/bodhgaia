@@ -25,6 +25,8 @@ export interface MidiPiece {
   notes: MidiNote[];
   /** Seconds, to the end of the last note or event. */
   duration: number;
+  /** Beats per minute in force at the first tick and at the last (the bridges glide between them). */
+  tempo?: { start: number; end: number };
 }
 
 const PERCUSSION_CHANNEL = 9;
@@ -197,5 +199,11 @@ export function parseMidi(bytes: Uint8Array): MidiPiece {
     .sort((a, b) => a.time - b.time || a.pitch - b.pitch);
   let duration = toSec(lastTick);
   for (const n of notes) duration = Math.max(duration, n.time + n.duration);
-  return { notes, duration };
+  const bpmAt = (tick: number): number => {
+    if (smpte) return 120;
+    let s = segs[0]!;
+    for (const seg of segs) if (seg.tick <= tick) s = seg;
+    return Math.round(60 / (s.secPerTick * ticksPerQuarter) * 100) / 100;
+  };
+  return { notes, duration, tempo: { start: bpmAt(0), end: bpmAt(lastTick) } };
 }

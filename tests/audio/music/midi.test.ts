@@ -163,3 +163,28 @@ describe('parseMidi', () => {
     expect(() => parseMidi(new Uint8Array([1, 2, 3, 4]))).toThrow(/MIDI/);
   });
 });
+
+// The bridges between pieces glide from one tempo to the next (Maddy 2026-10-08), so a piece keeps the tempo it
+// opens at and the tempo it closes at, in beats per minute.
+describe('parseMidi keeps the opening and closing tempo', () => {
+  it('a piece that slows from 120 to 60 bpm opens at 120 and closes at 60', () => {
+    const bytes = smf(
+      header(0, 1, 480),
+      track([
+        [0, ...tempo(500_000)],
+        [0, 0x90, 60, 100],
+        [480, 0x80, 60, 0],
+        [0, ...tempo(1_000_000)],
+        [0, 0x90, 62, 100],
+        [480, 0x80, 62, 0],
+      ]),
+    );
+    const p = parseMidi(bytes);
+    expect(p.tempo).toEqual({ start: 120, end: 60 });
+  });
+
+  it('with no Set Tempo at all, both ends are the default 120', () => {
+    const p = parseMidi(smf(header(0, 1, 480), track([[0, 0x90, 60, 100], [480, 0x80, 60, 0]])));
+    expect(p.tempo).toEqual({ start: 120, end: 120 });
+  });
+});
