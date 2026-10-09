@@ -1,7 +1,8 @@
 // GPU lighting pass — WebGL2 (the name is historical: it began as the satellite skin's shader). A single
 // fragment pass samples the CPU-baked pixel-art base as albedo and the packed world (GridTextureBridge →
-// u_data) for per-cell building height, and adds only LIGHT: the day/night sun arc and short raymarched
-// contact shadows. The pixel art itself is never warped or animated here.
+// u_data) for per-cell building height, and adds only LIGHT and the water's lap: the day/night sun arc, short
+// raymarched contact shadows, the building light baked with the base (windows by night, furnaces always), and
+// water tiles shifting a couple of art pixels in a checker (the flood's rhythm). Nothing else is animated here.
 //
 // Not allowlisted as pure-UI: it holds the WebGL2 program. The GLSL *source builders* below are pure
 // (no GL/DOM) so the CPU↔GPU enum contract is unit-testable; the GL class is browser-only.
@@ -287,8 +288,8 @@ export class SatelliteShader {
   }
 
   /**
-   * Draw the full-screen pass: sample the CPU base albedo (unit 1) + jeuje it (water/grass/traffic/
-   * glints/clouds/shadows). `origin`/`view` are the visible world window in cells (camera pan/zoom);
+   * Draw the full-screen pass: sample the CPU base albedo (unit 1) and light it — day/night, contact shadows, the
+   * water's lap, the building light (units 2–3). `origin`/`view` are the visible world window in cells (camera pan/zoom);
    * both default to the full grid. `sun` need not be normalized.
    */
   render(opts: {
@@ -302,7 +303,6 @@ export class SatelliteShader {
     slot?: 'main' | 'inset';
     /** 0 day … 1 night: how much the lit windows show (main view only). */
     night?: number;
-    /** 1 = photographic life (default), 0 = still pixel art. */
   }): void {
     const gl = this.gl;
     gl.useProgram(this.program);
