@@ -45,19 +45,10 @@ describe('page metadata (index.html)', () => {
   });
 });
 
-describe('desktop-only note (index.html)', () => {
-  const body = html.slice(html.indexOf('<body'));
-
-  it('carries a static "best on a desktop browser" note, dismissible without script', () => {
-    expect(body).toMatch(/class="desktop-note"[^>]*>[\s\S]*Bodhgaia is best on a desktop browser/);
-    // pure-CSS dismiss: a checkbox toggled by a label, the note hidden once it is checked
-    expect(body).toMatch(/<input[^>]*id="desktop-note-dismiss"/);
-    expect(body).toMatch(/<label[^>]*for="desktop-note-dismiss"/);
-    expect(head).toMatch(/#desktop-note-dismiss:checked\s*\+\s*\.desktop-note\s*\{[^}]*display:\s*none/);
-  });
-
-  it('shows only on narrow screens', () => {
-    expect(head).toMatch(/\.desktop-note\s*\{[^}]*display:\s*none/);
-    expect(head).toMatch(/@media\s*\(max-width:\s*700px\)\s*\{[\s\S]*?\.desktop-note\s*\{[^}]*display:\s*block/);
+describe('no desktop-only note (index.html)', () => {
+  // Maddy 2026-10-08: the game plays on phones now (pinch, touch hints, installable) — the "best on a desktop
+  // browser" nag is gone, and stays gone.
+  it('carries no "best on a desktop" note', () => {
+    expect(html).not.toMatch(/desktop-note|best on a desktop/i);
   });
 });
