@@ -732,3 +732,17 @@ describe('flood water (disasters.md)', () => {
     expect(a.data.join()).toBe(tiles.get('river-0~m2')!.data.join());
   });
 });
+
+describe('bridge decks (Maddy 2026-10-08: bridges over water)', () => {
+  it('a bike path, promenade, rail or streetcar over water is a narrow deck — the water shows either side', () => {
+    for (const base of ['bike', 'ped', 'rail', 'streetcar']) {
+      const deck = tiles.get(`${base}-10~deck`); // an east–west span
+      expect(deck, base).toBeDefined();
+      const a = (x: number, y: number) => deck!.data[(y * 16 + x) * 4 + 3]!;
+      expect(a(8, 1), `${base} edge`).toBe(0); // open water beside the deck
+      expect(a(8, 14), `${base} edge`).toBe(0);
+      expect(a(8, 8), `${base} middle`).toBe(255); // the deck itself
+      expect(a(0, 8)).toBe(255); // and it reaches the next span
+    }
+  });
+});

@@ -308,6 +308,57 @@ function elevTile(mask: number): Pixels {
   return p;
 }
 
+/** A bridge deck (Maddy 2026-10-08: bridges over water): a concrete slab along the span's arms, a parapet on its
+ *  edges, transparent beyond — the water shows either side. Its way is laid on top by the caller. */
+function deck(mask: number): Pixels {
+  const p = blank(T, T);
+  const on = new Uint8Array(T * T);
+  arms(mask, 5, (x, y) => {
+    on[y * T + x] = 1;
+    px(p, x, y, C.pave);
+  });
+  for (let y = 0; y < T; y++) {
+    for (let x = 0; x < T; x++) {
+      if (!on[y * T + x]) continue;
+      const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+        const nx = x + dx!;
+        const ny = y + dy!;
+        return nx >= 0 && ny >= 0 && nx < T && ny < T && !on[ny * T + nx];
+      });
+      if (edge) px(p, x, y, C.paveHi); // the parapet
+    }
+  }
+  return p;
+}
+
+function bikeDeck(mask: number): Pixels {
+  const p = deck(mask);
+  arms(mask, 3, (x, y) => px(p, x, y, C.leafLo)); // the green lane
+  arms(mask, 0, (x, y) => {
+    if ((x + y) % 4 < 2) px(p, x, y, C.line);
+  });
+  return p;
+}
+
+function pedDeck(mask: number): Pixels {
+  const p = deck(mask);
+  arms(mask, 4, (x, y) => px(p, x, y, (x + y) % 2 === 0 ? C.paveHi : C.pave)); // pavers
+  return p;
+}
+
+function railDeck(mask: number): Pixels {
+  const p = deck(mask);
+  track(p, mask, C.roofBrownLo, C.paveHi, C.slateLo);
+  return p;
+}
+
+function streetcarDeck(mask: number): Pixels {
+  const p = deck(mask);
+  arms(mask, 4, (x, y) => px(p, x, y, C.asphalt));
+  track(p, mask, null, C.paveHi, C.asphaltLo);
+  return p;
+}
+
 function bikeTile(mask: number): Pixels {
   const p = blank(T, T);
   fill(p, C.grass);
@@ -480,6 +531,11 @@ function transportTiles(out: Map<string, Pixels>): void {
   for (let m = 0; m < 16; m++) {
     out.set(`rail-${m}`, railTile(m));
     out.set(`streetcar-${m}`, streetcarTile(m));
+    // over water: the same ways on a bridge deck
+    out.set(`rail-${m}~deck`, railDeck(m));
+    out.set(`streetcar-${m}~deck`, streetcarDeck(m));
+    out.set(`bike-${m}~deck`, bikeDeck(m));
+    out.set(`ped-${m}~deck`, pedDeck(m));
     out.set(`elev-${m}`, elevTile(m));
     out.set(`bike-${m}`, bikeTile(m));
     out.set(`ped-${m}`, pedTile(m));

@@ -516,6 +516,16 @@ export function placeTransport(map: GameMap, x: number, y: number, kind: number)
  * an inlet instead of leaving a gap; transport-over-transport overpasses (elevated rail over roads,
  * promenades over freeways) are the natural future extension of the same primitive.
  */
+/** Can a transport `kind` go at (x, y), bridging it if it's water: on land, the ordinary placement rule; over water, a
+ *  deck on open water, or a road joining a road bridge (Maddy 2026-10-08: the player builds bridges). */
+export function canPlaceBridge(map: GameMap, x: number, y: number, kind: number): boolean {
+  if (!isTransportKind(kind) || !map.inBounds(x, y)) return false;
+  const i = map.idx(x, y);
+  if (map.water[i] === Water.None) return canPlaceTransport(map, x, y, kind);
+  const existing = map.built[i]!;
+  return existing === 0 || (isRoadKind(kind) && isRoadKind(existing));
+}
+
 export function placeBridge(map: GameMap, x: number, y: number, kind: number): boolean {
   if (!isTransportKind(kind)) return false;
   if (!map.inBounds(x, y)) return false;

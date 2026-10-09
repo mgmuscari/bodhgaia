@@ -675,6 +675,11 @@ export class Renderer {
           // wears highway paint — decoration.roadPaintKind); everything else by its own kind. A tile picks
           // one of its painted variants by position hash (anti-plaid).
           let builtKey = pickVariantKey(builtRenderKey(paintKind, mask, pos, tier, wide), tx, ty, this.tileVariants);
+          // a way over water is a bridge: its deck, the water showing either side (Maddy 2026-10-08)
+          if (isT && isWater) {
+            const deckKey = `${builtRenderKey(paintKind, mask, pos, tier, wide)}~deck`;
+            if (this.atlas.has(deckKey)) builtKey = deckKey;
+          }
           if (!isT && pid !== 0) {
             // a building is one W×H drawing sliced per cell; its variant is picked by the parcel ANCHOR so
             // every cell of one footprint agrees
