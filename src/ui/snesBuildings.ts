@@ -253,13 +253,7 @@ const windTurbine: Painter = (W, H, v) => {
     for (let cx = 0; cx < W; cx += T) {
       const hx = cx + 8;
       const hy = cy + 6;
-      vline(L, hx, hy, cy + 13, C.paveHi); // tower
-      // three blades (fixed pixel spokes — no trig in pure modules)
-      vline(L, hx, cy + 1, hy - 1, C.line);
-      for (let k = 1; k <= 4; k++) {
-        px(L, hx + k, hy + ((k + 1) >> 1), C.line);
-        px(L, hx - k, hy + ((k + 1) >> 1), C.line);
-      }
+      vline(L, hx, hy, cy + 13, C.paveHi); // tower — its rotor is a sprite that turns with the wind (snesAgents)
       disc(L, hx, hy, 1, C.pave);
     }
   }

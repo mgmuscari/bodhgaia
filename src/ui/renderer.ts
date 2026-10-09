@@ -26,11 +26,11 @@ import {
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
-import { isPowerConsumer } from '../growth/power';
+import { isPowerConsumer, windFactor } from '../growth/power';
 import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
-import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, windowsLit } from './snesAgents';
+import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, rotorFrame, spinRotor, windowsLit } from './snesAgents';
 import { transitFor } from '../live/transit';
 import { ridersAboard } from '../live/riders';
 import { tentsAt } from '../live/camps';
@@ -40,7 +40,7 @@ import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
 import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
 import { gameSec } from './gameTime';
 import type { AmbientState } from '../live/types';
-import { dayNightBrightness } from './lighting';
+import { dayNightBrightness, gameClock } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 
 /** Precomputed CSS for the sparse-overlay scrim (see OverlaySource.dimBase). */
@@ -261,6 +261,10 @@ export class Renderer {
   // Canvas2D base goes transparent. Sprites/decorations/UI still draw on top. The CPU path stays the
   // no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
   private gpuMode = false;
+  // Wind turbines in view (collected with the base) and each rotor's turns so far (Maddy 2026-10-08).
+  private readonly turbines: number[] = [];
+  private readonly rotorTurns = new Map<number, number>();
+  private lastRotorMs = 0;
   // Building light baked with the base, for the GPU (Maddy 2026-10-08): lit windows (night) and furnaces (always).
   private readonly emitNight: HTMLCanvasElement;
   private readonly emitAlways: HTMLCanvasElement;
@@ -541,6 +545,7 @@ export class Renderer {
     ctx.fillStyle = BASE_BG;
     ctx.fillRect(0, 0, this.cssWidth, this.cssHeight);
     this.emissiveBuildings.length = 0; // re-collected this pass (refreshed on every base rebuild)
+    this.turbines.length = 0; // likewise
     this.unpoweredFootprints.length = 0; // likewise
     this.bakedMarks.clear(); // re-recorded this pass
     this.bakedMurk.clear();
@@ -785,6 +790,7 @@ export class Renderer {
                 const lit = this.emissionImage(base + sfx);
                 const blink = this.emissionImage(`${base}/blink${sfx}`);
                 if (lit || blink) this.emissiveBuildings.push({ x: pp.x, y: pp.y, w: pp.width, h: pp.height, kind: pp.kind, lit, blink });
+                if (pp.kind === BuiltKind.WindTurbine) this.turbines.push(map.idx(pp.x, pp.y));
               }
             }
           }
@@ -1237,6 +1243,23 @@ export class Renderer {
         const wx = pose.x + (goal.x - pose.x) * u;
         const wy = pose.y + (goal.y - pose.y) * u - 0.9 * 4 * u * (1 - u); // a parabola, peaking a tile up
         this.drawArt(ctx, drop, wx, wy, camera);
+      }
+    }
+
+    // Wind turbines turn with their output — the hour's wind (growth/power windFactor) — each on its own phase, so
+    // the whole farm doesn't spin in step; the turn accumulates, so a change of wind changes the pace, never the angle.
+    if (this.turbines.length > 0) {
+      const nowMs = performance.now();
+      const dt = this.lastRotorMs > 0 ? Math.min(0.25, (nowMs - this.lastRotorMs) / 1000) : 0;
+      this.lastRotorMs = nowMs;
+      const wind = windFactor(gameClock(gameSec(nowMs)));
+      for (const t of this.turbines) {
+        const tx = t % mapW;
+        const ty = (t - tx) / mapW;
+        const turns = spinRotor(this.rotorTurns.get(t) ?? ((Math.imul(t, 0x9e3779b1) >>> 0) % 997) / 997, dt, wind);
+        this.rotorTurns.set(t, turns);
+        const img = this.sprites.get(`@sprite/turbine-rotor/${rotorFrame(turns)}`);
+        if (img) this.drawArt(ctx, img, tx + 8.5 / BASE_TILE, ty + 6.5 / BASE_TILE, camera); // on the tower's hub
       }
     }
 
