@@ -109,3 +109,38 @@ describe('the last car keeps to the track on a corner', () => {
     expect(t.behind).toBe(idx(5, 8));
   });
 });
+
+// Maddy 2026-10-08: "we've got the trailing tram car is in the wrong place bug back" — after a reload. Vehicles respawn
+// on one tile and stretch out as they ride, so until a fresh tram had dropped its first tile it had no tile behind its
+// tail, and a halt with the tail on a corner drew it straight across again. A tram is spawned knowing where it came from.
+describe('a freshly spawned vehicle knows the tile behind it', () => {
+  it('every spawn on a tile with track behind it records that tile — never the tile it is heading to', async () => {
+    const { GameMap } = await import('../../src/engine/map');
+    const { BuiltKind } = await import('../../src/engine/fabric');
+    const { spawnTransit } = await import('../../src/live/trains');
+    const { createRng } = await import('../../src/engine/rng');
+    const { createAmbientState } = await import('../../src/live/types');
+    const map = new GameMap(W, W);
+    for (let y = 2; y <= 8; y++) map.setBuilt(5, y, BuiltKind.Streetcar);
+    for (let x = 6; x <= 12; x++) map.setBuilt(x, 8, BuiltKind.Streetcar);
+    const isTrack = (i: number) => map.built[i] === BuiltKind.Streetcar;
+    let checked = 0;
+    for (let seed = 0; seed < 40; seed++) {
+      const state = createAmbientState();
+      spawnTransit(state, map, createRng(seed));
+      const t = state.trains[0];
+      if (!t) continue;
+      const s = t.cells[0]!;
+      const sx = s % W;
+      const sy = Math.floor(s / W);
+      const neighbours = [idx(sx, sy - 1), idx(sx + 1, sy), idx(sx, sy + 1), idx(sx - 1, sy)].filter(isTrack);
+      const next = idx(t.tx, t.ty);
+      if (neighbours.length < 2) continue; // a line's end: nothing behind
+      expect(t.behind, `seed ${seed}`).toBeDefined();
+      expect(neighbours).toContain(t.behind);
+      expect(t.behind).not.toBe(next);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(10);
+  });
+});
