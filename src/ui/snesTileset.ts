@@ -275,6 +275,8 @@ function alongTrack(mask: number, half: number, f: (x: number, y: number, s: num
 /** Twin rails (+ optional sleepers) laid along the track's paths — straight, curved round a bend, a wye at
  *  a junction — the same geometry the road paint uses (snesRoads.pathFrame), so track and roads turn alike. */
 function track(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB): void {
+  const arms = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
+  if (arms === 3) return turnout(p, mask, ties, rail, shadow);
   if (ties) alongTrack(mask, 4.5, (x, y, _s, t) => {
     if (Math.floor(t) % 3 === 1) px(p, x, y, ties);
   });
@@ -284,6 +286,28 @@ function track(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB
   alongTrack(mask, 3, (x, y, s) => {
     if (Math.abs(Math.abs(s) - 2.5) < 0.5) px(p, x, y, rail);
   });
+}
+
+/** A T-junction as a clean turnout (Maddy 2026-10-08: streetcar branches read as a knot): the through line straight,
+ *  and the branch joining it on the INNER rail of each curve — from the through line's near rail into one rail of the
+ *  branch — so no rail crosses the through line or bunches in the middle. */
+function turnout(p: Pixels, mask: number, ties: RGB | null, rail: RGB, shadow: RGB): void {
+  const through = (mask & 5) === 5 ? 5 : 10;
+  const stub = mask & ~through;
+  track(p, through, ties, rail, shadow);
+  for (const side of through === 5 ? [1, 4] : [2, 8]) {
+    const turn = stub | side;
+    // the corner the curve bends round: east or west, north or south
+    const cx = turn & 2 ? T : 0;
+    const cy = turn & 1 ? 0 : T;
+    const inner = (x: number, y: number): boolean => (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 < 64;
+    alongTrack(turn, 4, (x, y, s) => {
+      if (inner(x, y) && Math.abs(Math.abs(s - 1) - 2.5) < 0.5) px(p, x, y, shadow);
+    });
+    alongTrack(turn, 3, (x, y, s) => {
+      if (inner(x, y) && Math.abs(Math.abs(s) - 2.5) < 0.5) px(p, x, y, rail);
+    });
+  }
 }
 
 function railTile(mask: number): Pixels {

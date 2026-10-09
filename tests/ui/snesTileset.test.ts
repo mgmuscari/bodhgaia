@@ -746,3 +746,21 @@ describe('bridge decks (Maddy 2026-10-08: bridges over water)', () => {
     }
   });
 });
+
+describe('track T-junctions read cleanly (Maddy 2026-10-08: streetcar branches)', () => {
+  it('the branch joins on two clean arcs: nothing on the far side of the through line, no knot in the middle', () => {
+    for (const base of ['streetcar', 'rail']) {
+      const p = tiles.get(`${base}-7`)!; // through N–S, the branch off to the east
+      const isRail = (x: number, y: number) => {
+        const o = (y * 16 + x) * 4;
+        return p.data[o] === C.paveHi[0] && p.data[o + 1] === C.paveHi[1] && p.data[o + 2] === C.paveHi[2];
+      };
+      // west of the through line's left rail (x < 5) there is no rail at all
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 5; x++) expect(isRail(x, y), `${base} (${x},${y})`).toBe(false);
+      // between the through rails, only the rails' own columns — no curve rail crossing the middle (x 6..9)
+      let middle = 0;
+      for (let y = 0; y < 16; y++) for (let x = 6; x <= 9; x++) if (isRail(x, y)) middle++;
+      expect(middle, base).toBe(0);
+    }
+  });
+});
