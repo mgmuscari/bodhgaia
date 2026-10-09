@@ -35,6 +35,7 @@ import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, 
 import { transitFor } from '../live/transit';
 import { ridersAboard } from '../live/riders';
 import { tentsAt } from '../live/camps';
+import { extrudeBlits, TILE_PAD } from './tileExtrude';
 import { castHeadlights, type Body } from './headlights';
 import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
@@ -373,6 +374,29 @@ export class Renderer {
 
   /** Draw a native pixel-art sprite centred on world point (wx, wy), at exactly one art pixel per tile
    *  pixel, its top-left snapped to the same art-pixel grid the tiles are drawn on (no half-pixel smear). */
+  /** Padded copies of tile images (tileExtrude): one per image, made on first draw. */
+  private readonly padded = new WeakMap<object, AtlasImage>();
+
+  /** Draw a BASE_TILE tile image into (dx, dy, w, h) from inside its 1-px border of its own edge pixels, so a GPU
+   *  canvas sampling a hair past the edge at a fractional display scale finds the tile, not a dark line (Maddy
+   *  2026-10-08, Windows). Without a DOM (tests) the image is drawn as it is. */
+  private drawTile(ctx: CanvasRenderingContext2D, img: AtlasImage, dx: number, dy: number, w: number, h: number): void {
+    let p = this.padded.get(img as object);
+    if (!p && typeof document !== 'undefined') {
+      const c = document.createElement('canvas');
+      c.width = BASE_TILE + 2 * TILE_PAD;
+      c.height = BASE_TILE + 2 * TILE_PAD;
+      const g = c.getContext('2d');
+      if (g) {
+        for (const b of extrudeBlits(BASE_TILE, BASE_TILE)) g.drawImage(img, b.sx, b.sy, b.sw, b.sh, b.dx, b.dy, b.sw, b.sh);
+        p = c;
+        this.padded.set(img as object, c);
+      }
+    }
+    if (p) ctx.drawImage(p, TILE_PAD, TILE_PAD, BASE_TILE, BASE_TILE, dx, dy, w, h);
+    else ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, dx, dy, w, h);
+  }
+
   private drawArt(ctx: CanvasRenderingContext2D, img: AtlasImage, wx: number, wy: number, camera: Camera): void {
     const w = (img as HTMLCanvasElement).width;
     const h = (img as HTMLCanvasElement).height;
@@ -574,7 +598,7 @@ export class Renderer {
     // A street-furniture overlay at a tile.
     const ink = (key: string, dx: number, dy: number): void => {
       const img = this.roadInk.get(key);
-      if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+      if (img) this.drawTile(ctx, img, dx, dy, ts, ts);
     };
     // Power poles (props), drawn AFTER the tile loop so no later tile paints over one.
     const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
@@ -594,7 +618,7 @@ export class Renderer {
         if (full && murk > 0) this.bakedMurk.set(i, murk);
         const terrain =
           (murk > 0 ? this.atlas.get(`${picked}~m${murk}`) : undefined) ?? this.atlas.get(picked) ?? this.atlas.get(terrainKey)!;
-        ctx.drawImage(terrain, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+        this.drawTile(ctx, terrain, dx, dy, ts, ts);
         // murkier water next door bleeds a dithered band across the shared edge, so a narrow creek's murk eases
         // from tile to tile instead of stepping in blocks (snesTileset murkEdge)
         if (isWater && ambient) {
@@ -604,7 +628,7 @@ export class Renderer {
             if (!map.inBounds(nx, ny) || map.water[map.idx(nx, ny)] === 0) continue;
             const n = washLevel(murkAt(map, ambient.waterPollution, nx, ny));
             const edge = n > murk ? this.atlas.get(`${picked}~m${n}~e${d}`) : undefined;
-            if (edge) ctx.drawImage(edge, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+            if (edge) this.drawTile(ctx, edge, dx, dy, ts, ts);
           }
         }
 
@@ -617,7 +641,7 @@ export class Renderer {
         const grade = tkind === 'forest' ? 0 : depaveAsphalt(map, tx, ty);
         const pave = grade >= 230 ? 3 : grade >= 190 ? 2 : grade >= 150 ? 1 : 0;
         const paved = pave > 0 ? this.sprites.get(`@wash/asphalt/${pave}/${surfaceVariantIndex(tx, ty, 3)}`) : undefined;
-        if (paved) ctx.drawImage(paved, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+        if (paved) this.drawTile(ctx, paved, dx, dy, ts, ts);
 
         const built = map.built[i]!;
 
@@ -635,7 +659,7 @@ export class Renderer {
           const waterK = (k: string): boolean => k === 'ocean' || k === 'lake' || k === 'river';
           const draw = (family: string, m: number): void => {
             const edge = m !== 0 ? this.edges.get(edgeKey(family, m)) : undefined;
-            if (edge) ctx.drawImage(edge, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+            if (edge) this.drawTile(ctx, edge, dx, dy, ts, ts);
           };
           if (isWater) draw('shore', around((k) => !waterK(k)));
           else {
@@ -694,7 +718,7 @@ export class Renderer {
             if (this.atlas.has(cellKey)) builtKey = pickVariantKey(cellKey, fp.x, fp.y, this.tileVariants);
           }
           const builtTile = this.atlas.get(builtKey);
-          if (builtTile) ctx.drawImage(builtTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy, ts, ts);
+          if (builtTile) this.drawTile(ctx, builtTile, dx, dy, ts, ts);
           // LEVEL CROSSING: where a road crosses an at-grade rail/tram tile, the road's asphalt band runs
           // ACROSS the track and the track's own rails are laid back over it; the white stop lines go on top, after.
           const xMask = isT ? railCrossingMask(map, tx, ty) : 0;
@@ -778,8 +802,8 @@ export class Renderer {
               // lift and shadow offset in whole art pixels, the shadow a half-tone dither
               const ps = ts / BASE_TILE;
               const shade = this.sprites.get('@wash/shadow');
-              if (shade) ctx.drawImage(shade, 0, 0, BASE_TILE, BASE_TILE, dx + 2 * ps, dy + 2 * ps, ts, ts);
-              ctx.drawImage(deckTile, 0, 0, BASE_TILE, BASE_TILE, dx, dy - 3 * ps, ts, ts);
+              if (shade) this.drawTile(ctx, shade, dx + 2 * ps, dy + 2 * ps, ts, ts);
+              this.drawTile(ctx, deckTile, dx, dy - 3 * ps, ts, ts);
             }
           }
 
@@ -855,7 +879,7 @@ export class Renderer {
           const { level, nJunk, nTents } = wearMarks(wear, people);
           const o = camera.tileOrigin(wx, wy);
           const img = level > 0 ? this.sprites.get(`@wear/${level}`) : undefined;
-          if (img) ctx.drawImage(img, 0, 0, BASE_TILE, BASE_TILE, o.dx, o.dy, ts, ts);
+          if (img) this.drawTile(ctx, img, o.dx, o.dy, ts, ts);
           if (encampments && nJunk + nTents > 0) {
             const pick = (set: AtlasImage[], k: number): AtlasImage =>
               set[(Math.imul((tileHash ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 16) % set.length]!;
