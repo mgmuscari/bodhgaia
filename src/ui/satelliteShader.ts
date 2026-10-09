@@ -107,7 +107,7 @@ void main() {
   // are skipped (the art carries its own drop shadows).
   float shadow = 1.0;
   bool onBuilding = type >= SAT_RESIDENTIAL && type <= SAT_POWER;
-  if (!onBuilding) {
+  if (!onBuilding && shadowStrength > 0.001) { // at night the shadows are nothing: skip the march (six reads)
     vec2 stepv = normalize(sun);
     for (int i = 1; i <= 6; i++) {
       float d = float(i) / 6.0 * SHADOW_REACH * shadowLen;
@@ -132,9 +132,12 @@ void main() {
   // Building light (Maddy 2026-10-08: building lights on the GPU): the windows and furnaces baked with the base,
   // added AFTER the night's dimming, so a lit window glows on a dark street
   if (u_emitOn > 0.5) {
-    vec4 en = texture(u_emitN, v_uv);
     vec4 ea = texture(u_emitA, v_uv);
-    col += en.rgb * en.a * u_night + ea.rgb * ea.a;
+    col += ea.rgb * ea.a;
+    if (u_night > 0.0) {
+      vec4 en = texture(u_emitN, v_uv);
+      col += en.rgb * en.a * u_night; // the night windows: read only when it is night
+    }
   }
   fragColor = vec4(col, 1.0);
 }`;

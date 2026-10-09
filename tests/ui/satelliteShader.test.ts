@@ -105,3 +105,15 @@ describe('the water lap moves whole art pixels', () => {
     expect(upload).not.toMatch(/gl\.LINEAR/);
   });
 });
+
+// The performance pass (Maddy 2026-10-08): the map pass is ~10 texture reads a pixel, six of them the shadow march —
+// which ran even at night, when the shadows are nothing. The march and the night lights run only when they show.
+describe('the map pass skips what does not show', () => {
+  const f = buildFragmentSource();
+  it('no shadow march when there are no shadows (night)', () => {
+    expect(f).toMatch(/if \(!onBuilding && shadowStrength > 0\.001\)/);
+  });
+  it('the night lights are read only at night', () => {
+    expect(f).toMatch(/if \(u_night > 0\.0\) \{\s*vec4 en = texture\(u_emitN, v_uv\);/);
+  });
+});

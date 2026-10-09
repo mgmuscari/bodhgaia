@@ -129,6 +129,50 @@ export interface FrameCtx {
   afterRender?: (now: number) => void;
   /** After the GPU map, glow and smog: the CCTV inset's own GPU viewport. Optional. */
   afterGpu?: (now: number) => void;
+  /** DEV: time each phase (createFrameProfile). Omitted in a release build. */
+  prof?: FrameProfile;
+}
+
+/** Per-phase frame timings (DEV): `phase` runs and times a slice of the frame, `endFrame` closes the frame, `report` is
+ *  the mean ms per phase over the last `window` frames, with their `total` and how many `frames` it averages. CPU time
+ *  only — the GPU's own work runs after its calls return. */
+export interface FrameProfile {
+  phase<T>(name: string, fn: () => T): T;
+  endFrame(): void;
+  report(): Record<string, number>;
+}
+
+export function createFrameProfile(clock: () => number = () => performance.now(), window = 120): FrameProfile {
+  let current = new Map<string, number>();
+  const frames: Map<string, number>[] = [];
+  return {
+    phase(name, fn) {
+      const t0 = clock();
+      try {
+        return fn();
+      } finally {
+        current.set(name, (current.get(name) ?? 0) + clock() - t0);
+      }
+    },
+    endFrame() {
+      frames.push(current);
+      if (frames.length > window) frames.shift();
+      current = new Map();
+    },
+    report() {
+      const sum: Record<string, number> = {};
+      for (const f of frames) for (const [k, v] of f) sum[k] = (sum[k] ?? 0) + v;
+      const out: Record<string, number> = {};
+      let total = 0;
+      for (const [k, v] of Object.entries(sum)) {
+        out[k] = v / Math.max(1, frames.length);
+        total += out[k]!;
+      }
+      out.total = total;
+      out.frames = frames.length;
+      return out;
+    },
+  };
 }
 
 /** The rAF frame body (the caller re-requests the next frame after it). */
@@ -137,14 +181,16 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
   const { renderer, camera } = view;
   let last = ctx.start;
   let lastBaseRefresh = 0;
+  const P = ctx.prof;
+  const run = <T>(name: string, fn: () => T): T => (P ? P.phase(name, fn) : fn());
   return (now) => {
     // a new in-game hour: demand re-draws and the blackout may roll to another block
-    if (ctx.power.maybeResolveHour(now)) view.markDirty();
+    if (run('power', () => ctx.power.maybeResolveHour(now))) view.markDirty();
     // the economy steps once per in-game hour (catching up a few if the tab was in the background)
-    ctx.economy.advance(now);
+    run('econ', () => ctx.economy.advance(now));
     // Two independent clocks (YP3): `last` drives the sim (its FixedTickLoop clamp owns catch-up); never fold
     // the ambient dt into it.
-    ctx.sim.advance(now - last);
+    run('sim', () => ctx.sim.advance(now - last));
     last = now;
     // Wear/junk/tents/murk are baked into the cached base (under the agents); refresh them on a slow cadence so
     // newly-worn ground + encampments appear even with a static camera (they evolve over many seconds). Only the
@@ -157,31 +203,32 @@ export function createFrame(ctx: FrameCtx): (now: number) => void {
     if (live.on && !ctx.hidden()) {
       // Continuous ambient path: step the ambient sim on its OWN clock (its clamp owns catch-up), then
       // composite + sprites. The base rebuilds inside renderFrame iff invalidated, so this stays cheap.
-      live.step(now);
-      renderer.renderFrame(world, camera, live.state);
+      run('live', () => live.step(now));
+      run('render2d', () => renderer.renderFrame(world, camera, live.state));
       view.clean();
-      ctx.afterRender?.(now);
+      run('cctv', () => ctx.afterRender?.(now));
     } else if (view.isDirty() || gpu) {
       // Ambient-OFF path: repaint only when something changed. With GPU on we still run the composite (it
       // produces/clears the base the GPU samples) each frame the base is dirty.
-      if (view.isDirty()) renderer.render(world, camera);
+      if (view.isDirty()) run('render2d', () => renderer.render(world, camera));
       view.clean();
     }
     const w = view.width();
     const h = view.height();
     // GPU hybrid: render the WebGL map EVERY frame (animates via u_time), AFTER the CPU base pass so it samples
     // the freshest baked tiles. The base re-uploads only when its version changed.
-    gpu?.render(camera, w, h, gameSec(now), renderer.baseCanvas(), renderer.baseVersion(), renderer.basePatch(), renderer.emissionLayers());
+    run('gpuMap', () => gpu?.render(camera, w, h, gameSec(now), renderer.baseCanvas(), renderer.baseVersion(), renderer.basePatch(), renderer.emissionLayers()));
     // GPU glow: headlights, cruiser bars and lit windows cast onto the ground (the agents are pixel art above).
-    if (gpu && live.on) gpu.renderAgents(live.state, camera, w, h, gameSec(now), renderer.emissiveBuildingList(), renderer.headlightBeams());
+    if (gpu && live.on) run('gpuGlow', () => gpu.renderAgents(live.state, camera, w, h, gameSec(now), renderer.emissiveBuildingList(), renderer.headlightBeams()));
     // GPU smog overlay (z2, above sprites): the atmospheric haze.
     const smog = view.smog();
     // the haze is part of the map: drawn every frame so it follows the camera — with life off the pollution field
     // simply holds still (Maddy 2026-10-08: it froze in place on screen and the map slid under it)
-    if (smog) smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind, live.state.toxic);
-    ctx.afterGpu?.(now);
+    if (smog) run('smog', () => smog.render(camera, w, h, now / 1000, live.state.pollution, live.state.wind, live.state.toxic));
+    run('cctv', () => ctx.afterGpu?.(now));
     // Sim-gated (Y5): re-derive the dock/panel signatures ONLY when a sim tick has run since the last sync.
-    if (ctx.sim.takeChanged()) ctx.syncDock();
+    if (ctx.sim.takeChanged()) run('dock', () => ctx.syncDock());
+    P?.endFrame();
   };
 }
 

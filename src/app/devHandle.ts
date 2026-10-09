@@ -34,6 +34,8 @@ export interface DevHandleDeps {
   markDirty: () => void;
   /** The GPU renderer controls: whether it is mounted, mount (false on no WebGL2), unmount. */
   gpu: { isOn: () => boolean; mount: () => boolean; unmount: () => void };
+  /** The frame profiler's report (mean CPU ms per phase over recent frames). */
+  prof?: () => Record<string, number>;
 }
 
 /**
@@ -46,7 +48,7 @@ export interface DevHandleDeps {
  */
 export function installDevHandle(deps: DevHandleDeps): void {
   if (!import.meta.env.DEV) return;
-  const { camera, world, ambient, tech, power, markDirty, gpu } = deps;
+  const { camera, world, ambient, tech, power, markDirty, gpu, prof } = deps;
   (window as unknown as Record<string, unknown>).bodhgaia = {
     zoomTo: (wx: number, wy: number, zoom?: number): void => {
       camera.centerOn(wx, wy, zoom);
@@ -63,6 +65,7 @@ export function installDevHandle(deps: DevHandleDeps): void {
       return ok;
     },
     gpuOn: (): boolean => gpu.isOn(),
+    prof,
     camera,
     world,
     ambient,

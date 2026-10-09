@@ -81,6 +81,9 @@ vec2 cloudAt(vec2 cell){
 void main(){
   drift = floor(u_wind * u_time * 0.6 * ART_PX) / ART_PX;
   vec2 cell = artPixel(u_origin + v_uv * u_view);
+  // clean air leaves at once: the cloud noise runs only where there is smog (most of the map, most of the time)
+  vec2 air = airAt(cell);
+  if (air.r <= 0.16 && air.g <= 0.04) { fragColor = vec4(0.0); return; }
   vec2 here = cloudAt(cell);
   if (here.x == 0.0 && here.y == 0.0) { fragColor = vec4(0.0); return; }
   vec2 up = cloudAt(cell - vec2(0.0, 1.0 / ART_PX));
@@ -98,6 +101,18 @@ void main(){
 }`;
 }
 
+/** The haze and a spill's smog show only past these field values (the fragment's thresholds, 0..255). */
+const SMOG_FROM = 0.16 * 255;
+const TOXIC_FROM = 0.04 * 255;
+
+/** Whether any tile's air is dirty enough to draw — when none is, the pass is skipped (the performance pass, Maddy
+ *  2026-10-08: the smog was the GPU's costliest pass even over a clear sky). */
+export function smogShows(pollution: ReadonlyMap<number, number>, toxic?: ReadonlyMap<number, number>): boolean {
+  for (const v of pollution.values()) if (v > SMOG_FROM) return true;
+  for (const v of toxic?.values() ?? []) if (v > TOXIC_FROM) return true;
+  return false;
+}
+
 export class SmogOverlay {
   private gl: WebGL2RenderingContext | null = null;
   private canvas: HTMLCanvasElement | null = null;
@@ -106,6 +121,8 @@ export class SmogOverlay {
   private pollTex: WebGLTexture | null = null;
   private readonly buf: Uint8Array;
   private u: Record<string, WebGLUniformLocation | null> = {};
+  /** No smog anywhere: the canvas has been cleared and the pass is skipped until there is some. */
+  private clear = false;
 
   constructor(private readonly mapW: number, private readonly mapH: number) {
     this.buf = new Uint8Array(mapW * mapH * 2); // RG: smog, toxic smog
@@ -167,6 +184,15 @@ export class SmogOverlay {
   ): void {
     const gl = this.gl;
     if (!gl || !this.program) return;
+    if (!smogShows(pollution, toxic)) {
+      if (!this.clear) {
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        this.clear = true;
+      }
+      return;
+    }
+    this.clear = false;
     // Rebuild the smog texture from the live fields (16k cells → cheap): smog in R, a spill's toxic smog in G.
     this.buf.fill(0);
     const n = this.mapW * this.mapH;
@@ -205,6 +231,7 @@ export class SmogOverlay {
   ): void {
     const gl = this.gl;
     if (!gl || !this.program || !this.canvas) return;
+    if (this.clear) return; // no smog to show in the inset either
     gl.enable(gl.SCISSOR_TEST);
     gl.scissor(rect.x, rect.y, rect.w, rect.h);
     gl.viewport(rect.x, rect.y, rect.w, rect.h);
