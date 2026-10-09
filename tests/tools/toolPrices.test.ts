@@ -53,7 +53,7 @@ describe('tool prices', () => {
 import { VOLUNTEER_DOLLARS_PER_EFFORT, FREEWAY_SALVAGE } from '../../src/tools/tools';
 
 describe('volunteer labour stands in for funds on community works', () => {
-  it('a broke city can still raise a clinic with effort: funds first, the shortfall in effort', () => {
+  it('a broke city can still raise a clinic: its site rises on volunteer effort instead of funds (Maddy 2026-10-08)', () => {
     const w = world();
     const tech = createTechState(TECH_TREE);
     tech.effort = 1000;
@@ -61,9 +61,11 @@ describe('volunteer labour stands in for funds on community works', () => {
     const full = clinic.cost * FUNDS_PER_COST;
     const wallet: Wallet = { funds: 100 };
     expect(previewTool(w, tech, clinic, 3, 3, wallet).valid).toBe(true);
-    expect(applyTool(w, tech, clinic, 3, 3, wallet).ok).toBe(true);
-    expect(wallet.funds).toBe(0);
-    expect(tech.effort).toBe(1000 - Math.ceil((full - 100) / VOLUNTEER_DOLLARS_PER_EFFORT));
+    const r = applyTool(w, tech, clinic, 3, 3, wallet);
+    expect(r.ok).toBe(true);
+    expect(r.site).toMatchObject({ kind: 33, pay: 'effort', effort: Math.ceil(full / VOLUNTEER_DOLLARS_PER_EFFORT) });
+    expect(wallet.funds).toBe(100); // nothing up front — the work is paid as it rises
+    expect(tech.effort).toBe(1000);
   });
 
   it('in debt, it is all effort — and too little effort still refuses', () => {

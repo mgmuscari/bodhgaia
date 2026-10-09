@@ -79,7 +79,7 @@ export interface EconomyDeps {
 
 export interface EconomyController {
   /** Start raising a construction site: its effort is drawn hour by hour (economy/run buildProject). */
-  startBuild(site: { kind: number; name: string; cost: number; x: number; y: number }): void;
+  startBuild(site: { kind: number; name: string; cost: number; x: number; y: number; pay?: 'effort' | 'funds'; effort?: number }): void;
   /** The current run (replaced by every step and lever). */
   run(): EconomyRun;
   /** Funds as a get/set view (tools buy the fabric through it). */
