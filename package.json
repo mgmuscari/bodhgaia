@@ -1,6 +1,6 @@
 {
   "name": "bodhgaia",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Dharmapunk browser city-builder",
   "private": true,
   "type": "module",
