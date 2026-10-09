@@ -253,7 +253,7 @@ describe('computePowerGrid with a clock — rolling blackouts', () => {
     const darkAt = (slot: number) => homes.filter((h) => !computePowerGrid(map, parcels, clock(19, slot)).poweredAnchors.has(h)).join();
     const sets = new Set([0, 24, 48, 72, 96].map(darkAt));
     expect(sets.size).toBeGreaterThan(1);
-  });
+  }, 20_000); // ~3.5 s alone: a day of hourly grid solves
 
   it('never hands out more than the plant makes', () => {
     const { map, parcels } = town(BuiltKind.NuclearPlant);

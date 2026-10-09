@@ -53,7 +53,7 @@ describe('snes tileset — discipline', () => {
     const again = paintSnesTileset();
     expect([...again.keys()]).toEqual([...tiles.keys()]);
     for (const [k, t] of tiles) expect(Array.from(again.get(k)!.data), k).toEqual(Array.from(t.data));
-  });
+  }, 30_000); // a second paint of the whole skin: ~6 s alone, more under the full parallel run (it timed out at 5)
 });
 
 describe('snes tileset — anti-grid variants', () => {
