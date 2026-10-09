@@ -10,7 +10,7 @@ import { createSfx, type Sfx } from '../audio/sfx';
 import { createAmbience, type AmbienceSnapshot } from '../audio/ambience';
 import { createMusicPlayer, type Mood } from '../audio/music/player';
 import type { MusicControl } from '../ui/musicPickerContent';
-import { MUSIC_TRACKS } from '../audio/music/tracks';
+import { MUSIC_TRACKS, OPENING_TRACK } from '../audio/music/tracks';
 import type { AmbientState, Mover } from '../live/types';
 import { offStreet } from '../live/types';
 import { policePhase } from '../live/police';
@@ -100,6 +100,11 @@ export interface Sound {
 
 const LISTEN_MS = 250;
 
+/** The first piece of a session: Kyabdro, the game's opening song — or the piece a DEV audition asks for. */
+export function firstPiece(audition?: string): string {
+  return audition ?? OPENING_TRACK;
+}
+
 export function createSound(deps: SoundDeps): Sound {
   const engine = createAudio();
   installAudioUnlock(engine);
@@ -107,8 +112,8 @@ export function createSound(deps: SoundDeps): Sound {
   const ambience = createAmbience(engine);
   let mood = moodFor(deps.hour(), deps.hasHealing());
   const music = createMusicPlayer(engine, MUSIC_TRACKS, { mood });
-  // waits for the unlock, then the first piece of the mood (or the one asked for)
-  void (deps.firstTrack ? music.play(deps.firstTrack) : music.next()).catch(() => {});
+  // waits for the unlock, then the opening song (or the piece asked for); the mood's picks follow, bridged
+  void music.play(firstPiece(deps.firstTrack)).catch(() => music.next().catch(() => {}));
   let resting = false;
   let siren: Voice | null = null;
   let sirenTick = 0;

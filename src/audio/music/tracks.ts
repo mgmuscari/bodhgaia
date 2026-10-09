@@ -5,6 +5,10 @@
 // each. The files are shipped as separate data alongside the GPL program, each under its own licence.
 import type { Mood, PlayableTrack } from './player';
 
+/** The piece the game opens on, whatever the hour (Maddy 2026-10-08: "the opening song of the game should be
+ *  Kyabdro"); the mood's picks follow it. */
+export const OPENING_TRACK = 'kyabdro-night';
+
 export const LICENCES = {
   'public-domain': { name: 'Public Domain', url: 'https://creativecommons.org/licenses/publicdomain/' },
   'cc-by-sa-4.0': {
