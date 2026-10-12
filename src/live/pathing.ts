@@ -43,7 +43,7 @@ import {
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
 import { planRide } from './riders';
-import { carPassable, closedTiles, isParkable, isWalkable, isWearable, networkMasks, reachedPlot } from './network';
+import { carPassable, carTraversable, closedTiles, emergencyAccess, isParkable, isWalkable, isWearable, networkMasks, reachedPlot } from './network';
 
 /** The live traffic as path costs read it: a lookup by tile (a Map, or a view over one — motion.avoidingTile). */
 export type TrafficRead = { get(tile: number): number | undefined };
@@ -306,6 +306,19 @@ function tracePath(end: number): number[] {
   return path.reverse();
 }
 
+/** What a car-free way costs a fire truck per tile — a street costs 1: it takes one when the roads round are a real
+ *  detour, not to save a tile. */
+export const EMERGENCY_WAY_COST = 3;
+
+/** May a fire truck on a call step from tile `from` onto (nx, ny) beyond the car network: onto a car-free way, or off
+ *  one onto a road or another. */
+function emergencyEdge(map: GameMap, from: number, nx: number, ny: number): boolean {
+  if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height) return false;
+  const to = map.built[map.idx(nx, ny)]!;
+  if (emergencyAccess(to)) return true;
+  return emergencyAccess(map.built[from]!) && (carTraversable(to) || emergencyAccess(to));
+}
+
 /**
  * The shared A*: from (sx,sy) toward (gx,gy) over the road network (`walk` false: canDrive edges,
  * driveTileCost, arrive ON the goal) or the walkable set (`walk` true: isWalkable, pedCost, arrive at
@@ -321,6 +334,7 @@ function searchPath(
   wear: ReadonlyMap<number, number> | undefined,
   traffic: TrafficRead | undefined,
   pollution: ReadonlyMap<number, number> | undefined,
+  emergency = false,
 ): number[] | null {
   const W = map.width;
   const H = map.height;
@@ -328,7 +342,8 @@ function searchPath(
   const goal = map.idx(gx, gy);
   // the edge tests read precomputed masks (isWalkable / canDrive, tabulated per map — network.ts)
   const { walk: walkable, drive } = networkMasks(map);
-  const closed = closedTiles(map, walk); // under flood water (or, for cars, a street given over to people)
+  // under flood water (or, for cars, a street given over to people — a fire truck goes through those)
+  const closed = closedTiles(map, walk || emergency);
   beginSearch(W * H);
   stamp[start] = gen;
   gScore[start] = 0;
@@ -347,10 +362,16 @@ function searchPath(
       const ny = cy + DIR_DY[d]!;
       if (walk) {
         if (nx < 0 || ny < 0 || nx >= W || ny >= H || walkable[ny * W + nx] === 0) continue;
-      } else if ((edges & (1 << d)) === 0) continue; // directed edges for cars
+      } else if ((edges & (1 << d)) === 0 && !(emergency && emergencyEdge(map, ci, nx, ny))) continue; // directed edges for cars
       const ni = map.idx(nx, ny);
       if (closed?.has(ni)) continue;
-      const ng = baseG + (walk ? pedCost(map, nx, ny, wear, traffic, pollution) : driveTileCost(map, nx, ny, traffic));
+      const ng =
+        baseG +
+        (walk
+          ? pedCost(map, nx, ny, wear, traffic, pollution)
+          : emergency && emergencyAccess(map.built[ni]!)
+            ? EMERGENCY_WAY_COST // slow going on a car-free way: taken when the roads are a real detour
+            : driveTileCost(map, nx, ny, traffic));
       if (stamp[ni] !== gen || ng < gScore[ni]!) {
         stamp[ni] = gen;
         gScore[ni] = ng;
@@ -360,6 +381,16 @@ function searchPath(
     }
   }
   return null;
+}
+
+/** A fire truck's route on a call: the road network, and the car-free ways it keeps access to (emergencyAccess) at
+ *  EMERGENCY_WAY_COST a tile. Lane directions bind it only on the roads. */
+export function emergencyPath(map: GameMap, sx: number, sy: number, gx: number, gy: number, traffic?: TrafficRead): number[] | null {
+  const ok = (x: number, y: number) => carPassable(map, x, y) || (map.inBounds(x, y) && emergencyAccess(map.built[map.idx(x, y)]!));
+  if (!ok(sx, sy) || !ok(gx, gy)) return null;
+  const start = map.idx(sx, sy);
+  if (start === map.idx(gx, gy)) return [start];
+  return searchPath(map, sx, sy, gx, gy, false, undefined, traffic, undefined, true);
 }
 
 /** A* over the drivable road network from (sx,sy) to (gx,gy): the committed least-cost route a
