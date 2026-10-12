@@ -11,7 +11,7 @@ import { createAmbience, type AmbienceSnapshot } from '../audio/ambience';
 import { createMusicPlayer, type Mood } from '../audio/music/player';
 import type { MusicControl } from '../ui/musicPickerContent';
 import { MUSIC_TRACKS, OPENING_TRACK } from '../audio/music/tracks';
-import type { AmbientState, Mover } from '../live/types';
+import type { Ambulance, AmbientState, Mover, Truck } from '../live/types';
 import { offStreet } from '../live/types';
 import { policePhase } from '../live/police';
 import type { Voice } from '../audio/contract';
@@ -63,9 +63,31 @@ export function sirenFor(
   view: ViewRect,
 ): { on: boolean; pan: number; level: number } {
   if (phase !== 'chase') return { on: false, pan: 0, level: 0 };
+  return heardIn(cruisers, view);
+}
+
+/** Fire trucks' and ambulances' shared siren (Maddy 2026-10-12: "a different siren from police cars"): a slow wail
+ *  rising and falling across a wide span, `sweepTicks` listens each way — not the cruisers' quick two-tone. */
+export const WAIL = { lo: 67, hi: 79, sweepTicks: 6 } as const;
+
+/** Does the emergency wail sound now? While a fire truck IN VIEW races to a fire, or an ambulance races to a
+ *  patient or carries one back — not while spraying, loading or going home empty. Panned and levelled like the
+ *  police siren. */
+export function emergencySirenFor(
+  trucks: readonly Truck[],
+  ambulances: readonly Ambulance[],
+  view: ViewRect,
+): { on: boolean; pan: number; level: number } {
+  const racing: Mover[] = trucks.filter((t) => t.call === 'to-fire');
+  for (const a of ambulances) if (a.call === 'to-patient' || (a.call === 'home' && a.patient.carried)) racing.push(a);
+  return heardIn(racing, view);
+}
+
+/** Panned toward the movers in view; louder with more of them, but always distant. */
+function heardIn(movers: readonly Mover[], view: ViewRect): { on: boolean; pan: number; level: number } {
   let n = 0;
   let sx = 0;
-  for (const c of cruisers) {
+  for (const c of movers) {
     if (!inView(view, c.x, c.y)) continue;
     n++;
     sx += c.x;
@@ -125,11 +147,18 @@ export function createSound(deps: SoundDeps): Sound {
     siren?.stop();
     siren = null;
   };
+  let wail: Voice | null = null;
+  let wailTick = 0;
+  const wailOff = (): void => {
+    wail?.stop();
+    wail = null;
+  };
   setInterval(() => {
     if (deps.hidden()) {
       if (!resting) {
         ambience.stop();
         sirenOff();
+        wailOff();
       }
       resting = true;
       return;
@@ -152,6 +181,19 @@ export function createSound(deps: SoundDeps): Sound {
       sirenTick++;
       const high = Math.floor(sirenTick / SIREN.swapEvery) % 2 === 1;
       siren.glide?.({ pitch: high ? SIREN.hi : SIREN.lo, velocity: s.level }, 0.4);
+    }
+    const e = emergencySirenFor(deps.live.trucks ?? [], deps.live.ambulances ?? [], view);
+    if (!e.on) wailOff();
+    else {
+      if (wail === null) {
+        wail = engine.play({ instrument: 'flute', pitch: WAIL.lo, velocity: e.level, bus: 'ambience', pan: e.pan });
+        wailTick = 0;
+      }
+      // rise for sweepTicks listens, fall for as many: one long glide each way
+      const at = wailTick++ % (2 * WAIL.sweepTicks);
+      const sweep = (WAIL.sweepTicks * LISTEN_MS) / 1000;
+      if (at === 0) wail?.glide?.({ pitch: WAIL.hi, velocity: e.level }, sweep);
+      else if (at === WAIL.sweepTicks) wail?.glide?.({ pitch: WAIL.lo, velocity: e.level }, sweep);
     }
   }, LISTEN_MS);
   return {
