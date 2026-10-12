@@ -112,7 +112,7 @@ export function stepExposure(state: AmbientState, map: GameMap, rng: Rng): void 
     const t = camps[rng.nextInt(camps.length)]!;
     const x = t % map.width;
     leftCamp(state, t, 1);
-    residentDies(state, x, (t - x) / map.width);
+    residentCollapses(state, x, (t - x) / map.width, { camp: t }); // a minute for an ambulance
   }
 }
 

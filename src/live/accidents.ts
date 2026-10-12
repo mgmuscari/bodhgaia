@@ -8,7 +8,7 @@ import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import type { AmbientState, Car, Ped } from './types';
 import { offStreet } from './types';
-import { residentDies } from './death';
+import { residentCollapses } from './death';
 import { CRASH_BASE, CRASH_DEATH, CRASH_JAM, CRASH_SUBSTEPS, TRAFFIC_MAX } from './tuning';
 
 /** The chance a moving car crashes in an hour on a road carrying `traffic`. */
@@ -54,12 +54,14 @@ export function crash(state: AmbientState, map: GameMap, rng: Rng, c: Car): void
     state.peds = state.peds.filter((p) => p !== victim);
     if (victim.homeTile !== undefined) state.occupancy.set(victim.homeTile, Math.max(0, (state.occupancy.get(victim.homeTile) ?? 0) - 1));
     else if (state.unhoused >= 1) state.unhoused -= 1;
-    residentDies(state, Math.round(victim.x), Math.round(victim.y));
+    const vx = Math.round(victim.x);
+    const vy = Math.round(victim.y);
+    residentCollapses(state, vx, vy, victim.homeTile !== undefined ? { home: victim.homeTile } : { camp: map.idx(vx, vy) });
     return;
   }
   // through traffic: the driver was nobody we model on foot
   if (c.homeTile !== undefined) state.occupancy.set(c.homeTile, Math.max(0, (state.occupancy.get(c.homeTile) ?? 0) - 1));
-  residentDies(state, x, y);
+  residentCollapses(state, x, y, c.homeTile !== undefined ? { home: c.homeTile } : {});
 }
 
 /** Once per in-game hour, each moving car may crash on the jam under it. Returns how many crashed. */

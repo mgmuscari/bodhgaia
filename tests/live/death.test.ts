@@ -59,10 +59,14 @@ describe('exposure', () => {
       stepExposure(state, map, rng);
       hour = (hour + 1) % 24;
     }
-    const died = state.deaths!;
+    // exposure is a collapse first (a minute for an ambulance), at the camp it would return to
+    const died = state.dying!.length;
     expect(died).toBeGreaterThan(0);
     expect(state.unhoused).toBe(600 - died);
-    for (const f of state.fallen!) expect(state.camps!.has(map.idx(f.x, f.y))).toBe(true);
+    for (const d of state.dying!) {
+      expect(state.camps!.has(map.idx(d.x, d.y))).toBe(true);
+      expect(d.from).toEqual({ camp: map.idx(d.x, d.y) });
+    }
   });
 
   it('a step within the same hour draws nothing more (deaths are per in-game hour, not per frame)', () => {

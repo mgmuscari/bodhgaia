@@ -11,7 +11,7 @@ import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { layField } from '../citizens/field';
 import type { AmbientState, LivePractices } from './types';
 import { offStreet } from './types';
-import { residentDies } from './death';
+import { residentCollapses } from './death';
 import { diffuseField, driftField } from './fields/pollution';
 import { decayField } from '../citizens/field';
 import {
@@ -119,7 +119,9 @@ export function stepClouds(state: AmbientState, map: GameMap, rng: Rng): void {
       dead.add(p);
       if (p.homeTile !== undefined) state.occupancy.set(p.homeTile, Math.max(0, (state.occupancy.get(p.homeTile) ?? 0) - 1));
       else if (state.unhoused >= 1) state.unhoused -= 1;
-      residentDies(state, Math.floor(p.x), Math.floor(p.y));
+      const fx = Math.floor(p.x);
+      const fy = Math.floor(p.y);
+      residentCollapses(state, fx, fy, p.homeTile !== undefined ? { home: p.homeTile } : { camp: map.idx(fx, fy) });
     }
     if (dead.size > 0) state.peds = state.peds.filter((p) => !dead.has(p));
   }

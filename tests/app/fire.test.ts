@@ -66,8 +66,10 @@ describe('the fire controller', () => {
     for (let s = 1; s <= BURN_STEPS + 1; s++) h.fire.frame(s * FIRE_STEP_MS);
     expect(h.live.trucks ?? []).toEqual([]);
     expect(h.parcels.kindAt(h.home)).toBe(BuiltKind.Ruin);
-    const dead = h.live.events!.filter((e) => e.kind === 'death').length;
+    // those caught collapse — a minute for an ambulance — and, saved, would have no home to go back to
+    const dead = h.live.events!.filter((e) => e.kind === 'collapse').length;
     expect(dead).toBeGreaterThan(0);
+    expect(h.live.dying!.every((d) => 'home' in d.from && d.from.home === h.map.idx(30, 6))).toBe(true);
     expect(dead).toBeLessThanOrEqual(FIRE_DEATH_MAX);
     expect(h.live.occupancy.get(h.map.idx(30, 6))).toBe(20 - dead); // the rest leave as the census drops the home
     expect(h.log).toContain('households');

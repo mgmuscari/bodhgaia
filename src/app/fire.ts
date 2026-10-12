@@ -11,7 +11,7 @@ import type { Rng } from '../engine/rng';
 import type { AmbientState } from '../live/types';
 import { createFireState, stepFire } from '../growth/fire';
 import { dispatchTruck, roadNear } from '../live/trucks';
-import { residentDies } from '../live/death';
+import { residentCollapses } from '../live/death';
 import { layField } from '../citizens/field';
 import { POLL_MAX } from '../live/tuning';
 
@@ -114,7 +114,8 @@ export function createFireController(deps: FireDeps): FireController {
           const occ = Math.floor(live.occupancy.get(anchor) ?? 0);
           const dead = occ <= 0 ? 0 : Math.min(FIRE_DEATH_MAX, Math.max(1, Math.round(occ * FIRE_DEATH_SHARE)));
           if (dead > 0) live.occupancy.set(anchor, (live.occupancy.get(anchor) ?? 0) - dead);
-          for (let k = 0; k < dead; k++) residentDies(live, b.x + (k % b.w), b.y + (Math.floor(k / b.w) % b.h));
+          // caught in the fire: carried out, they have a minute for an ambulance — their home is gone
+          for (let k = 0; k < dead; k++) residentCollapses(live, b.x + (k % b.w), b.y + (Math.floor(k / b.w) % b.h), { home: anchor });
           deps.news('A fire burned a home to ruin');
         } else deps.news('A fire left a building in ruins');
       }
