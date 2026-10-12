@@ -253,6 +253,13 @@ export function carTraversable(kind: number): boolean {
   return isCarRoad(kind) || kind === BuiltKind.ParkingLot || kind === BuiltKind.RoadRamp;
 }
 
+/** The car-free ways a fire truck on a call may use (a player's request via Maddy, 2026-10-12): quiet streets, bike
+ *  paths and promenades keep emergency access, as real ones do — a car-free district can still be reached. Fire
+ *  trucks only: the police stay on the roads. */
+export function emergencyAccess(kind: number): boolean {
+  return kind === BuiltKind.QuietStreet || kind === BuiltKind.BikePath || kind === BuiltKind.Promenade;
+}
+
 /** A streetcar line laid as a street of its own: cars drive it alongside the trams (Maddy 2026-10-08). Not a tram
  *  MEDIAN — a run between two roads (an avenue / streetcar / avenue), which cross traffic only crosses: its tile
  *  and the next along both have road on either side (a lone such tile is a tram street meeting a cross street). */

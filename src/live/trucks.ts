@@ -1,22 +1,25 @@
 // Fire trucks (docs/design/disasters.md): the host dispatches one from the nearest fire station when a fire starts.
-// It drives the road network (roadPath) to the fire, sprays for SPRAY_SUBSTEPS, reports the fire out
+// It drives the road network — and the car-free ways it keeps emergency access to (emergencyPath) — to the fire, sprays for SPRAY_SUBSTEPS, reports the fire out
 // (state.quenched — the host hands it to the fire step), then drives home and is gone. Live layer: writes only its
 // own state.
 
+import { emergencyAccess } from './network';
 import type { GameMap } from '../engine/map';
 import { isRoadKind } from '../engine/fabric';
 import type { AmbientState, Truck } from './types';
-import { roadPath } from './pathing';
+import { emergencyPath } from './pathing';
 import { advanceMover, commitHeading, pathStep } from './motion';
 import { SPRAY_SUBSTEPS, TRUCK_SPEED, TURNOUT_SUBSTEPS } from './tuning';
 
-/** The nearest road tile to the footprint (x, y, w, h), within 3 tiles, or null. */
+/** The nearest road tile — or car-free way a fire truck may use (emergencyAccess) — to the footprint (x, y, w, h),
+ *  within 3 tiles, or null. */
 export function roadNear(map: GameMap, x: number, y: number, w: number, h: number): { x: number; y: number } | null {
   let best: { x: number; y: number } | null = null;
   let bestD = Infinity;
   for (let yy = y - 3; yy < y + h + 3; yy++) {
     for (let xx = x - 3; xx < x + w + 3; xx++) {
-      if (!map.inBounds(xx, yy) || !isRoadKind(map.built[map.idx(xx, yy)]!)) continue;
+      const k = map.inBounds(xx, yy) ? map.built[map.idx(xx, yy)]! : 0;
+      if (!isRoadKind(k) && !emergencyAccess(k)) continue; // a road — or a car-free way the truck may use
       const dx = xx < x ? x - xx : xx >= x + w ? xx - (x + w - 1) : 0;
       const dy = yy < y ? y - yy : yy >= y + h ? yy - (y + h - 1) : 0;
       const d = dx + dy;
@@ -51,7 +54,7 @@ function board(t: Truck, path: readonly number[], map: GameMap): boolean {
 /** Send a truck from the road at `from` (by its station) to the road at `to` (by the fire). False if no road
  *  route joins them. */
 export function dispatchTruck(state: AmbientState, map: GameMap, from: { x: number; y: number }, to: { x: number; y: number }, target: number): boolean {
-  const path = roadPath(map, from.x, from.y, to.x, to.y, state.traffic);
+  const path = emergencyPath(map, from.x, from.y, to.x, to.y, state.traffic);
   if (!path) return false;
   const t: Truck = { x: from.x, y: from.y, dir: 1, tx: from.x, ty: from.y, call: 'to-fire', target, spray: 0, home: from, turnout: TURNOUT_SUBSTEPS };
   if (path.length >= 2) board(t, path, map);
@@ -65,7 +68,9 @@ export function dispatchTruck(state: AmbientState, map: GameMap, from: { x: numb
  *  of way over); true once it has arrived. */
 function drive(t: Truck, map: GameMap): boolean {
   if (!t.path) return true;
-  return !advanceMover(t, TRUCK_SPEED, map, (x, y) => pathStep(map, t, x, y));
+  // half speed along a car-free way: among walkers and bikes
+  const onWay = emergencyAccess(map.built[map.idx(Math.round(t.x), Math.round(t.y))] ?? 0);
+  return !advanceMover(t, onWay ? TRUCK_SPEED / 2 : TRUCK_SPEED, map, (x, y) => pathStep(map, t, x, y));
 }
 
 /** One substep for every truck out. */
@@ -83,7 +88,7 @@ export function stepTrucks(state: AmbientState, map: GameMap): void {
     } else if (t.call === 'spraying') {
       if (--t.spray <= 0) {
         (state.quenched ??= new Set()).add(t.target);
-        const back = roadPath(map, Math.round(t.x), Math.round(t.y), t.home.x, t.home.y, state.traffic);
+        const back = emergencyPath(map, Math.round(t.x), Math.round(t.y), t.home.x, t.home.y, state.traffic);
         if (!back || !board(t, back, map)) continue; // nowhere to go home to (or already there): it simply leaves
         t.call = 'home';
       }
