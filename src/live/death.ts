@@ -3,12 +3,14 @@
 // unhoused can die of exposure at night: once per in-game hour, a share of them scaled by how many there are,
 // at the encampments, never within reach of shelter. Live layer: writes only its own state (never hashed).
 
-import { leftCamp } from './camps';
+import { leftCamp, leftHome } from './camps';
 import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
 import { BuiltKind } from '../engine/fabric';
-import type { AmbientState } from './types';
+import type { AmbientState, Belongs, Dying } from './types';
+import { ZoneType, zoneTypeOf } from '../engine/zone';
 import {
+  DYING_WINDOW,
   EXPOSURE_PER_PERSON_HOUR,
   FALL_SUBSTEPS,
   GRIEF_HEALTH,
@@ -29,7 +31,28 @@ export function residentDies(state: AmbientState, x: number, y: number): void {
   state.events?.push({ kind: 'death', x, y, w: 1, h: 1 });
 }
 
-/** Advance the fallen (lying → memorial) and the memorials (→ gone), one substep. */
+/** A resident collapses at (x, y) — the caller has taken them out of their household or the unhoused, as for a death.
+ *  They lie there for DYING_WINDOW: an ambulance that carries them off in time saves them (rescueResident returns
+ *  them where they belong); otherwise they die there (Maddy 2026-10-12). */
+export function residentCollapses(state: AmbientState, x: number, y: number, from: Belongs): void {
+  (state.dying ??= []).push({ x, y, t: 0, from });
+  state.events?.push({ kind: 'collapse', x, y, w: 1, h: 1 });
+}
+
+/** An ambulance has brought a collapsed resident to the clinic: they go back where they belong — home, if it still
+ *  stands as a home; otherwise (a home burnt to ruin, or a camp) to the unhoused, near it. */
+export function rescueResident(state: AmbientState, map: GameMap, d: Dying): void {
+  state.rescues = (state.rescues ?? 0) + 1;
+  state.events?.push({ kind: 'rescue', x: d.x, y: d.y, w: 1, h: 1 });
+  if ('home' in d.from && d.from.home !== undefined) {
+    const home = d.from.home;
+    if (zoneTypeOf(map.built[home] ?? 0) === ZoneType.Residential) state.occupancy.set(home, (state.occupancy.get(home) ?? 0) + 1);
+    else leftHome(state, home, 1);
+  } else if ('camp' in d.from && d.from.camp !== undefined) leftHome(state, d.from.camp, 1);
+}
+
+/** Advance the dying (unreached for their minute → dead), the fallen (lying → memorial) and the memorials (→ gone),
+ *  one substep. */
 export function stepDeaths(state: AmbientState): void {
   // age the standing memorials first, so one laid this substep starts at age 0
   if (state.memorials?.length) {
@@ -42,6 +65,16 @@ export function stepDeaths(state: AmbientState): void {
       else still.push({ ...f, t: f.t + 1 });
     }
     state.fallen = still;
+  }
+  // after the fallen age, so someone who dies this substep starts lying at 0
+  if (state.dying?.length) {
+    const still: Dying[] = [];
+    for (const d of state.dying) {
+      if (d.carried) continue; // in an ambulance: the minute no longer counts (rescueResident on arrival)
+      if (++d.t >= DYING_WINDOW) residentDies(state, d.x, d.y);
+      else still.push(d);
+    }
+    state.dying = still;
   }
 }
 

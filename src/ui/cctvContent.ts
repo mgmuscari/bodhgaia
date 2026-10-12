@@ -44,6 +44,8 @@ export function cctvLabel(ev: LiveEvent): string {
 
 const LABELS: Record<LiveEvent['kind'], string> = {
   death: 'A resident has died',
+  collapse: 'A resident has collapsed',
+  rescue: 'An ambulance saved a resident',
   fire: 'Fire',
   spill: 'Toxic spill',
   flood: 'Flood',
@@ -57,7 +59,7 @@ const LABELS: Record<LiveEvent['kind'], string> = {
 };
 
 /** Deaths first, then disasters and protest; arrests and celebrations give way to everything else. */
-const RANK: Record<LiveEvent['kind'], number> = { death: 0, fire: 1, spill: 1, flood: 1, crash: 1, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2 };
+const RANK: Record<LiveEvent['kind'], number> = { death: 0, collapse: 0, rescue: 1, fire: 1, spill: 1, flood: 1, crash: 1, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2 };
 
 /** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
  *  only a few wait. */

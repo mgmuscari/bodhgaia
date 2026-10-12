@@ -491,6 +491,8 @@ export const RAIL_NOISE = 0.05;
 export const ENCAMPMENT_WEAR = 225;
 /** Substeps a resident who has died lies on the ground before the memorial takes their place (~3 s). */
 export const FALL_SUBSTEPS = seconds(3);
+/** A collapsed resident's minute: an ambulance that reaches them within it saves them (Maddy 2026-10-12). */
+export const DYING_WINDOW = seconds(60);
 /** Substeps a street memorial (a candle and flowers) stays where someone died (~2 min). */
 export const MEMORIAL_SUBSTEPS = seconds(120);
 /** Exposure: the unhoused who die per in-game night hour, per person unhoused (600 unhoused ≈ 2 a night). */
