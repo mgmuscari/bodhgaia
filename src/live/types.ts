@@ -213,6 +213,17 @@ export interface Dying {
   called?: boolean;
 }
 
+/** An ambulance on a call (Maddy 2026-10-12): out to a collapsed resident, a moment to take them aboard, back to its
+ *  clinic — where the patient goes home (rescueResident). */
+export interface Ambulance extends Mover {
+  call: 'to-patient' | 'loading' | 'home';
+  patient: Dying;
+  /** The road tile by its clinic, to drive back to. */
+  home: { x: number; y: number };
+  /** Substeps left taking the patient aboard. */
+  load: number;
+}
+
 export interface Truck extends Mover {
   /** Where it is in the call. */
   call: 'to-fire' | 'spraying' | 'home';
@@ -395,6 +406,7 @@ export interface AmbientState {
   wanderer?: { x: number; y: number; px?: number; py?: number; path: number[]; i: number; age: number; life: number; seed: number };
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
+  ambulances?: Ambulance[];
   /** A storm, while one lasts (app/weather.ts): rain on screen and in the ears; a heavy one floods the low land. */
   rain?: { heavy: boolean };
   /** Tiles under flood water now (app/flood.ts): drawn as water, and routes go round them. */
