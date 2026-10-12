@@ -10,7 +10,7 @@ import type { Rng } from '../engine/rng';
 import { isBuildingKind, type ParcelStore } from '../engine/fabric';
 import type { AmbientState } from './types';
 import { offStreet } from './types';
-import { residentDies } from './death';
+import { residentCollapses } from './death';
 import {
   CRIME_BASE,
   CRIME_BELONGING,
@@ -80,7 +80,7 @@ export function drawCrime(state: AmbientState, world: World, rng: Rng, hour: num
     state.peds = state.peds.filter((q) => q !== p);
     if (p.homeTile !== undefined) state.occupancy.set(p.homeTile, Math.max(0, (state.occupancy.get(p.homeTile) ?? 0) - 1));
     else if (state.unhoused >= 1) state.unhoused -= 1;
-    residentDies(state, x, y);
+    residentCollapses(state, x, y, p.homeTile !== undefined ? { home: p.homeTile } : { camp: map.idx(x, y) }); // a minute for an ambulance
     return true;
   }
   return false;

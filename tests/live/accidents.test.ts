@@ -101,9 +101,10 @@ describe('crashes: what', () => {
       const c = car(5, { homeTile: home });
       state.cars.push(c);
       crash(state, map, rng, c);
-      const d = state.events!.filter((e) => e.kind === 'death').length;
+      const d = state.events!.filter((e) => e.kind === 'collapse').length; // a minute for an ambulance
       expect(d).toBeLessThanOrEqual(1);
       if (d) expect(state.occupancy.get(home)).toBe(4);
+      if (d) expect(state.dying![0]!.from).toEqual({ home });
       deaths += d;
     }
     expect(deaths / N).toBeGreaterThan(CRASH_DEATH - 0.08);

@@ -44,6 +44,22 @@ describe('handleEvents', () => {
     expect(c.log).toEqual(['mourn 2', 'news 2 residents died on the street']);
   });
 
+  it('a collapse is news, and costs nothing yet — there is a minute for an ambulance', () => {
+    const c = city();
+    handleEvents([{ kind: 'collapse', x: 3, y: 4, w: 1, h: 1 }], c.deps);
+    expect(c.log).toEqual(['news A resident collapsed — a minute for an ambulance']);
+    handleEvents([{ kind: 'collapse', x: 3, y: 4, w: 1, h: 1 }, { kind: 'collapse', x: 9, y: 9, w: 1, h: 1 }], c.deps);
+    expect(c.log.at(-1)).toBe('news 2 residents collapsed — a minute for an ambulance');
+  });
+
+  it('a rescue is news', () => {
+    const c = city();
+    handleEvents([{ kind: 'rescue', x: 3, y: 4, w: 1, h: 1 }], c.deps);
+    expect(c.log).toEqual(['news An ambulance brought a resident back']);
+    handleEvents([{ kind: 'rescue', x: 3, y: 4, w: 1, h: 1 }, { kind: 'rescue', x: 9, y: 9, w: 1, h: 1 }], c.deps);
+    expect(c.log.at(-1)).toBe('news Ambulances brought 2 residents back');
+  });
+
   it('an arrest costs nothing here (the police layer already records its harm)', () => {
     const c = city();
     handleEvents([{ kind: 'arrest', x: 3, y: 4, w: 2, h: 1 }], c.deps);

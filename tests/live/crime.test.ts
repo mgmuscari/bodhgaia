@@ -67,7 +67,8 @@ describe('a life lost to violence', () => {
       if (a) lost++;
     }
     expect(lost).toBeGreaterThan(0);
-    expect(s.state.events!.filter((e) => e.kind === 'death')).toHaveLength(lost);
+    expect(s.state.events!.filter((e) => e.kind === 'collapse')).toHaveLength(lost); // a minute for an ambulance
+    expect(s.state.dying!.every((d) => 'home' in d.from && d.from.home === home)).toBe(true);
     expect(s.state.peds.some((p) => p.phase === 'inside')).toBe(true);
     expect(s.state.occupancy.get(home)).toBe(40 - lost);
   });

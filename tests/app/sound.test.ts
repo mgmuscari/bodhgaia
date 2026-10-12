@@ -58,6 +58,29 @@ describe('the siren', () => {
   });
 });
 
+// Maddy 2026-10-12: "fire trucks and ambulances should share a different siren from police cars". Theirs is a slow
+// rising-and-falling wail, not the cruisers' two-tone; it sounds while one IN VIEW is racing to a call (or carrying
+// a patient back), not while spraying, loading or going home empty.
+import { emergencySirenFor, SIREN, WAIL } from '../../src/app/sound';
+describe('the emergency siren', () => {
+  const view = { x0: 0, y0: 0, x1: 20, y1: 10 };
+  const truck = (x: number, call: string) => ({ x, y: 5, dir: 0, tx: x, ty: 5, call }) as never;
+  const amb = (x: number, call: string, carried = false) => ({ x, y: 5, dir: 0, tx: x, ty: 5, call, patient: { carried } }) as never;
+  it('is a different sound from the police siren: a wide, slow sweep rather than a quick two-tone', () => {
+    expect(WAIL.hi - WAIL.lo).toBeGreaterThan(SIREN.hi - SIREN.lo);
+    expect(WAIL.sweepTicks).toBeGreaterThan(SIREN.swapEvery);
+  });
+  it('wails for a truck racing to a fire, an ambulance to a patient, or one carrying a patient back', () => {
+    expect(emergencySirenFor([truck(18, 'to-fire')], [], view).on).toBe(true);
+    expect(emergencySirenFor([], [amb(2, 'to-patient')], view).pan).toBeLessThan(-0.5);
+    expect(emergencySirenFor([], [amb(5, 'home', true)], view).on).toBe(true);
+  });
+  it('is silent while spraying, loading, going home empty, or out of view', () => {
+    expect(emergencySirenFor([truck(5, 'spraying'), truck(5, 'home')], [amb(5, 'loading'), amb(5, 'home')], view).on).toBe(false);
+    expect(emergencySirenFor([truck(50, 'to-fire')], [], view).on).toBe(false);
+  });
+});
+
 // Maddy 2026-10-08: "the opening song of the game should be Kyabdro" — corrected: "it should be the music that
 // plays when the intro plays, not every load of the game".
 import { firstPiece } from '../../src/app/sound';

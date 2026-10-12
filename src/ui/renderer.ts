@@ -1301,6 +1301,16 @@ export class Renderer {
       }
     }
 
+    // Ambulances: drawn like the fire trucks — white with a red stripe, their lights flashing red/white in step.
+    for (const am of ambient.ambulances ?? []) {
+      const pose = movingPose(am, LANE, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/ambulance/${heading8(pose.hx, pose.hy)}/${copPhase}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, Math.max(night, 0.5), img);
+    }
+
     // Wind turbines turn with their output — the hour's wind (growth/power windFactor) — each on its own phase, so
     // the whole farm doesn't spin in step; the turn accumulates, so a change of wind changes the pace, never the angle.
     if (this.turbines.length > 0) {
@@ -1375,7 +1385,9 @@ export class Renderer {
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
     // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
     const psx = camera.tileSize / BASE_TILE;
-    for (const f of ambient.fallen ?? []) {
+    // the collapsed lie the same way, unfaded, until an ambulance carries them off (or the minute runs out)
+    const lying: { x: number; y: number; t: number }[] = (ambient.dying ?? []).filter((d) => !d.carried).map((d) => ({ x: d.x, y: d.y, t: 0 }));
+    for (const f of lying.concat(ambient.fallen ?? [])) {
       const { sx, sy } = camera.worldToScreen(f.x + 0.5, f.y + 0.5);
       if (!onScreen(sx, sy)) continue;
       const img = this.sprites.get(personKey('ped', (f.x * 131 + f.y) >>> 0, 0));

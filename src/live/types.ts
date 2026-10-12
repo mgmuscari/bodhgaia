@@ -198,6 +198,32 @@ export interface ParkingLotInfo {
 /** A fire truck: where it is, the road route it follows, and what it's doing. */
 /** A fire truck: a mover on a committed road route (the shared vehicle mover — lanes, turns, interpolation), out
  *  to a fire, spraying it, or driving home. */
+/** Where a collapsed resident belongs — where a rescue returns them: their home, a camp (the unhoused), or nowhere
+ *  modelled (through traffic). */
+export type Belongs = { home: number } | { camp: number } | Record<string, never>;
+
+/** A collapsed resident: where they lie, substeps since they fell, where they belong; `carried` once an ambulance has
+ *  them, `called` once one is on its way. */
+export interface Dying {
+  x: number;
+  y: number;
+  t: number;
+  from: Belongs;
+  carried?: boolean;
+  called?: boolean;
+}
+
+/** An ambulance on a call (Maddy 2026-10-12): out to a collapsed resident, a moment to take them aboard, back to its
+ *  clinic — where the patient goes home (rescueResident). */
+export interface Ambulance extends Mover {
+  call: 'to-patient' | 'loading' | 'home';
+  patient: Dying;
+  /** The road tile by its clinic, to drive back to. */
+  home: { x: number; y: number };
+  /** Substeps left taking the patient aboard. */
+  load: number;
+}
+
 export interface Truck extends Mover {
   /** Where it is in the call. */
   call: 'to-fire' | 'spraying' | 'home';
@@ -223,7 +249,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
+  kind: 'death' | 'collapse' | 'rescue' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
   x: number;
   y: number;
   w: number;
@@ -367,6 +393,11 @@ export interface AmbientState {
   exposureHour?: number;
   /** Residents who have just died, lying where they fell (t = substeps since). */
   fallen?: { x: number; y: number; t: number }[];
+  /** Residents who have collapsed — dying, not yet dead: each lies where they fell for DYING_WINDOW substeps, in which
+   *  an ambulance from a clinic can carry them off (carried) and save them (Maddy 2026-10-12). */
+  dying?: Dying[];
+  /** Residents an ambulance has saved. */
+  rescues?: number;
   /** Street memorials — a candle and flowers — where someone died (age in substeps). */
   memorials?: { x: number; y: number; age: number }[];
   /** The opening's night walker (bodhgaia-opening.md): one unhoused resident the camera follows until they die.
@@ -375,6 +406,7 @@ export interface AmbientState {
   wanderer?: { x: number; y: number; px?: number; py?: number; path: number[]; i: number; age: number; life: number; seed: number };
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
+  ambulances?: Ambulance[];
   /** A storm, while one lasts (app/weather.ts): rain on screen and in the ears; a heavy one floods the low land. */
   rain?: { heavy: boolean };
   /** Tiles under flood water now (app/flood.ts): drawn as water, and routes go round them. */

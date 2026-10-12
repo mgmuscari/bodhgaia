@@ -102,7 +102,8 @@ describe('spills: what they do', () => {
     startSpill(state, map, parcels.get(w));
     const rng = createRng('kill').fork('k');
     for (let i = 0; i < CLOUD_SUBSTEPS; i++) stepClouds(state, map, rng);
-    const dead = state.events!.filter((e) => e.kind === 'death').length;
+    const dead = state.events!.filter((e) => e.kind === 'collapse').length; // a minute for an ambulance
+    expect(state.dying!.every((d) => 'home' in d.from && d.from.home === home)).toBe(true);
     expect(dead).toBeGreaterThan(0);
     expect(dead).toBeLessThanOrEqual(CLOUD_DEATH_MAX);
     expect(state.peds).toHaveLength(42 - dead);

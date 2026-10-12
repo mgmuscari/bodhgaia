@@ -6,7 +6,7 @@
 import { emergencyAccess } from './network';
 import type { GameMap } from '../engine/map';
 import { isRoadKind } from '../engine/fabric';
-import type { AmbientState, Truck } from './types';
+import type { AmbientState, Mover, Truck } from './types';
 import { emergencyPath } from './pathing';
 import { advanceMover, commitHeading, pathStep } from './motion';
 import { SPRAY_SUBSTEPS, TRUCK_SPEED, TURNOUT_SUBSTEPS } from './tuning';
@@ -34,7 +34,7 @@ export function roadNear(map: GameMap, x: number, y: number, w: number, h: numbe
 
 /** Board a truck onto a road route (a mover on its first leg, as a car boards its trip); false if the route is
  *  too short to drive. */
-function board(t: Truck, path: readonly number[], map: GameMap): boolean {
+export function board(t: Mover, path: readonly number[], map: GameMap): boolean {
   if (path.length < 2) return false;
   const p0x = path[0]! % map.width;
   const p0y = (path[0]! - p0x) / map.width;
@@ -66,7 +66,7 @@ export function dispatchTruck(state: AmbientState, map: GameMap, from: { x: numb
 
 /** Drive one substep along the committed route (the shared mover, in its lane, ignoring the traffic it has right
  *  of way over); true once it has arrived. */
-function drive(t: Truck, map: GameMap): boolean {
+export function drive(t: Mover, map: GameMap): boolean {
   if (!t.path) return true;
   // half speed along a car-free way: among walkers and bikes
   const onWay = emergencyAccess(map.built[map.idx(Math.round(t.x), Math.round(t.y))] ?? 0);
