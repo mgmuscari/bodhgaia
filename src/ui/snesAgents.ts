@@ -8,7 +8,7 @@
 // Keys: @sprite/car/{tint}/{dir8}, @sprite/car-light/{dir8} (headlights + taillights, additive at night),
 // @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame},
 // @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant},
-// @sprite/firetruck/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant},
+// @sprite/firetruck/{dir8}/{phase}, @sprite/ambulance/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant},
 // @sprite/rain/{0 light|1 heavy}, @sprite/debris, @sprite/stall/{0..2}, @sprite/placard/{0|1}.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
@@ -38,6 +38,9 @@ const COP_NE = ['...kkk', '..kbgk', '.kbLbk', 'kbMbk.', 'kwbk..', 'kkk...'];
 // Fire trucks: a cruiser's frame in red, a ladder (l) along the back, the light bar (L/M) behind the cab.
 const TRUCK_E = ['.kkkkk.', 'kllLbgb', 'kllMbgb', '.kkkkk.'];
 const TRUCK_NE = ['...kkk', '..kbgk', '.kLbbk', 'klMbk.', 'kllk..', 'kkk...'];
+// Ambulances: the same frame in white (w) with a red stripe (r), lights (L/M) flashing red/white behind the cab.
+const AMB_E = ['.kkkkk.', 'kwwwLgw', 'krrrMgw', '.kkkkk.'];
+const AMB_NE = ['...kkk', '..kwgk', '.kLwwk', 'kwMrk.', 'krrk..', 'kkk...'];
 const LIGHT_E = ['.......', 'T.....H', 'T.....H', '.......'];
 const LIGHT_NE = ['....H.', '.....H', '......', '......', 'T.....', '.T....'];
 
@@ -294,6 +297,10 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   for (const phase of [0, 1]) {
     const cols = { k: C.roofRedLo, b: C.roofRed, l: C.paveHi, g: C.glassLo, L: phase === 0 ? C.signal : C.line, M: phase === 0 ? C.line : C.signal };
     eightWays(glyph(TRUCK_E, cols), glyph(TRUCK_NE, cols)).forEach((f, d) => out.set(`@sprite/firetruck/${d}/${phase}`, f));
+  }
+  for (const phase of [0, 1]) {
+    const cols = { k: C.slate, w: C.petal, r: C.signal, g: C.glassLo, L: phase === 0 ? C.signal : C.petal, M: phase === 0 ? C.petal : C.signal };
+    eightWays(glyph(AMB_E, cols), glyph(AMB_NE, cols)).forEach((f, d) => out.set(`@sprite/ambulance/${d}/${phase}`, f));
   }
   for (let f = 0; f < FIRE_FRAMES; f++) out.set(`@sprite/fire/${f}`, flame(f));
   out.set('@sprite/drop', glyph(['w'], { w: C.foam }));

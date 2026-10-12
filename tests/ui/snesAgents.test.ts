@@ -50,6 +50,19 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     }
   });
 
+  it('ambulances are car-sized, in 8 headings, white with a red stripe, their lights flashing two phases', () => {
+    for (let d = 0; d < 8; d++) {
+      for (const ph of [0, 1]) {
+        const p = tiles.get(`@sprite/ambulance/${d}/${ph}`)!;
+        expect(p, `ambulance ${d}/${ph}`).toBeDefined();
+        const cop = tiles.get(`@sprite/cop/${d}/${ph}`)!;
+        expect([p.w, p.h]).toEqual([cop.w, cop.h]);
+        expect(p.data, `not a fire truck ${d}/${ph}`).not.toEqual(tiles.get(`@sprite/firetruck/${d}/${ph}`)!.data);
+      }
+      expect(tiles.get(`@sprite/ambulance/${d}/0`)!.data).not.toEqual(tiles.get(`@sprite/ambulance/${d}/1`)!.data);
+    }
+  });
+
   it('flames are a few flickering frames within a tile, and spray is single droplets', () => {
     const frames = [0, 1, 2, 3].map((f) => tiles.get(`@sprite/fire/${f}`)!);
     for (const p of frames) {

@@ -35,6 +35,11 @@ export interface EventCostDeps {
 
 /** Act on a batch of events (pure but for the deps it writes through). */
 export function handleEvents(events: readonly LiveEvent[], deps: EventCostDeps): void {
+  // a collapse costs nothing yet — the nearest clinic's ambulance has a minute; a rescue is the good news
+  const collapses = events.filter((e) => e.kind === 'collapse').length;
+  if (collapses > 0) deps.news(`${collapses === 1 ? 'A resident' : `${collapses} residents`} collapsed — a minute for an ambulance`);
+  const rescues = events.filter((e) => e.kind === 'rescue').length;
+  if (rescues > 0) deps.news(rescues === 1 ? 'An ambulance brought a resident back' : `Ambulances brought ${rescues} residents back`);
   const deaths = events.filter((e) => e.kind === 'death');
   if (deaths.length === 0) return;
   deps.mourn(deaths.length);
