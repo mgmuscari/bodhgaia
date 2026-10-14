@@ -1,8 +1,8 @@
 // The build-tools verb: a pure tool system over the fabric single-writers. A tool
 // is selected, previewed (no mutation), then applied — spending communal effort
 // through the guarded TechState.spend and routing to exactly one fabric writer
-// (placeParcel / placeTransport / convertTransport / demolishParcel /
-// demolishTransportAt). Pure module: no DOM, no rng, no Date, no transcendental
+// (placeParcel / placeTransport / convertTransport / bulldozeParcel /
+// bulldozeTransportAt). Pure module: no DOM, no rng, no Date, no transcendental
 // Math — deterministic in (world, tech, action), so it is guard-scanned alongside
 // the engine. It imports only from the engine and tech layers, never from ui.
 
@@ -21,8 +21,9 @@ import {
   layYardFor,
   canPlaceParklet,
   placeParklet,
-  demolishParcel,
-  demolishTransportAt,
+  bulldozeParcel,
+  bulldozeTransportAt,
+  isOpenGround,
   isInteriorRoadLane,
   isOverpassKind,
   canPlaceOverpass,
@@ -400,7 +401,7 @@ function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): P
 
   if (tool.id === 'bulldoze') {
     const built = map.built[map.idx(x, y)]!;
-    if (built === 0) return { valid: false, reason: 'nothing-to-bulldoze' };
+    if (isOpenGround(built)) return { valid: false, reason: 'nothing-to-bulldoze' };
     return { valid: true };
   }
 
@@ -536,8 +537,9 @@ export function applyTool(
       return { ok: true };
     }
     const pid = map.parcel[map.idx(x, y)]!;
-    if (pid !== 0) demolishParcel(map, parcels, pid - 1);
-    else demolishTransportAt(map, x, y);
+    // what the bulldozer clears is left a vacant lot that grows back (Maddy 2026-10-13)
+    if (pid !== 0) bulldozeParcel(map, parcels, pid - 1);
+    else bulldozeTransportAt(map, x, y);
     return { ok: true };
   }
   if (tool.id.startsWith('convert-')) {

@@ -90,7 +90,7 @@ describe('freeway removal pays (salvage, and the upkeep stops)', () => {
     tech.effort = 0;
     const wallet: Wallet = { funds: -2000 };
     expect(applyTool(w, tech, toolDef('bulldoze')!, 5, 5, wallet).ok).toBe(true);
-    expect(w.map.getBuilt(5, 5)).toBe(BuiltKind.None);
+    expect(w.map.getBuilt(5, 5)).toBe(BuiltKind.VacantLot);
     expect(wallet.funds).toBe(-2000 + FREEWAY_SALVAGE);
     expect(FREEWAY_SALVAGE).toBeLessThan(toolDef('build-3')!.cost * FUNDS_PER_COST);
   });

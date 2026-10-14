@@ -512,6 +512,22 @@ const yard: Painter = (W, H, v) => {
   return p;
 };
 
+/** A vacant lot (Maddy 2026-10-13): what the bulldozer leaves — packed dirt with a little rubble and the first weeds,
+ *  kept sparse (it tiles across a whole cleared block). It grows back to open land as its soil heals. */
+const vacantLot: Painter = (W, H, v) => {
+  const p = blank(W, H);
+  rect(p, 0, 0, W, H, C.dirt);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const h = hash2(x, y, 680 + v) % 61;
+      if (h === 0) px(p, x, y, C.paveLo); // a broken brick
+      else if (h === 1) px(p, x, y, C.grassLo); // the first weeds
+      else if (h === 2) px(p, x, y, C.dirtLo);
+    }
+  }
+  return p;
+};
+
 /** A ruin (Maddy 2026-10-08): a lost house, still recognisably a house — its own drawing turned dingy grey and
  *  brown, the roof holed through to the dark inside, windows black, rubble at its feet, the yard gone to dirt. */
 const ruin: Painter = (W, H, v) => {
@@ -680,6 +696,7 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [63, [tinyHomes, 1]],
   [64, [yard, 2]],
   [65, [ruin, 3]],
+  [68, [vacantLot, 1]],
   [58, [bazaar, 2]],
   [59, [makerSpace, 1]],
   [60, [healingCommons, 1]],

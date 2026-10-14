@@ -115,6 +115,9 @@ export const BuiltKind = {
   // A construction site (Maddy 2026-10-08): a commons work being raised — fenced, no effects — until the effort is
   // paid (economy/run buildProject), when finishSite turns it into the building.
   Site: 67,
+  // A vacant lot (Maddy 2026-10-13): what the bulldozer leaves — bare ground, no one's, open to building again —
+  // that grows back to open land as its soil heals (recoverVacantLots).
+  VacantLot: 68,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -438,7 +441,7 @@ export function canPlaceParcel(map: GameMap, x: number, y: number, w: number, h:
       if (!map.inBounds(tx, ty)) return false;
       const i = map.idx(tx, ty);
       if (map.water[i] !== Water.None) return false;
-      if (map.built[i] !== 0) return false;
+      if (!isOpenGround(map.built[i]!)) return false;
       if (map.parcel[i] !== 0) return false;
     }
   }
@@ -485,7 +488,7 @@ export function canPlaceTransport(map: GameMap, x: number, y: number, kind: numb
   const i = map.idx(x, y);
   if (map.water[i] !== Water.None) return false;
   const existing = map.built[i]!;
-  if (existing === 0) return true; // empty land: any transport kind (incl. 5..9)
+  if (isOpenGround(existing)) return true; // empty land or a vacant lot: any transport kind (incl. 5..9)
   if (isRoadKind(kind) && isRoadKind(existing)) return true; // road/road junction
   if (kind === BuiltKind.Rail && existing === BuiltKind.Rail) return true; // rail/rail
   if (kind === BuiltKind.Rail && crossesRail(existing)) return true; // track laid across a way: a level crossing
@@ -504,7 +507,7 @@ export function placeTransport(map: GameMap, x: number, y: number, kind: number)
   const i = map.idx(x, y);
   const existing = map.built[i]!;
   // track across a way takes the tile (the crossing); the way carries on either side of it
-  map.built[i] = existing === 0 || (kind === BuiltKind.Rail && crossesRail(existing)) ? kind : Math.max(existing, kind);
+  map.built[i] = isOpenGround(existing) || (kind === BuiltKind.Rail && crossesRail(existing)) ? kind : Math.max(existing, kind);
   return true;
 }
 
@@ -759,6 +762,45 @@ export function demolishParcel(map: GameMap, store: ParcelStore, i: number): boo
   }
   store.markDead(i);
   return true;
+}
+
+/** Ground anything may be built on: open land, or a vacant lot. */
+export function isOpenGround(kind: number): boolean {
+  return kind === BuiltKind.None || kind === BuiltKind.VacantLot;
+}
+
+/** The bulldozer takes a building down: its footprint is left a vacant lot (Maddy 2026-10-13). */
+export function bulldozeParcel(map: GameMap, store: ParcelStore, i: number): boolean {
+  if (i < 0 || i >= store.count() || !store.isAlive(i)) return false;
+  const p = store.get(i);
+  demolishParcel(map, store, i);
+  for (let dy = 0; dy < p.height; dy++) for (let dx = 0; dx < p.width; dx++) map.built[map.idx(p.x + dx, p.y + dy)] = BuiltKind.VacantLot;
+  return true;
+}
+
+/** The bulldozer tears up a way: bare ground is left a vacant lot; a level crossing gives back the way it crossed. */
+export function bulldozeTransportAt(map: GameMap, x: number, y: number): boolean {
+  if (!demolishTransportAt(map, x, y)) return false;
+  const i = map.idx(x, y);
+  if (map.built[i] === BuiltKind.None) map.built[i] = BuiltKind.VacantLot;
+  return true;
+}
+
+/** The soil at which a vacant lot has grown back to open land. The ecology heals unsealed soil a point a tick (a tick
+ *  a second of play), and a cleared lot starts at the paved cap: a few minutes. */
+export const VACANT_RECOVERED = 200;
+
+/** Vacant lots whose soil has healed grow back to open land. Run after the ecology tick. Returns how many cleared. */
+export function recoverVacantLots(map: GameMap): number {
+  const { built, soilHealth } = map;
+  let n = 0;
+  for (let i = 0; i < built.length; i++) {
+    if (built[i] === BuiltKind.VacantLot && soilHealth[i]! >= VACANT_RECOVERED) {
+      built[i] = BuiltKind.None;
+      n++;
+    }
+  }
+  return n;
 }
 
 /**

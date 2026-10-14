@@ -11,7 +11,7 @@
 // Tents are drawn from the camps (tentsAt) — never from desire-path wear. Live layer: writes only its own state.
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind } from '../engine/fabric';
+import { isOpenGround } from '../engine/fabric';
 import type { AmbientState } from './types';
 
 /** People sharing a tent. */
@@ -63,7 +63,8 @@ const xy = (map: GameMap, t: number): [number, number] => [t % map.width, (t - (
 
 /** Open land someone can camp on: dry, unbuilt, no one's lot, not under a flood. */
 function campable(map: GameMap, state: AmbientState, t: number): boolean {
-  return map.built[t] === BuiltKind.None && map.parcel[t] === 0 && map.water[t] === 0 && !state.flooded?.has(t);
+  // open land, or a vacant lot — where the bulldozer has been is where people camp
+  return isOpenGround(map.built[t]!) && map.parcel[t] === 0 && map.water[t] === 0 && !state.flooded?.has(t);
 }
 
 /** The camp nearest (x, y) — within `reach`, with room if `withRoom` — or -1. Ties to the lower tile index. */

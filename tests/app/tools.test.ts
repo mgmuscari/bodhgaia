@@ -224,7 +224,7 @@ describe('createToolController: preview / apply', () => {
     h.tools.hotkey('bulldoze');
     h.log.length = 0;
     h.tools.applyAt(3, 2);
-    expect(h.map.built[h.map.idx(3, 2)]).toBe(0);
+    expect(h.map.built[h.map.idx(3, 2)]).toBe(68); // a vacant lot (Maddy 2026-10-13)
     expect(h.log).toEqual(['placed', 'dirty', 'refresh', 'previewDirty']); // bulldoze is not a repair
     h.log.length = 0;
     h.openTech(true);
