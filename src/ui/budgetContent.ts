@@ -3,6 +3,7 @@
 // borrow now (Maddy 2026-10-01: "we need taxes and loans, once you go negative you can't dig back out").
 
 import { ECON, loanOffer, type CityReading, type EconomyState, type Levers, type Loan, type LoanOffer } from '../economy/model';
+import type { IndicatorLine } from '../economy/indicators';
 
 export interface BudgetView {
   classes: Array<{ id: 'r' | 'c' | 'i'; label: string; rate: number; perHour: number }>;
@@ -19,6 +20,8 @@ export interface BudgetView {
   relief: string | null;
   /** The ways out of a deficit, said plainly (the window shows them when the city is short). */
   waysOut: string[];
+  /** The city's indicators with their trends (economy/indicators.ts) — the host adds them. */
+  indicators?: IndicatorLine[];
 }
 
 /** The levers a short city has (tools.ts: FREEWAY_SALVAGE, the volunteer works; this panel: taxes, loans). */

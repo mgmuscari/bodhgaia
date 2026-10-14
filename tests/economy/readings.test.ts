@@ -222,3 +222,21 @@ describe('readCity — a commune doubles as a market (Maddy 2026-10-07)', () => 
     expect(read1(withCommune).base.c - before).toBeCloseTo(shopTax * COMMUNE_COMMERCE_SHARE, 6);
   });
 });
+
+// Indicators (interdependence §8): the city reading counts its jobs — shops and industry by density, size and upkeep,
+// and civic workplaces (a school, a clinic) too — and the mean condition of its buildings.
+describe('readCity: jobs and condition', () => {
+  it('counts jobs at shops, industry and civic workplaces, but not at homes or greens', () => {
+    const c = city();
+    const without = read(c).jobs!;
+    expect(without).toBeGreaterThan(0); // the shop and the works
+    placeParcel(c.map, c.parcels, { x: 8, y: 8, width: 2, height: 2, kind: BuiltKind.School });
+    expect(read(c).jobs!).toBeGreaterThan(without);
+  });
+  it('reads the mean condition of its buildings', () => {
+    const c = city();
+    const m = read(c).meanCondition!;
+    expect(m).toBeGreaterThan(0);
+    expect(m).toBeLessThanOrEqual(255);
+  });
+});

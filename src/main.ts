@@ -67,6 +67,7 @@ import { installNoBrowserZoom } from './app/noBrowserZoom';
 import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
 import { mountWhatsNew } from './ui/whatsNewPanel';
 import { GAME_VERSION } from './ui/creditsContent';
+import { travelModes } from './live/stats';
 
 
 export function main(save: SaveV1 | null = null): void {
@@ -167,6 +168,7 @@ export function main(save: SaveV1 | null = null): void {
     sim: deps,
     live: live.state,
     powerGrid: power.grid,
+    modes: () => travelModes(live.state), // how people get around, for the indicators
     initial: save?.econ ?? null,
     // tenant organising protects homes; rent's displaced leave real homes into the unhoused (rehoming.md)
     voiceAt: (t) => neighborhoodVoice(civic, deps.partition, t),

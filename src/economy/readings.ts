@@ -5,6 +5,7 @@
 
 import type { GameMap } from '../engine/map';
 import { BuiltKind, isTransportKind, type ParcelStore } from '../engine/fabric';
+import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { CityReading } from './model';
 
 /** Money upkeep per in-game hour: per tile for transport, per parcel for buildings. */
@@ -229,10 +230,19 @@ export function readCity(inp: CityInputs): CityReading {
   let upkeep = 0;
   let tending = 0;
   let gathering = 0;
+  let jobsAll = 0;
+  let conditionSum = 0;
+  let buildings = 0;
   for (const i of parcels.aliveIndices()) {
     const p = parcels.get(i);
     const anchor = map.idx(p.x, p.y);
     const occ = inp.occupancyAt(anchor) ?? 0;
+    if (!UNBUILT.has(p.kind)) {
+      conditionSum += p.condition;
+      buildings++;
+    }
+    if (WORKPLACES.has(p.kind) || (zoneTypeOf(p.kind) === ZoneType.Civic && !UNBUILT.has(p.kind)))
+      jobsAll += p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
     const lv = (inp.landValueAt(anchor) ?? 0) / 255;
     if (RESIDENTIAL.has(p.kind)) {
       households += occ;
@@ -279,10 +289,17 @@ export function readCity(inp: CityInputs): CityReading {
     harms: inp.harms,
     repairs: inp.repairs,
     regenHouseholds: households + communeHouseholds * (COMMUNE_REGEN - 1),
+    jobs: jobsAll,
+    meanCondition: buildings > 0 ? conditionSum / buildings : 0,
     taxPainMul: pr.taxPainMul,
     burnoutHealMul: pr.burnoutHealMul,
   };
 }
+
+/** Workplaces for the jobs count (with every civic building): shops, offices, industry, the commune's market. */
+const WORKPLACES = new Set<number>([...COMMERCIAL, ...INDUSTRIAL, BuiltKind.Commune]);
+/** Lots that are not buildings — no condition, no jobs. */
+const UNBUILT = new Set<number>([BuiltKind.Yard, BuiltKind.ParkingLot, BuiltKind.VacantLot, BuiltKind.Site, BuiltKind.RetentionPond, BuiltKind.CommunityGarden, BuiltKind.Park, BuiltKind.RewildedLand, BuiltKind.CompostHub]);
 
 /** Mean land value 0..1 over the homes (what rent follows). */
 function meanLandValue(inp: CityInputs, map: GameMap): number {

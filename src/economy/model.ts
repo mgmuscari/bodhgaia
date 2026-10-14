@@ -49,6 +49,10 @@ export interface CityReading {
   harms: { blackouts: number; policeViolence: number; takings: number };
   /** Repairs this tick (things the government fixed or delivered), ≥ 0. */
   repairs: number;
+  /** Jobs across the workplaces — shops, industry, civic buildings (the indicators read it). */
+  jobs?: number;
+  /** Mean condition of the buildings, 0..255 (the indicators read it). */
+  meanCondition?: number;
   /** Households counted for effort regeneration — communes count twice (absent ⇒ households). */
   regenHouseholds?: number;
   /** Practices: multipliers on how much taxes weigh on approval, and on burnout's recovery (absent ⇒ 1). */
