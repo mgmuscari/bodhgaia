@@ -23,6 +23,12 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Playtest batch 2 (Maddy 2026-10-13)** — features synthesized in `docs/design/interdependence.md`; bugs:
+  - Elevated rail: cars path on top of the rail and no trains run.
+  - Residents at home should park cars beyond the first on the street.
+  - Update the building footprint preview.
+  - Add traffic costing to A* edges.
+  - Arcologies (feature, backlog).
 - **Playtest batch (Maddy 2026-10-13):**
   - ✅ Bulldoze works with no money — every bulldoze needs funds now; only freeway removal (salvage) works broke.
   - ✅ Bulldoze leaves a vacant lot (kind 68) that grows back to open land as its soil heals (~3 min); campable.
