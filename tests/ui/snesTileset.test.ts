@@ -149,7 +149,8 @@ describe('snes tileset — buildings', () => {
 });
 
 describe('snes tileset — status icons', () => {
-  for (const name of ['unpowered', 'thriving', 'suffering']) {
+  // boosted (Maddy 2026-10-14): a building carrying a pairing / maker-industry bonus (engine/boosts.ts)
+  for (const name of ['unpowered', 'thriving', 'suffering', 'boosted']) {
     it(`paints an ink-outlined 8×8 @icon/${name} on a transparent ground`, () => {
       const t = tiles.get(`@icon/${name}`);
       expect(t).toBeDefined();
@@ -159,9 +160,9 @@ describe('snes tileset — status icons', () => {
     });
   }
 
-  it('the three icons are distinct', () => {
-    const s3 = new Set(['unpowered', 'thriving', 'suffering'].map((n) => sig(tiles.get(`@icon/${n}`)!)));
-    expect(s3.size).toBe(3);
+  it('the four icons are distinct', () => {
+    const s4 = new Set(['unpowered', 'thriving', 'suffering', 'boosted'].map((n) => sig(tiles.get(`@icon/${n}`)!)));
+    expect(s4.size).toBe(4);
   });
 });
 

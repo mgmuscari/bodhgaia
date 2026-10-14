@@ -28,7 +28,7 @@ import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, streetTreeAt, bikeRackAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { isPowerConsumer, windFactor } from '../growth/power';
-import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses, wandererPose } from '../live/poses';
+import { ambientAlpha, laneOnTile, movingPose, pedPose, streetAt, trainPoses, wandererPose } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
 import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, rotorFrame, spinRotor, windowsLit } from './snesAgents';
@@ -49,12 +49,16 @@ import { OVERLAY_DIM } from './overlayLegend';
 const OVERLAY_DIM_CSS = `rgba(${OVERLAY_DIM[0]}, ${OVERLAY_DIM[1]}, ${OVERLAY_DIM[2]}, ${OVERLAY_DIM[3]})`;
 import { policeViolenceTint } from './policeViolenceOverlayContent';
 import { TravelMode } from '../citizens/modes';
+import { boostIndex, boostsOf, canBoost, type BoostIndex } from '../engine/boosts';
+import { homeBadge } from './statusOverlayContent';
 
 /** A previewed tile for the hover/drag overlay: world coords + validity tint. */
 export interface PreviewTile {
   x: number;
   y: number;
   valid: boolean;
+  /** A building the one being placed would pair with (lane pairing) — lit gold. */
+  pair?: boolean;
 }
 
 /**
@@ -258,13 +262,21 @@ export class Renderer {
   // Per base key, how many hash-cycled variants the skin painted (`grass-1` → 4, `road-1-5` → 3). A tile
   // picks one by position hash so a field or a street stops repeating on the tile grid.
   private readonly tileVariants: ReadonlyMap<string, number>;
-  // Status icons (`@icon/unpowered`, `@icon/thriving`, `@icon/suffering`).
+  // Status icons (`@icon/unpowered`, `@icon/thriving`, `@icon/suffering`, `@icon/boosted`).
   private readonly icons: Map<string, AtlasImage>;
+
+  /** A status badge's art (`@icon/<name>`), for the status key (overlay legend) to draw. */
+  iconImage(name: string): AtlasImage | undefined {
+    return this.icons.get(iconKey(name));
+  }
   // Terrain edge overlays (`@edge/shore/<mask>`, `@edge/canopy/<mask>`, `@edge/coast/<mask>`).
   private readonly edges: Map<string, AtlasImage>;
   // Unpowered parcel footprints (WORLD coords) from the last base pass — drawn per frame as a blinking
   // icon when the skin supplies one (the base is cached, so a blink can't live there).
   private unpoweredFootprints: { x: number; y: number; w: number }[] = [];
+  /** Boosted buildings (engine/boosts.ts) in view, collected on each base rebuild for the sparkle badge. */
+  private boostedFootprints: { x: number; y: number; h: number }[] = [];
+  private boostIndexNow: BoostIndex | null = null;
   // GPU mode: the WebGL hybrid path renders the MAP underneath (day/night, building shadows), so the
   // Canvas2D base goes transparent. Sprites/decorations/UI still draw on top. The CPU path stays the
   // no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
@@ -584,6 +596,8 @@ export class Renderer {
     this.emissiveBuildings.length = 0; // re-collected this pass (refreshed on every base rebuild)
     this.turbines.length = 0; // likewise
     this.unpoweredFootprints.length = 0; // likewise
+    this.boostedFootprints.length = 0; // likewise
+    this.boostIndexNow = boostIndex(world.parcels); // the makers and works, once a pass
     this.bakedMarks.clear(); // re-recorded this pass
     this.bakedMurk.clear();
     this.paintTiles(world, camera, ambient, camera.visibleTileRange(), null);
@@ -830,6 +844,9 @@ export class Renderer {
               const unpowered =
                 this.powered !== null && isPowerConsumer(pp.kind) && !this.powered.has(i);
               if (unpowered) this.unpoweredFootprints.push({ x: tx, y: ty, w: pp.width });
+              if (this.boostIndexNow && canBoost(pp.kind) && boostsOf(map, parcels, pid - 1, this.boostIndexNow).length > 0) {
+                this.boostedFootprints.push({ x: tx, y: ty, h: pp.height });
+              }
               // Light-bearing building? Collect its footprint (world coords) for the per-frame emissive
               // overlay (drawSprites), with the skin's map for THIS footprint, tier and art variant (read
               // off the picked key). No power, no lights — an unpowered building stays dark at night.
@@ -1046,7 +1063,7 @@ export class Renderer {
       const ts = camera.tileSize;
       for (const t of this.preview) {
         const { sx, sy } = camera.worldToScreen(t.x, t.y);
-        ctx.fillStyle = t.valid ? 'rgba(96, 200, 128, 0.40)' : 'rgba(220, 86, 86, 0.40)';
+        ctx.fillStyle = t.pair ? 'rgba(232, 184, 56, 0.50)' : t.valid ? 'rgba(96, 200, 128, 0.40)' : 'rgba(220, 86, 86, 0.40)';
         ctx.fillRect(Math.floor(sx), Math.floor(sy), ts, ts);
       }
     }
@@ -1176,15 +1193,25 @@ export class Renderer {
         ctx.drawImage(bolt, dx - bs, dy - iconScale, bs, bs);
       }
     }
+    // the boosted sparkle, bottom-left (the corner the heart and the bolt leave free); steady, not blinking
+    const sparkle = this.icons.get(iconKey('boosted'));
+    if (sparkle) {
+      const bs = 8 * iconScale;
+      for (const f of this.boostedFootprints) {
+        const { dx, dy } = camera.tileOrigin(f.x, f.y + f.h);
+        if (!onScreen(dx, dy)) continue;
+        ctx.drawImage(sparkle, dx - iconScale, dy - bs + iconScale, bs, bs);
+      }
+    }
     for (const [tile, health] of ambient.buildingHealth) {
       // only over a home that still stands (Maddy 2026-10-08: a bulldozed ruin kept its raincloud)
       if (zoneTypeOf(world.map.built[tile]!) !== ZoneType.Residential) continue;
       const hx = tile % mapW;
       const hy = (tile - hx) / mapW;
-      // icons flag EXCEPTIONS, not every home: a heart for a standout (health ≥ 9, ~1 in 10 on a fresh
-      // city), a raincloud a little earlier (≤ −6) since suffering is the actionable case
-      if (health >= 0 ? health < 9 : health > -6) continue;
-      const badge = health >= 0 ? thriving : suffering;
+      // icons flag EXCEPTIONS, not every home (statusOverlayContent.ts homeBadge — the status key's rule too)
+      const which = homeBadge(health);
+      if (!which) continue;
+      const badge = which === 'thriving' ? thriving : suffering;
       const { dx, dy } = camera.tileOrigin(hx, hy);
       if (!badge || !onScreen(dx, dy)) continue;
       ctx.drawImage(badge, dx - iconScale, dy - iconScale, 8 * iconScale, 8 * iconScale);
@@ -1319,6 +1346,16 @@ export class Renderer {
       }
     }
 
+    // Food-bank vans (interdependence §2): out to a pantry and back, cream with a green stripe.
+    for (const v of ambient.vans ?? []) {
+      const pose = movingPose(v, LANE, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/van/${heading8(pose.hx, pose.hy)}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, night, img);
+    }
+
     // Ambulances: drawn like the fire trucks — white with a red stripe, their lights flashing red/white in step.
     for (const am of ambient.ambulances ?? []) {
       const pose = movingPose(am, LANE, alpha);
@@ -1366,6 +1403,16 @@ export class Renderer {
         if (sign) this.drawArt(ctx, sign, pose.x + 0.06, pose.y - 0.22, camera);
       }
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
+    }
+    // Children on the walk to school and home (live/schoolRun.ts), drawn as walkers.
+    for (const pu of ambient.pupils ?? []) {
+      const pose = pedPose(pu as never, onRoadAt, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const seed = (pu.homeTile * 7 + 3) >>> 0;
+      const frame = Math.floor(performance.now() / 200 + (seed & 7)) % 2;
+      const img = this.sprites.get(personKey('ped', seed, frame));
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
     }
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
     // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
@@ -1468,6 +1515,16 @@ export class Renderer {
         if (img) this.drawArt(ctx, img, q.x, q.y - lift, camera);
         addBody(q.x, q.y - lift, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
       });
+    }
+
+    // Delivery drones (interdependence §3): over the rooftops, above everything on the ground and the viaducts, their
+    // rotors flickering.
+    const rotor = Math.floor(performance.now() / 90) % 2;
+    for (const d of ambient.drones ?? []) {
+      const { sx, sy } = camera.worldToScreen(d.x + 0.5, d.y + 0.5);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/drone/${rotor}`);
+      if (img) this.drawArt(ctx, img, d.x + 0.5, d.y + 0.1, camera);
     }
 
     // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).

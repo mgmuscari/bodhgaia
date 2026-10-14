@@ -45,7 +45,10 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     // A live overlay (police) is drawn per frame from its field, not baked into the cached base.
     const entry = active && OVERLAYS[active.kind];
     deps.renderer.setLiveOverlay(entry?.live ?? null);
-    deps.renderer.setOverlay(active && entry?.source ? entry.source(active.view, deps.context()) : null);
+    const source = active && entry?.source ? entry.source(active.view, deps.context()) : null;
+    deps.renderer.setOverlay(source);
+    // the key follows the source: a stretched view names the range it spans, re-derived each tick
+    deps.showLegend(active && entry ? entry.legend(active.view, source?.range) : null);
   };
 
   const set = (state: CompositeState): void => {
@@ -53,7 +56,6 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     apply();
     const entry = active && OVERLAYS[active.kind];
     deps.setStatus(active && entry ? entry.legendLine(active.view) : null);
-    deps.showLegend(active && entry ? entry.legend(active.view) : null);
     deps.markDirty();
     deps.refreshMeta();
   };
@@ -74,7 +76,11 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
 
 /** The visible colour KEY (a swatch + label per ramp endpoint / band), bottom-left of the MAP pane — right of the
  *  docked palette, never over it (styled in index.html with the pixel UI kit). */
-export function mountOverlayLegend(parent: HTMLElement): (legend: OverlayLegend | null) => void {
+export function mountOverlayLegend(
+  parent: HTMLElement,
+  /** A status badge's art, for a stop that names one (the building-status key). */
+  iconImage?: (name: string) => CanvasImageSource | undefined,
+): (legend: OverlayLegend | null) => void {
   const el = document.createElement('div');
   el.className = 'overlay-legend';
   el.hidden = true;
@@ -92,6 +98,25 @@ export function mountOverlayLegend(parent: HTMLElement): (legend: OverlayLegend 
     el.appendChild(title);
     for (const stop of legend.stops) {
       const row = document.createElement('div');
+      const art = stop.icon ? iconImage?.(stop.icon) : undefined;
+      if (art) {
+        // the badge itself, 3× and crisp (drawn, never read back — Safari scrambles canvas readback)
+        const c = document.createElement('canvas');
+        c.width = 24;
+        c.height = 24;
+        c.style.cssText = 'width:24px;height:24px;flex:none;image-rendering:pixelated;';
+        const g = c.getContext('2d');
+        if (g) {
+          g.imageSmoothingEnabled = false;
+          g.drawImage(art, 0, 0, 24, 24);
+        }
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        const lbl = document.createElement('span');
+        lbl.textContent = stop.label;
+        row.append(c, lbl);
+        el.appendChild(row);
+        continue;
+      }
       const sw = document.createElement('span');
       sw.style.cssText = `display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:middle;background:rgb(${stop.color[0]},${stop.color[1]},${stop.color[2]});`;
       const lbl = document.createElement('span');

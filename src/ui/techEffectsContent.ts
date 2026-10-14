@@ -10,7 +10,7 @@ import { BuiltKind, isServiceStation, isTransportKind } from '../engine/fabric';
 import { GameMap } from '../engine/map';
 import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
-import { MAKER_RADIUS, MAKER_REPAIR } from '../growth/revival';
+import { MAKER_RADIUS, MAKER_RADIUS_SUPPLIED, MAKER_REPAIR, MAKER_SUPPLY } from '../growth/revival';
 import { POND_REACH } from '../growth/flood';
 import {
   BATTERY_CAPACITY,
@@ -30,6 +30,11 @@ import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
 import { AI_CLEAN_RADIUS } from '../live/fields/pollution';
 import { SHELTER_BEDS, SHELTER_DRAW } from '../live/camps';
+import { DRONE_RADIUS } from '../live/drones';
+import { LEARNING_BOOST, SCHOOL_REACH } from '../live/school';
+import { SCHOOL_IN_HOUR, SCHOOL_OUT_HOUR } from '../live/schoolRun';
+import { SCHOOL_VOICE } from '../civic/dynamics';
+import { ADJACENT_BONUS, BANK_REACH, GROW_REACH, PANTRY_REACH, PRODUCE } from '../live/food';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
@@ -99,7 +104,7 @@ function practiceLine(e: Effect): string {
     case 'arrestRelease':
       return `${pct(e.value as number)} of police stops go to a circle instead of an arrest`;
     case 'droneShopDrop':
-      return `${pct(e.value as number)} of driven shopping trips are delivered instead`;
+      return `${pct(e.value as number)} of driven shopping trips from homes within ${DRONE_RADIUS} tiles of an AI node are flown in by drone instead`;
     case 'occFloor':
       return `Neighbours take people in: no home falls below ${pct(e.value as number)} of its residents (was ${pct(OCC_FLOOR)})`;
     case 'industryVisit':
@@ -151,6 +156,14 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (GATHERING_KINDS.has(kind)) effects.push("Gathering place: its neighbourhood's belonging +1 per civic tick");
   if (kind === BuiltKind.WastewaterWorks) effects.push(`Cleans contaminated water within ${WATER_TREAT_RADIUS} tiles`);
   if (kind === BuiltKind.RetentionPond) effects.push(`Keeps the land within ${POND_REACH} tiles from flooding`);
+  if (kind === BuiltKind.UrbanFarm) effects.push(`Grows ${PRODUCE.get(kind)} food an hour for a pantry or food bank nearby (×${ADJACENT_BONUS} right beside one); feeds the homes within ${GROW_REACH} tiles`);
+  if (kind === BuiltKind.FoodBank) effects.push(`Gathers the harvest of farms and gardens within ${BANK_REACH} tiles and sends vans to the pantries in reach`);
+  if (kind === BuiltKind.Pantry) effects.push(`Feeds the homes within ${PANTRY_REACH} tiles while it has stock — food access, part of neighbourhood health`);
+  if (kind === BuiltKind.School) {
+    effects.push(`A civic hub: its neighbourhood gains ${SCHOOL_VOICE} voice every civic tick`);
+    effects.push(`Teaches over time: neighbourhoods within ${SCHOOL_REACH} tiles get up to ${Math.round(LEARNING_BOOST * 100)}% more of the jobs round them`);
+    effects.push(`Children walk to it at ${SCHOOL_IN_HOUR}:00 and home at ${SCHOOL_OUT_HOUR}:00`);
+  }
   if (kind === BuiltKind.Shelter) effects.push(`${SHELTER_BEDS} beds: takes in the unhoused from camps within ${SHELTER_DRAW} tiles — safe from the cold nights`);
   if (GREEN_HEAL_KINDS.has(kind)) effects.push(`Heals ground pollution within ${GREEN_HEAL_RADIUS} tiles`);
   if (AMENITY_KINDS.has(kind)) effects.push("Raises its neighbours' land value");
@@ -169,7 +182,10 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
     effects.push('Its residents work at home and own no cars');
     effects.push(`Doubles as a market: neighbours shop here; taxed at ${pct(COMMUNE_COMMERCE_SHARE)} of a shop its size`);
   }
-  if (kind === BuiltKind.MakerSpace) effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
+  if (kind === BuiltKind.MakerSpace) {
+    effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
+    effects.push(`With industry within ${MAKER_SUPPLY} tiles: materials — reach ${MAKER_RADIUS_SUPPLIED} tiles, twice the mending; that works poisons its ground half as much`);
+  }
   if (kind === BuiltKind.ElevatedRail) {
     effects.push(`Stations: shops within ${RAIL_COMMERCE_RADIUS} tiles of the line pay ${pct(RAIL_COMMERCE_LIFT - 1)} more tax`);
     effects.push(`Noise: homes within ${RAIL_NOISE_RADIUS} tiles of the line lose ${RAIL_NOISE} pull`);

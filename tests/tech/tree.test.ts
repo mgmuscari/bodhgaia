@@ -16,7 +16,7 @@ const DESIGN_BRIEF_IDS = [
   'walkable-streets', 'road-diets', 'parklets', 'quiet-streets',
   'urban-promenades', 'streetcar-revival', 'pocket-parks',
   // GreenDevelopment
-  'soil-and-soul', 'urban-composting', 'community-gardens', 'vertical-farming',
+  'soil-and-soul', 'urban-composting', 'community-gardens', 'urban-farms', 'vertical-farming',
   'wastewater-recycling', 'rewilding', 'retention-ponds',
   // RestorativeJustice
   'circles', 'community-land-trust', 'healing-commons', 'tiny-home-villages', 'participatory-budgeting',
@@ -41,7 +41,7 @@ function cap(id: string, prereqs: string[] = []): TechNode {
 
 describe('TECH_TREE shape', () => {
   it('has 41 nodes (39 + Tiny-Home Villages, 2026-10-07, + Retention Ponds, 2026-10-08)', () => {
-    expect(TECH_TREE.length).toBe(41);
+    expect(TECH_TREE.length).toBe(42);
   });
 
   it('Retention Ponds grants the pond, after Soil and Soul (Maddy 2026-10-08)', () => {

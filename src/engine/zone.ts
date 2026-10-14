@@ -45,6 +45,8 @@ const ZONE_OF: ReadonlyMap<number, ZoneType> = new Map<number, ZoneType>([
   [BuiltKind.WastewaterWorks, ZoneType.Civic],
   [BuiltKind.RetentionPond, ZoneType.Civic],
   [BuiltKind.Shelter, ZoneType.Civic],
+  [BuiltKind.FoodBank, ZoneType.Civic],
+  [BuiltKind.Pantry, ZoneType.Civic],
   [BuiltKind.EnergyNode, ZoneType.Civic],
   [BuiltKind.AINode, ZoneType.Civic],
   [BuiltKind.CompostHub, ZoneType.Civic],

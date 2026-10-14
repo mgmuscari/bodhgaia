@@ -10,6 +10,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '1.1.0',
+    notes: [
+      'Neighbourhood health: one score for each neighbourhood — its belonging, voice and trust, its ground, how well its buildings are kept, work within reach, care and food. The Civic overlay opens on it.',
+      'Budget now shows how many people have work, how well buildings are kept, and how people get around, with which way each is heading.',
+      'Food, from field to table: urban farms (Urban Farms), food banks (Mutual Aid) and pantries (Shared Table). Harvests go to the pantries and banks, the banks send vans out to the pantries, and the pantries feed the homes around them.',
+      'Maker spaces and industry work together: makers near the works reach further and mend twice as fast, and the works poisons its ground half as much.',
+      'Community AI Nodes are drone hubs. With Drone Deliveries, some of the shopping near a node is flown to people instead of driven.',
+      'Some buildings work together — a library and a school, a compost hub and a farm, a food bank and an AI node. Build one near its partner and both get a bonus; placing a building shows what it pairs with.',
+      'Schools give their neighbourhood a voice and teach more each day. Children walk to school in the morning and home in the afternoon.',
+      'A boosted building wears a sparkle. Inspect it to see why.',
+      'Building status (K) dims the map to the buildings wearing a badge — no power, a home suffering or thriving, boosted — with a key to each.',
+      'Overlay colours spread across the values on your map, so differences show; the key names the range.',
+      'New lessons for food, makers, drones and buildings that work together, one at a time as you unlock them.',
+    ],
+  },
+  {
     version: '1.0.16',
     notes: [
       'Drivers abandon their cars in jams far less often. When one does, the car pulls over to the kerb, out of the way, and is towed soon after.',

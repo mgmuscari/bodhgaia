@@ -41,7 +41,7 @@ describe('the overlay menus', () => {
   });
   it('changing category turns the overlay off — to another overlay, or to a build category', () => {
     const eco = toggleOverlay(none, 'eco', catOf);
-    expect(toggleOverlay(eco, 'civic', catOf)).toEqual({ menu: { kind: 'overlay', id: 'civic' }, tool: null, overlay: { kind: 'civic', view: 'belonging' } });
+    expect(toggleOverlay(eco, 'civic', catOf)).toEqual({ menu: { kind: 'overlay', id: 'civic' }, tool: null, overlay: { kind: 'civic', view: 'health' } });
     expect(toggleCategory(eco, 'transit', catOf)).toEqual({ menu: { kind: 'category', id: 'transit' }, tool: null, overlay: null });
   });
   it('opening an overlay menu puts a building tool down', () => {

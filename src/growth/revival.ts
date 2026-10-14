@@ -14,7 +14,8 @@
 // no DOM, no transcendental Math; occupancy arrives via an injected accessor so this
 // never imports ui.
 
-import { BuiltKind, ParcelStore } from '../engine/fabric';
+import {
+  MAKER_SUPPLY, BuiltKind, ParcelStore } from '../engine/fabric';
 import type { GameMap } from '../engine/map';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { citizensOf } from '../citizens/census';
@@ -148,25 +149,37 @@ export function stepRevival(
  *  condition each revival pass — tools held in common, mending what's near. */
 export const MAKER_RADIUS = 4;
 export const MAKER_REPAIR = 1;
+/** A maker space supplied by industry within MAKER_SUPPLY (interdependence §3) reaches this far and mends twice as
+ *  fast. */
+export const MAKER_RADIUS_SUPPLIED = 6;
+export { MAKER_SUPPLY };
+import { pairedWith } from '../engine/pairings';
+import { boostIndex, makerSupplied } from '../engine/boosts';
 
 /** One pass of the maker spaces' repairs over the hashed stock. Deterministic (no rng); returns how many
  *  buildings were mended. Runs beside stepRevival on the civic cadence. */
 export function stepRepairShops(world: RevivalWorld): number {
   const { parcels } = world;
-  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  const boxes: { x0: number; y0: number; x1: number; y1: number; repair: number }[] = [];
+  const { works } = boostIndex(parcels);
   for (const i of parcels.aliveIndices()) {
     const m = parcels.get(i);
     if (m.kind !== BuiltKind.MakerSpace) continue;
-    boxes.push({ x0: m.x - MAKER_RADIUS, y0: m.y - MAKER_RADIUS, x1: m.x + m.width - 1 + MAKER_RADIUS, y1: m.y + m.height - 1 + MAKER_RADIUS });
+    // supplied by industry nearby: materials — further reach, twice the mending (engine/boosts.ts, the badge's rule)
+    const supplied = makerSupplied({ x: m.x, y: m.y, w: m.width, h: m.height }, works);
+    // a library beside it doubles its reach (lane pairing, interdependence §9)
+    const r = (supplied ? MAKER_RADIUS_SUPPLIED : MAKER_RADIUS) * (pairedWith(world.map, { x: m.x, y: m.y, w: m.width, h: m.height }, BuiltKind.Library) ? 2 : 1);
+    boxes.push({ x0: m.x - r, y0: m.y - r, x1: m.x + m.width - 1 + r, y1: m.y + m.height - 1 + r, repair: supplied ? 2 * MAKER_REPAIR : MAKER_REPAIR });
   }
   if (boxes.length === 0) return 0;
   let mended = 0;
   for (const i of parcels.aliveIndices()) {
     const p = parcels.get(i);
     if (p.kind === BuiltKind.MakerSpace || p.kind === BuiltKind.Ruin || p.condition >= 255) continue; // a ruin isn't mended
-    const near = boxes.some((b) => p.x <= b.x1 && p.x + p.width - 1 >= b.x0 && p.y <= b.y1 && p.y + p.height - 1 >= b.y0);
-    if (!near) continue;
-    parcels.setCondition(i, p.condition + MAKER_REPAIR);
+    let repair = 0;
+    for (const b of boxes) if (p.x <= b.x1 && p.x + p.width - 1 >= b.x0 && p.y <= b.y1 && p.y + p.height - 1 >= b.y0) repair = Math.max(repair, b.repair);
+    if (repair === 0) continue;
+    parcels.setCondition(i, Math.min(255, p.condition + repair));
     mended++;
   }
   return mended;

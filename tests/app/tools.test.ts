@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createToolController, type ToolsDeps } from '../../src/app/tools';
 import { GameMap } from '../../src/engine/map';
-import { ParcelStore, BuiltKind, placeTransport } from '../../src/engine/fabric';
+import { ParcelStore, BuiltKind, placeParcel, placeTransport } from '../../src/engine/fabric';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { availableTools, type Wallet } from '../../src/tools/tools';
@@ -240,6 +240,19 @@ describe('createToolController: preview / apply', () => {
     expect(new Set(tiles.map((t) => t.valid)).size).toBe(1);
     h.tools.previewAt(3, 1); // over the street: refused, every tile red
     expect((h.previews.at(-1) as { valid: boolean }[]).every((t) => !t.valid)).toBe(true);
+  });
+
+  // Lane pairings (interdependence §9): placing a building lights what it would pair with, and names the pairing.
+  it('the preview lights the buildings it would pair with, and names the pairing in the status line', () => {
+    const h = setup();
+    placeParcel(h.map, h.deps.world.parcels, { x: 6, y: 4, width: 2, height: 2, kind: BuiltKind.HealingCommons });
+    h.mount().onSelect(`build-${BuiltKind.Clinic}`);
+    h.previews.length = 0;
+    h.log.length = 0;
+    h.tools.previewAt(3, 4);
+    const tiles = h.previews.at(-1) as { x: number; y: number; pair?: boolean }[];
+    expect(tiles.some((t) => t.pair && t.x === 6 && t.y === 4)).toBe(true);
+    expect(h.log.some((l) => l.startsWith('status:Pairs with the Healing Commons'))).toBe(true);
   });
 
   it('inspect writes its readout to the status line and mutates nothing', () => {

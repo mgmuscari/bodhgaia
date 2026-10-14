@@ -22,6 +22,7 @@ import { buildProject, economyHour, liveProjects, practiceProject, practiceTerms
 import { projectProgress } from '../economy/projects';
 import { economyLine } from '../ui/economyContent';
 import { budgetView, type BudgetView } from '../ui/budgetContent';
+import { indicatorLines, type IndicatorReading } from '../economy/indicators';
 import { gameClock } from '../ui/lighting';
 import { gameSec } from '../ui/gameTime';
 import type { Wallet } from '../tools/tools';
@@ -61,6 +62,10 @@ export interface EconomyDeps {
     unhousedVisits?: { get(tile: number): number | undefined };
   };
   powerGrid: () => PowerGrid;
+  /** How the people out now are getting around (live/stats.ts) — for the indicators. */
+  modes?: () => IndicatorReading['modes'];
+  /** The city's schooling lift on its jobs, residents-weighted, ≥ 1 (live/school.ts) — for employment. */
+  jobsLift?: () => number;
   /** A resumed game's run (null → a new city, primed on its first hour with occupancy). */
   initial: EconomyRun | null;
   /** A construction site was finished and stands as its building now (rebuild the base, re-solve power…). */
@@ -143,6 +148,8 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
   let econPrimed = deps.initial !== null; // the opening reserve is set on the first hour with live occupancy to read
   let econFundsPerHour = 0;
   let lastCity: CityReading | null = null; // the last hour's reading (the Budget window projects from it)
+  let indicators: IndicatorReading | null = null; // this hour's and the last hour's indicators (their trend)
+  let prevIndicators: IndicatorReading | null = null;
   let econSlot = gameClock(nowSec()).slot;
   let prevViolence = violenceTotal();
 
@@ -163,6 +170,13 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     prevViolence = violence;
     const city = readNow(harms);
     lastCity = city;
+    prevIndicators = indicators;
+    indicators = {
+      jobs: (city.jobs ?? 0) * (deps.jobsLift?.() ?? 1), // a taught city gets more of its jobs
+      residents: city.households,
+      condition: city.meanCondition ?? 0,
+      modes: deps.modes?.() ?? { walk: 0, bike: 0, transit: 0, car: 0 },
+    };
     econCapacity = effortCapacity(city);
     if (!econPrimed && econCapacity > 0) {
       econPrimed = true;
@@ -243,7 +257,10 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       }
       if (econSlot < hourNow) econSlot = hourNow;
     },
-    budgetView: () => budgetView(econ.state, cityForBudget(), leversNow()),
+    budgetView: () => ({
+      ...budgetView(econ.state, cityForBudget(), leversNow()),
+      indicators: indicators ? indicatorLines(indicators, prevIndicators) : [],
+    }),
     setTax: (cls, rate) => {
       econ = { ...econ, levers: { ...econ.levers, tax: { ...econ.levers.tax, [cls]: rate } } };
     },

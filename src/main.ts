@@ -67,6 +67,10 @@ import { installNoBrowserZoom } from './app/noBrowserZoom';
 import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
 import { mountWhatsNew } from './ui/whatsNewPanel';
 import { GAME_VERSION } from './ui/creditsContent';
+import { travelModes } from './live/stats';
+import { createHealthController } from './app/health';
+import { foodHour } from './live/food';
+import { learningLift, learningNear, stepLearning } from './live/school';
 
 
 export function main(save: SaveV1 | null = null): void {
@@ -167,6 +171,17 @@ export function main(save: SaveV1 | null = null): void {
     sim: deps,
     live: live.state,
     powerGrid: power.grid,
+    modes: () => travelModes(live.state), // how people get around, for the indicators
+    jobsLift: () => {
+      let w = 0;
+      let sum = 0;
+      for (const h of live.state.households ?? []) {
+        const occ = live.state.occupancy.get(world.map.idx(h.x, h.y)) ?? 0;
+        w += occ;
+        sum += occ * learningLift(learningNear(live.state, world.map, h.x, h.y));
+      }
+      return w > 0 ? sum / w : 1;
+    },
     initial: save?.econ ?? null,
     // tenant organising protects homes; rent's displaced leave real homes into the unhoused (rehoming.md)
     voiceAt: (t) => neighborhoodVoice(civic, deps.partition, t),
@@ -202,6 +217,20 @@ export function main(save: SaveV1 | null = null): void {
     },
   });
 
+  // Neighbourhood health (interdependence §1): recomputed on the civic cadence; the overlay, inspect and events read it.
+  const health = createHealthController({
+    map: world.map,
+    parcels: world.parcels,
+    civic: deps.civic,
+    partition: () => deps.partition,
+    occupancyAt: (t) => live.state.occupancy.get(t),
+    coverage: () => live.state.coverage,
+    foodAccess: () => live.state.foodAccess,
+    jobsLiftAt: (x, y) => learningLift(learningNear(live.state, world.map, x, y)),
+    stepLearning: () => stepLearning(live.state, world.map),
+  });
+  health.recompute();
+
   // Created BEFORE the dock mounts: the dock reads the overlay and the panel flags at mount (the registry reports
   // every panel closed until attach()).
   const overlays = createOverlayController({
@@ -213,6 +242,7 @@ export function main(save: SaveV1 | null = null): void {
       poweredAnchors: power.grid().poweredAnchors,
       civic: deps.civic,
       tileToNeighborhood: deps.partition.tileToNeighborhood,
+      health: (id) => health.byId(id)?.health ?? 0,
     }),
     showLegend: (legend) => showLegend(legend),
     setStatus: (text) => toolbar.setStatus(text),
@@ -246,7 +276,8 @@ export function main(save: SaveV1 | null = null): void {
       },
     },
     techPanel: () => mounted.tech,
-    inspect: (info, tx, ty) => inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors, power.grid().storage),
+    inspect: (info, tx, ty) =>
+      inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors, power.grid().storage, health.at(world.map.idx(tx, ty))?.health),
     siteLaid: (site) => economy.startBuild(site), // a commons work rises as the commons pays for it
     placed: () => {
       power.recompute(); // a new plant lights its district
@@ -306,7 +337,7 @@ export function main(save: SaveV1 | null = null): void {
     markDirty();
   };
   syncStreetProps();
-  const showLegend = mountOverlayLegend(document.body);
+  const showLegend = mountOverlayLegend(document.body, (name) => renderer.iconImage(name));
 
   // The news ticker along the status bar: the city's changes as headlines (arrests, homes lost and found, gridlock,
   // outages), plus the economy's moments pushed above.
@@ -372,7 +403,7 @@ export function main(save: SaveV1 | null = null): void {
 
   // The two clocks: the fixed-tick sim (a resumed game keeps its clock — repair rings are stamped in ticks) and
   // the rAF frame (the live layer steps on its own clock inside it).
-  const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
+  const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, health, pulse, restore: () => mounted.restore, markDirty });
   // The opening's first act — the night: epigraphs, a walk to a death, the mantra, the dawn — then the city's
   // indictment (the statistics + chronicle overlay), then play.
   // What's new (Maddy 2026-10-13): the release notes a returning player hasn't seen, once, on the first launch of a
@@ -446,6 +477,7 @@ export function main(save: SaveV1 | null = null): void {
   // remembered in this browser (storage may be unavailable: then they simply play each time).
   const LESSONS_KEY = 'bodhgaia.lessonsSeen';
   const lessons = createLessons({
+    unlocked: () => tech.unlocked,
     storage: {
       get: () => {
         try {
@@ -501,6 +533,17 @@ export function main(save: SaveV1 | null = null): void {
       news.push('A life lost to violence on the street');
     }
   };
+  // The food chain (interdependence §2): once a game hour, the harvest flows to pantries and banks, banks send vans,
+  // and the homes fed have food access (a part of neighbourhood health).
+  let foodHourAt = -1;
+  const runFoodNow = (): void => {
+    const h = gameClock(gameSec()).hour;
+    if (h === foodHourAt) return;
+    foodHourAt = h;
+    const r = foodHour((live.state.food ??= { stock: new Map() }), world.map, world.parcels, (t) => live.state.occupancy.get(t) ?? 0);
+    live.state.foodAccess = r.access;
+    live.state.foodRuns = r.deliveries; // this hour's van runs
+  };
   const drawSpillsNow = (): void => {
     if (!disastersOn()) return;
     for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
@@ -514,6 +557,7 @@ export function main(save: SaveV1 | null = null): void {
 
   // Community events (community-events.md): from conditions, never called — block parties first.
   const community = createCommunity({
+    health: (hood) => health.byId(hood)?.health,
     world,
     live: live.state,
     civic,
@@ -616,6 +660,7 @@ export function main(save: SaveV1 | null = null): void {
       community.frame(now);
       fire.frame(now);
       drawSpillsNow();
+      runFoodNow();
       drawCrashesNow();
       drawCrimeNow();
       events.frame(now);

@@ -15,6 +15,7 @@ import { POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS, seconds } from '../live
 import type { NeighborhoodMap } from '../civic/neighborhoods';
 import { GATHER_LEAVE, startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
 import { closeTiles } from '../live/network';
+import { pairedHoods } from '../engine/pairings';
 
 /** Wall ms between community steps (events are drawn once a game hour). */
 export const COMMUNITY_STEP_MS = 1000;
@@ -22,6 +23,8 @@ export const COMMUNITY_STEP_MS = 1000;
  *  at full belonging; how long one lasts (substeps, ~1 min); its crowd; and what it leaves behind. */
 export const PARTY_BELONGING = 0.3;
 export const PARTY_TRUST = 0.2;
+/** …and the neighbourhood health it needs, 0..255 (interdependence §1: health gates the events). */
+export const PARTY_HEALTH = 110;
 export const PARTY_CHANCE = 0.06;
 export const PARTY_LIFE = seconds(70);
 export const PARTY_CROWD = 10;
@@ -87,6 +90,8 @@ export interface CommunityDeps {
   practised(id: string): boolean;
   /** The city's approval, 0..100. */
   approval(): number;
+  /** A neighbourhood's health, 0..255 (app/health.ts) — undefined before the first reading. */
+  health?(hood: number): number | undefined;
   /** Move the city's approval, goodwill and money (economy). */
   cheer(d: { approval?: number; goodwill?: number; funds?: number }): void;
   /** Set a building alight (the fire controller). */
@@ -370,6 +375,8 @@ export function createCommunity(deps: CommunityDeps): Community {
       if (civic.count() > 0 && trust / civic.count() >= FEST_TRUST && rng.next() < FEST_CHANCE && holdFestival(part)) busy.add(0);
     }
     const fairs = deps.practised('craft-fairs');
+    // a maker space paired with a bazaar: craft fairs twice as often there (lane pairing, interdependence §9)
+    const makersAtBazaars = fairs ? pairedHoods(deps.world.map, deps.world.parcels, part.tileToNeighborhood, BuiltKind.MakerSpace, BuiltKind.Bazaar) : new Set<number>();
     for (let hood = 1; hood <= civic.count(); hood++) {
       if ((live.gatherings?.length ?? 0) >= MAX_GATHERINGS) return;
       if (busy.has(hood)) continue;
@@ -389,11 +396,12 @@ export function createCommunity(deps: CommunityDeps): Community {
         }
       }
       const belonging = above(v.belonging, SEED_BELONGING);
-      if (fairs && belonging >= FAIR_BELONGING && rng.next() < FAIR_CHANCE && holdFair(part, hood)) {
+      if (fairs && belonging >= FAIR_BELONGING && rng.next() < FAIR_CHANCE * (makersAtBazaars.has(hood) ? 2 : 1) && holdFair(part, hood)) {
         busy.add(hood);
         continue;
       }
       if (belonging < PARTY_BELONGING || above(v.trust, SEED_TRUST) < PARTY_TRUST) continue;
+      if ((deps.health?.(hood) ?? PARTY_HEALTH) < PARTY_HEALTH) continue; // a frayed neighbourhood doesn't party
       if (rng.next() >= PARTY_CHANCE * belonging) continue;
       if (holdParty(part, hood)) busy.add(hood);
     }

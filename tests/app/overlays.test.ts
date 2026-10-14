@@ -16,7 +16,7 @@ function setup() {
     return {
       map,
       parcels: new ParcelStore(),
-      live: { pollution: new Map(), groundPollution: new Map(), waterPollution: new Map(), coverage: new Set() },
+      live: { pollution: new Map(), groundPollution: new Map(), waterPollution: new Map(), coverage: new Set(), buildingHealth: new Map() },
       poweredAnchors: new Set(),
       civic: { count: () => 0, getValues: () => ({ belonging: 0, voice: 0, trust: 0 }) },
       tileToNeighborhood: new Uint16Array(8),
@@ -55,14 +55,19 @@ describe('createOverlayController', () => {
       overlays.cycle('civic');
       seen.push(overlays.active()?.view ?? null);
     }
-    expect(seen).toEqual(['belonging', 'voice', 'trust', null]);
+    expect(seen).toEqual(['health', 'belonging', 'voice', 'trust', null]); // the hub first (interdependence §1)
     expect(log.status).toEqual([...OVERLAYS.civic.views.map((v) => OVERLAYS.civic.legendLine(v)), null]);
-    expect(log.legend).toEqual([...OVERLAYS.civic.views.map((v) => OVERLAYS.civic.legend(v)), null]);
-    expect(log.base.slice(0, 3).every((s) => s !== null)).toBe(true);
-    expect(log.base[3]).toBeNull(); // off → the plain map
-    expect(log.live).toEqual([null, null, null, null]);
-    expect(log.dirty).toBe(4);
-    expect(log.meta).toBe(4);
+    // the key follows each view's source: stretched, it names the range the ramp spans
+    expect(log.legend).toEqual([
+      ...OVERLAYS.civic.views.map((v, k) => OVERLAYS.civic.legend(v, (log.base[k] as { range?: { lo: number; hi: number } }).range)),
+      null,
+    ]);
+    expect(log.legend.slice(0, 4).every((l) => l !== null && l.title.includes('%'))).toBe(true);
+    expect(log.base.slice(0, 4).every((s) => s !== null)).toBe(true);
+    expect(log.base[4]).toBeNull(); // off → the plain map
+    expect(log.live).toEqual([null, null, null, null, null]);
+    expect(log.dirty).toBe(5);
+    expect(log.meta).toBe(5);
   });
 
   it('police is a live overlay: no base source, the renderer draws it per frame', () => {
@@ -76,7 +81,7 @@ describe('createOverlayController', () => {
     expect(log.base[1]).not.toBeNull();
   });
 
-  it('re-pushes on its source tick only: eco rebuilds for biodiversity, repaints for the rest', () => {
+  it('re-pushes on its source tick only: every eco view rebuilds (its stretched range) and re-keys', () => {
     const { overlays, log, contexts } = setup();
     overlays.onSimTick({ ecoTicked: true, civicTicked: true }); // off → nothing
     expect(log.dirty).toBe(0);
@@ -85,9 +90,11 @@ describe('createOverlayController', () => {
     const d0 = log.dirty;
     overlays.onSimTick({ ecoTicked: false, civicTicked: true }); // wrong cadence
     expect(log.dirty).toBe(d0);
-    overlays.onSimTick({ ecoTicked: true, civicTicked: false }); // soil: repaint only
+    const k0 = log.legend.length;
+    overlays.onSimTick({ ecoTicked: true, civicTicked: false }); // soil: rebuilt over today's values
     expect(log.dirty).toBe(d0 + 1);
-    expect(contexts()).toBe(c0);
+    expect(contexts()).toBe(c0 + 1);
+    expect(log.legend.length).toBe(k0 + 1); // the key re-shown with the new range
     for (let n = 0; n < 3; n++) overlays.cycle('eco'); // → biodiversity
     expect(overlays.active()?.view).toBe('biodiversity');
     const c1 = contexts();

@@ -512,6 +512,49 @@ const yard: Painter = (W, H, v) => {
   return p;
 };
 
+/** An urban farm: long beds of greens and squash in dark soil, a polytunnel, a water tank. */
+const urbanFarm: Painter = (W, H, v) => {
+  const p = lot(W, H, 'dirt', 700 + v);
+  for (let y = 2; y < H - 2; y += 3) {
+    for (let x = 1; x < W - 9; x++) px(p, x, y, (x * 3 + y + v) % 7 === 0 ? C.gold : C.leaf);
+    for (let x = 1; x < W - 9; x += 2) px(p, x, y - 1, C.leafHi);
+  }
+  const L = blank(W, H);
+  rect(L, W - 8, 2, 6, H - 8, C.foam); // the polytunnel
+  for (let y = 3; y < H - 7; y += 2) hline(L, W - 7, W - 4, y, C.glassHi);
+  tank(L, W - 5, H - 3, 2, C.roofBlue, C.roofBlueHi);
+  place(p, L);
+  return p;
+};
+
+/** A food bank: a warehouse with a roll-up door, crates on a loading dock, a green sign. */
+const foodBank: Painter = (W, H, v) => {
+  const p = lot(W, H, 'pave', 710 + v);
+  const L = blank(W, H);
+  flat(L, 2, 2, W - 4, 8, CONCRETE, 711 + v);
+  wall(L, 2, 10, W - 4, H - 15, C.cream, C.creamLo);
+  rect(L, 5, H - 9, 8, 4, C.slate); // the roll-up door
+  for (let y = H - 9; y < H - 5; y += 2) hline(L, 5, 12, y, C.slateLo);
+  hline(L, W - 12, W - 5, 11, C.leaf); // the sign
+  for (const x of [W - 11, W - 8]) rect(L, x, H - 4, 2, 2, C.roofBrownHi); // crates
+  place(p, L);
+  return p;
+};
+
+/** A food pantry: a little shopfront with a striped green awning and a bench of crates out front. */
+const pantry: Painter = (W, H, v) => {
+  const p = lot(W, H, 'pave', 720 + v);
+  const L = blank(W, H);
+  gable(L, 2, 2, W - 4, 4, ROOF_GREEN);
+  wall(L, 2, 6, W - 4, H - 10, C.cream, C.creamLo);
+  for (let x = 2; x < W - 2; x++) px(L, x, 6, x % 2 === 0 ? C.leaf : C.petal); // the awning
+  door(L, (W >> 1) - 1, H - 6, 2, 2);
+  rect(L, 3, H - 4, 2, 2, C.roofBrownHi); // a crate of produce
+  px(L, 3, H - 4, C.roofRedHi);
+  place(p, L);
+  return p;
+};
+
 /** A mutual-aid shelter (Maddy 2026-10-13): a long hall under a brown gable, rows of lit windows, the door open
  *  under a little awning, a bench and a tree by the path in. */
 const shelter: Painter = (W, H, v) => {
@@ -715,6 +758,9 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [65, [ruin, 3]],
   [68, [vacantLot, 1]],
   [69, [shelter, 1]],
+  [70, [urbanFarm, 1]],
+  [71, [foodBank, 1]],
+  [72, [pantry, 1]],
   [58, [bazaar, 2]],
   [59, [makerSpace, 1]],
   [60, [healingCommons, 1]],

@@ -23,6 +23,16 @@ function setup() {
 }
 
 describe('inspectReadout: the inspect tool status line', () => {
+  it('a boosted building says why (engine/boosts.ts — the map badge\'s reason); an unboosted one says nothing', () => {
+    const { map, parcels, live, world } = setup();
+    placeParcel(map, parcels, { x: 2, y: 2, width: 2, height: 2, kind: BuiltKind.School });
+    expect(inspectReadout('School', 2, 2, world, live, new Set())).not.toContain('boosted');
+    placeParcel(map, parcels, { x: 5, y: 2, width: 2, height: 2, kind: BuiltKind.Library });
+    expect(inspectReadout('School', 3, 3, world, live, new Set())).toContain(
+      ' · boosted: Pairs with the Library: the school teaches twice as fast',
+    );
+  });
+
   it('bare land: the tool info + the HOLC redline grade, nothing live', () => {
     const { map, live, world } = setup();
     map.redline[map.idx(3, 3)] = 200;

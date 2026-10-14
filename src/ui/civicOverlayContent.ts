@@ -8,8 +8,9 @@ import type { OverlayLegend } from './overlayLegend';
 import { OVERLAY_ALPHA, lerpU8 } from './overlayTint';
 
 /** The three civic heatmap views, in cycle order. */
-export type CivicOverlayView = 'belonging' | 'voice' | 'trust';
-export const CIVIC_VIEWS: readonly CivicOverlayView[] = ['belonging', 'voice', 'trust'];
+export type CivicOverlayView = 'belonging' | 'voice' | 'trust' | 'health';
+/** Neighbourhood health (civic/health.ts — the hub, interdependence §1) shows first: it sums the rest up. */
+export const CIVIC_VIEWS: readonly CivicOverlayView[] = ['health', 'belonging', 'voice', 'trust'];
 
 /** Fixed translucency for every civic overlay tint (matches the ecology overlay). */
 export const CIVIC_OVERLAY_ALPHA = OVERLAY_ALPHA;
@@ -23,6 +24,7 @@ const RAMPS: Record<CivicOverlayView, { lo: RGB; hi: RGB }> = {
   belonging: { lo: [70, 54, 64], hi: [245, 185, 70] }, // muted → warm amber (held)
   voice: { lo: [120, 60, 180], hi: [56, 200, 210] }, // violet (quiet) → cyan (heard)
   trust: { lo: [78, 92, 112], hi: [226, 190, 78] }, // slate (wary) → gold (trusting)
+  health: { lo: [150, 64, 56], hi: [72, 196, 120] }, // frayed brick → thriving green
 };
 
 /**
@@ -42,6 +44,7 @@ const LEGENDS: Record<CivicOverlayView, string> = {
   belonging: 'Belonging — adrift to held',
   voice: 'Voice — unheard to heard',
   trust: 'Trust — wary to trusting',
+  health: 'Neighbourhood health — frayed to thriving',
 };
 
 /** The dock legend line for an active civic overlay view. */
@@ -53,6 +56,7 @@ const CIVIC_LEGEND_ENDS: Record<CivicOverlayView, { title: string; lo: string; h
   belonging: { title: 'Belonging', lo: 'adrift', hi: 'held' },
   voice: { title: 'Voice', lo: 'unheard', hi: 'heard' },
   trust: { title: 'Trust', lo: 'wary', hi: 'trusting' },
+  health: { title: 'Neighbourhood health', lo: 'frayed', hi: 'thriving' },
 };
 
 /** The structured colour KEY for a civic overlay view: the ramp endpoints as labelled swatches. */

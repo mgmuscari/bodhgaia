@@ -80,6 +80,8 @@ export const TECH_TREE: readonly TechNode[] = [
     'Scraps return as black gold; the neighborhood closes its own nutrient loop.'),
   node('community-gardens', GreenDevelopment, 'Community Gardens', ['urban-composting', 'road-diets'], 25, kind(BuiltKind.CommunityGarden),
     'Vacant lots turn to rows of chard and marigold, tended by whoever shows up.'),
+  node('urban-farms', GreenDevelopment, 'Urban Farms', ['community-gardens'], 30, kind(BuiltKind.UrbanFarm),
+    'Whole blocks given to beds and polytunnels; the city feeds itself from its own ground.'),
   node('vertical-farming', GreenDevelopment, 'Vertical Farming', ['community-gardens'], 40, kind(BuiltKind.VerticalFarm),
     'Greens climb the walls; a warehouse becomes an acre stacked toward the sun.'),
   node('wastewater-recycling', GreenDevelopment, 'Wastewater Recycling', ['soil-and-soul'], 30, kind(BuiltKind.WastewaterWorks),
@@ -102,7 +104,7 @@ export const TECH_TREE: readonly TechNode[] = [
     'Neighbors decide where the money goes, line by line, out in the open.'),
 
   // --- Intentional Communities ----------------------------------------------
-  node('shared-table', IntentionalCommunities, 'Shared Table', [], 10, cap('shared-table'),
+  node('shared-table', IntentionalCommunities, 'Shared Table', [], 10, { capabilities: ['shared-table'], kinds: [BuiltKind.Pantry] },
     'Strangers become neighbors over a shared meal; the table is the first institution.'),
   node('adus', IntentionalCommunities, 'Accessory Dwellings', ['shared-table'], 15, kind(BuiltKind.ADU),
     'A backyard cottage, a converted garage — room for elders, kids, and newcomers.'),
@@ -144,7 +146,7 @@ export const TECH_TREE: readonly TechNode[] = [
     'A star in a bottle, owned in common; limitless clean power and nothing to mine.'),
 
   // --- Anarcho-Communism -----------------------------------------------------
-  node('mutual-aid', AnarchoCommunism, 'Mutual Aid', [], 10, { capabilities: ['mutual-aid'], kinds: [BuiltKind.Shelter] },
+  node('mutual-aid', AnarchoCommunism, 'Mutual Aid', [], 10, { capabilities: ['mutual-aid'], kinds: [BuiltKind.Shelter, BuiltKind.FoodBank] },
     "Neighbors cover each other's needs directly; solidarity, not charity, not markets."),
   node('collective-ownership', AnarchoCommunism, 'Collective Ownership', ['mutual-aid', 'community-land-trust'], 25, cap('collective-ownership'),
     'The means of making things belong to the people who use them, together.'),

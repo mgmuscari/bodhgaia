@@ -43,6 +43,8 @@ export const TRUST_FLOOR = 40;
 // by how redlined it is (redlined + policed = worst). NOT a service — the player undoes
 // it by DEFUNDING (convert the precinct to a Healing Commons) and by community
 // alternatives (the voice caps below), which can outweigh the suppression.
+/** A school is a civic hub where parents organise (Maddy 2026-10-14): its neighbourhood gains this voice a tick. */
+export const SCHOOL_VOICE = 1;
 const POLICE_VOICE_PEN = 3; // voice lost per tick in a fully-redlined policed neighborhood
 const POLICE_TRUST_PEN = 2; // trust lost per tick in a fully-redlined policed neighborhood
 const RECENT_WINDOW = 100; // a repair counts as "recent" within this many ticks
@@ -95,7 +97,8 @@ export function civicTick(
   const condTiles = new Int32Array(count);
   const gathering = new Uint8Array(count); // 0/1: a gathering place is present
   const gradeSum = new Float64Array(count); // redline grade summed (for the policing intensity)
-  const precinctTiles = new Int32Array(count); // 0+ : police presence in the neighborhood
+  const precinctTiles = new Int32Array(count);
+  const school = new Uint8Array(count); // 0+ : police presence in the neighborhood
   for (let i = 0; i < n; i++) {
     const id = t2n[i]!;
     if (id === 0 || id > count) continue;
@@ -109,6 +112,7 @@ export function civicTick(
       condTiles[k]!++;
       if (GATHERING_KINDS.has(map.built[i]!)) gathering[k] = 1;
       if (map.built[i]! === BuiltKind.Precinct) precinctTiles[k]!++;
+      if (map.built[i]! === BuiltKind.School) school[k] = 1;
     }
   }
 
@@ -158,7 +162,7 @@ export function civicTick(
     // Community alternatives (the caps) can outweigh the suppression — that's the
     // point: organizing recovers the voice the precinct silences. Locked caps with a
     // precinct present ⇒ voice declines.
-    const voice = clampByte(prev.voice + voiceBand(prev.belonging) * capBase - policeVoice);
+    const voice = clampByte(prev.voice + voiceBand(prev.belonging) * capBase - policeVoice + (school[k] === 1 ? SCHOOL_VOICE : 0));
 
     // Trust rises on a recent repair, slow-decays otherwise, minus over-policing,
     // floored at TRUST_FLOOR. Policing accelerates the erosion; repairs counter it.

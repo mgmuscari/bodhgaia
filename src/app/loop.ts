@@ -33,6 +33,8 @@ export interface SimTickCtx {
     publishWelcome(voiceAt: (tile: number) => number): void;
   };
   overlays: { onSimTick(r: SimTickResult): void };
+  /** Neighbourhood health (app/health.ts), recomputed on the civic cadence before the overlays re-read it. */
+  health?: { recompute(): void };
   pulse: { tick(): void };
   /** The Restoration window — mounted after the loop's creation is fine; read at tick time. */
   restore: () => { refresh(): void };
@@ -61,6 +63,7 @@ export function createSimTick(ctx: SimTickCtx): SimTicker {
       currentTick = tick;
       const r = simTick(sim, tick);
       changed = true; // effort accrued / grants may have moved → re-sync next frame
+      if (r.civicTicked) ctx.health?.recompute(); // the hub, before the overlays re-read it
       ctx.overlays.onSimTick(r); // the active overlay's source ticked → re-push it
       if (r.lotsRecovered) ctx.markDirty(); // a vacant lot grew back → rebuild the base
       if (!r.civicTicked) return;

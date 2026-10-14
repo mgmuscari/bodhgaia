@@ -55,6 +55,7 @@ import {
 } from './pathing';
 import { curbStallOffsets, isCarRoad, isParkable } from './network';
 import { takeHomeCar } from './homeCars';
+import { droneHub, launchDrone } from './drones';
 
 /**
  * Put a citizen in its owned car and commit the car to a least-cost route to a free parking spot near
@@ -266,8 +267,16 @@ export function advanceItinerary(state: AmbientState, p: Ped, map: GameMap): boo
       if (chosen === TravelMode.Drive && p.carId === undefined && p.homeTile !== undefined && !homeDrives(map, p.homeTile, tripHash)) chosen = TravelMode.Walk;
       // a drive into gridlock may simply not happen — the errand is forgone or folded into another
       if (chosen === TravelMode.Drive && tripEvaporates(jam, tripHash)) continue;
-      // Drone Deliveries: a driven shopping errand is delivered instead
-      if (chosen === TravelMode.Drive && itin[step] === StopCategory.Shop && tripDelivered(pr.droneShopDrop, tripHash)) continue;
+      // Drone Deliveries: a driven shopping errand from a home an AI node reaches is delivered instead — and flown
+      if (chosen === TravelMode.Drive && itin[step] === StopCategory.Shop && pr.droneShopDrop > 0 && p.homeTile !== undefined) {
+        const hx = p.homeTile % map.width;
+        const hy = (p.homeTile - hx) / map.width;
+        const hub = droneHub(map, hx, hy);
+        if (hub && tripDelivered(pr.droneShopDrop, tripHash)) {
+          launchDrone(state, hub, { x: hx, y: hy });
+          continue;
+        }
+      }
       p.itinStep = step;
       // If the citizen took its CAR out (carId set), it RETURNS TO THE CAR and drives to the next stop
       // — it doesn't abandon the car and walk off (Maddy: "if they've driven to a location, they should

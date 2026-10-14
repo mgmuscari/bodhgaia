@@ -5,6 +5,7 @@
 
 import type { GameMap } from '../engine/map';
 import { BuiltKind, isTransportKind, type ParcelStore } from '../engine/fabric';
+import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { CityReading } from './model';
 
 /** Money upkeep per in-game hour: per tile for transport, per parcel for buildings. */
@@ -35,6 +36,9 @@ export const UPKEEP: ReadonlyMap<number, number> = new Map<number, number>([
   [BuiltKind.WastewaterWorks, 2],
   [BuiltKind.RetentionPond, 0.6],
   [BuiltKind.Shelter, 0.6],
+  [BuiltKind.UrbanFarm, 0.6],
+  [BuiltKind.FoodBank, 0.6],
+  [BuiltKind.Pantry, 0.3],
   [BuiltKind.EnergyNode, 0.8],
   [BuiltKind.AINode, 1.5],
 ]);
@@ -125,7 +129,7 @@ export function reachOf(parcels: ParcelStore, kinds: ReadonlySet<number>, r: num
 /** Compost Hub: the gardens and farms within this reach need COMPOST_TENDING of their tending. */
 export const COMPOST_RADIUS = 4;
 export const COMPOST_TENDING = 0.5;
-const COMPOSTED: ReadonlySet<number> = new Set<number>([BuiltKind.CommunityGarden, BuiltKind.VerticalFarm]);
+const COMPOSTED: ReadonlySet<number> = new Set<number>([BuiltKind.CommunityGarden, BuiltKind.VerticalFarm, BuiltKind.UrbanFarm]);
 /** Bazaar: the shops within this reach are assessed BAZAAR_LIFT × (the bazaar draws a crowd). */
 export const BAZAAR_RADIUS = 4;
 export const BAZAAR_LIFT = 1.25;
@@ -229,10 +233,18 @@ export function readCity(inp: CityInputs): CityReading {
   let upkeep = 0;
   let tending = 0;
   let gathering = 0;
+  let jobsAll = 0;
+  let conditionSum = 0;
+  let buildings = 0;
   for (const i of parcels.aliveIndices()) {
     const p = parcels.get(i);
     const anchor = map.idx(p.x, p.y);
     const occ = inp.occupancyAt(anchor) ?? 0;
+    if (!UNBUILT.has(p.kind)) {
+      conditionSum += p.condition;
+      buildings++;
+    }
+    jobsAll += parcelJobs(p);
     const lv = (inp.landValueAt(anchor) ?? 0) / 255;
     if (RESIDENTIAL.has(p.kind)) {
       households += occ;
@@ -279,10 +291,24 @@ export function readCity(inp: CityInputs): CityReading {
     harms: inp.harms,
     repairs: inp.repairs,
     regenHouseholds: households + communeHouseholds * (COMMUNE_REGEN - 1),
+    jobs: jobsAll,
+    meanCondition: buildings > 0 ? conditionSum / buildings : 0,
     taxPainMul: pr.taxPainMul,
     burnoutHealMul: pr.burnoutHealMul,
   };
 }
+
+/** The jobs at a plot: a workplace's (shops, industry, the commune's market, any civic building) density × size ×
+ *  upkeep; 0 for a home, a green or a lot. */
+export function parcelJobs(p: { kind: number; density: number; condition: number; width: number; height: number }): number {
+  if (!(WORKPLACES.has(p.kind) || (zoneTypeOf(p.kind) === ZoneType.Civic && !UNBUILT.has(p.kind)))) return 0;
+  return p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
+}
+
+/** Workplaces for the jobs count (with every civic building): shops, offices, industry, the commune's market. */
+const WORKPLACES = new Set<number>([...COMMERCIAL, ...INDUSTRIAL, BuiltKind.Commune]);
+/** Lots that are not buildings — no condition, no jobs. */
+const UNBUILT = new Set<number>([BuiltKind.Yard, BuiltKind.ParkingLot, BuiltKind.VacantLot, BuiltKind.Site, BuiltKind.RetentionPond, BuiltKind.CommunityGarden, BuiltKind.Park, BuiltKind.RewildedLand, BuiltKind.CompostHub]);
 
 /** Mean land value 0..1 over the homes (what rent follows). */
 function meanLandValue(inp: CityInputs, map: GameMap): number {

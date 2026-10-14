@@ -7,6 +7,12 @@ import type { TutorialStep } from './tutorialContent';
 import { BATTERY_CAPACITY, LOCAL_GRID_RADIUS, SMART_GRID_CUT } from '../growth/power';
 import { COVERAGE_RADIUS, SAFE_RADIUS, SHELTER_RADIUS, WALK_RANGE, BIKE_RANGE, EVAPORATION, OCC_FLOOR } from '../live/tuning';
 import { ECON } from '../economy/model';
+import { ADJACENT_BONUS, BANK_REACH, PANTRY_FEED, PANTRY_REACH } from '../live/food';
+import { MAKER_RADIUS, MAKER_RADIUS_SUPPLIED } from '../growth/revival';
+import { MAKER_SUPPLY } from '../engine/fabric';
+import { DRONE_RADIUS } from '../live/drones';
+import { PAIRINGS, PAIR_REACH } from '../engine/pairings';
+import { TECH_TREE } from '../tech/tree';
 
 export type LessonStep = Extract<TutorialStep, { kind: 'say' } | { kind: 'ui' }>;
 
@@ -22,6 +28,10 @@ const say = (text: string): LessonStep => ({ kind: 'say', text });
 const point = (target: string, text: string): LessonStep => ({ kind: 'ui', target, text });
 const pct = (v: number): string => `${Math.round(v * 100)}%`;
 
+/** Every practice that opens a building that pairs (engine/pairings.ts) — a new pairing joins the lesson by itself. */
+const PAIRED_KINDS = new Set<number>(PAIRINGS.flatMap((p) => [p.a, p.b]));
+const OPENS_A_PAIRING = TECH_TREE.filter((n) => (n.grants.kinds ?? []).some((k) => PAIRED_KINDS.has(k))).map((n) => n.id);
+
 export const LESSONS: readonly Lesson[] = [
   {
     id: 'organising',
@@ -29,7 +39,8 @@ export const LESSONS: readonly Lesson[] = [
     techs: ['circles', 'participatory-budgeting', 'gift-circles', 'coop-housing', 'communes', 'tiny-home-villages'],
     steps: [
       say('A neighbourhood is a district between the big roads. Each has belonging, trust — and voice: how organised its people are.'),
-      point('[data-meta-id="civic"]', 'The Civic overlay shows them. Circles, Budgeting and Gift Circles raise voice; police on redlined streets silence it.'),
+      point('[data-meta-id="civic"]', 'The Civic overlay opens on neighbourhood health — all of it at once: belonging, voice and trust, the ground, repairs, work, care and food. Press C again for each part.'),
+      say('Circles, Budgeting and Gift Circles raise voice; police on redlined streets silence it.'),
       say('An organised neighbourhood protects its homes: rent can’t push its people out. And it welcomes the unhoused back into its empty rooms.'),
       point('.pulse-dock', 'Watch the Unhoused count. Co-ops and communes make room for people whatever the neighbourhood; a tiny-home village shelters only those who have nowhere else.'),
     ],
@@ -69,7 +80,7 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: 'ecology',
     title: 'Soil, plants and animals',
-    techs: ['soil-and-soul', 'urban-composting', 'community-gardens', 'rewilding', 'pocket-parks', 'wastewater-recycling', 'retention-ponds', 'vertical-farming'],
+    techs: ['soil-and-soul', 'urban-composting', 'community-gardens', 'urban-farms', 'rewilding', 'pocket-parks', 'wastewater-recycling', 'retention-ponds', 'vertical-farming'],
     steps: [
       point('[data-meta-id="eco"]', 'The Eco overlay: soil, plants and animals. Pavement seals the soil; busy roads cut animals off from each other.'),
       say('Greens heal the ground around them, and quiet streets and bike paths let wildlife cross. Rewilded land tends itself.'),
@@ -106,7 +117,55 @@ export const LESSONS: readonly Lesson[] = [
       say(`Mutual Aid means no home thins below half its people (it was ${pct(OCC_FLOOR)}) — neighbours take each other in.`),
     ],
   },
+  // The interdependence mechanics (docs/design/interdependence.md; Maddy 2026-10-14) — each at the practice that opens it.
+  {
+    id: 'food',
+    title: 'Food, field to table',
+    techs: ['shared-table', 'mutual-aid', 'community-gardens', 'urban-farms'],
+    steps: [
+      say(`Gardens and farms grow food every hour. A harvest goes to the nearest pantry within ${PANTRY_FEED} tiles, or else to a food bank within ${BANK_REACH} tiles.`),
+      say(`Each hour a food bank sends vans to the emptiest pantries within ${BANK_REACH} tiles, and a stocked pantry feeds the homes within ${PANTRY_REACH} tiles.`),
+      say(`Grow right beside a pantry or a bank and nothing is lost on the way: the harvest counts ${ADJACENT_BONUS}×.`),
+      point('[data-meta-id="civic"]', 'Fed homes are healthier homes: food is one part of neighbourhood health, the Civic overlay’s first view.'),
+    ],
+  },
+  {
+    id: 'making',
+    title: 'Makers and the works',
+    techs: ['maker-spaces'],
+    steps: [
+      say(`A maker space mends the buildings within ${MAKER_RADIUS} tiles of it, a little at a time.`),
+      say(`With industry within ${MAKER_SUPPLY} tiles, the works supplies the materials: the makers reach ${MAKER_RADIUS_SUPPLIED} tiles and mend twice as fast.`),
+      say('And the makers turn the works’ scrap into repairs, so that works poisons its ground half as much. Build them side by side.'),
+    ],
+  },
+  {
+    id: 'drones',
+    title: 'Dispatch and drones',
+    techs: ['community-ai-nodes', 'drone-deliveries'],
+    steps: [
+      say(`A Community AI Node is a dispatch hub. With Drone Deliveries, some of the shopping people would drive to, from homes within ${DRONE_RADIUS} tiles of a node, is flown to them instead.`),
+      say('Every drone is a car that stays parked: less traffic, less smog.'),
+      say('A food bank beside an AI node sends its pantry runs by drone instead of by van.'),
+    ],
+  },
+  {
+    id: 'pairings',
+    title: 'Buildings that work together',
+    techs: OPENS_A_PAIRING,
+    steps: [
+      say(`Some buildings work together — a library and a school, a compost hub and a farm, a food bank and an AI node. When two partners stand within ${PAIR_REACH} tiles of each other, both get a bonus.`),
+      say('Hold a building tool near a partner: the partner lights up and the status line names the bonus.'),
+      say('A boosted building wears a cyan sparkle. Inspect it to see why.'),
+      point('[data-meta-id="status"]', 'The Status view (K) dims the map to the buildings wearing a badge — no power, a home suffering or thriving, boosted — and its key says what each one means.'),
+    ],
+  },
 ];
+
+/** Every lesson `techId` belongs to that hasn't been seen, in order — a practice can open more than one mechanic. */
+export function lessonsFor(techId: string, seen: ReadonlySet<string>): Lesson[] {
+  return LESSONS.filter((l) => l.techs.includes(techId) && !seen.has(l.id));
+}
 
 /** The first lesson `techId` belongs to that hasn't been seen, or null. */
 export function lessonFor(techId: string, seen: ReadonlySet<string>): Lesson | null {

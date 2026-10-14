@@ -221,6 +221,15 @@ export interface Dying {
   called?: boolean;
 }
 
+/** A food bank's delivery van (live/vans.ts): out to a pantry, unloading, back to the bank. */
+export interface Van extends Mover {
+  run: 'out' | 'unload' | 'back';
+  /** The road tile by its bank, to drive back to. */
+  home: { x: number; y: number };
+  /** Substeps left unloading. */
+  wait: number;
+}
+
 /** An ambulance on a call (Maddy 2026-10-12): out to a collapsed resident, a moment to take them aboard, back to its
  *  clinic — where the patient goes home (rescueResident). */
 export interface Ambulance extends Mover {
@@ -415,6 +424,18 @@ export interface AmbientState {
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
   ambulances?: Ambulance[];
+  /** The food chain (live/food.ts): pantries' and food banks' stocks; the homes fed this hour; the van runs to drive. */
+  food?: import('./food').FoodState;
+  foodAccess?: Set<number>;
+  foodRuns?: { from: number; to: number; amount: number }[];
+  vans?: Van[];
+  /** Delivery drones in the air (live/drones.ts). */
+  drones?: import('./drones').Drone[];
+  /** Children on their walk to or from school (live/schoolRun.ts), and the hour the last walk set off. */
+  pupils?: import('./schoolRun').Pupil[];
+  schoolRunHour?: number;
+  /** Each school's learning, by its anchor tile, 0..LEARN_MAX (live/school.ts) — saved with the city. */
+  learning: Map<number, number>;
   /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
    *  to the unhoused pool. */
   sheltered?: Map<number, number>;
@@ -497,6 +518,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     occTick: 0,
     practices: { ...NEUTRAL_PRACTICES },
     occExpect: new Map(),
+    learning: new Map(),
     occPasses: 0,
     unhoused: 0,
     roadDecay: new Map(),

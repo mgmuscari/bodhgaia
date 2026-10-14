@@ -120,6 +120,11 @@ export const BuiltKind = {
   VacantLot: 68,
   // A mutual-aid shelter (Maddy 2026-10-13, under Mutual Aid): beds for the unhoused near it (live/camps.ts).
   Shelter: 69,
+  // The food chain (interdependence §2, Maddy 2026-10-13): an urban farm grows food; a food bank gathers it from the
+  // farms and gardens round it and shares it out to the pantries; a pantry feeds the homes within walking reach.
+  UrbanFarm: 70,
+  FoodBank: 71,
+  Pantry: 72,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -141,6 +146,9 @@ const COMMONS_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.VerticalFarm,
   BuiltKind.TinyHomes,
   BuiltKind.Shelter,
+  BuiltKind.UrbanFarm,
+  BuiltKind.FoodBank,
+  BuiltKind.Pantry,
 ]);
 export const isCommonsKind = (k: number): boolean => COMMONS_KINDS.has(k);
 /** Elevated transit that can deck OVER a road as an overpass: elevated rail (8) or promenade (9). */
@@ -832,6 +840,10 @@ export function addPlotParking(map: GameMap, store: ParcelStore, i: number, as?:
   const bx = best % map.width;
   return placeParcel(map, store, { x: bx, y: (best - bx) / map.width, width: 1, height: 1, kind: BuiltKind.ParkingLot }) !== -1;
 }
+
+/** How near (Chebyshev, footprint to footprint) a maker space and industry work together (interdependence §3): the
+ *  works supplies materials, the makers turn its scrap into repairs. Shared by growth (repairs) and live (pollution). */
+export const MAKER_SUPPLY = 6;
 
 /** Ground anything may be built on: open land, or a vacant lot. */
 export function isOpenGround(kind: number): boolean {

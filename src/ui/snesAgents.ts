@@ -41,6 +41,9 @@ const TRUCK_NE = ['...kkk', '..kbgk', '.kLbbk', 'klMbk.', 'kllk..', 'kkk...'];
 // Ambulances: the same frame in white (w) with a red stripe (r), lights (L/M) flashing red/white behind the cab.
 const AMB_E = ['.kkkkk.', 'kwwwLgw', 'krrrMgw', '.kkkkk.'];
 const AMB_NE = ['...kkk', '..kwgk', '.kLwwk', 'kwMrk.', 'krrk..', 'kkk...'];
+// Delivery vans (food banks): the same frame in cream (w) with a green stripe (r) — no light bar.
+const VAN_E = ['.kkkkk.', 'kwwwwgw', 'krrrwgw', '.kkkkk.'];
+const VAN_NE = ['...kkk', '..kwgk', '.kwwwk', 'kwwrk.', 'krrk..', 'kkk...'];
 const LIGHT_E = ['.......', 'T.....H', 'T.....H', '.......'];
 const LIGHT_NE = ['....H.', '.....H', '......', '......', 'T.....', '.T....'];
 
@@ -301,6 +304,15 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   for (const phase of [0, 1]) {
     const cols = { k: C.slate, w: C.petal, r: C.signal, g: C.glassLo, L: phase === 0 ? C.signal : C.petal, M: phase === 0 ? C.petal : C.signal };
     eightWays(glyph(AMB_E, cols), glyph(AMB_NE, cols)).forEach((f, d) => out.set(`@sprite/ambulance/${d}/${phase}`, f));
+  }
+  // a delivery drone: a dark body with four rotors that flicker (two frames)
+  for (const f of [0, 1]) {
+    const rotor = f === 0 ? C.paveHi : C.slate;
+    out.set(`@sprite/drone/${f}`, glyph(['r.r', '.k.', 'r.r'], { k: C.ink, r: rotor }));
+  }
+  {
+    const cols = { k: C.creamLo, w: C.cream, r: C.leaf, g: C.glassLo };
+    eightWays(glyph(VAN_E, cols), glyph(VAN_NE, cols)).forEach((f, d) => out.set(`@sprite/van/${d}`, f));
   }
   for (let f = 0; f < FIRE_FRAMES; f++) out.set(`@sprite/fire/${f}`, flame(f));
   out.set('@sprite/drop', glyph(['w'], { w: C.foam }));

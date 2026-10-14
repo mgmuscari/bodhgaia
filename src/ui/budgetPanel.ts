@@ -118,6 +118,9 @@ export function mountBudgetPanel(container: HTMLElement, deps: BudgetPanelDeps):
       line('Police', perHour(-v.police)),
       line('Loan repayments', perHour(-v.repayments)),
       line('Net', perHour(v.net), v.net >= 0 ? 'budget-good' : 'budget-bad'),
+      ...(v.indicators && v.indicators.length > 0
+        ? [heading('Indicators'), ...v.indicators.map((l) => line(l.label, `${l.value} ${l.trend}`.trim(), l.trend && l.trend !== '→' ? (l.good ? 'budget-good' : 'budget-bad') : undefined))]
+        : []),
     );
   }
 

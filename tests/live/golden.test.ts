@@ -149,7 +149,8 @@ describe('live layer golden determinism', () => {
     // once on a one-station line) — trains dwell more, riders board more
     // 2026-10-13: mutual-aid shelters — the state carries a `sheltered` map (empty here): same motion, one more field
     // 2026-10-13: every big workplace and civic plot gets a parking lot at its door in worldgen — a different city
-    expect(first).toBe('cars=4 peds=169 cruisers=4 trains=5 flocks=16 #779d6f07');
+    // 2026-10-14: schools — the state carries their learning (and the school-run hour): same motion, more fields
+    expect(first).toBe('cars=4 peds=169 cruisers=4 trains=5 flocks=16 #c3898f0a');
   });
 });
 

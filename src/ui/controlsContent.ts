@@ -24,6 +24,7 @@ export const CONTROLS: KeyBinding[] = [
   { key: 'P', label: 'Police-violence overlay' },
   { key: 'V', label: 'Civic-services overlay' },
   { key: 'U', label: 'Power overlay' },
+  { key: 'K', label: 'Building status — what the badges mean' },
   { key: '?', label: 'This help' },
 ];
 
