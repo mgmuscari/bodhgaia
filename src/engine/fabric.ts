@@ -507,7 +507,9 @@ export function placeTransport(map: GameMap, x: number, y: number, kind: number)
   const i = map.idx(x, y);
   const existing = map.built[i]!;
   // track across a way takes the tile (the crossing); the way carries on either side of it
-  map.built[i] = isOpenGround(existing) || (kind === BuiltKind.Rail && crossesRail(existing)) ? kind : Math.max(existing, kind);
+  const across = kind === BuiltKind.Rail && crossesRail(existing);
+  map.built[i] = isOpenGround(existing) || across ? kind : Math.max(existing, kind);
+  if (across) map.crossing[i] = existing; // a level crossing: the record of the way the track was laid across
   return true;
 }
 
@@ -569,6 +571,7 @@ export function canConvertTransport(map: GameMap, x: number, y: number, to: numb
 export function convertTransport(map: GameMap, x: number, y: number, to: number): boolean {
   if (!canConvertTransport(map, x, y, to)) return false;
   map.built[map.idx(x, y)] = to;
+  map.crossing[map.idx(x, y)] = 0; // no longer track: no crossing
   return true;
 }
 
@@ -813,19 +816,45 @@ export function demolishTransportAt(map: GameMap, x: number, y: number): boolean
   if (!map.inBounds(x, y)) return false;
   const i = map.idx(x, y);
   if (!isTransportKind(map.built[i]!)) return false;
-  // a level crossing torn up gives the way it crossed back (Maddy 2026-10-08)
-  map.built[i] = map.built[i] === BuiltKind.Rail ? crossedWay(map, x, y) : 0;
+  // a level crossing torn up gives the way it crossed back (Maddy 2026-10-08) — the one it was laid across
+  map.built[i] = map.built[i] === BuiltKind.Rail ? map.crossing[i]! : 0;
+  map.crossing[i] = 0;
   return true;
 }
 
-/** The way a rail tile at (x, y) crosses — the same crossing kind on both sides of it, along one axis — or 0. */
-function crossedWay(map: GameMap, x: number, y: number): number {
-  const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : 0);
-  for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
-    const a = at(dx, dy);
-    if (crossesRail(a) && at(-dx, -dy) === a) return a;
+/** A city saved before crossings were recorded (save v3): its crossings, read once from the track's neighbours as
+ *  the drawing used to — a way on both sides across the line — except where that way runs along the track (5+
+ *  tiles: the line between two parallel highways, Maddy 2026-10-13), which was never a crossing. */
+export function inferLegacyCrossings(map: GameMap): void {
+  const along = (x: number, y: number, dx: number, dy: number): number => {
+    let n = 1;
+    for (const s of [1, -1]) {
+      for (let k = 1; k < 5; k++) {
+        const nx = x + dx * k * s;
+        const ny = y + dy * k * s;
+        if (!map.inBounds(nx, ny) || !crossesRail(map.getBuilt(nx, ny))) break;
+        n++;
+      }
+    }
+    return n;
+  };
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const i = map.idx(x, y);
+      if (map.built[i] !== BuiltKind.Rail || map.crossing[i] !== 0) continue;
+      for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+        // a way on both sides along (dx, dy) crosses a line running the other way
+        if (!map.inBounds(x + dx, y + dy) || !map.inBounds(x - dx, y - dy)) continue;
+        const a = map.getBuilt(x + dx, y + dy);
+        const b = map.getBuilt(x - dx, y - dy);
+        if (!crossesRail(a) || !crossesRail(b)) continue;
+        // the line's own axis is perpendicular: a way running along it (5+ tiles) is beside the line, not across it
+        if (along(x + dx, y + dy, dy, dx) >= 5 || along(x - dx, y - dy, dy, dx) >= 5) continue;
+        map.crossing[i] = a;
+        break;
+      }
+    }
   }
-  return 0;
 }
 
 // --- Connectivity queries ------------------------------------------------
@@ -1008,6 +1037,9 @@ export function crossesRail(kind: number): boolean {
 /** What crosses the line at a level crossing (x, y) — the kind on its first crossing side — or 0 if none. */
 export function railCrossingKind(map: GameMap, x: number, y: number): number {
   const mask = railCrossingMask(map, x, y);
+  if (mask === 0) return 0;
+  const laid = map.crossing[map.idx(x, y)]!;
+  if (laid !== 0) return laid; // the way the track was laid across
   for (const [dx, dy, bit] of MASK_DIRS) if (mask & bit) return map.getBuilt(x + dx, y + dy);
   return 0;
 }
@@ -1022,6 +1054,8 @@ export function railCrossingKind(map: GameMap, x: number, y: number): number {
 export function railCrossingMask(map: GameMap, x: number, y: number): number {
   const self = map.getBuilt(x, y);
   if (self !== BuiltKind.Rail && self !== BuiltKind.Streetcar) return 0;
+  // a rail crossing is only where track was laid across a way (map.crossing); a streetcar line is a street
+  if (self === BuiltKind.Rail && map.crossing[map.idx(x, y)] === 0) return 0;
   const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : BuiltKind.None);
   const track = (k: number): boolean => k === BuiltKind.Rail || k === BuiltKind.Streetcar;
   const road = (dx: number, dy: number): boolean => crossesRail(at(dx, dy));

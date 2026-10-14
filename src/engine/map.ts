@@ -54,6 +54,12 @@ export class GameMap {
    * player (worldgen leaves it 0), so same-seed worlds stay byte-identical.
    */
   readonly deck: Uint16Array;
+  /**
+   * LEVEL CROSSINGS (Maddy 2026-10-13): at a rail tile, the way the track was laid across (a road, a quiet street,
+   * a bike path, a promenade); 0 elsewhere. A crossing exists only because track was laid over a way — never
+   * inferred from what sits beside the line. Tearing the track up gives the way back. Written only by fabric.ts.
+   */
+  readonly crossing: Uint16Array;
   /** Owning parcel per cell: 0 = none, else parcelIndex + 1 (see ParcelStore). */
   readonly parcel: Uint16Array;
   /** Soil health per cell, 0..255 (ecology layer; see src/ecology). */
@@ -85,6 +91,7 @@ export class GameMap {
     this.landCover = new Uint8Array(n);
     this.built = new Uint16Array(n);
     this.deck = new Uint16Array(n);
+    this.crossing = new Uint16Array(n);
     this.parcel = new Uint16Array(n);
     this.soilHealth = new Uint8Array(n);
     this.floraVitality = new Uint8Array(n);
@@ -189,6 +196,7 @@ export class GameMap {
     h = fnv1aBytes(h, bytesOf(this.floraVitality));
     h = fnv1aBytes(h, bytesOf(this.faunaPresence));
     h = fnv1aBytes(h, bytesOf(this.redline));
+    h = fnv1aBytes(h, bytesOf(this.crossing));
     return `${this.width}x${this.height}:${(h >>> 0).toString(16).padStart(8, '0')}`;
   }
 }

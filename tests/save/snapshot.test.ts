@@ -4,6 +4,7 @@ import { terrainStage } from '../../src/worldgen/terrain';
 import { mosesCenturyStage } from '../../src/worldgen/moses';
 import { ecoSeedStage } from '../../src/worldgen/ecoseed';
 import { hashWorld, demolishParcel, BuiltKind } from '../../src/engine/fabric';
+import { GameMap } from '../../src/engine/map';
 import { createTechState } from '../../src/tech/state';
 import { TECH_TREE } from '../../src/tech/tree';
 import { CivicState } from '../../src/civic/state';
@@ -109,6 +110,30 @@ describe('save v2: the always-zero traffic layer is retired', () => {
     expect(hashWorld(fresh)).toBe(hashWorld(p.world));
   });
 
+  // Maddy 2026-10-13: crossings are recorded where track is laid across a way (map.crossing, save v4). A v3 city's
+  // crossings are read once from the track's neighbours — but not between two parallel highways.
+  it('a v3 save gains its crossings on load: track across a street is one; track between highways is not', () => {
+    const p = parts();
+    const save = captureGame(p);
+    const { width, height } = save;
+    const m = new GameMap(width, height);
+    for (let y = 0; y < 7; y++) m.setBuilt(3, y, BuiltKind.RoadStreet); // a street, cut by the line at (3, 3)
+    for (let x = 0; x < 12; x++) m.setBuilt(x, 3, BuiltKind.Rail);
+    for (let x = 0; x < 12; x++) {
+      m.setBuilt(x, 10, BuiltKind.RoadHighway); // the line between two highways
+      m.setBuilt(x, 11, BuiltKind.Rail);
+      m.setBuilt(x, 12, BuiltKind.RoadHighway);
+    }
+    const { crossing: _none, ...older } = save.world.layers;
+    const v3 = { ...save, version: 3, world: { ...save.world, layers: { ...older, built: encodeBytes(new Uint8Array(m.built.buffer)) } } };
+    const lifted = parseSave(JSON.stringify(v3));
+    const bytes = decodeBytes(lifted.world.layers.crossing);
+    const crossing = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 1);
+    expect(crossing[m.idx(3, 3)]).toBe(BuiltKind.RoadStreet);
+    for (let x = 0; x < 12; x++) expect(crossing[m.idx(x, 11)], `x ${x}`).toBe(0);
+    expect(crossing[m.idx(8, 3)]).toBe(0); // open track
+  });
+
   it('refuses a save from a newer build', () => {
     const newer = { ...captureGame(parts()), version: SAVE_VERSION + 1 };
     expect(() => parseSave(JSON.stringify(newer))).toThrow(/newer/);
@@ -116,9 +141,9 @@ describe('save v2: the always-zero traffic layer is retired', () => {
 });
 
 describe('save v3: parklets moved onto the kerb (Maddy 2026-10-08)', () => {
-  it('this build writes v3', () => {
-    expect(SAVE_VERSION).toBe(3);
-    expect(captureGame(parts()).version).toBe(3);
+  it('this build writes v4 (crossings recorded, 2026-10-13)', () => {
+    expect(SAVE_VERSION).toBe(4);
+    expect(captureGame(parts()).version).toBe(4);
   });
 
   it("a v2 save's parklet lots become pocket parks, once, and nothing else changes", () => {
