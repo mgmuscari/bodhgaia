@@ -105,6 +105,7 @@ const liveFiles = tsFiles(liveDir);
 const PURE_UI_ALLOWLIST = [
   'src/ui/openingContent.ts',
   'src/ui/dockMenu.ts',
+  'src/ui/changelogContent.ts',
   'src/ui/tileExtrude.ts',
   'src/ui/techContent.ts',
   'src/ui/techEffectsContent.ts',

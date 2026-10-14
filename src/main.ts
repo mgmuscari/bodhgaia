@@ -64,6 +64,9 @@ import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
 import { registerServiceWorker } from './app/pwa';
 import { installNoBrowserZoom } from './app/noBrowserZoom';
+import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
+import { mountWhatsNew } from './ui/whatsNewPanel';
+import { GAME_VERSION } from './ui/creditsContent';
 
 
 export function main(save: SaveV1 | null = null): void {
@@ -372,6 +375,31 @@ export function main(save: SaveV1 | null = null): void {
   const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
   // The opening's first act — the night: epigraphs, a walk to a death, the mantra, the dawn — then the city's
   // indictment (the statistics + chronicle overlay), then play.
+  // What's new (Maddy 2026-10-13): the release notes a returning player hasn't seen, once, on the first launch of a
+  // new version — a browser reload or an installed app picking up the release. A first-time player sees none; a
+  // city saved before the notes existed counts as having seen the version before them.
+  const SEEN_KEY = 'bodhgaia.lastSeenVersion';
+  const showWhatsNew = (): void => {
+    let seen: string | null = null;
+    try {
+      seen = localStorage.getItem(SEEN_KEY);
+    } catch {
+      /* no storage: show nothing, remember nothing */
+    }
+    const remember = (): void => {
+      try {
+        localStorage.setItem(SEEN_KEY, GAME_VERSION);
+      } catch {
+        /* best-effort */
+      }
+    };
+    const before = CHANGELOG.find((e) => compareVersions(e.version, GAME_VERSION) < 0)?.version ?? null; // the release before this
+    const notes = whatsNew(seen ?? (save ? before : null), GAME_VERSION);
+    if (notes.length === 0) return remember();
+    mountWhatsNew(document.body, notes, remember).open();
+  };
+  if (!openingUp) showWhatsNew();
+
   const night = openingUp
     ? createNightOpening({
         live: live.state,
@@ -406,6 +434,7 @@ export function main(save: SaveV1 | null = null): void {
             onDone: () => {
               openingUp = false;
               markDirty();
+              showWhatsNew(); // never over the intro: once the city is the player's
             },
           });
         },
