@@ -81,6 +81,22 @@ export function panVelocity(held: ReadonlySet<string>): [number, number] {
   return [sx * k + 0, sy * k + 0];
 }
 
+/** Seconds the glide takes to reach full speed from rest, and to stop from full speed (Maddy 2026-10-13: accel/decel). */
+export const PAN_ACCEL_S = 0.25;
+export const PAN_DECEL_S = 0.2;
+
+/** One frame of the glide: each axis eases toward the held keys' velocity — speeding up at full-speed-per-PAN_ACCEL_S,
+ *  slowing (let go, or reversing) at full-speed-per-PAN_DECEL_S — and lands on it exactly, never creeping. */
+export function easePan(v: readonly [number, number], target: readonly [number, number], dt: number): [number, number] {
+  const axis = (cur: number, want: number): number => {
+    const speedingUp = want !== 0 && Math.sign(want) === Math.sign(cur || want) && Math.abs(want) > Math.abs(cur);
+    const step = (KEY_PAN_SPEED / (speedingUp ? PAN_ACCEL_S : PAN_DECEL_S)) * dt;
+    if (Math.abs(want - cur) <= step) return want;
+    return cur + Math.sign(want - cur) * step;
+  };
+  return [axis(v[0], target[0]) + 0, axis(v[1], target[1]) + 0];
+}
+
 export interface KeyPress {
   key: string;
   metaKey: boolean;

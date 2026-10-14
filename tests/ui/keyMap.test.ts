@@ -164,3 +164,30 @@ describe('panVelocity: held panning keys', () => {
     expect(panVelocity(new Set(['w', 'ArrowUp', 'W']))).toEqual([0, KEY_PAN_SPEED]);
   });
 });
+
+// Maddy 2026-10-13: "can we have it accel/decel". The glide eases up to speed when a key goes down and eases to a
+// stop when it's let go, rather than starting and stopping dead.
+import { easePan, PAN_ACCEL_S, PAN_DECEL_S } from '../../src/ui/keyMap';
+describe('easePan: the glide speeds up and slows down', () => {
+  const run = (v: [number, number], target: [number, number], seconds: number): [number, number] => {
+    for (let t = 0; t < seconds - 1e-9; t += 1 / 60) v = easePan(v, target, 1 / 60);
+    return v;
+  };
+  it('from rest it ramps up — part way after a frame, full speed by PAN_ACCEL_S', () => {
+    const one = easePan([0, 0], [KEY_PAN_SPEED, 0], 1 / 60);
+    expect(one[0]).toBeGreaterThan(0);
+    expect(one[0]).toBeLessThan(KEY_PAN_SPEED / 2);
+    expect(run([0, 0], [KEY_PAN_SPEED, 0], PAN_ACCEL_S + 1 / 60)[0]).toBeCloseTo(KEY_PAN_SPEED, 5);
+  });
+  it('let go, it slows to a stop by PAN_DECEL_S — and stops, not creeps', () => {
+    const half = run([KEY_PAN_SPEED, 0], [0, 0], PAN_DECEL_S / 2);
+    expect(half[0]).toBeGreaterThan(0);
+    expect(half[0]).toBeLessThan(KEY_PAN_SPEED);
+    expect(run([KEY_PAN_SPEED, 0], [0, 0], PAN_DECEL_S + 1 / 60)).toEqual([0, 0]);
+  });
+  it('the ramps are short: a quarter second or so', () => {
+    expect(PAN_ACCEL_S).toBeGreaterThan(0.1);
+    expect(PAN_ACCEL_S).toBeLessThanOrEqual(0.35);
+    expect(PAN_DECEL_S).toBeLessThanOrEqual(PAN_ACCEL_S);
+  });
+});

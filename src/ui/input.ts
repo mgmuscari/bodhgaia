@@ -12,7 +12,7 @@
 // click, a long press on a touch screen).
 
 import { Camera } from './camera';
-import { isEditableTarget, panFor, panVelocity } from './keyMap';
+import { easePan, isEditableTarget, panFor, panVelocity } from './keyMap';
 import { classifyPointer, lineTiles, pinchZoom, wheelZoom } from '../tools/inputGeometry';
 
 /** A wheel pause longer than this starts a fresh zoom gesture. */
@@ -276,19 +276,21 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     { passive: false },
   );
 
-  // Held panning keys (the arrows and WASD) glide the map at a steady speed, every frame, until let go (Maddy
-  // 2026-10-13: "WASD scrolling should be smooth, not jumpy") — not a hop per key repeat.
+  // Held panning keys (the arrows and WASD) glide the map every frame (Maddy 2026-10-13: "WASD scrolling should be
+  // smooth, not jumpy") — easing up to speed and easing to a stop when let go ("accel/decel"), not a hop per repeat.
   const held = new Set<string>();
   let panFrame = 0;
   let panAt = 0;
+  let vel: [number, number] = [0, 0];
   const glide = (t: number): void => {
-    const [vx, vy] = panVelocity(held);
-    if (vx === 0 && vy === 0) {
+    const dt = Math.min(0.05, (t - panAt) / 1000); // a stalled frame doesn't throw the view
+    panAt = t;
+    vel = easePan(vel, panVelocity(held), dt);
+    const [vx, vy] = vel;
+    if (vx === 0 && vy === 0 && held.size === 0) {
       panFrame = 0;
       return;
     }
-    const dt = Math.min(0.05, (t - panAt) / 1000); // a stalled frame doesn't throw the view
-    panAt = t;
     camera.pan(vx * dt, vy * dt);
     handlers.onChange();
     panFrame = requestAnimationFrame(glide);
