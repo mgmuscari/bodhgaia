@@ -83,4 +83,18 @@ describe('lessons', () => {
     expect(h.started).toEqual(['power']);
     expect(LESSONS.find((l) => l.id === 'power')).toBeDefined();
   });
+
+  it('a practice that opens two mechanics queues both, played in turn (lessonContent.lessonsFor)', () => {
+    const h = harness(serializeSeen(new Set(['work'])));
+    h.lessons.offer('mutual-aid'); // the food bank: food, and pairings
+    h.lessons.frame(0);
+    expect(h.started).toEqual(['food']);
+    h.finish();
+    h.lessons.frame(1);
+    expect(h.started).toEqual(['food', 'pairings']);
+    h.finish();
+    h.lessons.offer('shared-table'); // effort still unseen; food and pairings seen
+    h.lessons.frame(2);
+    expect(h.started).toEqual(['food', 'pairings', 'effort']);
+  });
 });

@@ -2,7 +2,7 @@
 // lesson plays, once per player (remembered in the browser). Lessons wait while the opening runs or another lesson is
 // showing, then play in turn. DOM-free: storage and the player arrive as deps.
 
-import { lessonFor, parseSeen, serializeSeen, type Lesson } from '../ui/lessonContent';
+import { lessonsFor, parseSeen, serializeSeen, type Lesson } from '../ui/lessonContent';
 
 export interface LessonPlayer {
   frame(now: number): void;
@@ -19,7 +19,7 @@ export interface LessonsDeps {
 }
 
 export interface Lessons {
-  /** A practice was granted: queue its lesson if it has one not yet seen. */
+  /** A practice was granted: queue each of its lessons not yet seen. */
   offer(techId: string): void;
   frame(now: number): void;
   /** Forget what has been seen (Help → replay lessons). */
@@ -34,9 +34,9 @@ export function createLessons(deps: LessonsDeps): Lessons {
 
   return {
     offer(techId) {
+      // every mechanic this practice opens (the lesson contract), not only the first — played in turn
       const pending = new Set([...seen, ...queue.map((l) => l.id)]);
-      const lesson = lessonFor(techId, pending);
-      if (lesson) queue.push(lesson);
+      queue.push(...lessonsFor(techId, pending));
     },
     frame(now) {
       if (current?.active()) return current.frame(now);
