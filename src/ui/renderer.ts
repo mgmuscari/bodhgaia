@@ -1328,6 +1328,36 @@ export class Renderer {
       }
     }
 
+    // Elevated decks pass OVER the street (Maddy 2026-10-13: cars drove on top of the elevated rail): the base drew
+    // them before any car, so re-lay the decks in view over the cars beneath; trains on a deck ride at its height.
+    const dmap = world.map;
+    const deckLift = 3 / BASE_TILE; // the base lifts a deck 3 art px above the road
+    {
+      const a = camera.screenToWorld(0, 0);
+      const z = camera.screenToWorld(camera.viewportWidth, camera.viewportHeight);
+      const x0 = Math.max(0, Math.floor(Math.min(a.wx, z.wx)) - 1);
+      const x1 = Math.min(dmap.width - 1, Math.ceil(Math.max(a.wx, z.wx)) + 1);
+      const y0 = Math.max(0, Math.floor(Math.min(a.wy, z.wy)) - 1);
+      const y1 = Math.min(dmap.height - 1, Math.ceil(Math.max(a.wy, z.wy)) + 1);
+      const ts = camera.tileSize;
+      const ps = ts / BASE_TILE;
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const deck = dmap.deck[dmap.idx(tx, ty)]!;
+          if (deck === 0 || deck === BuiltKind.Parklet) continue;
+          const tile = this.atlas.get(builtRenderKey(deck, deckMask(dmap, tx, ty), 'c', 0));
+          if (!tile) continue;
+          const { dx, dy } = camera.tileOrigin(tx, ty);
+          this.drawTile(ctx, tile, dx, dy - 3 * ps, ts, ts);
+        }
+      }
+    }
+    const onDeck = (x: number, y: number): boolean => {
+      const tx = Math.round(x);
+      const ty = Math.round(y);
+      return dmap.inBounds(tx, ty) && dmap.deck[dmap.idx(tx, ty)] === BuiltKind.ElevatedRail;
+    };
+
     // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
     // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
     // A stop's sign stands on its platform, at the edge by the track — where people wait (docs/design/transit.md).
@@ -1357,8 +1387,9 @@ export class Renderer {
             ? `@sprite/tram/${k === 0 ? 'head' : 'car'}/${heading8(q.hx, q.hy)}/${lit}`
             : k === 0 ? `@sprite/train/loco/${heading8(q.hx, q.hy)}` : `@sprite/train/car/${heading8(q.hx, q.hy)}/${lit}`,
         );
-        if (img) this.drawArt(ctx, img, q.x, q.y, camera);
-        addBody(q.x, q.y, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
+        const lift = onDeck(q.x, q.y) ? deckLift : 0; // up on the viaduct
+        if (img) this.drawArt(ctx, img, q.x, q.y - lift, camera);
+        addBody(q.x, q.y - lift, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
       });
     }
 
