@@ -449,10 +449,13 @@ export const STUCK_UTURN = seconds(4);
 export const STUCK_GIVE_UP = seconds(6);
 /** Wellbeing a household loses when one of its citizens abandons a stop to a traffic jam (small). */
 export const JAM_SKIP_PENALTY = 3;
-/** "Falling Down" (Maddy 2026-09-30): a driver jammed past the give-up rung a second time leaves the car in its lane
- *  and walks — the household's further wellbeing loss, and how long the car stands there until it's towed (~45 s). */
+/** "Falling Down" (Maddy 2026-09-30; amended 2026-10-14 — "abandoned way too often… stick around too long"): one
+ *  driver in WALKOFF_ONE_IN, jammed past the give-up rung for the WALKOFF_GIVE_UPS-th time in a trip, pulls the car to
+ *  the kerb and walks — the household's further wellbeing loss, and how long the car waits to be towed (~15 s). */
 export const JAM_WALKOFF_PENALTY = 3;
-export const WALKOFF_TOW = seconds(45);
+export const WALKOFF_GIVE_UPS = 3;
+export const WALKOFF_ONE_IN = 3;
+export const WALKOFF_TOW = seconds(15);
 /** Substeps before a held vehicle squeezes through anyway — breaks circular deadlocks (~8 s). */
 export const STUCK_ESCAPE = seconds(8);
 
