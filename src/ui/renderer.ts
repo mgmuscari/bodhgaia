@@ -1319,6 +1319,16 @@ export class Renderer {
       }
     }
 
+    // Food-bank vans (interdependence §2): out to a pantry and back, cream with a green stripe.
+    for (const v of ambient.vans ?? []) {
+      const pose = movingPose(v, LANE, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/van/${heading8(pose.hx, pose.hy)}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, night, img);
+    }
+
     // Ambulances: drawn like the fire trucks — white with a red stripe, their lights flashing red/white in step.
     for (const am of ambient.ambulances ?? []) {
       const pose = movingPose(am, LANE, alpha);

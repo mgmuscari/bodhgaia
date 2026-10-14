@@ -37,6 +37,7 @@ import { stepDeaths, stepExposure } from './death';
 import { stepWanderer } from './wanderer';
 import { stepTrucks } from './trucks';
 import { stepAmbulances } from './ambulances';
+import { spawnVans, stepVans } from './vans';
 import { stepClouds, stepToxic } from './spills';
 import { stepGatherings } from './gatherings';
 import { spawnTrains, stepTrain } from './trains';
@@ -66,6 +67,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.wanderer) stepWanderer(state, map, rng); // the opening's night walker
   if (state.trucks) stepTrucks(state, map); // fire trucks on a call
   if (state.dying?.length || state.ambulances?.length) stepAmbulances(state, map); // a collapse calls a clinic
+  if (state.foodRuns?.length || state.vans?.length) {
+    spawnVans(state, map); // this hour's food-bank runs, made visible
+    stepVans(state, map);
+  }
   if (state.clouds?.length) stepClouds(state, map, rng); // toxic clouds from a spill (no draws without one)
   if (state.gatherings?.length) stepGatherings(state); // community gatherings: age them, send people home, end them
   if (state.toxic?.size) stepToxic(state, map, state.windTick % WIND_CADENCE === 0); // their smog drifts and clears

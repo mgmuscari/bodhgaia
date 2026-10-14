@@ -221,6 +221,15 @@ export interface Dying {
   called?: boolean;
 }
 
+/** A food bank's delivery van (live/vans.ts): out to a pantry, unloading, back to the bank. */
+export interface Van extends Mover {
+  run: 'out' | 'unload' | 'back';
+  /** The road tile by its bank, to drive back to. */
+  home: { x: number; y: number };
+  /** Substeps left unloading. */
+  wait: number;
+}
+
 /** An ambulance on a call (Maddy 2026-10-12): out to a collapsed resident, a moment to take them aboard, back to its
  *  clinic — where the patient goes home (rescueResident). */
 export interface Ambulance extends Mover {
@@ -419,6 +428,7 @@ export interface AmbientState {
   food?: import('./food').FoodState;
   foodAccess?: Set<number>;
   foodRuns?: { from: number; to: number; amount: number }[];
+  vans?: Van[];
   /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
    *  to the unhoused pool. */
   sheltered?: Map<number, number>;

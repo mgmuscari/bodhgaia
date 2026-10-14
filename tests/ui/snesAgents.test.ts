@@ -50,6 +50,16 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     }
   });
 
+  it('food-bank vans are car-sized, in 8 headings, cream with a green stripe — no lights of their own', () => {
+    for (let d = 0; d < 8; d++) {
+      const p = tiles.get(`@sprite/van/${d}`)!;
+      expect(p, `van ${d}`).toBeDefined();
+      const cop = tiles.get(`@sprite/cop/${d}/0`)!;
+      expect([p.w, p.h]).toEqual([cop.w, cop.h]);
+      expect(p.data).not.toEqual(tiles.get(`@sprite/ambulance/${d}/0`)!.data);
+    }
+  });
+
   it('ambulances are car-sized, in 8 headings, white with a red stripe, their lights flashing two phases', () => {
     for (let d = 0; d < 8; d++) {
       for (const ph of [0, 1]) {
