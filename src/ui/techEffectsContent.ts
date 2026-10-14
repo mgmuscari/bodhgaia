@@ -10,7 +10,7 @@ import { BuiltKind, isServiceStation, isTransportKind } from '../engine/fabric';
 import { GameMap } from '../engine/map';
 import { NODE_EFFECTS, type Effect } from '../tech/effects';
 import type { TechNode } from '../tech/tree';
-import { MAKER_RADIUS, MAKER_REPAIR } from '../growth/revival';
+import { MAKER_RADIUS, MAKER_RADIUS_SUPPLIED, MAKER_REPAIR, MAKER_SUPPLY } from '../growth/revival';
 import { POND_REACH } from '../growth/flood';
 import {
   BATTERY_CAPACITY,
@@ -173,7 +173,10 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
     effects.push('Its residents work at home and own no cars');
     effects.push(`Doubles as a market: neighbours shop here; taxed at ${pct(COMMUNE_COMMERCE_SHARE)} of a shop its size`);
   }
-  if (kind === BuiltKind.MakerSpace) effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
+  if (kind === BuiltKind.MakerSpace) {
+    effects.push(`Fix-it shop: buildings within ${MAKER_RADIUS} tiles regain ${MAKER_REPAIR} condition every civic tick`);
+    effects.push(`With industry within ${MAKER_SUPPLY} tiles: materials — reach ${MAKER_RADIUS_SUPPLIED} tiles, twice the mending; that works poisons its ground half as much`);
+  }
   if (kind === BuiltKind.ElevatedRail) {
     effects.push(`Stations: shops within ${RAIL_COMMERCE_RADIUS} tiles of the line pay ${pct(RAIL_COMMERCE_LIFT - 1)} more tax`);
     effects.push(`Noise: homes within ${RAIL_NOISE_RADIUS} tiles of the line lose ${RAIL_NOISE} pull`);

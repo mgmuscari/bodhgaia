@@ -841,6 +841,10 @@ export function addPlotParking(map: GameMap, store: ParcelStore, i: number, as?:
   return placeParcel(map, store, { x: bx, y: (best - bx) / map.width, width: 1, height: 1, kind: BuiltKind.ParkingLot }) !== -1;
 }
 
+/** How near (Chebyshev, footprint to footprint) a maker space and industry work together (interdependence §3): the
+ *  works supplies materials, the makers turn its scrap into repairs. Shared by growth (repairs) and live (pollution). */
+export const MAKER_SUPPLY = 6;
+
 /** Ground anything may be built on: open land, or a vacant lot. */
 export function isOpenGround(kind: number): boolean {
   return kind === BuiltKind.None || kind === BuiltKind.VacantLot;

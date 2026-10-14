@@ -5,7 +5,7 @@
 
 import type { GameMap } from '../../engine/map';
 import type { Rng } from '../../engine/rng';
-import { BuiltKind, isRoadKind } from '../../engine/fabric';
+import { BuiltKind, MAKER_SUPPLY, isRoadKind } from '../../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../../engine/zone';
 import { visitValue } from '../../citizens/plots';
 import { decayField, layField, sampleField } from '../../citizens/field';
@@ -148,6 +148,36 @@ export function aiCleaned(map: GameMap): ReadonlySet<number> {
   return tiles;
 }
 
+/** The industrial tiles a maker space within MAKER_SUPPLY takes scrap from (interdependence §3): their ground poison
+ *  halves — turned into repairs. Cached by the map's epoch. */
+const MAKER_CACHE = new WeakMap<GameMap, { epoch: number; tiles: Set<number> }>();
+export function makerReused(map: GameMap): ReadonlySet<number> {
+  const epoch = mapEpoch(map);
+  const c = MAKER_CACHE.get(map);
+  if (c && c.epoch === epoch) return c.tiles;
+  const makers: number[] = [];
+  for (let i = 0; i < map.built.length; i++) if (map.built[i] === BuiltKind.MakerSpace) makers.push(i);
+  const tiles = new Set<number>();
+  if (makers.length > 0) {
+    for (let i = 0; i < map.built.length; i++) {
+      if (zoneTypeOf(map.built[i]!) !== ZoneType.Industrial) continue;
+      const x = i % map.width;
+      const y = (i - x) / map.width;
+      for (const m of makers) {
+        const mx = m % map.width;
+        if (Math.max(Math.abs(mx - x), Math.abs((m - mx) / map.width - y)) <= MAKER_SUPPLY + 1) {
+          tiles.add(i);
+          break;
+        }
+      }
+    }
+  }
+  MAKER_CACHE.set(map, { epoch, tiles });
+  return tiles;
+}
+/** What a works the makers take from still poisons its ground. */
+const REUSED_SHARE = 0.5;
+
 /** Lay the LAND-contamination field: each ground tile accrues pollution from its OWN source-ness
  *  (industry + a dirty power plant sitting on it, grade-scaled), the litter/wear of demand paths
  *  that cross it, and a seep from adjacent industrial/plant tiles (the plume spreads a tile). Then
@@ -156,6 +186,7 @@ export function aiCleaned(map: GameMap): ReadonlySet<number> {
  *  GROUND_RUNOFF_CADENCE by the caller. Live/non-hashed. */
 export function accumulateGroundPollution(state: AmbientState, map: GameMap): void {
   const cleaned = aiCleaned(map); // high-tech industry poisons nothing
+  const reused = makerReused(map); // industry the makers take scrap from poisons half as much
   const W = map.width;
   const H = map.height;
   const plants =
@@ -169,7 +200,7 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
       let load = 0;
       const k = map.built[i]!;
       // The tile's OWN source-ness: industry + dirty power poison the ground they stand on.
-      if (zoneTypeOf(k) === ZoneType.Industrial && !cleaned.has(i)) load += GROUND_INDUSTRY * (1 + map.redline[i]! / 255);
+      if (zoneTypeOf(k) === ZoneType.Industrial && !cleaned.has(i)) load += GROUND_INDUSTRY * (1 + map.redline[i]! / 255) * (reused.has(i) ? REUSED_SHARE : 1);
       if (plants && plants.has(i)) load += GROUND_PLANT;
       // Demand-path litter: the trampled, littered ground of a beaten path leaches into the soil.
       const wear = state.wear.get(i) ?? 0;
@@ -182,7 +213,7 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
         const ni = map.idx(nx, ny);
         if (map.water[ni] !== 0) continue;
         if (zoneTypeOf(map.built[ni]!) === ZoneType.Industrial && !cleaned.has(ni)) {
-          load += GROUND_SEEP * (1 + map.redline[ni]! / 255);
+          load += GROUND_SEEP * (1 + map.redline[ni]! / 255) * (reused.has(ni) ? REUSED_SHARE : 1);
         } else if (plants && plants.has(ni)) {
           load += GROUND_SEEP;
         }
