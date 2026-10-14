@@ -27,7 +27,7 @@ import {
 } from '../growth/power';
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
-import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
+import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
@@ -114,6 +114,8 @@ function practiceLine(e: Effect): string {
       return `Open soil recovers ${num(SOIL_RECOVERY * (e.value as number))} a tick (was ${SOIL_RECOVERY})`;
     case 'pavedSoilCap':
       return `Soil under pavement can heal to ${e.value} (was ${PAVED_CAP})`;
+    case 'vacantShield':
+      return `A green heals vacant lots up to ${num(VACANT_SHIELD * (e.value as number))} tiles away (was ${VACANT_SHIELD})`;
   }
 }
 

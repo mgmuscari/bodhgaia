@@ -95,3 +95,54 @@ describe('a vacant lot slowly recovers', () => {
     expect(ticks).toBeLessThanOrEqual(300);
   });
 });
+
+// Maddy 2026-10-13: lots hemmed in by houses and streets never heal — "we'll need to introduce mechanics for that…
+// that connects to green techs and related plots". A green within VACANT_SHIELD tiles (a garden, park, rewilded land,
+// compost hub, parklet) shields a vacant lot from its neighbours' drag, so its soil heals and it grows back; Soil
+// and Soul doubles that reach.
+import { VACANT_SHIELD } from '../../src/ecology/tick';
+describe('greens heal vacant lots', () => {
+  function block(gardenAt: number | null) {
+    const map = new GameMap(40, 12);
+    const parcels = new ParcelStore();
+    for (let x = 0; x < 40; x++) {
+      placeTransport(map, x, 0, BuiltKind.RoadStreet);
+      placeTransport(map, x, 5, BuiltKind.RoadStreet);
+    }
+    for (let x = 0; x < 40; x++) for (const y of [1, 2, 3, 4]) placeParcel(map, parcels, { x, y, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    const lot = map.idx(20, 2);
+    bulldozeParcel(map, parcels, map.parcel[lot]! - 1);
+    if (gardenAt !== null) {
+      const g = map.parcel[map.idx(gardenAt, 2)]! - 1;
+      bulldozeParcel(map, parcels, g);
+      map.built[map.idx(gardenAt, 2)] = 0;
+      placeParcel(map, parcels, { x: gardenAt, y: 2, width: 1, height: 1, kind: BuiltKind.CommunityGarden });
+    }
+    return { map, lot };
+  }
+  const ticks = (map: GameMap, lot: number, practices = NEUTRAL_ECOLOGY_PRACTICES): number => {
+    let t = 0;
+    while (map.built[lot] === BuiltKind.VacantLot && t < 2000) {
+      ecologyTick(map, practices);
+      recoverVacantLots(map);
+      t++;
+    }
+    return t;
+  };
+
+  it('with no green near, a lot hemmed in by houses and streets does not heal', () => {
+    const { map, lot } = block(null);
+    expect(ticks(map, lot)).toBe(2000);
+  });
+  it('a garden within VACANT_SHIELD tiles heals it, in a few minutes', () => {
+    const { map, lot } = block(20 + VACANT_SHIELD);
+    const t = ticks(map, lot);
+    expect(t).toBeLessThan(400);
+  });
+  it('further off, only Soil and Soul reaches it', () => {
+    const far = 20 + VACANT_SHIELD * 2;
+    expect(ticks(block(far).map, block(far).lot)).toBe(2000);
+    const b = block(far);
+    expect(ticks(b.map, b.lot, { soilRecovery: 2, pavedSoilCap: 60, vacantShield: VACANT_SHIELD * 2 })).toBeLessThan(400);
+  });
+});

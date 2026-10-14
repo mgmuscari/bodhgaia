@@ -67,9 +67,42 @@ export interface EcologyPractices {
   soilRecovery: number;
   /** The soil ceiling on sealed tiles (Soil and Soul raises it). */
   pavedSoilCap: number;
+  /** How far (tiles) a green shields a vacant lot (default VACANT_SHIELD; Soil and Soul doubles it). */
+  vacantShield?: number;
 }
 
-export const NEUTRAL_ECOLOGY_PRACTICES: Readonly<EcologyPractices> = Object.freeze({ soilRecovery: 1, pavedSoilCap: PAVED_CAP });
+/** A vacant lot within this many tiles of a green — a garden, park, rewilded land, compost hub or parklet — is
+ *  shielded from its neighbours' drag on its soil, so it heals and grows back (Maddy 2026-10-13: lots hemmed in by
+ *  houses and streets never healed; "that connects to green techs and related plots"). */
+export const VACANT_SHIELD = 3;
+const SHIELDING_GREENS: ReadonlySet<number> = new Set<number>([
+  BuiltKind.CommunityGarden,
+  BuiltKind.Park,
+  BuiltKind.RewildedLand,
+  BuiltKind.CompostHub,
+  BuiltKind.Parklet,
+]);
+
+export const NEUTRAL_ECOLOGY_PRACTICES: Readonly<EcologyPractices> = Object.freeze({ soilRecovery: 1, pavedSoilCap: PAVED_CAP, vacantShield: VACANT_SHIELD });
+
+/** Tiles within `reach` (Chebyshev) of a shielding green, but only when the map has a vacant lot to shield. */
+function shieldedLots(map: GameMap, reach: number): Uint8Array | null {
+  const { built, deck, width, height } = map;
+  let any = false;
+  for (let i = 0; i < built.length && !any; i++) any = built[i] === BuiltKind.VacantLot;
+  if (!any) return null;
+  const out = new Uint8Array(built.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!SHIELDING_GREENS.has(built[i]!) && deck[i] !== BuiltKind.Parklet) continue;
+      for (let yy = Math.max(0, y - reach); yy <= Math.min(height - 1, y + reach); yy++) {
+        for (let xx = Math.max(0, x - reach); xx <= Math.min(width - 1, x + reach); xx++) out[yy * width + xx] = 1;
+      }
+    }
+  }
+  return out;
+}
 
 /** Soil's per-tick recovery on open land, and the sealed-tile ceiling, before any practice. */
 export { BASE_RECOVERY as SOIL_RECOVERY, PAVED_CAP };
@@ -119,6 +152,7 @@ export function ecologyTick(map: GameMap, practices: EcologyPractices = NEUTRAL_
     }
   }
 
+  const shield = shieldedLots(map, practices.vacantShield ?? VACANT_SHIELD);
   // --- Soil: recover toward health, plus influence; sealed tiles cap at PAVED_CAP.
   // A parcel-covered tile is sealed UNLESS it holds a depaved green (Park /
   // RewildedLand) — the rezoning payoff: a converted park has parcel != 0 but its
@@ -129,7 +163,9 @@ export function ecologyTick(map: GameMap, practices: EcologyPractices = NEUTRAL_
       water[i] !== Water.None ||
       isTransportKind(built[i]!) ||
       (parcel[i] !== 0 && !isUnsealed(built[i]!));
-    let v = clampByte(soil[i]! + BASE_RECOVERY * practices.soilRecovery + next.soilInf[i]!);
+    // a vacant lot near a green is shielded from its neighbours' drag: it keeps only what helps it
+    const inf = shield !== null && shield[i] === 1 && built[i] === BuiltKind.VacantLot ? Math.max(0, next.soilInf[i]!) : next.soilInf[i]!;
+    let v = clampByte(soil[i]! + BASE_RECOVERY * practices.soilRecovery + inf);
     if (sealed && v > practices.pavedSoilCap) v = practices.pavedSoilCap;
     next.soil[i] = v;
   }
