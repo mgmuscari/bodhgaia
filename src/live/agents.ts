@@ -23,6 +23,8 @@ import {
   JAM_SKIP_PENALTY,
   JAM_WALKOFF_PENALTY,
   WALKOFF_TOW,
+  WALKOFF_GIVE_UPS,
+  WALKOFF_ONE_IN,
   LOT_ABSORB_MARGIN,
   LOT_REROUTE_RADIUS,
   MAX_PARK_SEEKS,
@@ -176,14 +178,13 @@ export function headHome(state: AmbientState, p: Ped, map: GameMap): void {
 export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void {
   if (p.homeTile !== undefined) depositHealth(state, p.homeTile, -JAM_SKIP_PENALTY);
   const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-  if (car && car.gaveUp && !car.parked) {
-    walkOffFromJam(state, p, map, car); // jammed again: leave it in the lane and walk ("Falling Down")
+  if (car) car.gaveUp = (car.gaveUp ?? 0) + 1;
+  // the walking-off kind of driver, jammed for the third time this trip: pulls over and walks ("Falling Down")
+  if (car && !car.parked && (car.gaveUp ?? 0) >= WALKOFF_GIVE_UPS && (car.id ?? 1) % WALKOFF_ONE_IN === 0) {
+    walkOffFromJam(state, p, map, car);
     return;
   }
-  if (car) {
-    car.stuck = 0;
-    car.gaveUp = true;
-  }
+  if (car) car.stuck = 0;
   if (!(p.itinerary !== undefined && advanceItinerary(state, p, map)) && p.homeTile !== undefined) headHome(state, p, map);
   // the driver is IN its car: don't dismount and walk back to it — re-route the car straight on; if no
   // route exists, park it right here (never left standing in a lane) and walk the rest
@@ -195,10 +196,12 @@ export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void 
   }
 }
 
-/** "Falling Down" (Maddy 2026-09-30): the driver leaves the car where it stands, in its lane, and walks on — the
- *  household's further loss; the car stays (hazards on, blocking the lane) until it's towed; the news hears of it. */
+/** "Falling Down" (Maddy 2026-09-30): the driver pulls the car over and walks on — the household's further loss; the
+ *  car waits at the kerb of its tile (or square on it, parked: it blocks nobody), hazards on, until it's towed; the
+ *  news hears of it. */
 function walkOffFromJam(state: AmbientState, p: Ped, map: GameMap, car: Car): void {
   if (p.homeTile !== undefined) depositHealth(state, p.homeTile, -JAM_WALKOFF_PENALTY);
+  parkInPlace(state, map, car); // out of the lane — never left mid-turn or between tiles
   car.owned = false;
   car.path = undefined;
   car.leg = undefined;

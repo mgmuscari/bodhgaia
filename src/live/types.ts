@@ -141,9 +141,9 @@ export interface Mover {
   personality?: number;
   /** A wrecked car (live/accidents.ts): substeps until it's towed; it doesn't move meanwhile. */
   wreck?: number;
-  /** (Car) Its driver has already given up one stop to a jam this trip — the next time, they walk off. */
-  gaveUp?: boolean;
-  /** (Car) Left in its lane by a driver who walked away from the jam ("Falling Down"); stands, hazards on, until
+  /** (Car) How many stops its driver has given up to jams this trip (live/agents.ts skipJammedStop). */
+  gaveUp?: number;
+  /** (Car) Left by a driver who walked away from the jam ("Falling Down"): pulled to the kerb, hazards on, until
    *  towed (its `wreck` timer), never spun round like a crash. */
   leftInJam?: boolean;
 }
