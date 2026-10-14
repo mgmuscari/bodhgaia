@@ -78,9 +78,9 @@ describe('installKeys', () => {
 
   it('skips keys typed into an editable field', () => {
     const h = harness();
-    expect(h.press('s', { target: { tagName: 'INPUT', type: 'number' } }).prevented).toBe(false);
+    expect(h.press('o', { target: { tagName: 'INPUT', type: 'number' } }).prevented).toBe(false);
     expect(h.calls).toEqual([]);
-    h.press('s', { target: { tagName: 'INPUT', type: 'checkbox' } });
+    h.press('o', { target: { tagName: 'INPUT', type: 'checkbox' } });
     expect(h.calls).toEqual(['panel:saves']);
   });
 
