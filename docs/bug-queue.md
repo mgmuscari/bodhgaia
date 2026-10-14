@@ -23,6 +23,19 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Playtest batch (Maddy 2026-10-14), filed for later:**
+  - Car smog is too strong. Tuning lives in `src/live/tuning.ts` (`POLL_LAY_BASE` 120/s, `POLL_FREEWAY_MULT` ×2,
+    `POLL_CONGEST` up to +160/s on a jam, `POLL_DECAY` 8/s); measure a typical arterial's field before retuning.
+  - Smog should draw UNDER the infoview overlays: today it is the top layer (`renderer.ts` ~1580 pixel puffs; GPU
+    mode `smogOverlay.ts` over the sprites), so it fogs the overlay colours and the status view.
+  - The intro walker's scroll is still jerky, and the live layer drifts against the map while it pans (agents and
+    tiles out of alignment) — `app/openingNight.ts` / `ui/openingScript.ts`; likely the camera moving between the
+    base and sprite passes, or a non-whole-pixel camera offset.
+  - Heavy smog at the map's left edge repeats outside the map: the GPU smog texture is `CLAMP_TO_EDGE`
+    (`smogOverlay.ts:163`), which smears the edge column outward — mask outside the map instead.
+  - Grassland tiles with grey bits tile oddly — blobs of grey repeat across the meadow. Identify which terrain
+    variant carries them (`ui/snesTileset.ts` terrain) and keep ground tiles low-noise: palette-swap or sparse
+    accents, no per-tile marks that tessellate.
 - **Phone layout (Maddy 2026-10-14):** ✅ the palette docks along the bottom on a phone in portrait — two rows (tools;
   panels and overlays) under the status line, each scrolling sideways with a fade where it overflows; menus open
   upward; the overlay key moves to the map's top-left. Seen once in headless phone emulation, not reproduced in two
