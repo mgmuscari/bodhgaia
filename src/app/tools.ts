@@ -25,6 +25,7 @@ import type { PreviewTile } from '../ui/renderer';
 import type { InputHandlers } from '../ui/input';
 import { closeAll, hasViewMenu, pickMode, pickTool, pickView, toggleCategory, toggleOverlay, viewRows, type DockState } from '../ui/dockMenu';
 import { OVERLAY_KINDS, type CompositeState, type OverlayKind } from '../ui/overlayRegistry';
+import { pairPreview } from '../engine/pairings';
 
 export interface ToolsDeps {
   /** The map overlay the dock's menus show (app/overlays.ts); absent → the dock keeps its own (tests). */
@@ -147,6 +148,7 @@ export function createToolController(deps: ToolsDeps): ToolController {
 
   const selectedDef = (): ToolDef | undefined => (selectedToolId === null ? undefined : toolDef(selectedToolId));
 
+  let pairing = false; // the status line is showing a pairing (clear it when the hover leaves one)
   const previewAt = (tx: number, ty: number): void => {
     const def = selectedDef();
     if (!def) return;
@@ -155,6 +157,13 @@ export function createToolController(deps: ToolsDeps): ToolController {
     const fp = def.footprint ?? { w: 1, h: 1 };
     const tiles: PreviewTile[] = [];
     for (let dy = 0; dy < fp.h; dy++) for (let dx = 0; dx < fp.w; dx++) tiles.push({ x: tx + dx, y: ty + dy, valid: p.valid });
+    // the buildings it would pair with, lit, and the pairing named (lane pairings, interdependence §9)
+    if (def.kind !== undefined && def.footprint) {
+      const pv = pairPreview(world.map, def.kind, { x: tx, y: ty, w: fp.w, h: fp.h });
+      for (const t of pv.tiles) tiles.push({ x: t % world.map.width, y: Math.floor(t / world.map.width), valid: true, pair: true });
+      if (pv.lines.length > 0 || pairing) toolbar.setStatus(pv.lines.length > 0 ? pv.lines.join(' · ') : null);
+      pairing = pv.lines.length > 0;
+    }
     renderer.setPreview(tiles);
     deps.markPreviewDirty(); // hover tile-change: preview only, never a base rebuild
   };

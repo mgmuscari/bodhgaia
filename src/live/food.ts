@@ -12,6 +12,7 @@
 import type { GameMap } from '../engine/map';
 import { BuiltKind, type ParcelStore } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
+import { pairedWith } from '../engine/pairings';
 
 /** Food grown an hour, by producer kind. */
 export const PRODUCE: ReadonlyMap<number, number> = new Map<number, number>([
@@ -30,6 +31,10 @@ export const GROW_REACH = 4;
 export const PANTRY_CAP = 40;
 export const BANK_CAP = 200;
 export const FOOD_PER_RESIDENT = 0.05;
+/** Lane pairings (interdependence §9): a compost hub beside a garden or farm lifts its harvest; co-op housing beside a
+ *  pantry stretches its reach. */
+export const COMPOST_PAIR_BONUS = 1.25;
+export const COOP_PAIR_REACH = 2;
 
 export interface FoodState {
   /** Each pantry's and food bank's stock, by anchor tile. */
@@ -95,7 +100,7 @@ export function foodHour(food: FoodState, map: GameMap, parcels: ParcelStore, re
   // 1. the harvest goes to a neighbour (with the bonus), a pantry on foot, or a bank
   const distributors = [...pantries, ...banks];
   for (const p of producers) {
-    const grown = PRODUCE.get(p.kind)!;
+    const grown = PRODUCE.get(p.kind)! * (pairedWith(map, p, BuiltKind.CompostHub) ? COMPOST_PAIR_BONUS : 1);
     const beside = nearest(p, distributors, 1);
     if (beside) add(beside, grown * ADJACENT_BONUS);
     else {
@@ -120,7 +125,8 @@ export function foodHour(food: FoodState, map: GameMap, parcels: ParcelStore, re
   // 3. who is fed: by a stocked pantry (which they eat from), or a garden or farm on their street
   const access = new Set<number>();
   for (const q of pantries) {
-    const served = homes.filter((h) => gap(q, h) <= PANTRY_REACH);
+    const reach = PANTRY_REACH + (pairedWith(map, q, BuiltKind.CoopHousing) ? COOP_PAIR_REACH : 0);
+    const served = homes.filter((h) => gap(q, h) <= reach);
     const need = served.reduce((s, h) => s + residentsAt(h.anchor) * FOOD_PER_RESIDENT, 0);
     const have = stock.get(q.anchor) ?? 0;
     if (have <= 0) continue;

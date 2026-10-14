@@ -11,7 +11,8 @@ import { emergencyPath } from './pathing';
 import { board, drive, roadNear } from './trucks';
 import { mapEpoch } from './network';
 import { rescueResident } from './death';
-import { LOAD_SUBSTEPS } from './tuning';
+import { HEALING_PAIR_EXTRA, LOAD_SUBSTEPS } from './tuning';
+import { pairedWith } from '../engine/pairings';
 
 /** How many of the nearest clinics a collapse tries before giving up (each try is a route search). */
 const CLINIC_TRIES = 3;
@@ -53,6 +54,8 @@ function dispatch(state: AmbientState, map: GameMap, d: Dying): boolean {
       a.call = 'loading'; // the clinic is at their side
       a.load = LOAD_SUBSTEPS;
     }
+    // a clinic paired with a healing commons: the patient holds on longer (lane pairing, interdependence §9)
+    if (pairedWith(map, { x: t % W, y: Math.floor(t / W), w: 1, h: 1 }, BuiltKind.HealingCommons)) d.t -= HEALING_PAIR_EXTRA;
     (state.ambulances ??= []).push(a);
     return true;
   }

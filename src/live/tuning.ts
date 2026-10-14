@@ -502,6 +502,8 @@ export const FALL_SUBSTEPS = seconds(3);
 export const DYING_WINDOW = seconds(60);
 /** Taking a collapsed resident aboard. */
 export const LOAD_SUBSTEPS = seconds(2);
+/** A clinic paired with a healing commons (lane pairing, interdependence §9) answers with this much more time. */
+export const HEALING_PAIR_EXTRA = seconds(15);
 /** Substeps a street memorial (a candle and flowers) stays where someone died (~2 min). */
 export const MEMORIAL_SUBSTEPS = seconds(120);
 /** Exposure: the unhoused who die per in-game night hour, per person unhoused (600 unhoused ≈ 2 a night). */

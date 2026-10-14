@@ -55,6 +55,8 @@ export interface PreviewTile {
   x: number;
   y: number;
   valid: boolean;
+  /** A building the one being placed would pair with (lane pairing) — lit gold. */
+  pair?: boolean;
 }
 
 /**
@@ -1046,7 +1048,7 @@ export class Renderer {
       const ts = camera.tileSize;
       for (const t of this.preview) {
         const { sx, sy } = camera.worldToScreen(t.x, t.y);
-        ctx.fillStyle = t.valid ? 'rgba(96, 200, 128, 0.40)' : 'rgba(220, 86, 86, 0.40)';
+        ctx.fillStyle = t.pair ? 'rgba(232, 184, 56, 0.50)' : t.valid ? 'rgba(96, 200, 128, 0.40)' : 'rgba(220, 86, 86, 0.40)';
         ctx.fillRect(Math.floor(sx), Math.floor(sy), ts, ts);
       }
     }

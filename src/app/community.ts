@@ -15,6 +15,7 @@ import { POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS, seconds } from '../live
 import type { NeighborhoodMap } from '../civic/neighborhoods';
 import { GATHER_LEAVE, startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
 import { closeTiles } from '../live/network';
+import { pairedHoods } from '../engine/pairings';
 
 /** Wall ms between community steps (events are drawn once a game hour). */
 export const COMMUNITY_STEP_MS = 1000;
@@ -374,6 +375,8 @@ export function createCommunity(deps: CommunityDeps): Community {
       if (civic.count() > 0 && trust / civic.count() >= FEST_TRUST && rng.next() < FEST_CHANCE && holdFestival(part)) busy.add(0);
     }
     const fairs = deps.practised('craft-fairs');
+    // a maker space paired with a bazaar: craft fairs twice as often there (lane pairing, interdependence §9)
+    const makersAtBazaars = fairs ? pairedHoods(deps.world.map, deps.world.parcels, part.tileToNeighborhood, BuiltKind.MakerSpace, BuiltKind.Bazaar) : new Set<number>();
     for (let hood = 1; hood <= civic.count(); hood++) {
       if ((live.gatherings?.length ?? 0) >= MAX_GATHERINGS) return;
       if (busy.has(hood)) continue;
@@ -393,7 +396,7 @@ export function createCommunity(deps: CommunityDeps): Community {
         }
       }
       const belonging = above(v.belonging, SEED_BELONGING);
-      if (fairs && belonging >= FAIR_BELONGING && rng.next() < FAIR_CHANCE && holdFair(part, hood)) {
+      if (fairs && belonging >= FAIR_BELONGING && rng.next() < FAIR_CHANCE * (makersAtBazaars.has(hood) ? 2 : 1) && holdFair(part, hood)) {
         busy.add(hood);
         continue;
       }

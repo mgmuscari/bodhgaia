@@ -153,6 +153,7 @@ export const MAKER_REPAIR = 1;
  *  fast. */
 export const MAKER_RADIUS_SUPPLIED = 6;
 export { MAKER_SUPPLY };
+import { pairedWith } from '../engine/pairings';
 
 /** One pass of the maker spaces' repairs over the hashed stock. Deterministic (no rng); returns how many
  *  buildings were mended. Runs beside stepRevival on the civic cadence. */
@@ -169,7 +170,8 @@ export function stepRepairShops(world: RevivalWorld): number {
     if (m.kind !== BuiltKind.MakerSpace) continue;
     // supplied by industry nearby: materials — further reach, twice the mending
     const supplied = works.some((w) => m.x - MAKER_SUPPLY <= w.x1 && m.x + m.width - 1 + MAKER_SUPPLY >= w.x0 && m.y - MAKER_SUPPLY <= w.y1 && m.y + m.height - 1 + MAKER_SUPPLY >= w.y0);
-    const r = supplied ? MAKER_RADIUS_SUPPLIED : MAKER_RADIUS;
+    // a library beside it doubles its reach (lane pairing, interdependence §9)
+    const r = (supplied ? MAKER_RADIUS_SUPPLIED : MAKER_RADIUS) * (pairedWith(world.map, { x: m.x, y: m.y, w: m.width, h: m.height }, BuiltKind.Library) ? 2 : 1);
     boxes.push({ x0: m.x - r, y0: m.y - r, x1: m.x + m.width - 1 + r, y1: m.y + m.height - 1 + r, repair: supplied ? 2 * MAKER_REPAIR : MAKER_REPAIR });
   }
   if (boxes.length === 0) return 0;

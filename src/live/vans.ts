@@ -7,6 +7,9 @@ import type { AmbientState, Van } from './types';
 import { roadPath } from './pathing';
 import { board, drive, roadNear } from './trucks';
 import { seconds } from './tuning';
+import { BuiltKind } from '../engine/fabric';
+import { pairedWith } from '../engine/pairings';
+import { launchDrone } from './drones';
 
 export const VAN_CAP = 12;
 /** Substeps a van stands at the pantry, unloading (~3 s). */
@@ -24,6 +27,11 @@ export function spawnVans(state: AmbientState, map: GameMap): void {
     if (vans.length >= VAN_CAP) break;
     const b = at(map, r.from);
     const p = at(map, r.to);
+    // a food bank paired with an AI node delivers by drone (lane pairing, interdependence §9)
+    if (pairedWith(map, { x: b.x, y: b.y, w: 2, h: 2 }, BuiltKind.AINode)) {
+      launchDrone(state, { x: b.x, y: b.y }, p);
+      continue;
+    }
     const from = roadNear(map, b.x, b.y, 2, 2); // a food bank is 2×2
     const to = roadNear(map, p.x, p.y, 1, 1);
     if (!from || !to) continue;
