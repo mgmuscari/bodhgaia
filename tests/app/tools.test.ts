@@ -211,6 +211,20 @@ describe('createToolController: preview / apply', () => {
     expect(h.log).toEqual(['previewDirty', 'previewDirty']);
   });
 
+  // Maddy 2026-10-13: "Update building footprint preview" — the preview tinted only the tile under the cursor, even
+  // for a 2×2 clinic or a 4×4 plant. It covers the building's whole footprint, all valid or all not.
+  it('a building previews its whole footprint from the hovered tile', () => {
+    const h = setup();
+    h.mount().onSelect(`build-${BuiltKind.Clinic}`);
+    h.previews.length = 0;
+    h.tools.previewAt(3, 4); // open land below the street
+    const tiles = h.previews.at(-1) as { x: number; y: number; valid: boolean }[];
+    expect(tiles.map((t) => [t.x, t.y]).sort()).toEqual([[3, 4], [3, 5], [4, 4], [4, 5]]);
+    expect(new Set(tiles.map((t) => t.valid)).size).toBe(1);
+    h.tools.previewAt(3, 1); // over the street: refused, every tile red
+    expect((h.previews.at(-1) as { valid: boolean }[]).every((t) => !t.valid)).toBe(true);
+  });
+
   it('inspect writes its readout to the status line and mutates nothing', () => {
     const h = setup();
     h.tools.hotkey('inspect');

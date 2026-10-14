@@ -150,7 +150,11 @@ export function createToolController(deps: ToolsDeps): ToolController {
     const def = selectedDef();
     if (!def) return;
     const p = previewTool(world, tech, def, tx, ty, wallet);
-    renderer.setPreview([{ x: tx, y: ty, valid: p.valid }]);
+    // a building shows its whole footprint from the hovered tile (Maddy 2026-10-13: only one tile was tinted)
+    const fp = def.footprint ?? { w: 1, h: 1 };
+    const tiles: PreviewTile[] = [];
+    for (let dy = 0; dy < fp.h; dy++) for (let dx = 0; dx < fp.w; dx++) tiles.push({ x: tx + dx, y: ty + dy, valid: p.valid });
+    renderer.setPreview(tiles);
     deps.markPreviewDirty(); // hover tile-change: preview only, never a base rebuild
   };
 
