@@ -292,6 +292,17 @@ export function main(save: SaveV1 | null = null): void {
       sound.sfx.uiClick();
     },
   });
+  // Practice-gated kerb props (road structure, 1.0.15): street trees with Walkable Streets, bike racks with Bike Shares.
+  let streetProps = '';
+  const syncStreetProps = (): void => {
+    const props = { trees: tech.unlocked.has('walkable-streets'), racks: tech.unlocked.has('bike-shares') };
+    const sig = `${props.trees}${props.racks}`;
+    if (sig === streetProps) return;
+    streetProps = sig;
+    renderer.setStreetProps(props);
+    markDirty();
+  };
+  syncStreetProps();
   const showLegend = mountOverlayLegend(document.body);
 
   // The news ticker along the status bar: the city's changes as headlines (arrests, homes lost and found, gridlock,
@@ -562,7 +573,10 @@ export function main(save: SaveV1 | null = null): void {
     live,
     world,
     hidden: () => document.hidden,
-    syncDock: tools.syncDock,
+    syncDock: () => {
+      tools.syncDock();
+      syncStreetProps(); // a practice that just came into effect may plant the kerbs
+    },
     afterRender: (now) => {
       night?.frame(now);
       tutorial?.frame(now);

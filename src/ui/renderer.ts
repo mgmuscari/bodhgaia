@@ -25,7 +25,7 @@ import {
 } from './renderKey';
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
-import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
+import { wideRoadAt, curbPoleAt, streetTreeAt, bikeRackAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { isPowerConsumer, windFactor } from '../growth/power';
 import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses, wandererPose } from '../live/poses';
@@ -499,6 +499,13 @@ export class Renderer {
     this.powered = poweredAnchors;
   }
 
+  /** The practice-gated kerb props: street trees (Walkable Streets), bike racks (Bike Shares). The host calls
+   *  invalidateBase after a change, as for the grid. */
+  setStreetProps(props: { trees: boolean; racks: boolean }): void {
+    this.streetProps = props;
+  }
+  private streetProps = { trees: false, racks: false };
+
   resize(cssWidth: number, cssHeight: number, dpr: number): void {
     this.dpr = dpr;
     this.cssWidth = cssWidth;
@@ -601,6 +608,7 @@ export class Renderer {
     };
     // Power poles (props), drawn AFTER the tile loop so no later tile paints over one.
     const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
+    const props: { x: number; y: number; key: string }[] = [];
     // Traffic signals on stroad corners, drawn after the tile loop too (they reach over neighbouring lanes).
     const signals: { x: number; y: number; corners: number }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
@@ -809,6 +817,11 @@ export class Renderer {
           // Curb-side power pole props (decoration.curbPoleAt owns every placement decision).
           const pa = curbPoleAt(map, tx, ty);
           if (pa) poles.push({ x: tx, y: ty, axis: pa });
+          // the practice-gated kerb props, drawn with the poles
+          const tree = this.streetProps.trees ? streetTreeAt(map, tx, ty) : null;
+          if (tree) props.push({ x: tx, y: ty, key: `@road/tree/${tree}` });
+          const rack = this.streetProps.racks ? bikeRackAt(map, tx, ty) : null;
+          if (rack) props.push({ x: tx, y: ty, key: `@road/rack/${rack}` });
 
           // Collect this parcel's power state and lights; the decision is pure (isPowerConsumer).
           if (full && !isT && pid !== 0) {
@@ -887,6 +900,10 @@ export class Renderer {
     for (const pl of poles) {
       const o = camera.tileOrigin(pl.x, pl.y);
       ink(`@road/pole/${pl.axis}`, o.dx, o.dy);
+    }
+    for (const pr of props) {
+      const o = camera.tileOrigin(pr.x, pr.y);
+      ink(pr.key, o.dx, o.dy);
     }
     for (const sg of signals) {
       const o = camera.tileOrigin(sg.x, sg.y);

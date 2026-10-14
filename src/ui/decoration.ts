@@ -7,6 +7,7 @@
 import type { GameMap } from '../engine/map';
 import { isRoadKind, BuiltKind, isLimitedAccessBoundary, freewayCrossing } from '../engine/fabric';
 import { DIRS4_EWSN, DIRS4_NESW } from '../engine/dirs';
+import { ZoneType, zoneTypeOf } from '../engine/zone';
 
 /** Power poles fall every Nth tile along a street/avenue run. */
 export const POLE_SPACING = 4;
@@ -78,6 +79,58 @@ export function curbPoleAt(map: GameMap, x: number, y: number): 'h' | 'v' | 'nw'
   if (vRun(map, x, y) && !roadAt(map, x - 1, y) && spanPos(y) === 0) {
     return roadAt(map, x + 1, y) && !vRun(map, x + 1, y) ? 'nw' : 'v';
   }
+  return null;
+}
+
+// ── Street trees and bike racks (road structure remainder, 1.0.15) ──────────────────────────────────────────────
+// Kerb props, practice-gated by the host: trees (Walkable Streets) on the kerb OPPOSITE the poles — the south kerb
+// of an E-W run, the east kerb of an N-S run — every other tile, where the street fronts homes, shops or greens; a
+// bike rack (Bike Shares) at the kerb before the first frontage tile of each shop, bazaar, maker space, library and
+// school.
+
+const TREE_FRONTING: ReadonlySet<number> = new Set<number>([
+  BuiltKind.Park,
+  BuiltKind.CommunityGarden,
+  BuiltKind.RewildedLand,
+  BuiltKind.Parklet,
+]);
+const RACK_KINDS: ReadonlySet<number> = new Set<number>([
+  BuiltKind.CommercialStrip,
+  BuiltKind.Bazaar,
+  BuiltKind.MakerSpace,
+  BuiltKind.Library,
+  BuiltKind.School,
+]);
+
+/** Does the tile at (x, y) front a street with something trees belong before — a home, a shop, civic, a green? */
+function treeFronting(map: GameMap, x: number, y: number): boolean {
+  if (!map.inBounds(x, y) || map.parcel[map.idx(x, y)] === 0) return false;
+  const k = map.getBuilt(x, y);
+  const z = zoneTypeOf(k);
+  return z === ZoneType.Residential || z === ZoneType.Commercial || z === ZoneType.Civic || TREE_FRONTING.has(k);
+}
+
+/** A street tree at (x, y): 'h' on an E-W run's south kerb, 'v' on an N-S run's east kerb — or null. */
+export function streetTreeAt(map: GameMap, x: number, y: number): 'h' | 'v' | null {
+  if (hRun(map, x, y) && !roadAt(map, x, y + 1) && spanPos(x) % 2 === 0 && treeFronting(map, x, y + 1)) return 'h';
+  if (vRun(map, x, y) && !roadAt(map, x + 1, y) && spanPos(y) % 2 === 0 && treeFronting(map, x + 1, y)) return 'v';
+  return null;
+}
+
+/** A bike rack at (x, y): on the kerb before the first frontage tile of a shop, bazaar, maker space, library or
+ *  school — the side it's on ('n', 'e', 's', 'w') — or null. */
+export function bikeRackAt(map: GameMap, x: number, y: number): 'n' | 'e' | 's' | 'w' | null {
+  if (!lineRoadAt(map, x, y)) return null;
+  const first = (nx: number, ny: number, px: number, py: number): boolean => {
+    if (!map.inBounds(nx, ny)) return false;
+    const pid = map.parcel[map.idx(nx, ny)]!;
+    if (pid === 0 || !RACK_KINDS.has(map.getBuilt(nx, ny))) return false;
+    return !map.inBounds(px, py) || map.parcel[map.idx(px, py)] !== pid; // the frontage's first tile
+  };
+  if (first(x, y + 1, x - 1, y + 1)) return 's';
+  if (first(x, y - 1, x - 1, y - 1)) return 'n';
+  if (first(x + 1, y, x + 1, y - 1)) return 'e';
+  if (first(x - 1, y, x - 1, y - 1)) return 'w';
   return null;
 }
 
