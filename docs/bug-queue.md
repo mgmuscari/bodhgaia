@@ -23,6 +23,10 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Phone layout (Maddy 2026-10-14):** ✅ the palette docks along the bottom on a phone in portrait — two rows (tools;
+  panels and overlays) under the status line, each scrolling sideways with a fade where it overflows; menus open
+  upward; the overlay key moves to the map's top-left. Seen once in headless phone emulation, not reproduced in two
+  replays: every dock icon blank (canvases drawn empty, not context-lost) after opening Budget — watch for it on a phone.
 - **Demo review (Maddy 2026-10-14)** — after the interdependence demos (drones and vans: "look good"):
   - ✅ Overlay ramps stretch over the values on the map (eco + civic), the key names the range ("· 19–30%").
   - ✅ Boosted buildings (pairings, maker↔industry — `engine/boosts.ts`) wear a cyan sparkle; inspect says why.

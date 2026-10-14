@@ -1,7 +1,7 @@
 // The screen layout (PURE): the chrome FRAMES the map rather than floating over it (Maddy 2026-10-06: "the menu
 // bars can permanently obscure parts of the playable area"). A full-width top bar (the city's readout), the tool
-// palette docked down the left beneath it, a full-width status line along the bottom — and the map pane is exactly
-// the rectangle left between them, so the camera can bring every tile into view. The sizes are published as CSS
+// palette docked down the left beneath it (on a phone in portrait: along the bottom, under the status line), a
+// full-width status line along the bottom — and the map pane is exactly the rectangle left between them, so the camera can bring every tile into view. The sizes are published as CSS
 // variables (layoutVars) so the stylesheet and the canvases agree.
 
 /** The tool palette's width, docked down the left edge. */
@@ -22,6 +22,24 @@ export function topbarH(innerW: number): number {
  *  the map pane never resizes when a message comes and goes. */
 export const STATUS_H = 40;
 
+/** On a phone the palette docks along the BOTTOM, under the status line (Maddy 2026-10-14: "on mobile, moving the
+ *  menus to the bottom of the screen and keeping the game window above makes more sense"): two rows of 44-px buttons
+ *  — the tools, then the panels and overlays, each scrolling sideways if it overflows — in the 12-px panel frame. */
+export const DOCK_H_NARROW = 2 * 44 + 2 * 12;
+
+/** Is the palette docked along the bottom (a phone in portrait) rather than down the left? */
+export function dockAtBottom(innerW: number): boolean {
+  return innerW <= NARROW_W;
+}
+/** The palette's width down the left (none when it docks along the bottom). */
+export function sidebarW(innerW: number): number {
+  return dockAtBottom(innerW) ? 0 : SIDEBAR_W;
+}
+/** The bottom dock's height (none when the palette docks down the left). */
+export function dockH(innerW: number): number {
+  return dockAtBottom(innerW) ? DOCK_H_NARROW : 0;
+}
+
 export interface PaneRect {
   left: number;
   top: number;
@@ -32,16 +50,30 @@ export interface PaneRect {
 /** The map pane inside a window of innerW × innerH CSS px. */
 export function mapPane(innerW: number, innerH: number): PaneRect {
   return {
-    left: SIDEBAR_W,
+    left: sidebarW(innerW),
     top: topbarH(innerW),
-    width: Math.max(1, innerW - SIDEBAR_W),
-    height: Math.max(1, innerH - topbarH(innerW) - STATUS_H),
+    width: Math.max(1, innerW - sidebarW(innerW)),
+    height: Math.max(1, innerH - topbarH(innerW) - STATUS_H - dockH(innerW)),
   };
+}
+
+/** Where a dock menu (a category's tools, an overlay's views) opens on a phone: upward from its button's left edge,
+ *  its foot on the status line above the dock, held 4 px inside the screen's sides. */
+export function dockMenuAt(anchorLeft: number, menuW: number, menuH: number, innerW: number, innerH: number): { left: number; top: number } {
+  const left = Math.max(4, Math.min(anchorLeft, innerW - menuW - 4));
+  const top = Math.max(0, innerH - STATUS_H - dockH(innerW) - menuH);
+  return { left, top };
 }
 
 /** The chrome sizes as CSS custom properties, for :root. */
 export function layoutVars(innerW = Infinity): Record<string, string> {
-  return { '--sidebar-w': `${SIDEBAR_W}px`, '--topbar-h': `${topbarH(innerW)}px`, '--status-h': `${STATUS_H}px` };
+  return {
+    '--sidebar-w': `${sidebarW(innerW)}px`,
+    '--topbar-h': `${topbarH(innerW)}px`,
+    '--status-h': `${STATUS_H}px`,
+    '--dock-h': `${dockH(innerW)}px`,
+    '--bottom-h': `${STATUS_H + dockH(innerW)}px`,
+  };
 }
 
 /** The most device pixels per CSS pixel the canvases render at on a touch screen: pixel art gains nothing past 2×,

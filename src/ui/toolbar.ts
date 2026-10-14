@@ -19,6 +19,7 @@ import type { ViewRow } from './dockMenu';
 
 /** The sidebar's width (CSS px) — the map pane starts right of it. */
 export { SIDEBAR_W } from './layout';
+import { dockAtBottom, dockMenuAt } from './layout';
 
 export interface ToolbarDeps {
   /** Re-derive the current dock view (assembled in main.ts from pure modules). */
@@ -71,7 +72,15 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
     hr.className = 'toolbar-rule';
     return hr;
   };
-  bar.append(modesEl, rule(), catsEl, rule(), meta);
+  // two rows: the tools, then the panels and overlays — one column down the side on a desktop (the rows are
+  // display: contents there), two rows along the bottom on a phone, each scrolling sideways (ui/layout.ts)
+  const toolsRow = document.createElement('div');
+  toolsRow.className = 'toolbar-row';
+  toolsRow.append(modesEl, rule(), catsEl);
+  const metaRow = document.createElement('div');
+  metaRow.className = 'toolbar-row';
+  metaRow.append(meta);
+  bar.append(toolsRow, rule(), metaRow);
 
   const flyout = document.createElement('div');
   flyout.className = 'toolbar-flyout';
@@ -115,6 +124,20 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
 
   const metaButtonEls = new Map<string, HTMLButtonElement>();
 
+  /** On a phone (the palette docked along the bottom) a menu opens upward from its button, above the status line;
+   *  false on a desktop, where it opens beside the side palette (and keeps the stylesheet's left). */
+  function placeOnPhone(anchor: HTMLElement | null | undefined): boolean {
+    if (!dockAtBottom(window.innerWidth)) {
+      flyout.style.left = '';
+      return false;
+    }
+    const at = dockMenuAt(anchor ? anchor.getBoundingClientRect().left : 0, flyout.offsetWidth, flyout.offsetHeight, window.innerWidth, window.innerHeight);
+    flyout.style.left = `${at.left}px`;
+    flyout.style.top = `${at.top}px`;
+    tip.hidden = true; // the tap's tooltip would sit on the menu it just opened
+    return true;
+  }
+
   function render(): void {
     const view = deps.getMenu();
     modesEl.replaceChildren(
@@ -150,8 +173,10 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
       // it opens UPWARD, ending level with its button: the overlay's colour key sits below, at the foot of the map
       flyout.hidden = false;
       const anchor = metaButtonEls.get(views.kind);
-      const bottom = anchor ? anchor.getBoundingClientRect().bottom : flyout.offsetHeight;
-      flyout.style.top = `${Math.max(0, bottom - flyout.offsetHeight)}px`;
+      if (!placeOnPhone(anchor)) {
+        const bottom = anchor ? anchor.getBoundingClientRect().bottom : flyout.offsetHeight;
+        flyout.style.top = `${Math.max(0, bottom - flyout.offsetHeight)}px`;
+      }
     } else if (view.open === null || view.rows.length === 0) {
       flyout.replaceChildren();
       flyout.hidden = true;
@@ -167,8 +192,8 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
       flyout.style.gridTemplateColumns = `repeat(${Math.min(4, view.rows.length)}, 44px)`; // sized to its tools
       // open beside its category button
       const anchor = catsEl.querySelector(`[data-cat-id="${view.open}"]`) as HTMLElement | null;
-      flyout.style.top = `${anchor ? anchor.getBoundingClientRect().top : 0}px`;
       flyout.hidden = false;
+      if (!placeOnPhone(anchor)) flyout.style.top = `${anchor ? anchor.getBoundingClientRect().top : 0}px`;
     }
   }
 
@@ -183,7 +208,15 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
       }
       btn.classList.toggle('is-selected', m.active);
     }
+    markMore();
   }
+
+  /** A dock row with buttons past its right edge fades out there, so a phone player knows it scrolls. */
+  function markMore(): void {
+    for (const row of [toolsRow, metaRow]) row.classList.toggle('has-more', row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
+  }
+  for (const row of [toolsRow, metaRow]) row.addEventListener('scroll', markMore, { passive: true });
+  window.addEventListener('resize', markMore);
 
   function setStatus(text: string | null): void {
     // the status line is permanent chrome (the map pane is sized around it): an empty message lets the news show
@@ -254,11 +287,21 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
   const onOver = (e: Event): void => {
     const el = (e.target as HTMLElement).closest('[data-tip]') as HTMLElement | null;
     if (!el) return;
+    // a phone: the dock's tooltip opens where its menus do — none while one is open (re-rendered buttons under a
+    // finger fire a fresh pointerover after the menu opened)
+    if (dockAtBottom(window.innerWidth) && bar.contains(el) && !flyout.hidden) return;
     const r = el.getBoundingClientRect();
     tip.textContent = el.dataset.tip ?? '';
-    tip.style.left = `${r.right + 6}px`;
-    tip.style.top = `${r.top + 4}px`;
     tip.hidden = false;
+    if (dockAtBottom(window.innerWidth) && bar.contains(el)) {
+      // a phone: above the dock, from the button's left edge
+      const at = dockMenuAt(r.left, tip.offsetWidth, tip.offsetHeight, window.innerWidth, window.innerHeight);
+      tip.style.left = `${at.left}px`;
+      tip.style.top = `${at.top}px`;
+    } else {
+      tip.style.left = `${r.right + 6}px`;
+      tip.style.top = `${r.top + 4}px`;
+    }
   };
   const onOut = (): void => {
     tip.hidden = true;
@@ -270,5 +313,14 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
 
   render();
   refreshMeta();
-  return { refresh: render, setStatus, setNews, refreshMeta, flash };
+  return {
+    refresh: () => {
+      render();
+      markMore();
+    },
+    setStatus,
+    setNews,
+    refreshMeta,
+    flash,
+  };
 }

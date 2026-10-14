@@ -136,7 +136,7 @@
       .tech-panel {
         position: fixed;
         top: calc(var(--topbar-h) + 2vh);
-        bottom: calc(var(--status-h) + 2vh);
+        bottom: calc(var(--bottom-h) + 2vh);
         left: calc(var(--sidebar-w) + 2vw);
         right: 2vw;
         z-index: 9;
@@ -407,7 +407,7 @@
       .night-hint {
         position: absolute;
         right: 16px;
-        bottom: calc(var(--status-h) + 10px);
+        bottom: calc(var(--bottom-h) + 10px);
         color: rgba(232, 226, 204, 0.55);
         font-size: 0.85rem;
       }
@@ -502,7 +502,7 @@
       #cctv {
         position: fixed;
         right: 12px;
-        bottom: calc(var(--status-h) + 12px);
+        bottom: calc(var(--bottom-h) + 12px);
         z-index: 7; /* map chrome: above the map, under every window (panels sit at 8+) */
         border: 2px solid var(--ui-border, #3a4a8a);
         background: #000;
@@ -598,6 +598,52 @@
         background: var(--ui-panel-hi);
         flex: 0 0 auto;
       }
+      /* the palette's two rows (tools; panels and overlays): invisible down the side, the dock's rows on a phone */
+      .toolbar-row {
+        display: contents;
+      }
+      /* A phone in portrait (Maddy 2026-10-14): the palette docks along the BOTTOM under the status line, the map
+         full-width above (ui/layout.ts DOCK_H_NARROW) — two rows of 44-px buttons, each scrolling sideways */
+      @media (max-width: 760px) {
+        .toolbar {
+          top: auto;
+          bottom: 0;
+          right: 0;
+          width: auto;
+          height: var(--dock-h);
+          align-items: stretch;
+          gap: 0;
+          overflow: hidden;
+        }
+        .toolbar-row {
+          display: flex;
+          flex: 0 0 44px;
+          align-items: center;
+          overflow-x: auto;
+          overflow-y: hidden;
+          scrollbar-width: none;
+        }
+        .toolbar-row::-webkit-scrollbar {
+          display: none;
+        }
+        /* more buttons past the edge (toolbar.ts markMore): the row fades out there, so it reads as a scroller */
+        .toolbar-row.has-more {
+          -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+        }
+        .toolbar-row .toolbar-grid {
+          display: flex;
+          flex: 0 0 auto;
+        }
+        .toolbar-row .toolbar-rule {
+          width: 2px;
+          height: 70%;
+          margin: 0 4px;
+        }
+        .toolbar > .toolbar-rule {
+          display: none; /* the rows are the division */
+        }
+      }
       .icon-btn {
         width: 44px;
         height: 44px;
@@ -667,7 +713,7 @@
         position: fixed;
         left: 0;
         right: 0;
-        bottom: 0;
+        bottom: var(--dock-h); /* the very bottom on a desktop; above the dock on a phone (ui/layout.ts) */
         height: var(--status-h);
         box-sizing: border-box;
         overflow: hidden;
@@ -810,7 +856,7 @@
         box-shadow: none;
         position: fixed;
         left: 50%;
-        top: calc(var(--topbar-h) + (100vh - var(--topbar-h) - var(--status-h)) / 2); /* centred in the map pane's band */
+        top: calc(var(--topbar-h) + (100vh - var(--topbar-h) - var(--bottom-h)) / 2); /* centred in the map pane's band */
         transform: translate(-50%, -50%);
         z-index: 11;
         min-width: 18rem;
@@ -963,7 +1009,7 @@
         box-shadow: none;
         position: fixed;
         left: 50%;
-        top: calc(var(--topbar-h) + (100vh - var(--topbar-h) - var(--status-h)) / 2); /* centred in the map pane's band */
+        top: calc(var(--topbar-h) + (100vh - var(--topbar-h) - var(--bottom-h)) / 2); /* centred in the map pane's band */
         transform: translate(-50%, -50%);
         z-index: 11;
         min-width: 16rem;
@@ -1037,7 +1083,7 @@
         top: calc(var(--topbar-h) + 0.5rem);
         z-index: 10;
         width: 22rem;
-        max-height: calc(100vh - var(--topbar-h) - var(--status-h) - 1rem);
+        max-height: calc(100vh - var(--topbar-h) - var(--bottom-h) - 1rem);
         overflow-y: auto;
         padding: 0.5rem 0.8rem 0.7rem;
         font-family: var(--ui-font);
@@ -1117,7 +1163,7 @@
         }
         /* centred windows taller than the pane lost their top (title, close) above the screen: cap and scroll */
         .settings-panel, .help-panel {
-          max-height: calc(100vh - var(--topbar-h) - var(--status-h) - 1rem);
+          max-height: calc(100vh - var(--topbar-h) - var(--bottom-h) - 1rem);
           overflow-y: auto;
         }
         .tech-detail {
@@ -1133,7 +1179,7 @@
         border-image: var(--ui-frame-panel) 4 fill / 12px stretch;
         position: fixed;
         left: calc(var(--sidebar-w) + 0.5rem);
-        bottom: calc(var(--status-h) + 0.5rem);
+        bottom: calc(var(--bottom-h) + 0.5rem);
         z-index: 7; /* map chrome: above the map, under every window (panels sit at 8+) */
         padding: 0.2rem 0.5rem;
         font-family: var(--ui-font);
@@ -1141,6 +1187,14 @@
         line-height: 1.4;
         color: var(--ui-text);
         pointer-events: none;
+      }
+      /* a phone: the key goes to the top-left of the map — along the foot, an overlay's open menu covered it */
+      @media (max-width: 760px) {
+        .overlay-legend {
+          left: 0.5rem;
+          top: calc(var(--topbar-h) + 0.5rem);
+          bottom: auto;
+        }
       }
       .overlay-legend__title { color: var(--ui-accent); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.2rem; }
       /* The palette's Help icon replaces the floating controls hint */
