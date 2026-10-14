@@ -22,7 +22,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Mutual Aid builds shelters: beds for the people in the camps nearby, safe from the cold.',
       'Community AI Nodes clean up the industry around them.',
       'Big workplaces get a parking lot at the door. Streets grow trees with Walkable Streets, and bike racks with Bike Shares.',
-      'A driver stuck in a jam twice may leave the car and walk.',
+      'Now and then a driver stuck in a long jam pulls over and walks; the car is towed soon after.',
       'The music’s held notes are softer. A building’s whole footprint shows as you place it.',
       'What’s new shows here, the first time you play a new version.',
     ],
