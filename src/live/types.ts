@@ -141,6 +141,11 @@ export interface Mover {
   personality?: number;
   /** A wrecked car (live/accidents.ts): substeps until it's towed; it doesn't move meanwhile. */
   wreck?: number;
+  /** (Car) Its driver has already given up one stop to a jam this trip — the next time, they walk off. */
+  gaveUp?: boolean;
+  /** (Car) Left in its lane by a driver who walked away from the jam ("Falling Down"); stands, hazards on, until
+   *  towed (its `wreck` timer), never spun round like a crash. */
+  leftInJam?: boolean;
 }
 
 export type Car = Mover;
@@ -252,7 +257,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'collapse' | 'rescue' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
+  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
   x: number;
   y: number;
   w: number;

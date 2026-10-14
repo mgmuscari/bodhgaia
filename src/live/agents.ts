@@ -21,6 +21,8 @@ import {
   GROUND_POLL_MAX,
   HEALTH_MAX,
   JAM_SKIP_PENALTY,
+  JAM_WALKOFF_PENALTY,
+  WALKOFF_TOW,
   LOT_ABSORB_MARGIN,
   LOT_REROUTE_RADIUS,
   MAX_PARK_SEEKS,
@@ -174,7 +176,14 @@ export function headHome(state: AmbientState, p: Ped, map: GameMap): void {
 export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void {
   if (p.homeTile !== undefined) depositHealth(state, p.homeTile, -JAM_SKIP_PENALTY);
   const car = p.carId !== undefined ? findCar(state, p.carId) : undefined;
-  if (car) car.stuck = 0;
+  if (car && car.gaveUp && !car.parked) {
+    walkOffFromJam(state, p, map, car); // jammed again: leave it in the lane and walk ("Falling Down")
+    return;
+  }
+  if (car) {
+    car.stuck = 0;
+    car.gaveUp = true;
+  }
   if (!(p.itinerary !== undefined && advanceItinerary(state, p, map)) && p.homeTile !== undefined) headHome(state, p, map);
   // the driver is IN its car: don't dismount and walk back to it — re-route the car straight on; if no
   // route exists, park it right here (never left standing in a lane) and walk the rest
@@ -184,6 +193,22 @@ export function skipJammedStop(state: AmbientState, p: Ped, map: GameMap): void 
       walkLegInstead(p);
     }
   }
+}
+
+/** "Falling Down" (Maddy 2026-09-30): the driver leaves the car where it stands, in its lane, and walks on — the
+ *  household's further loss; the car stays (hazards on, blocking the lane) until it's towed; the news hears of it. */
+function walkOffFromJam(state: AmbientState, p: Ped, map: GameMap, car: Car): void {
+  if (p.homeTile !== undefined) depositHealth(state, p.homeTile, -JAM_WALKOFF_PENALTY);
+  car.owned = false;
+  car.path = undefined;
+  car.leg = undefined;
+  car.gaveUp = undefined;
+  car.leftInJam = true;
+  car.wreck = WALKOFF_TOW;
+  p.carId = undefined;
+  state.events?.push({ kind: 'walkoff', x: Math.round(car.x), y: Math.round(car.y), w: 1, h: 1 });
+  if (!(p.itinerary !== undefined && advanceItinerary(state, p, map)) && p.homeTile !== undefined) headHome(state, p, map);
+  if (p.phase === 'driving' || p.phase === 'to-vehicle') walkLegInstead(p);
 }
 
 /** Squared distance from (x, y) to the nearest point of a lot's bounding box (0 inside it). Lets a
@@ -432,6 +457,7 @@ export function applyParkSpot(
   spot: { x: number; y: number; lotIdx?: number; stallIdx?: number; dir?: number; slot?: number },
 ): void {
   easeFrom(car, carPose(car)); // it pulls into the stall from where it is, not in one frame
+  car.gaveUp = undefined; // parked: the next trip starts with a clean slate
   car.x = spot.x - 0.5;
   car.y = spot.y - 0.5;
   car.tx = car.x;

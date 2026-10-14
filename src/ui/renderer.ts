@@ -1250,11 +1250,12 @@ export class Renderer {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
-      const frame = (heading8(pose.hx, pose.hy) + (c.wreck !== undefined ? 1 : 0)) % 8;
+      const crashed = c.wreck !== undefined && !c.leftInJam; // a car left in the jam stands straight, hazards on
+      const frame = (heading8(pose.hx, pose.hy) + (crashed ? 1 : 0)) % 8;
       const img = this.sprites.get(`@sprite/car/${tint}/${frame}`);
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       if (c.wreck !== undefined) {
-        const debris = this.sprites.get('@sprite/debris');
+        const debris = crashed ? this.sprites.get('@sprite/debris') : undefined;
         if (debris) this.drawArt(ctx, debris, pose.x + pose.hx * 0.35, pose.y + pose.hy * 0.35 + 0.15, camera);
         if (hazardOn) {
           const lights = this.sprites.get(`@sprite/car-light/${frame}`);

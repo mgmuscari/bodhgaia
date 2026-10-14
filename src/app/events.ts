@@ -40,6 +40,9 @@ export function handleEvents(events: readonly LiveEvent[], deps: EventCostDeps):
   if (collapses > 0) deps.news(`${collapses === 1 ? 'A resident' : `${collapses} residents`} collapsed — a minute for an ambulance`);
   const rescues = events.filter((e) => e.kind === 'rescue').length;
   if (rescues > 0) deps.news(rescues === 1 ? 'An ambulance brought a resident back' : `Ambulances brought ${rescues} residents back`);
+  // "Falling Down": a driver jammed twice left the car in its lane and walked on (Maddy 2026-09-30)
+  const walkoffs = events.filter((e) => e.kind === 'walkoff').length;
+  if (walkoffs > 0) deps.news(walkoffs === 1 ? 'A driver left their car in the jam and walked' : `${walkoffs} drivers left their cars in the jam and walked`);
   const deaths = events.filter((e) => e.kind === 'death');
   if (deaths.length === 0) return;
   deps.mourn(deaths.length);

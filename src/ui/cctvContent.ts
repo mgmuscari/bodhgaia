@@ -50,6 +50,7 @@ const LABELS: Record<LiveEvent['kind'], string> = {
   spill: 'Toxic spill',
   flood: 'Flood',
   crash: 'Crash',
+  walkoff: 'A driver left their car in the jam',
   protest: 'Protest',
   uprising: 'Uprising',
   arrest: 'Arrest',
@@ -59,7 +60,7 @@ const LABELS: Record<LiveEvent['kind'], string> = {
 };
 
 /** Deaths first, then disasters and protest; arrests and celebrations give way to everything else. */
-const RANK: Record<LiveEvent['kind'], number> = { death: 0, collapse: 0, rescue: 1, fire: 1, spill: 1, flood: 1, crash: 1, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2 };
+const RANK: Record<LiveEvent['kind'], number> = { death: 0, collapse: 0, rescue: 1, fire: 1, spill: 1, flood: 1, crash: 1, walkoff: 2, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2 };
 
 /** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
  *  only a few wait. */
