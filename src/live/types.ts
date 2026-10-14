@@ -415,6 +415,9 @@ export interface AmbientState {
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
   ambulances?: Ambulance[];
+  /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
+   *  to the unhoused pool. */
+  sheltered?: Map<number, number>;
   /** The cars each household owns now (live/homeCars.ts) — homes near transit give theirs up over time. */
   carsOwned?: Map<number, number>;
   /** How many times the household cars have been synced (the clock their shedding is drawn on). */

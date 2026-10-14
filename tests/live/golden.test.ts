@@ -147,7 +147,8 @@ describe('live layer golden determinism', () => {
     // pace — the same world, sampled 1.5× as often, so its draws and its digest differ
     // 2026-10-13: a train forgets its last stop once it moves on, so it halts at a station every pass (it stopped only
     // once on a one-station line) — trains dwell more, riders board more
-    expect(first).toBe('cars=6 peds=173 cruisers=4 trains=5 flocks=13 #6e9c9cb4');
+    // 2026-10-13: mutual-aid shelters — the state carries a `sheltered` map (empty here): same motion, one more field
+    expect(first).toBe('cars=6 peds=173 cruisers=4 trains=5 flocks=13 #9ed2a36d');
   });
 });
 

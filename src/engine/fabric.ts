@@ -118,6 +118,8 @@ export const BuiltKind = {
   // A vacant lot (Maddy 2026-10-13): what the bulldozer leaves — bare ground, no one's, open to building again —
   // that grows back to open land as its soil heals (recoverVacantLots).
   VacantLot: 68,
+  // A mutual-aid shelter (Maddy 2026-10-13, under Mutual Aid): beds for the unhoused near it (live/camps.ts).
+  Shelter: 69,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -138,6 +140,7 @@ const COMMONS_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.MakerSpace,
   BuiltKind.VerticalFarm,
   BuiltKind.TinyHomes,
+  BuiltKind.Shelter,
 ]);
 export const isCommonsKind = (k: number): boolean => COMMONS_KINDS.has(k);
 /** Elevated transit that can deck OVER a road as an overpass: elevated rail (8) or promenade (9). */

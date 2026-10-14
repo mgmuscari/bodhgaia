@@ -9,7 +9,7 @@ import type { Rng } from '../engine/rng';
 import type { AmbientState } from './types';
 import { StopCategory } from '../citizens/itinerary';
 import { TravelMode } from '../citizens/modes';
-import { nearestOfCategory, walkPath } from './pathing';
+import { nearestOfCategory, nearestWalkable, walkPath } from './pathing';
 import { liveCaps } from './caps';
 
 /** One in this many of the unhoused is out at a time (as the housed: a third). */
@@ -20,8 +20,9 @@ export const VISIT_KEEP = 0.97;
 /** Top up the unhoused out on their day from the camps: a camp picked by how many live there, a commercial place
  *  near it that they can walk to. */
 export function spawnUnhoused(state: AmbientState, map: GameMap, rng: Rng): void {
-  const camps = state.camps;
-  if (!camps || camps.size === 0) return;
+  // their days start from where they sleep: a camp, or a mutual-aid shelter
+  const camps = new Map<number, number>([...(state.camps ?? new Map<number, number>()), ...(state.sheltered ?? new Map<number, number>())]);
+  if (camps.size === 0) return;
   const target = Math.round(state.unhoused / UNHOUSED_OUT_DIVISOR);
   let out = 0;
   for (const p of state.peds) if (p.shelter !== undefined) out++;
@@ -39,8 +40,10 @@ export function spawnUnhoused(state: AmbientState, map: GameMap, rng: Rng): void
         break;
       }
     }
-    const cx = camp % map.width;
-    const cy = (camp - cx) / map.width;
+    // set off from the camp — or from a shelter's door, the open tile nearest it
+    const door = state.sheltered?.has(camp) ? nearestWalkable(map, camp % map.width, Math.floor(camp / map.width)) : null;
+    const cx = door ? door.x : camp % map.width;
+    const cy = door ? door.y : (camp - cx) / map.width;
     const plot = nearestOfCategory(map, cx, cy, StopCategory.Shop, state.landValue, rng.nextInt(1 << 30));
     if (!plot || !walkPath(map, cx, cy, plot.x, plot.y)) continue; // nowhere they can walk to
     state.peds.push({

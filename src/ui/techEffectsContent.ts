@@ -29,6 +29,7 @@ import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
 import { AI_CLEAN_RADIUS } from '../live/fields/pollution';
+import { SHELTER_BEDS, SHELTER_DRAW } from '../live/camps';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
@@ -150,6 +151,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (GATHERING_KINDS.has(kind)) effects.push("Gathering place: its neighbourhood's belonging +1 per civic tick");
   if (kind === BuiltKind.WastewaterWorks) effects.push(`Cleans contaminated water within ${WATER_TREAT_RADIUS} tiles`);
   if (kind === BuiltKind.RetentionPond) effects.push(`Keeps the land within ${POND_REACH} tiles from flooding`);
+  if (kind === BuiltKind.Shelter) effects.push(`${SHELTER_BEDS} beds: takes in the unhoused from camps within ${SHELTER_DRAW} tiles — safe from the cold nights`);
   if (GREEN_HEAL_KINDS.has(kind)) effects.push(`Heals ground pollution within ${GREEN_HEAL_RADIUS} tiles`);
   if (AMENITY_KINDS.has(kind)) effects.push("Raises its neighbours' land value");
   const eco = influenceOf(kind);

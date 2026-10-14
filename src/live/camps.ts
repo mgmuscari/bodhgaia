@@ -11,8 +11,12 @@
 // Tents are drawn from the camps (tentsAt) — never from desire-path wear. Live layer: writes only its own state.
 
 import type { GameMap } from '../engine/map';
-import { isOpenGround } from '../engine/fabric';
+import { BuiltKind, isOpenGround } from '../engine/fabric';
 import type { AmbientState } from './types';
+
+/** Beds in a mutual-aid shelter, and how far (Manhattan) it draws people in from the camps (Maddy 2026-10-13). */
+export const SHELTER_BEDS = 24;
+export const SHELTER_DRAW = 12;
 
 /** People sharing a tent. */
 export const PEOPLE_PER_TENT = 4;
@@ -144,6 +148,68 @@ function take(map: GameMap, camps: Map<number, number>, n: number, at?: number):
   }
 }
 
+function shelteredTotal(state: AmbientState): number {
+  let n = 0;
+  for (const v of (state.sheltered ?? new Map<number, number>()).values()) n += v;
+  return n;
+}
+
+/** `n` of the sheltered leave the pool (re-housed, or gone), from the fullest shelters first. */
+function leaveShelters(state: AmbientState, n: number): void {
+  const sh = state.sheltered;
+  let left = n;
+  while (sh && left > EPS && sh.size > 0) {
+    let best = -1;
+    let most = -1;
+    for (const [t, v] of sh) if (v > most + EPS || (Math.abs(v - most) <= EPS && t < best)) [best, most] = [t, v];
+    const out = Math.min(left, most);
+    left -= out;
+    if (most - out <= EPS) sh.delete(best);
+    else sh.set(best, most - out);
+  }
+}
+
+/** Each mutual-aid shelter's anchor tile (its footprint's first tile). */
+function shelterAnchors(map: GameMap): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (let t = 0; t < map.built.length; t++) {
+    if (map.built[t] !== BuiltKind.Shelter) continue;
+    const pid = map.parcel[t]!;
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    out.push(t);
+  }
+  return out;
+}
+
+/** The shelters take people in from the camps within SHELTER_DRAW, nearest first, up to their beds; a shelter that
+ *  is gone sends its people back to camps near it. */
+function shelterFromCamps(state: AmbientState, map: GameMap, camps: Map<number, number>): void {
+  const sh = (state.sheltered ??= new Map());
+  const anchors = shelterAnchors(map);
+  const standing = new Set(anchors);
+  for (const [t, n] of [...sh].sort((a, b) => a[0] - b[0])) {
+    if (standing.has(t)) continue;
+    sh.delete(t);
+    place(map, state, camps, t, n);
+  }
+  for (const t of anchors) {
+    const room = SHELTER_BEDS - (sh.get(t) ?? 0);
+    if (room <= EPS) continue;
+    const [x, y] = xy(map, t);
+    let near = 0;
+    for (const [c, n] of camps) {
+      const [cx, cy] = xy(map, c);
+      if (Math.abs(cx - x) + Math.abs(cy - y) <= SHELTER_DRAW) near += n;
+    }
+    const n = Math.min(room, near);
+    if (n <= EPS) continue;
+    take(map, camps, n, t);
+    sh.set(t, (sh.get(t) ?? 0) + n);
+  }
+}
+
 /** Bring the camps in line with the pool: move camps that were built over, take the re-housed from the camps
  *  nearest their homes, camp the newly unhoused near the homes they left, then reconcile whatever the pool
  *  gained or lost unattributed. Deterministic: tiles in ascending order. */
@@ -162,8 +228,13 @@ export function settleCamps(state: AmbientState, map: GameMap): void {
   state.campOut?.clear();
   let held = 0;
   for (const v of camps.values()) held += v;
+  for (const v of (state.sheltered ?? new Map<number, number>()).values()) held += v;
   const gap = Math.max(0, state.unhoused) - held;
-  if (gap < -EPS) take(map, camps, -gap);
+  if (gap < -EPS) {
+    const fromCamps = Math.min(-gap, held - shelteredTotal(state));
+    take(map, camps, fromCamps);
+    if (-gap - fromCamps > EPS) leaveShelters(state, -gap - fromCamps); // the rest were sheltered
+  }
   else if (gap > EPS) {
     // gained with no home named: camp by the homes with the most room — where people were pushed out
     const empty: [number, number][] = [];
@@ -179,6 +250,7 @@ export function settleCamps(state: AmbientState, map: GameMap): void {
     if (room > 0) for (const [t, r] of empty.sort((a, b) => a[0] - b[0])) place(map, state, camps, t, (gap * r) / room);
     else place(map, state, camps, map.idx(map.width >> 1, map.height >> 1), gap);
   }
+  shelterFromCamps(state, map, camps);
   // dust (a fraction of a person) gathers into the nearest real camp
   for (const t of [...camps.keys()].sort((a, b) => a - b)) {
     const n = camps.get(t);
