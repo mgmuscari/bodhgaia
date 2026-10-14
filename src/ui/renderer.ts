@@ -1480,6 +1480,16 @@ export class Renderer {
       });
     }
 
+    // Delivery drones (interdependence §3): over the rooftops, above everything on the ground and the viaducts, their
+    // rotors flickering.
+    const rotor = Math.floor(performance.now() / 90) % 2;
+    for (const d of ambient.drones ?? []) {
+      const { sx, sy } = camera.worldToScreen(d.x + 0.5, d.y + 0.5);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/drone/${rotor}`);
+      if (img) this.drawArt(ctx, img, d.x + 0.5, d.y + 0.1, camera);
+    }
+
     // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).
     const cast = castHeadlights(world.map, bodies);
     this.beams = cast.beams.map((b) => ({ ...b, mul: bodyMul[b.source]! }));

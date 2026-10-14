@@ -38,6 +38,7 @@ import { stepWanderer } from './wanderer';
 import { stepTrucks } from './trucks';
 import { stepAmbulances } from './ambulances';
 import { spawnVans, stepVans } from './vans';
+import { stepDrones } from './drones';
 import { stepClouds, stepToxic } from './spills';
 import { stepGatherings } from './gatherings';
 import { spawnTrains, stepTrain } from './trains';
@@ -67,6 +68,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.wanderer) stepWanderer(state, map, rng); // the opening's night walker
   if (state.trucks) stepTrucks(state, map); // fire trucks on a call
   if (state.dying?.length || state.ambulances?.length) stepAmbulances(state, map); // a collapse calls a clinic
+  if (state.drones?.length) stepDrones(state); // deliveries in the air
   if (state.foodRuns?.length || state.vans?.length) {
     spawnVans(state, map); // this hour's food-bank runs, made visible
     stepVans(state, map);

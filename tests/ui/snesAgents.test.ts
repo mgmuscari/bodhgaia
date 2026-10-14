@@ -50,6 +50,13 @@ describe('snes agents — vehicles + pedestrians at the art-pixel scale (Maddy 2
     }
   });
 
+  it('delivery drones are tiny, with rotors that flicker between two frames', () => {
+    const a = tiles.get('@sprite/drone/0')!;
+    const b = tiles.get('@sprite/drone/1')!;
+    expect([a.w, a.h]).toEqual([3, 3]);
+    expect(a.data).not.toEqual(b.data);
+  });
+
   it('food-bank vans are car-sized, in 8 headings, cream with a green stripe — no lights of their own', () => {
     for (let d = 0; d < 8; d++) {
       const p = tiles.get(`@sprite/van/${d}`)!;

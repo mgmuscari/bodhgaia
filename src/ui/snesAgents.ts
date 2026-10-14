@@ -305,6 +305,11 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
     const cols = { k: C.slate, w: C.petal, r: C.signal, g: C.glassLo, L: phase === 0 ? C.signal : C.petal, M: phase === 0 ? C.petal : C.signal };
     eightWays(glyph(AMB_E, cols), glyph(AMB_NE, cols)).forEach((f, d) => out.set(`@sprite/ambulance/${d}/${phase}`, f));
   }
+  // a delivery drone: a dark body with four rotors that flicker (two frames)
+  for (const f of [0, 1]) {
+    const rotor = f === 0 ? C.paveHi : C.slate;
+    out.set(`@sprite/drone/${f}`, glyph(['r.r', '.k.', 'r.r'], { k: C.ink, r: rotor }));
+  }
   {
     const cols = { k: C.creamLo, w: C.cream, r: C.leaf, g: C.glassLo };
     eightWays(glyph(VAN_E, cols), glyph(VAN_NE, cols)).forEach((f, d) => out.set(`@sprite/van/${d}`, f));

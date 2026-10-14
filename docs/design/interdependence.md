@@ -83,9 +83,8 @@ goods: food, repair, parcels. That is the "more logistics of distribution" item,
 
 ### AI nodes: dispatch, routing, drones
 AI nodes today only cut evening power draw nearby. They become the city's **dispatch hubs**:
-- **Routing:** agents starting within an AI node's radius route with **live traffic cost** in their A* (they see the
-  jam and go round). The base game also gets a mild static traffic cost on edges, from the "add traffic costing" item;
-  the AI node makes it live.
+- **Routing:** *(already in the base game — every car route weighs live congestion, `driveTileCost`; nothing for the
+  AI node to add here.)*
 - **Drone delivery radius:** with Drone Deliveries, an AI node serves deliveries within its radius (proposed 12 tiles).
   Today `droneShopDrop` silently deletes a share of shopping trips city-wide. Instead, trips are **delivered only
   inside a hub's radius**, and the drones are drawn (next point).

@@ -429,6 +429,8 @@ export interface AmbientState {
   foodAccess?: Set<number>;
   foodRuns?: { from: number; to: number; amount: number }[];
   vans?: Van[];
+  /** Delivery drones in the air (live/drones.ts). */
+  drones?: import('./drones').Drone[];
   /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
    *  to the unhoused pool. */
   sheltered?: Map<number, number>;

@@ -30,6 +30,7 @@ import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
 import { AI_CLEAN_RADIUS } from '../live/fields/pollution';
 import { SHELTER_BEDS, SHELTER_DRAW } from '../live/camps';
+import { DRONE_RADIUS } from '../live/drones';
 import { ADJACENT_BONUS, BANK_REACH, GROW_REACH, PANTRY_REACH, PRODUCE } from '../live/food';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
@@ -100,7 +101,7 @@ function practiceLine(e: Effect): string {
     case 'arrestRelease':
       return `${pct(e.value as number)} of police stops go to a circle instead of an arrest`;
     case 'droneShopDrop':
-      return `${pct(e.value as number)} of driven shopping trips are delivered instead`;
+      return `${pct(e.value as number)} of driven shopping trips from homes within ${DRONE_RADIUS} tiles of an AI node are flown in by drone instead`;
     case 'occFloor':
       return `Neighbours take people in: no home falls below ${pct(e.value as number)} of its residents (was ${pct(OCC_FLOOR)})`;
     case 'industryVisit':
