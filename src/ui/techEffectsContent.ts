@@ -28,6 +28,7 @@ import {
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
+import { AI_CLEAN_RADIUS } from '../live/fields/pollution';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
@@ -160,6 +161,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (kind === BuiltKind.ADU) effects.push(`Built in a house's back yard: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
   if (kind === BuiltKind.AINode) {
     effects.push(`Smart grid: homes within ${SMART_GRID_RADIUS} tiles draw ${pct(SMART_GRID_CUT)} less power ${SMART_GRID_FROM}:00–${SMART_GRID_TO}:00`);
+    effects.push(`High-tech industry: works within ${AI_CLEAN_RADIUS} tiles stop poisoning the ground and water, and never spill`);
   }
   if (kind === BuiltKind.Commune) {
     effects.push('Its residents work at home and own no cars');

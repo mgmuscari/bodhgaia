@@ -12,7 +12,7 @@ import { layField } from '../citizens/field';
 import type { AmbientState, LivePractices } from './types';
 import { offStreet } from './types';
 import { residentCollapses } from './death';
-import { diffuseField, driftField } from './fields/pollution';
+import { aiCleaned, diffuseField, driftField } from './fields/pollution';
 import { decayField } from '../citizens/field';
 import {
   CLOUD_DEATH_CHANCE,
@@ -79,8 +79,10 @@ export function drawSpills(state: AmbientState, world: { map: GameMap; parcels: 
   state.spillHour = hour;
   const { map, parcels } = world;
   const out: number[] = [];
+  const cleaned = aiCleaned(map); // high-tech works near an AI node don't spill
   for (const i of parcels.aliveIndices()) {
     const p = parcels.get(i);
+    if (cleaned.has(map.idx(p.x, p.y))) continue;
     const chance = spillChance(p.kind, p.condition, map.redline[map.idx(p.x, p.y)]!, state.practices);
     if (chance > 0 && rng.next() < chance) {
       startSpill(state, map, p);

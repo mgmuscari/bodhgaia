@@ -45,6 +45,7 @@ import { DIR_DX, DIR_DY } from '../geometry';
 import { seedInheritedOccupancy } from './occupancy';
 import { settleCamps } from '../camps';
 import type { AmbientState } from '../types';
+import { mapEpoch } from '../network';
 
 /** The world's prevailing wind as an integer unit vector, drawn from the (seeded) ambient rng so it
  *  is consistent per world seed and NEVER touches the sim/worldgen streams. Defaults to a westerly
@@ -80,6 +81,7 @@ export function layPollution(state: AmbientState, map: GameMap, x: number, y: nu
  *  (paved/built/worn ground sheds most), accumulating toward WATER_POLL_MAX. Open water with no
  *  ground neighbours stays clean. Whole-map scan — gated to WATER_RUNOFF_CADENCE by the caller. */
 export function accumulateWaterRunoff(state: AmbientState, map: GameMap): void {
+  const cleaned = aiCleaned(map); // high-tech industry sheds only what any built ground does
   const W = map.width;
   const H = map.height;
   for (let y = 0; y < H; y++) {
@@ -94,7 +96,7 @@ export function accumulateWaterRunoff(state: AmbientState, map: GameMap): void {
         const ni = map.idx(nx, ny);
         if (map.water[ni] !== 0) continue; // a water neighbour sheds nothing
         const k = map.built[ni]!;
-        if (zoneTypeOf(k) === ZoneType.Industrial) {
+        if (zoneTypeOf(k) === ZoneType.Industrial && !cleaned.has(ni)) {
           // Industry is the toxic source; redlined industry sheds the MOST (least
           // regulated, concentrated there by policy) — scale by the tile's grade.
           // This is the Hackensack: the contamination starts at the redlined plant.
@@ -115,6 +117,37 @@ export function accumulateWaterRunoff(state: AmbientState, map: GameMap): void {
   }
 }
 
+/** Industry within this many tiles (Chebyshev) of a Community AI Node is high-tech (Maddy 2026-10-08: "an AI node
+ *  turns nearby industry into high-tech jobs — the industrial pollution there goes away") — the smart grid's reach. */
+export const AI_CLEAN_RADIUS = 8;
+const AI_CACHE = new WeakMap<GameMap, { epoch: number; tiles: Set<number> }>();
+
+/** The industrial tiles an AI node has cleaned up: no ground poison, no seep, no toxic runoff, no spills. */
+export function aiCleaned(map: GameMap): ReadonlySet<number> {
+  const epoch = mapEpoch(map);
+  const c = AI_CACHE.get(map);
+  if (c && c.epoch === epoch) return c.tiles;
+  const tiles = new Set<number>();
+  const nodes: number[] = [];
+  for (let i = 0; i < map.built.length; i++) if (map.built[i] === BuiltKind.AINode) nodes.push(i);
+  if (nodes.length > 0) {
+    for (let i = 0; i < map.built.length; i++) {
+      if (zoneTypeOf(map.built[i]!) !== ZoneType.Industrial) continue;
+      const x = i % map.width;
+      const y = (i - x) / map.width;
+      for (const n of nodes) {
+        const nx = n % map.width;
+        if (Math.max(Math.abs(nx - x), Math.abs((n - nx) / map.width - y)) <= AI_CLEAN_RADIUS) {
+          tiles.add(i);
+          break;
+        }
+      }
+    }
+  }
+  AI_CACHE.set(map, { epoch, tiles });
+  return tiles;
+}
+
 /** Lay the LAND-contamination field: each ground tile accrues pollution from its OWN source-ness
  *  (industry + a dirty power plant sitting on it, grade-scaled), the litter/wear of demand paths
  *  that cross it, and a seep from adjacent industrial/plant tiles (the plume spreads a tile). Then
@@ -122,6 +155,7 @@ export function accumulateWaterRunoff(state: AmbientState, map: GameMap): void {
  *  lets the land recover — the toxic legacy is lingering but reparable. Whole-map scan; gated to
  *  GROUND_RUNOFF_CADENCE by the caller. Live/non-hashed. */
 export function accumulateGroundPollution(state: AmbientState, map: GameMap): void {
+  const cleaned = aiCleaned(map); // high-tech industry poisons nothing
   const W = map.width;
   const H = map.height;
   const plants =
@@ -135,7 +169,7 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
       let load = 0;
       const k = map.built[i]!;
       // The tile's OWN source-ness: industry + dirty power poison the ground they stand on.
-      if (zoneTypeOf(k) === ZoneType.Industrial) load += GROUND_INDUSTRY * (1 + map.redline[i]! / 255);
+      if (zoneTypeOf(k) === ZoneType.Industrial && !cleaned.has(i)) load += GROUND_INDUSTRY * (1 + map.redline[i]! / 255);
       if (plants && plants.has(i)) load += GROUND_PLANT;
       // Demand-path litter: the trampled, littered ground of a beaten path leaches into the soil.
       const wear = state.wear.get(i) ?? 0;
@@ -147,7 +181,7 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
         if (!map.inBounds(nx, ny)) continue;
         const ni = map.idx(nx, ny);
         if (map.water[ni] !== 0) continue;
-        if (zoneTypeOf(map.built[ni]!) === ZoneType.Industrial) {
+        if (zoneTypeOf(map.built[ni]!) === ZoneType.Industrial && !cleaned.has(ni)) {
           load += GROUND_SEEP * (1 + map.redline[ni]! / 255);
         } else if (plants && plants.has(ni)) {
           load += GROUND_SEEP;
