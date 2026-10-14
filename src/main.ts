@@ -68,6 +68,7 @@ import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
 import { mountWhatsNew } from './ui/whatsNewPanel';
 import { GAME_VERSION } from './ui/creditsContent';
 import { travelModes } from './live/stats';
+import { createHealthController } from './app/health';
 
 
 export function main(save: SaveV1 | null = null): void {
@@ -204,6 +205,17 @@ export function main(save: SaveV1 | null = null): void {
     },
   });
 
+  // Neighbourhood health (interdependence §1): recomputed on the civic cadence; the overlay, inspect and events read it.
+  const health = createHealthController({
+    map: world.map,
+    parcels: world.parcels,
+    civic: deps.civic,
+    partition: () => deps.partition,
+    occupancyAt: (t) => live.state.occupancy.get(t),
+    coverage: () => live.state.coverage,
+  });
+  health.recompute();
+
   // Created BEFORE the dock mounts: the dock reads the overlay and the panel flags at mount (the registry reports
   // every panel closed until attach()).
   const overlays = createOverlayController({
@@ -215,6 +227,7 @@ export function main(save: SaveV1 | null = null): void {
       poweredAnchors: power.grid().poweredAnchors,
       civic: deps.civic,
       tileToNeighborhood: deps.partition.tileToNeighborhood,
+      health: (id) => health.byId(id)?.health ?? 0,
     }),
     showLegend: (legend) => showLegend(legend),
     setStatus: (text) => toolbar.setStatus(text),
@@ -248,7 +261,8 @@ export function main(save: SaveV1 | null = null): void {
       },
     },
     techPanel: () => mounted.tech,
-    inspect: (info, tx, ty) => inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors, power.grid().storage),
+    inspect: (info, tx, ty) =>
+      inspectReadout(info, tx, ty, world, live.state, power.grid().poweredAnchors, power.grid().storage, health.at(world.map.idx(tx, ty))?.health),
     siteLaid: (site) => economy.startBuild(site), // a commons work rises as the commons pays for it
     placed: () => {
       power.recompute(); // a new plant lights its district
@@ -374,7 +388,7 @@ export function main(save: SaveV1 | null = null): void {
 
   // The two clocks: the fixed-tick sim (a resumed game keeps its clock — repair rings are stamped in ticks) and
   // the rAF frame (the live layer steps on its own clock inside it).
-  const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
+  const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, health, pulse, restore: () => mounted.restore, markDirty });
   // The opening's first act — the night: epigraphs, a walk to a death, the mantra, the dawn — then the city's
   // indictment (the statistics + chronicle overlay), then play.
   // What's new (Maddy 2026-10-13): the release notes a returning player hasn't seen, once, on the first launch of a
@@ -516,6 +530,7 @@ export function main(save: SaveV1 | null = null): void {
 
   // Community events (community-events.md): from conditions, never called — block parties first.
   const community = createCommunity({
+    health: (hood) => health.byId(hood)?.health,
     world,
     live: live.state,
     civic,

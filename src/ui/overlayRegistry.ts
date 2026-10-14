@@ -46,7 +46,9 @@ export interface OverlayContext {
   /** Anchor tiles of the powered consumers (the current grid). */
   poweredAnchors: ReadonlySet<number>;
   /** Per-neighbourhood civic values (ids 1..count) and the live tile → neighbourhood partition. */
-  civic: { count(): number; getValues(id: number): Record<CivicOverlayView, number> };
+  civic: { count(): number; getValues(id: number): Record<Exclude<CivicOverlayView, 'health'>, number> };
+  /** Each neighbourhood's health, 0..255 (civic/health.ts), by id. */
+  health?: (id: number) => number;
   tileToNeighborhood: ArrayLike<number>;
 }
 
@@ -131,7 +133,7 @@ export const OVERLAYS = {
     source: (view, ctx) => {
       const count = ctx.civic.count();
       const values = new Uint8Array(count); // per-neighbourhood value, snapshotted per (re)apply
-      for (let id = 1; id <= count; id++) values[id - 1] = ctx.civic.getValues(id)[view];
+      for (let id = 1; id <= count; id++) values[id - 1] = view === 'health' ? (ctx.health?.(id) ?? 0) : ctx.civic.getValues(id)[view];
       const t2n = ctx.tileToNeighborhood;
       return {
         dimBase: true,

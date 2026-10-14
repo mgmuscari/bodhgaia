@@ -22,6 +22,8 @@ export const COMMUNITY_STEP_MS = 1000;
  *  at full belonging; how long one lasts (substeps, ~1 min); its crowd; and what it leaves behind. */
 export const PARTY_BELONGING = 0.3;
 export const PARTY_TRUST = 0.2;
+/** …and the neighbourhood health it needs, 0..255 (interdependence §1: health gates the events). */
+export const PARTY_HEALTH = 110;
 export const PARTY_CHANCE = 0.06;
 export const PARTY_LIFE = seconds(70);
 export const PARTY_CROWD = 10;
@@ -87,6 +89,8 @@ export interface CommunityDeps {
   practised(id: string): boolean;
   /** The city's approval, 0..100. */
   approval(): number;
+  /** A neighbourhood's health, 0..255 (app/health.ts) — undefined before the first reading. */
+  health?(hood: number): number | undefined;
   /** Move the city's approval, goodwill and money (economy). */
   cheer(d: { approval?: number; goodwill?: number; funds?: number }): void;
   /** Set a building alight (the fire controller). */
@@ -394,6 +398,7 @@ export function createCommunity(deps: CommunityDeps): Community {
         continue;
       }
       if (belonging < PARTY_BELONGING || above(v.trust, SEED_TRUST) < PARTY_TRUST) continue;
+      if ((deps.health?.(hood) ?? PARTY_HEALTH) < PARTY_HEALTH) continue; // a frayed neighbourhood doesn't party
       if (rng.next() >= PARTY_CHANCE * belonging) continue;
       if (holdParty(part, hood)) busy.add(hood);
     }

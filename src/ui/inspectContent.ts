@@ -69,6 +69,8 @@ export function inspectReadout(
   poweredAnchors: ReadonlySet<number>,
   /** Each energy node's battery charge (anchor → power-hours), from the grid. */
   storage?: ReadonlyMap<number, number>,
+  /** The neighbourhood's health here, 0..255 (civic/health.ts), if it has one. */
+  hoodHealth?: number,
 ): string {
   const { map, parcels } = world;
   let line = info;
@@ -106,5 +108,6 @@ export function inspectReadout(
   // The HOLC redline grade of this ground — the apparatus's classification that sited the burdens here.
   // Land only (water carries a grade but it reads wrong).
   if (map.water[i] === Water.None) line += ` · redline ${gradeLetter(map.redline[i]!)}`;
+  if (hoodHealth !== undefined) line += ` · neighbourhood health ${Math.round((hoodHealth / 255) * 100)}%`;
   return line;
 }

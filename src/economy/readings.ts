@@ -241,8 +241,7 @@ export function readCity(inp: CityInputs): CityReading {
       conditionSum += p.condition;
       buildings++;
     }
-    if (WORKPLACES.has(p.kind) || (zoneTypeOf(p.kind) === ZoneType.Civic && !UNBUILT.has(p.kind)))
-      jobsAll += p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
+    jobsAll += parcelJobs(p);
     const lv = (inp.landValueAt(anchor) ?? 0) / 255;
     if (RESIDENTIAL.has(p.kind)) {
       households += occ;
@@ -294,6 +293,13 @@ export function readCity(inp: CityInputs): CityReading {
     taxPainMul: pr.taxPainMul,
     burnoutHealMul: pr.burnoutHealMul,
   };
+}
+
+/** The jobs at a plot: a workplace's (shops, industry, the commune's market, any civic building) density × size ×
+ *  upkeep; 0 for a home, a green or a lot. */
+export function parcelJobs(p: { kind: number; density: number; condition: number; width: number; height: number }): number {
+  if (!(WORKPLACES.has(p.kind) || (zoneTypeOf(p.kind) === ZoneType.Civic && !UNBUILT.has(p.kind)))) return 0;
+  return p.density * JOBS_PER_DENSITY * (p.condition / 255) * p.width * p.height;
 }
 
 /** Workplaces for the jobs count (with every civic building): shops, offices, industry, the commune's market. */

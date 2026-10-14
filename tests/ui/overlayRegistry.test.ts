@@ -35,7 +35,7 @@ describe('overlay registry: every kind registered', () => {
       'groundPollution',
       'waterPollution',
     ]);
-    expect(OVERLAYS.civic.views).toEqual(['belonging', 'voice', 'trust']);
+    expect(OVERLAYS.civic.views).toEqual(['health', 'belonging', 'voice', 'trust']);
     expect(OVERLAYS.redline.views).toEqual(['grade']);
     expect(OVERLAYS.police.views).toEqual(['violence']);
     expect(OVERLAYS.coverage.views).toEqual(['coverage']);
@@ -59,6 +59,7 @@ describe('overlay registry: legend lines (pinned to today\'s strings)', () => {
       waterPollution: 'Water pollution — clear to dingy creek',
     },
     civic: {
+      health: 'Neighbourhood health — frayed to thriving',
       belonging: 'Belonging — adrift to held',
       voice: 'Voice — unheard to heard',
       trust: 'Trust — wary to trusting',
@@ -176,10 +177,16 @@ describe('overlay registry: tint sources read the same data as before', () => {
   it('civic tints each tile by its neighbourhood\'s value for the view; id 0 untinted', () => {
     const { ctx, values, t2n } = ctxFixture();
     for (const v of CIVIC_VIEWS) {
+      if (v === 'health') continue; // read from ctx.health (below)
       expect(tints(OVERLAYS.civic.source!(v, ctx))).toEqual(
         Array.from(t2n, (id) => (id === 0 ? null : civicOverlayTint(v, values[id - 1]![v]))),
       );
     }
+    // neighbourhood health: each tile tinted by its neighbourhood's health
+    const health = (id: number) => id * 50;
+    expect(tints(OVERLAYS.civic.source!('health', { ...ctx, health }))).toEqual(
+      Array.from(t2n, (id) => (id === 0 ? null : civicOverlayTint('health', health(id)))),
+    );
   });
 
   it('redline tints land by grade band', () => {

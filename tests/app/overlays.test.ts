@@ -55,14 +55,14 @@ describe('createOverlayController', () => {
       overlays.cycle('civic');
       seen.push(overlays.active()?.view ?? null);
     }
-    expect(seen).toEqual(['belonging', 'voice', 'trust', null]);
+    expect(seen).toEqual(['health', 'belonging', 'voice', 'trust', null]); // the hub first (interdependence §1)
     expect(log.status).toEqual([...OVERLAYS.civic.views.map((v) => OVERLAYS.civic.legendLine(v)), null]);
     expect(log.legend).toEqual([...OVERLAYS.civic.views.map((v) => OVERLAYS.civic.legend(v)), null]);
-    expect(log.base.slice(0, 3).every((s) => s !== null)).toBe(true);
-    expect(log.base[3]).toBeNull(); // off → the plain map
-    expect(log.live).toEqual([null, null, null, null]);
-    expect(log.dirty).toBe(4);
-    expect(log.meta).toBe(4);
+    expect(log.base.slice(0, 4).every((s) => s !== null)).toBe(true);
+    expect(log.base[4]).toBeNull(); // off → the plain map
+    expect(log.live).toEqual([null, null, null, null, null]);
+    expect(log.dirty).toBe(5);
+    expect(log.meta).toBe(5);
   });
 
   it('police is a live overlay: no base source, the renderer draws it per frame', () => {

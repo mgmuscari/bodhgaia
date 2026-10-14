@@ -17,11 +17,12 @@ const ENDPOINTS: Record<CivicOverlayView, { lo: readonly number[]; hi: readonly 
   belonging: { lo: [70, 54, 64], hi: [245, 185, 70] }, // muted → warm amber
   voice: { lo: [120, 60, 180], hi: [56, 200, 210] }, // violet → cyan
   trust: { lo: [78, 92, 112], hi: [226, 190, 78] }, // slate → gold
+  health: { lo: [150, 64, 56], hi: [72, 196, 120] }, // frayed brick → thriving green
 };
 
 describe('CIVIC_VIEWS + civicOverlayTint ramps', () => {
-  it('is the three civic views in order', () => {
-    expect(CIVIC_VIEWS).toEqual(['belonging', 'voice', 'trust']);
+  it('is neighbourhood health, then the three civic values, in order', () => {
+    expect(CIVIC_VIEWS).toEqual(['health', 'belonging', 'voice', 'trust']);
   });
 
   it('maps value 0 → low endpoint and 255 → high endpoint per view, fixed alpha', () => {
@@ -79,15 +80,16 @@ describe('cycleComposite: E/C exclusivity truth table', () => {
   });
 
   it('pressing civic from off / advances within / off-wraps', () => {
-    expect(cycleComposite(null, 'civic')).toEqual(civic('belonging'));
+    expect(cycleComposite(null, 'civic')).toEqual(civic('health')); // the hub first (interdependence §1)
+    expect(cycleComposite(civic('health'), 'civic')).toEqual(civic('belonging'));
     expect(cycleComposite(civic('belonging'), 'civic')).toEqual(civic('voice'));
     expect(cycleComposite(civic('voice'), 'civic')).toEqual(civic('trust'));
     expect(cycleComposite(civic('trust'), 'civic')).toBeNull();
   });
 
   it('EXCLUSIVITY: pressing the OTHER key replaces the active overlay at its first view', () => {
-    // E-then-C clears eco → civic-belonging
-    expect(cycleComposite(eco('flora'), 'civic')).toEqual(civic('belonging'));
+    // E-then-C clears eco → civic at its first view, neighbourhood health
+    expect(cycleComposite(eco('flora'), 'civic')).toEqual(civic('health'));
     // C-then-E clears civic → eco-soil
     expect(cycleComposite(civic('voice'), 'eco')).toEqual(eco('soil'));
   });
