@@ -2,7 +2,7 @@
 // listener that resolves through it and dispatches. The gate is uniform: nothing matches with Cmd / Ctrl /
 // Alt held (so Cmd+L, Cmd+G, Cmd+, … reach the browser), nothing matches while the opening overlay is up, and
 // nothing matches while the user is typing in a text field (the Settings number box, …).
-// Keys the camera owns (arrows, I/X/Escape) stay in input.ts; the help text lives in controlsContent.ts.
+// Keys the camera owns (arrows and WASD — panFor —, I/X/Escape) stay in input.ts; the help text lives in controlsContent.ts.
 
 import type { OverlayKind } from './overlayRegistry';
 
@@ -30,13 +30,31 @@ export const KEY_BINDINGS: readonly KeyBindingEntry[] = [
   { keys: ['v', 'V'], action: 'overlay:coverage' },
   { keys: ['u', 'U'], action: 'overlay:power' },
   { keys: ['b', 'B'], action: 'budget' },
-  { keys: ['s', 'S'], action: 'saves' },
+  { keys: ['o', 'O'], action: 'saves' }, // S pans (WASD, Maddy 2026-10-13)
   { keys: ['l', 'L'], action: 'life' },
   { keys: ['g', 'G'], action: 'restore' },
   { keys: [','], action: 'settings' },
   { keys: ['?', 'h', 'H'], action: 'help' },
   { keys: ['t', 'T'], action: 'tech' },
 ];
+
+/** Screen pixels a panning key moves the map. */
+export const KEY_PAN_PX = 48;
+const PAN_KEYS: Readonly<Record<string, readonly [number, number]>> = {
+  ArrowLeft: [KEY_PAN_PX, 0],
+  ArrowRight: [-KEY_PAN_PX, 0],
+  ArrowUp: [0, KEY_PAN_PX],
+  ArrowDown: [0, -KEY_PAN_PX],
+  a: [KEY_PAN_PX, 0],
+  d: [-KEY_PAN_PX, 0],
+  w: [0, KEY_PAN_PX],
+  s: [0, -KEY_PAN_PX],
+};
+
+/** The camera pan (screen px) a key asks for — the arrows, and WASD either case (Maddy 2026-10-13) — or null. */
+export function panFor(key: string): readonly [number, number] | null {
+  return PAN_KEYS[key] ?? PAN_KEYS[key.toLowerCase()] ?? null;
+}
 
 export interface KeyPress {
   key: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { KEY_BINDINGS, resolveKey, overlayKindOf, isEditableTarget, type KeyAction } from '../../src/ui/keyMap';
+import { KEY_BINDINGS, resolveKey, overlayKindOf, isEditableTarget, panFor, type KeyAction } from '../../src/ui/keyMap';
 import { CONTROLS } from '../../src/ui/controlsContent';
 
 const press = (key: string, mods: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) => ({
@@ -18,7 +18,7 @@ const EXPECTED: [string, KeyAction][] = [
   ['v', 'overlay:coverage'],
   ['u', 'overlay:power'],
   ['b', 'budget'],
-  ['s', 'saves'],
+  ['o', 'saves'], // Maddy 2026-10-13: WASD pans, so Saves moved off S
   ['l', 'life'],
   ['g', 'restore'],
   [',', 'settings'],
@@ -36,7 +36,7 @@ describe('resolveKey: the one keyboard table', () => {
   });
 
   it('never matches with Cmd / Ctrl / Alt held — browser shortcuts pass through (the Cmd+L bug)', () => {
-    for (const key of ['l', 'L', 'g', ',', 'b', 's', 'r', 't', 'h', '?']) {
+    for (const key of ['l', 'L', 'g', ',', 'b', 'o', 'r', 't', 'h', '?']) {
       expect(resolveKey(press(key, { metaKey: true }), false)).toBeNull();
       expect(resolveKey(press(key, { ctrlKey: true }), false)).toBeNull();
       expect(resolveKey(press(key, { altKey: true }), false)).toBeNull();
@@ -124,5 +124,21 @@ describe('isEditableTarget', () => {
     expect(isEditableTarget(null)).toBe(false);
     expect(isEditableTarget(undefined)).toBe(false);
     expect(isEditableTarget('INPUT')).toBe(false);
+  });
+});
+
+// Maddy 2026-10-13: "ASDW for scrolling". The arrows and WASD pan the map the same way; W/A/S/D are no toggle key.
+describe('panFor: the panning keys', () => {
+  it('WASD pan as the arrows do, either case', () => {
+    expect(panFor('w')).toEqual(panFor('ArrowUp'));
+    expect(panFor('A')).toEqual(panFor('ArrowLeft'));
+    expect(panFor('s')).toEqual(panFor('ArrowDown'));
+    expect(panFor('D')).toEqual(panFor('ArrowRight'));
+    expect(panFor('ArrowUp')![1]).toBeGreaterThan(0); // the map moves down: the view goes up
+    expect(panFor('ArrowLeft')![0]).toBeGreaterThan(0);
+  });
+  it('other keys pan nothing, and no panning key is a toggle key', () => {
+    expect(panFor('e')).toBeNull();
+    for (const k of ['w', 'a', 's', 'd', 'W', 'A', 'S', 'D']) expect(resolveKey(press(k), false)).toBeNull();
   });
 });

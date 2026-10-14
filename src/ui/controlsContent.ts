@@ -14,7 +14,7 @@ export interface KeyBinding {
 export const CONTROLS: KeyBinding[] = [
   { key: ',', label: 'Settings menu' },
   { key: 'B', label: 'Budget' },
-  { key: 'S', label: 'Saves' },
+  { key: 'O', label: 'Saves' },
   { key: 'T', label: 'Tech tree' },
   { key: 'L', label: 'Ambient life on/off' },
   { key: 'G', label: 'Restoration readout' },
@@ -29,9 +29,10 @@ export const CONTROLS: KeyBinding[] = [
 
 /** Mouse interactions — not keys, but part of "how do I play this". */
 export const POINTER_HINTS: string[] = [
-  'Drag — pan the map',
+  'Drag, WASD or arrows — pan the map',
   'Scroll — zoom in/out',
   'Click — use the selected tool',
+  'Right-click — drop the tool',
 ];
 
 /** Touch gestures — the whole of "how do I play this" on a touch screen, which has no keys or mouse. */
@@ -39,6 +40,7 @@ export const TOUCH_HINTS: string[] = [
   'Drag — pan the map',
   'Pinch — zoom in/out',
   'Tap — use the selected tool',
+  'Long press — drop the tool',
 ];
 
 /** The help panel's entry point: names its key, except on a touch screen. */

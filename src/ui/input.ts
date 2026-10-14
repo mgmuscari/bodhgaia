@@ -8,16 +8,19 @@
 // paints" tension): with no tool — or a non-line tool — selected, a drag PANS and
 // a click applies at the tile; with a LINE tool (transport build / convert, bulldoze)
 // selected, a drag PAINTS lineTiles (pan suppressed) and a click applies one tile.
-// To pan with a line tool held, deselect (Escape) or hold the middle button.
+// To pan with a line tool held, use WASD / the arrows, hold the middle button, or drop the tool (Escape, a right
+// click, a long press on a touch screen).
 
 import { Camera } from './camera';
-import { isEditableTarget } from './keyMap';
+import { isEditableTarget, panFor } from './keyMap';
 import { classifyPointer, lineTiles, pinchZoom, wheelZoom } from '../tools/inputGeometry';
 
-const ARROW_PAN_PX = 48;
 /** A wheel pause longer than this starts a fresh zoom gesture. */
 const WHEEL_IDLE_MS = 250;
 const MIDDLE_BUTTON = 1;
+const RIGHT_BUTTON = 2;
+/** A finger held this long without moving drops the tool — a touch screen's right click (Maddy 2026-10-13). */
+const LONG_PRESS_MS = 500;
 
 export interface InputHandlers {
   /** Mark the view dirty after a pan/zoom. */
@@ -77,8 +80,30 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     return { tx: Math.floor(wx), ty: Math.floor(wy) };
   };
 
+  // A right click drops the tool (Maddy 2026-10-13) — never the browser's menu over the map.
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  let longPress: ReturnType<typeof setTimeout> | null = null;
+  const cancelLongPress = (): void => {
+    if (longPress !== null) clearTimeout(longPress);
+    longPress = null;
+  };
+  const dropTool = (): void => {
+    cancelLongPress();
+    dragging = false; // the press that dropped the tool applies nothing when it lifts
+    suppressPan = false;
+    hoverX = Number.NaN;
+    hoverY = Number.NaN;
+    handlers.clearHover();
+    handlers.onHotkey('deselect');
+  };
+
   canvas.addEventListener('pointerdown', (e) => {
+    if (e.button === RIGHT_BUTTON) {
+      dropTool();
+      return;
+    }
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    cancelLongPress();
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch {
@@ -106,6 +131,8 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     downClientY = e.clientY;
     lastClientX = e.clientX;
     lastClientY = e.clientY;
+    // a finger held still drops the tool (a touch screen has no right click)
+    if (e.pointerType === 'touch' && handlers.hasTool()) longPress = setTimeout(dropTool, LONG_PRESS_MS);
     // A line tool paints on drag (pan suppressed); the middle button always pans.
     suppressPan = handlers.isLineTool() && e.button !== MIDDLE_BUTTON;
     // Pointer capture can throw (e.g. an invalid/stale pointerId in some browsers);
@@ -118,6 +145,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
   });
 
   canvas.addEventListener('pointerup', (e) => {
+    cancelLongPress();
     touches.delete(e.pointerId);
     if (pinching) {
       try {
@@ -160,6 +188,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
   // not granted + released off-canvas). Fires AFTER the canvas handler for captured pointers, so it's a
   // no-op in the normal case and never applies a tool on its own.
   const endDrag = (e: PointerEvent): void => {
+    cancelLongPress();
     dragging = false;
     suppressPan = false;
     touches.delete(e.pointerId); // a finger lifted off the canvas, or cancelled
@@ -183,6 +212,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
       handlers.onChange();
       return;
     }
+    if (longPress !== null && classifyPointer(downClientX, downClientY, e.clientX, e.clientY) === 'drag') cancelLongPress();
     if (dragging) {
       // If a move arrives with NO button held, the pointerup was missed (capture failed + released
       // off-canvas) — stop the drag instead of panning forever with the cursor (Maddy playtest bug). Only
@@ -249,19 +279,13 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return; // don't shadow browser/OS shortcuts
     if (isEditableTarget(e.target)) return; // typing in a field isn't panning or picking a tool
+    const pan = panFor(e.key); // the arrows and WASD
+    if (pan) {
+      camera.pan(pan[0], pan[1]);
+      handlers.onChange();
+      return;
+    }
     switch (e.key) {
-      case 'ArrowLeft':
-        camera.pan(ARROW_PAN_PX, 0);
-        break;
-      case 'ArrowRight':
-        camera.pan(-ARROW_PAN_PX, 0);
-        break;
-      case 'ArrowUp':
-        camera.pan(0, ARROW_PAN_PX);
-        break;
-      case 'ArrowDown':
-        camera.pan(0, -ARROW_PAN_PX);
-        break;
       case 'i':
       case 'I':
         handlers.onHotkey('inspect');

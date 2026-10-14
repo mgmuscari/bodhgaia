@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CONTROLS, POINTER_HINTS, controlsLines } from '../../src/ui/controlsContent';
+import { CONTROLS, POINTER_HINTS, TOUCH_HINTS, controlsLines } from '../../src/ui/controlsContent';
 
 describe('controls reference (the on-screen keybinding help)', () => {
   it('lists every key binding with a key and a human label', () => {
@@ -29,5 +29,17 @@ describe('controls reference (the on-screen keybinding help)', () => {
     expect(settings).toContain(',');
     // key column comes before the label
     expect(settings!.indexOf(',')).toBeLessThan(settings!.toLowerCase().indexOf('setting'));
+  });
+});
+
+// Maddy 2026-10-13: WASD scrolls; a right click (a long press on a touch screen) drops the tool.
+describe('the new controls are documented', () => {
+  it('WASD and the arrows pan; a right click drops the tool', () => {
+    const joined = POINTER_HINTS.join(' ');
+    expect(joined).toMatch(/WASD/);
+    expect(joined).toMatch(/Right-click — drop the tool/);
+  });
+  it('a long press drops the tool on a touch screen', () => {
+    expect(TOUCH_HINTS.join(' ')).toMatch(/Long press — drop the tool/);
   });
 });
