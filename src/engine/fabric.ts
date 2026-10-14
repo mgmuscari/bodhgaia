@@ -770,6 +770,69 @@ export function demolishParcel(map: GameMap, store: ParcelStore, i: number): boo
   return true;
 }
 
+/** Workplaces and civic buildings that get their own parking when 2×2 or more (docs/design/multitile-parking.md):
+ *  a car always has somewhere at the door. Not homes, not greens. */
+const PLOT_PARKING_KINDS: ReadonlySet<number> = new Set<number>([
+  BuiltKind.Industrial,
+  BuiltKind.Offices,
+  BuiltKind.CommercialStrip,
+  BuiltKind.Bazaar,
+  BuiltKind.MakerSpace,
+  BuiltKind.Civic,
+  BuiltKind.Clinic,
+  BuiltKind.Library,
+  BuiltKind.School,
+  BuiltKind.HealingCommons,
+  BuiltKind.Precinct,
+  BuiltKind.CoalPlant,
+  BuiltKind.GasPlant,
+  BuiltKind.HydroPlant,
+  BuiltKind.NuclearPlant,
+  BuiltKind.SolarPlant,
+  BuiltKind.FusionPlant,
+  BuiltKind.WastewaterWorks,
+  BuiltKind.VerticalFarm,
+  BuiltKind.AINode,
+]);
+
+/** Does a plot of `kind`, w×h, get its own parking? */
+export function needsPlotParking(kind: number, w: number, h: number): boolean {
+  return w >= 2 && h >= 2 && PLOT_PARKING_KINDS.has(kind);
+}
+
+/** Give parcel `i` its parking: a 1-tile lot just outside its footprint, edge-on (not a corner), on a free tile that
+ *  touches a street. False if it needs none, already has a lot beside it, or no such tile is free. Deterministic: a
+ *  hash of the tile picks among the candidates, never the scan order. */
+export function addPlotParking(map: GameMap, store: ParcelStore, i: number, as?: number): boolean {
+  if (i < 0 || i >= store.count() || !store.isAlive(i)) return false;
+  const p = store.get(i);
+  if (!needsPlotParking(as ?? p.kind, p.width, p.height)) return false; // `as`: what a construction site will become
+  let best = -1;
+  let bestH = Infinity;
+  for (let y = p.y - 1; y <= p.y + p.height; y++) {
+    for (let x = p.x - 1; x <= p.x + p.width; x++) {
+      if (!map.inBounds(x, y)) continue;
+      const inside = x >= p.x && x < p.x + p.width && y >= p.y && y < p.y + p.height;
+      if (inside) continue;
+      if (map.getBuilt(x, y) === BuiltKind.ParkingLot) return false; // it has one
+      const corner = (x < p.x || x >= p.x + p.width) && (y < p.y || y >= p.y + p.height);
+      if (corner || !canPlaceParcel(map, x, y, 1, 1)) continue;
+      let street = false;
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+        if (!map.inBounds(x + dx, y + dy)) continue;
+        const k = map.getBuilt(x + dx, y + dy);
+        if (isRoadKind(k) || k === BuiltKind.RoadRamp) street = true;
+      }
+      if (!street) continue;
+      const h = Math.imul(map.idx(x, y) + 1, 0x9e3779b1) >>> 0;
+      if (h < bestH) [best, bestH] = [map.idx(x, y), h];
+    }
+  }
+  if (best < 0) return false;
+  const bx = best % map.width;
+  return placeParcel(map, store, { x: bx, y: (best - bx) / map.width, width: 1, height: 1, kind: BuiltKind.ParkingLot }) !== -1;
+}
+
 /** Ground anything may be built on: open land, or a vacant lot. */
 export function isOpenGround(kind: number): boolean {
   return kind === BuiltKind.None || kind === BuiltKind.VacantLot;

@@ -21,6 +21,7 @@ import {
   layYardFor,
   canPlaceParklet,
   placeParklet,
+  addPlotParking,
   bulldozeParcel,
   bulldozeTransportAt,
   isOpenGround,
@@ -561,7 +562,8 @@ export function applyTool(
   } else if (isSiteKind(kind)) {
     // a commons work goes up as a site; the city raises it as the commons pays (economy buildProject)
     const fp = tool.footprint!;
-    placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind: BuiltKind.Site });
+    const site = placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind: BuiltKind.Site });
+    addPlotParking(map, parcels, site, kind); // a big workplace comes with a lot at its door
     if (isCommonsKind(kind)) return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'effort' } };
     // a civic building is paid from the treasury — unless the city can't cover it, when a community work (clinic,
     // fire station…) rises on volunteer effort instead (the ways out of a deficit, 2026-10-01)
@@ -571,8 +573,9 @@ export function applyTool(
     return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'funds' } };
   } else if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
-    placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });
+    const built = placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });
     if (kind === BuiltKind.HouseSingle) layYardFor(map, parcels, x, y); // a house comes with its back yard
+    addPlotParking(map, parcels, built); // a big workplace comes with a lot at its door
   } else if (isOverpassKind(kind) && canPlaceOverpass(map, x, y, kind)) {
     placeOverpass(map, x, y, kind); // deck an overpass over the road below (grade-separated)
   } else {

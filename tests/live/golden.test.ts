@@ -148,7 +148,8 @@ describe('live layer golden determinism', () => {
     // 2026-10-13: a train forgets its last stop once it moves on, so it halts at a station every pass (it stopped only
     // once on a one-station line) — trains dwell more, riders board more
     // 2026-10-13: mutual-aid shelters — the state carries a `sheltered` map (empty here): same motion, one more field
-    expect(first).toBe('cars=6 peds=173 cruisers=4 trains=5 flocks=13 #9ed2a36d');
+    // 2026-10-13: every big workplace and civic plot gets a parking lot at its door in worldgen — a different city
+    expect(first).toBe('cars=4 peds=169 cruisers=4 trains=5 flocks=16 #779d6f07');
   });
 });
 

@@ -44,6 +44,8 @@ export interface BlightReport {
    *  era 5), so the store<->chronicle identity is preEra5Standing - abandoned + craters + organicAdded.
    *  Null if no organic-growth line. */
   organicAdded: number | null;
+  /** "plot parking: +L lots at big plots" — the lots at big plots' doors; null if absent. */
+  plotLotsAdded: number | null;
   /** "back yards: +Y lots behind houses" — the yards laid behind the standing houses; null if absent. */
   yardsAdded: number | null;
   /** "ruins: +R standing where homes were lost" — laid last of all; null if absent. */
@@ -91,6 +93,7 @@ const ERA3_RAILS_RE = /era3: rails removed (\d+) \(peak (\d+)\)/;
 // organic-growth line: `organic growth: N clusters from transport termini, +M parcels`. Group
 // 1=parcels added (the post-disinvestment fringe accretion).
 const ORGANIC_RE = /organic growth: \d+ clusters from transport termini, \+(\d+) parcels/;
+const PLOT_LOTS_RE = /plot parking: \+(\d+) lots at big plots/;
 const YARDS_RE = /back yards: \+(\d+) lots behind houses/;
 const RUINS_RE = /ruins: \+(\d+) standing where homes were lost/;
 
@@ -171,6 +174,8 @@ export function buildReport(world: ReportableWorld): BlightReport {
   const preEra5Standing = era5 ? Number(era5[3]) : null;
   const organicMatch = firstMatch(log, ORGANIC_RE);
   const organicAdded = organicMatch ? Number(organicMatch[1]) : null;
+  const plotLotsMatch = firstMatch(log, PLOT_LOTS_RE);
+  const plotLotsAdded = plotLotsMatch ? Number(plotLotsMatch[1]) : null;
   const yardsMatch = firstMatch(log, YARDS_RE);
   const yardsAdded = yardsMatch ? Number(yardsMatch[1]) : null;
   const ruinsMatch = firstMatch(log, RUINS_RE);
@@ -229,8 +234,8 @@ export function buildReport(world: ReportableWorld): BlightReport {
   // those parcels are appended AFTER era 5 (the last `organicAdded` indices) and are pristine + sited
   // next to freeway termini, so counting them would dump healthy parcels into the highway-distance
   // "core" cohort and invert the gradient. Excluding them keeps the report about the inherited harm.
-  // yards then ruins are appended last: the historical store is everything before them
-  const historicalTotal = parcelsTotal - (organicAdded ?? 0) - (yardsAdded ?? 0) - (ruinsAdded ?? 0);
+  // plot lots, yards then ruins are appended last: the historical store is everything before them
+  const historicalTotal = parcelsTotal - (organicAdded ?? 0) - (plotLotsAdded ?? 0) - (yardsAdded ?? 0) - (ruinsAdded ?? 0);
   const highwayField = distanceField(map, (i) => map.built[i] === BuiltKind.RoadHighway);
   const core: number[] = [];
   const periphery: number[] = [];
@@ -249,6 +254,7 @@ export function buildReport(world: ReportableWorld): BlightReport {
     abandoned,
     craters,
     organicAdded,
+    plotLotsAdded,
     yardsAdded,
     ruinsAdded,
     conditionMean,
