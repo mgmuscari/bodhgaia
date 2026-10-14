@@ -26,6 +26,9 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 - **Playtest batch (Maddy 2026-10-13):**
   - ✅ Bulldoze works with no money — every bulldoze needs funds now; only freeway removal (salvage) works broke.
   - ✅ Bulldoze leaves a vacant lot (kind 68) that grows back to open land as its soil heals (~3 min); campable.
+  - **Vacant lots in built-up blocks never recover** (measured live 2026-10-13: the houses and streets around a lot
+    pull its soil down −16 a tick, pinned at 0). Maddy: fine as is — "we'll need to introduce mechanics for that"
+    (ways to help a lot heal: tending, greening, de-paving neighbours…).
   - ✅ Rail crossings between highways — crossings are now recorded where track is laid across a way (map.crossing,
     save v4), never inferred; v3 cities migrate once, skipping ways that run along the line.
   - ✅ Trains not stopping at crossing stations — a train never forgot its last stop (one halt per life on a
