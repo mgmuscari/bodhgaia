@@ -1,6 +1,6 @@
 # Interdependence — one design for the next features
 
-Status: **proposal, 2026-10-13.** Source: Maddy's feature list (maker spaces × industry, AI nodes, drones, local
+Status: **decided 2026-10-13 — building.** Source: Maddy's feature list (maker spaces × industry, AI nodes, drones, local
 governance, resident narratives, neighbourhood health, sideshows, fireworks, food pantries and banks, distribution
 logistics, lane adjacencies, A* traffic costs, economic indicators, car policy, sandbox and difficulty). Arcologies are
 backlog only. The bugs in the same list are in `docs/bug-queue.md`.
@@ -105,9 +105,10 @@ Three layers that are already implied by voice, trust and protests:
    - Answered (the thing is built, or a policy is set): trust rises, and the committee's voice carries further.
    - Ignored past its deadline: trust falls, and an unheard petition is one of the paths to a **protest**, which
      already exists.
-3. **City council:** each committee sends a delegate. The council **votes on policies** (§7): car tax, parking fees,
-   car-free zones, and the budget split once Participatory Budgeting is unlocked. A policy passes when enough
-   delegates' neighbourhoods would gain by it. Council support is the political cost of a policy, separate from money.
+3. **City council:** each committee sends a delegate. The council **weighs policies** (§7): car tax, parking fees,
+   car-free zones, and the budget split once Participatory Budgeting is unlocked. A policy always passes, but costs
+   council support (and approval) in proportion to the delegates whose neighbourhoods would lose by it — the
+   political cost, separate from money.
 
 The player never commands residents. Its work changes conditions, conditions produce petitions, and answering them is
 how the player governs well. That matches the community-events rule: *events emerge from conditions*.
@@ -211,12 +212,11 @@ Each step lands on its own and is playable. Dependencies are named.
 | 9 | **Sandbox + difficulty** | — | small–medium |
 | — | Arcologies | — | backlog |
 
-## Open questions (Maddy)
+## Decisions (Maddy, 2026-10-13)
 
-1. **Is neighbourhood health the hub?** The alternative is to keep the parts separate (food, repair and work each
-   with their own effects). One number is legible; separate parts are more honest.
-2. **Petitions:** should the player be able to *decline* a petition openly (a cost, but not ignoring it), or only
-   answer or ignore?
-3. **Council and car policy:** should the council be able to **refuse** a policy the player wants, or only make it
-   cost support?
-4. **Narratives:** how visible? Named residents in the news and CCTV only, or also a "people" panel listing them?
+1. **Neighbourhood health is the hub:** one composite per neighbourhood (§1), the parts still shown in the readout.
+2. **Petitions:** answer or ignore only — no open decline.
+3. **Council:** policies always pass; they **cost council support** (and approval) in proportion to the opposition.
+4. **Narratives:** named residents in the news, the CCTV caption and the inspect readout — no People panel.
+
+Status: **building**, step by step in the order above, from step 1.
