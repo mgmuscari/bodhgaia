@@ -149,13 +149,13 @@ export function chargeFor(world: ToolWorld, tool: ToolDef, x: number, y: number,
 function chargeHere(world: ToolWorld, tool: ToolDef, x: number, y: number, wallet: Wallet): { effort: number; funds: number } {
   if (tool.id.startsWith('build-') && isSiteKind(tool.kind)) return { effort: 0, funds: 0 }; // paid as it rises
   const sticker = toolPrice(tool);
-  let volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
+  const volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
   if (tool.id === 'bulldoze') {
     const target = bulldozeTarget(world, x, y);
     if (target === BuiltKind.RoadHighway || target === BuiltKind.RoadRamp) return { effort: 0, funds: -FREEWAY_SALVAGE };
-    const effort = demolitionEffort(world, x, y, target);
-    if (effort > 0) return { effort, funds: 0 };
-    volunteer = true; // demolition is work a neighbourhood can do
+    // the bulldozer is paid from the treasury — a broke city can tear out only its freeways (Maddy 2026-10-13) —
+    // and tearing down where people live, are cared for or trade takes the community's effort as well
+    return { effort: demolitionEffort(world, x, y, target), funds: sticker.funds };
   }
   if (!volunteer || sticker.funds <= wallet.funds) return sticker;
   const paid = Math.max(0, wallet.funds);
