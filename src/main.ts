@@ -477,6 +477,7 @@ export function main(save: SaveV1 | null = null): void {
   // remembered in this browser (storage may be unavailable: then they simply play each time).
   const LESSONS_KEY = 'bodhgaia.lessonsSeen';
   const lessons = createLessons({
+    unlocked: () => tech.unlocked,
     storage: {
       get: () => {
         try {
