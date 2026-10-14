@@ -15,6 +15,9 @@ export interface HealthDeps {
   partition(): NeighborhoodMap;
   occupancyAt(tile: number): number | undefined;
   coverage(): ReadonlySet<number>;
+  /** The jobs lift a place gets for its schooling (live/school.ts), and a civic tick of the schools' learning. */
+  jobsLiftAt?(x: number, y: number): number;
+  stepLearning?(): void;
   /** Homes with food access (live/food.ts), once the food chain has run. */
   foodAccess?(): ReadonlySet<number> | undefined;
 }
@@ -32,6 +35,7 @@ export function createHealthController(deps: HealthDeps): HealthController {
   const byId = (id: number): NeighbourhoodHealth | undefined => (id > 0 ? values[id - 1] : undefined);
   return {
     recompute: () => {
+      deps.stepLearning?.(); // the schools teach a little more each civic tick
       values = neighbourhoodHealth({
         map: deps.map,
         parcels: deps.parcels,
@@ -41,6 +45,7 @@ export function createHealthController(deps: HealthDeps): HealthController {
         coverage: deps.coverage(),
         jobsAt: (i) => parcelJobs(deps.parcels.get(i)),
         foodAccess: deps.foodAccess?.(),
+        jobsLiftAt: deps.jobsLiftAt,
       });
     },
     byId,

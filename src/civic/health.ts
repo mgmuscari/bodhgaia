@@ -3,7 +3,7 @@
 //   civic  — its belonging, voice and trust;
 //   ground — its soil and flora;
 //   repair — how well its buildings are kept (their mean condition);
-//   work   — jobs within WORK_REACH for its working residents, capped at all of them;
+//   work   — jobs within WORK_REACH for its working residents (more for a taught neighbourhood), capped at all of them;
 //   care   — the share of its plots a fire station and a clinic reach;
 //   food   — the share of its residents whose homes are fed (live/food.ts), once the food chain reports. Events read it; later, petitions and
 // narratives. Deterministic, PURE: the live inputs (occupancy, coverage, each plot's jobs) arrive as accessors.
@@ -29,6 +29,9 @@ export interface HealthInputs {
   coverage: ReadonlySet<number>;
   /** The jobs at parcel `i` (0 for a home or a green). */
   jobsAt(i: number): number;
+  /** How much more of the jobs in reach a place at (x, y) gets for its schooling, ≥ 1 (live/school.ts learningLift) —
+   *  absent: 1. */
+  jobsLiftAt?(x: number, y: number): number;
   /** Home anchor tiles with food access (live/food.ts) — absent before the food chain's first hour. */
   foodAccess?: ReadonlySet<number>;
 }
@@ -104,6 +107,8 @@ export function neighbourhoodHealth(inp: HealthInputs): NeighbourhoodHealth[] {
     const my = tiles[k]! > 0 ? cy[k]! / tiles[k]! : 0;
     let jobs = 0;
     for (const w of workplaces) if (Math.max(Math.abs(w.x - mx), Math.abs(w.y - my)) <= WORK_REACH) jobs += w.jobs;
+    // schooling: a taught neighbourhood gets more of the jobs round it (up to half again — live/school.ts)
+    jobs *= inp.jobsLiftAt?.(Math.round(mx), Math.round(my)) ?? 1;
     const parts: HealthParts = {
       civic: (v.belonging + v.voice + v.trust) / 3,
       ground: tiles[k]! > 0 ? ground[k]! / tiles[k]! : 0,

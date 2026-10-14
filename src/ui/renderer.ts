@@ -28,7 +28,7 @@ import type { SkinImages, LazyImages } from './tilesetLoader';
 import { wideRoadAt, curbPoleAt, streetTreeAt, bikeRackAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { isPowerConsumer, windFactor } from '../growth/power';
-import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses, wandererPose } from '../live/poses';
+import { ambientAlpha, laneOnTile, movingPose, pedPose, streetAt, trainPoses, wandererPose } from '../live/poses';
 import { computeFramePoses, shareFramePoses, viewRect } from './framePoses';
 import { litBodyKeys, drainInIdle, type IdleDeadlineLike } from './litWarmup';
 import { AGENT_TINTS, FIRE_FRAMES, SMOG_SIZES, bikeFacing, heading8, personKey, rotorFrame, spinRotor, windowsLit } from './snesAgents';
@@ -1378,6 +1378,16 @@ export class Renderer {
         if (sign) this.drawArt(ctx, sign, pose.x + 0.06, pose.y - 0.22, camera);
       }
       addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
+    }
+    // Children on the walk to school and home (live/schoolRun.ts), drawn as walkers.
+    for (const pu of ambient.pupils ?? []) {
+      const pose = pedPose(pu as never, onRoadAt, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const seed = (pu.homeTile * 7 + 3) >>> 0;
+      const frame = Math.floor(performance.now() / 200 + (seed & 7)) % 2;
+      const img = this.sprites.get(personKey('ped', seed, frame));
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
     }
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
     // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.

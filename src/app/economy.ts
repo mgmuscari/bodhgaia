@@ -64,6 +64,8 @@ export interface EconomyDeps {
   powerGrid: () => PowerGrid;
   /** How the people out now are getting around (live/stats.ts) — for the indicators. */
   modes?: () => IndicatorReading['modes'];
+  /** The city's schooling lift on its jobs, residents-weighted, ≥ 1 (live/school.ts) — for employment. */
+  jobsLift?: () => number;
   /** A resumed game's run (null → a new city, primed on its first hour with occupancy). */
   initial: EconomyRun | null;
   /** A construction site was finished and stands as its building now (rebuild the base, re-solve power…). */
@@ -170,7 +172,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
     lastCity = city;
     prevIndicators = indicators;
     indicators = {
-      jobs: city.jobs ?? 0,
+      jobs: (city.jobs ?? 0) * (deps.jobsLift?.() ?? 1), // a taught city gets more of its jobs
       residents: city.households,
       condition: city.meanCondition ?? 0,
       modes: deps.modes?.() ?? { walk: 0, bike: 0, transit: 0, car: 0 },

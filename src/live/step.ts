@@ -39,6 +39,7 @@ import { stepTrucks } from './trucks';
 import { stepAmbulances } from './ambulances';
 import { spawnVans, stepVans } from './vans';
 import { stepDrones } from './drones';
+import { schoolRun, stepPupils } from './schoolRun';
 import { stepClouds, stepToxic } from './spills';
 import { stepGatherings } from './gatherings';
 import { spawnTrains, stepTrain } from './trains';
@@ -69,6 +70,8 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.trucks) stepTrucks(state, map); // fire trucks on a call
   if (state.dying?.length || state.ambulances?.length) stepAmbulances(state, map); // a collapse calls a clinic
   if (state.drones?.length) stepDrones(state); // deliveries in the air
+  schoolRun(state, map, state.hour); // the walk to school, and home (once at each hour)
+  if (state.pupils?.length) stepPupils(state, map);
   if (state.foodRuns?.length || state.vans?.length) {
     spawnVans(state, map); // this hour's food-bank runs, made visible
     stepVans(state, map);

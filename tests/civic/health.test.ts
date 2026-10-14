@@ -79,3 +79,15 @@ describe('neighbourhoodHealth: food', () => {
     expect(some.health).toBeCloseTo(parts.reduce((a, b) => a + b, 0) / 6, 6);
   });
 });
+
+// Schools (Maddy 2026-10-14: "better work over time"): learning lifts the jobs a neighbourhood gets from those in reach.
+describe('neighbourhoodHealth: learning', () => {
+  it('the work part rises with the learning at the neighbourhood (to a cap of all its workers)', () => {
+    const t = town({ jobs: 6 }); // fewer jobs than workers (24 residents → 12 workers)
+    const id = t.partition.tileToNeighborhood[t.homeTile]!;
+    const plain = neighbourhoodHealth(t.inp)[id - 1]!.parts.work;
+    const taught = neighbourhoodHealth({ ...t.inp, jobsLiftAt: () => 1.5 })[id - 1]!.parts.work;
+    expect(taught).toBeGreaterThan(plain);
+    expect(taught).toBeCloseTo(Math.min(255, plain * 1.5), 6);
+  });
+});

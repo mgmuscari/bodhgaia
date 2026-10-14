@@ -31,6 +31,9 @@ import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
 import { AI_CLEAN_RADIUS } from '../live/fields/pollution';
 import { SHELTER_BEDS, SHELTER_DRAW } from '../live/camps';
 import { DRONE_RADIUS } from '../live/drones';
+import { LEARNING_BOOST, SCHOOL_REACH } from '../live/school';
+import { SCHOOL_IN_HOUR, SCHOOL_OUT_HOUR } from '../live/schoolRun';
+import { SCHOOL_VOICE } from '../civic/dynamics';
 import { ADJACENT_BONUS, BANK_REACH, GROW_REACH, PANTRY_REACH, PRODUCE } from '../live/food';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
@@ -156,6 +159,11 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (kind === BuiltKind.UrbanFarm) effects.push(`Grows ${PRODUCE.get(kind)} food an hour for a pantry or food bank nearby (×${ADJACENT_BONUS} right beside one); feeds the homes within ${GROW_REACH} tiles`);
   if (kind === BuiltKind.FoodBank) effects.push(`Gathers the harvest of farms and gardens within ${BANK_REACH} tiles and sends vans to the pantries in reach`);
   if (kind === BuiltKind.Pantry) effects.push(`Feeds the homes within ${PANTRY_REACH} tiles while it has stock — food access, part of neighbourhood health`);
+  if (kind === BuiltKind.School) {
+    effects.push(`A civic hub: its neighbourhood gains ${SCHOOL_VOICE} voice every civic tick`);
+    effects.push(`Teaches over time: neighbourhoods within ${SCHOOL_REACH} tiles get up to ${Math.round(LEARNING_BOOST * 100)}% more of the jobs round them`);
+    effects.push(`Children walk to it at ${SCHOOL_IN_HOUR}:00 and home at ${SCHOOL_OUT_HOUR}:00`);
+  }
   if (kind === BuiltKind.Shelter) effects.push(`${SHELTER_BEDS} beds: takes in the unhoused from camps within ${SHELTER_DRAW} tiles — safe from the cold nights`);
   if (GREEN_HEAL_KINDS.has(kind)) effects.push(`Heals ground pollution within ${GREEN_HEAL_RADIUS} tiles`);
   if (AMENITY_KINDS.has(kind)) effects.push("Raises its neighbours' land value");

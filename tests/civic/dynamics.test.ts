@@ -225,3 +225,21 @@ describe('civicTick: bounds, determinism, isolation', () => {
     expect(parcels.snapshotBytes()).toEqual(parcelsBefore);
   });
 });
+
+// Schools (Maddy 2026-10-14: "we need to give schools a function" — "its neighbourhood grows voice"): a school is a
+// civic hub where parents organise; its neighbourhood gains SCHOOL_VOICE each civic tick.
+import { SCHOOL_VOICE } from '../../src/civic/dynamics';
+describe('civicTick: schools', () => {
+  it('a neighbourhood with a school gains voice; one without does not', () => {
+    const run = (kind: BuiltKind) => {
+      const { map, parcels } = oneParcel(kind, 10);
+      const partition = computeNeighborhoods(map);
+      const civic = createCivicState(partition);
+      const before = civic.getValues(1).voice;
+      civicTick(map, parcels, partition, civic, NO_CAPS, 10);
+      return civic.getValues(1).voice - before;
+    };
+    expect(SCHOOL_VOICE).toBeGreaterThan(0);
+    expect(run(BuiltKind.School)).toBe(run(BuiltKind.HouseSingle) + SCHOOL_VOICE);
+  });
+});

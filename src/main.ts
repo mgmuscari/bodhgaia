@@ -70,6 +70,7 @@ import { GAME_VERSION } from './ui/creditsContent';
 import { travelModes } from './live/stats';
 import { createHealthController } from './app/health';
 import { foodHour } from './live/food';
+import { learningLift, learningNear, stepLearning } from './live/school';
 
 
 export function main(save: SaveV1 | null = null): void {
@@ -171,6 +172,16 @@ export function main(save: SaveV1 | null = null): void {
     live: live.state,
     powerGrid: power.grid,
     modes: () => travelModes(live.state), // how people get around, for the indicators
+    jobsLift: () => {
+      let w = 0;
+      let sum = 0;
+      for (const h of live.state.households ?? []) {
+        const occ = live.state.occupancy.get(world.map.idx(h.x, h.y)) ?? 0;
+        w += occ;
+        sum += occ * learningLift(learningNear(live.state, world.map, h.x, h.y));
+      }
+      return w > 0 ? sum / w : 1;
+    },
     initial: save?.econ ?? null,
     // tenant organising protects homes; rent's displaced leave real homes into the unhoused (rehoming.md)
     voiceAt: (t) => neighborhoodVoice(civic, deps.partition, t),
@@ -215,6 +226,8 @@ export function main(save: SaveV1 | null = null): void {
     occupancyAt: (t) => live.state.occupancy.get(t),
     coverage: () => live.state.coverage,
     foodAccess: () => live.state.foodAccess,
+    jobsLiftAt: (x, y) => learningLift(learningNear(live.state, world.map, x, y)),
+    stepLearning: () => stepLearning(live.state, world.map),
   });
   health.recompute();
 

@@ -19,6 +19,7 @@ export interface Pairing {
 
 export const PAIRINGS: readonly Pairing[] = [
   { a: BuiltKind.Library, b: BuiltKind.MakerSpace, bonus: 'the maker space reaches twice as far' },
+  { a: BuiltKind.Library, b: BuiltKind.School, bonus: 'the school teaches twice as fast' },
   { a: BuiltKind.CompostHub, b: BuiltKind.CommunityGarden, bonus: 'the garden grows a quarter more' },
   { a: BuiltKind.CompostHub, b: BuiltKind.UrbanFarm, bonus: 'the farm grows a quarter more' },
   { a: BuiltKind.HealingCommons, b: BuiltKind.Clinic, bonus: 'a collapse the clinic answers lasts 15 s longer' },
