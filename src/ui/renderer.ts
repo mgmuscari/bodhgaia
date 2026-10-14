@@ -1328,8 +1328,67 @@ export class Renderer {
       }
     }
 
-    // Elevated decks pass OVER the street (Maddy 2026-10-13: cars drove on top of the elevated rail): the base drew
-    // them before any car, so re-lay the decks in view over the cars beneath; trains on a deck ride at its height.
+
+    // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a
+    // demand path) it stays centred. The person is FIXED per citizen (a stable hash of its identity —
+    // skin tone + shirt), with a two-frame walk while it moves. (Drivers are CARS, drawn above.)
+    // protesters (and those rising up) carry placards above their heads
+    const marching = new Set((ambient.gatherings ?? []).filter((g) => g.kind === 'protest' || g.kind === 'uprising').map((g) => g.id));
+    for (const { m: p, pose } of poses.peds) { // (not those inside a building, or riding their car)
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
+      const moving = p.tx !== p.x || p.ty !== p.y;
+      const frame = moving ? Math.floor(performance.now() / 220 + (seed & 7)) % 2 : 0; // a two-step walk
+      const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
+      const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame, bike ? bikeFacing(pose.hx, pose.hy) : undefined));
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      if (p.gather && marching.has(p.gather.id)) {
+        const sign = this.sprites.get(`@sprite/placard/${seed & 1}`);
+        if (sign) this.drawArt(ctx, sign, pose.x + 0.06, pose.y - 0.22, camera);
+      }
+      addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
+    }
+    // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
+    // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
+    const psx = camera.tileSize / BASE_TILE;
+    // the collapsed lie the same way, unfaded, until an ambulance carries them off (or the minute runs out)
+    const lying: { x: number; y: number; t: number }[] = (ambient.dying ?? []).filter((d) => !d.carried).map((d) => ({ x: d.x, y: d.y, t: 0 }));
+    for (const f of lying.concat(ambient.fallen ?? [])) {
+      const { sx, sy } = camera.worldToScreen(f.x + 0.5, f.y + 0.5);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(personKey('ped', (f.x * 131 + f.y) >>> 0, 0));
+      if (!img) continue;
+      const w = (img as HTMLCanvasElement).width * psx;
+      const h = (img as HTMLCanvasElement).height * psx;
+      ctx.save();
+      ctx.globalAlpha = 1 - Math.max(0, f.t / FALL_SUBSTEPS - 0.6) / 0.4; // fades over the last stretch
+      ctx.translate(sx, sy + h * 0.2);
+      ctx.rotate(Math.PI / 2); // lying down
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+    const flicker = Math.floor(performance.now() / 180);
+    for (const m of ambient.memorials ?? []) {
+      const o = camera.tileOrigin(m.x, m.y);
+      if (!onScreen(o.dx + psx * 8, o.dy + psx * 8)) continue;
+      const px = (x: number, y: number, c: string): void => {
+        ctx.fillStyle = c;
+        ctx.fillRect(o.dx + x * psx, o.dy + y * psx, psx, psx);
+      };
+      // flowers laid at the foot of a candle
+      for (const [x, y, c] of [[5, 11, '#f8d858'], [6, 12, '#e86048'], [10, 11, '#f8f8e8'], [11, 12, '#c060c0'], [8, 13, '#e86048']] as const) {
+        px(x, y, c);
+        px(x, y + 1, '#407838');
+      }
+      for (let y = 8; y <= 11; y++) px(8, y, '#f0e0b8'); // the candle
+      px(8, 7, (flicker + m.x + m.y) % 3 === 0 ? '#f8f8c0' : '#f8c040'); // its flame
+      px(8, 6, '#f89830');
+    }
+
+    // Elevated decks pass OVER the street (Maddy 2026-10-13: cars, then walkers and cyclists, showed on top of the
+    // elevated rail): the base drew them before anyone moved, so re-lay the decks in view over everything at street
+    // level — cars, people, the fallen — trains on a deck ride at its height.
     const dmap = world.map;
     const deckLift = 3 / BASE_TILE; // the base lifts a deck 3 art px above the road
     {
@@ -1391,63 +1450,6 @@ export class Renderer {
         if (img) this.drawArt(ctx, img, q.x, q.y - lift, camera);
         addBody(q.x, q.y - lift, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
       });
-    }
-
-    // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a
-    // demand path) it stays centred. The person is FIXED per citizen (a stable hash of its identity —
-    // skin tone + shirt), with a two-frame walk while it moves. (Drivers are CARS, drawn above.)
-    // protesters (and those rising up) carry placards above their heads
-    const marching = new Set((ambient.gatherings ?? []).filter((g) => g.kind === 'protest' || g.kind === 'uprising').map((g) => g.id));
-    for (const { m: p, pose } of poses.peds) { // (not those inside a building, or riding their car)
-      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
-      if (!onScreen(sx, sy)) continue;
-      const seed = (p.homeTile ?? p.carId ?? Math.round(p.x) * 131 + Math.round(p.y)) >>> 0;
-      const moving = p.tx !== p.x || p.ty !== p.y;
-      const frame = moving ? Math.floor(performance.now() / 220 + (seed & 7)) % 2 : 0; // a two-step walk
-      const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
-      const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame, bike ? bikeFacing(pose.hx, pose.hy) : undefined));
-      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
-      if (p.gather && marching.has(p.gather.id)) {
-        const sign = this.sprites.get(`@sprite/placard/${seed & 1}`);
-        if (sign) this.drawArt(ctx, sign, pose.x + 0.06, pose.y - 0.22, camera);
-      }
-      addBody(pose.x, pose.y, pose.hx, pose.hy, 0.16, 0.16, 0, img);
-    }
-    // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
-    // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
-    const psx = camera.tileSize / BASE_TILE;
-    // the collapsed lie the same way, unfaded, until an ambulance carries them off (or the minute runs out)
-    const lying: { x: number; y: number; t: number }[] = (ambient.dying ?? []).filter((d) => !d.carried).map((d) => ({ x: d.x, y: d.y, t: 0 }));
-    for (const f of lying.concat(ambient.fallen ?? [])) {
-      const { sx, sy } = camera.worldToScreen(f.x + 0.5, f.y + 0.5);
-      if (!onScreen(sx, sy)) continue;
-      const img = this.sprites.get(personKey('ped', (f.x * 131 + f.y) >>> 0, 0));
-      if (!img) continue;
-      const w = (img as HTMLCanvasElement).width * psx;
-      const h = (img as HTMLCanvasElement).height * psx;
-      ctx.save();
-      ctx.globalAlpha = 1 - Math.max(0, f.t / FALL_SUBSTEPS - 0.6) / 0.4; // fades over the last stretch
-      ctx.translate(sx, sy + h * 0.2);
-      ctx.rotate(Math.PI / 2); // lying down
-      ctx.drawImage(img, -w / 2, -h / 2, w, h);
-      ctx.restore();
-    }
-    const flicker = Math.floor(performance.now() / 180);
-    for (const m of ambient.memorials ?? []) {
-      const o = camera.tileOrigin(m.x, m.y);
-      if (!onScreen(o.dx + psx * 8, o.dy + psx * 8)) continue;
-      const px = (x: number, y: number, c: string): void => {
-        ctx.fillStyle = c;
-        ctx.fillRect(o.dx + x * psx, o.dy + y * psx, psx, psx);
-      };
-      // flowers laid at the foot of a candle
-      for (const [x, y, c] of [[5, 11, '#f8d858'], [6, 12, '#e86048'], [10, 11, '#f8f8e8'], [11, 12, '#c060c0'], [8, 13, '#e86048']] as const) {
-        px(x, y, c);
-        px(x, y + 1, '#407838');
-      }
-      for (let y = 8; y <= 11; y++) px(8, y, '#f0e0b8'); // the candle
-      px(8, 7, (flicker + m.x + m.y) % 3 === 0 ? '#f8f8c0' : '#f8c040'); // its flame
-      px(8, 6, '#f89830');
     }
 
     // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).
