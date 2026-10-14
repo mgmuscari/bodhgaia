@@ -64,3 +64,18 @@ describe('neighbourhoodHealth', () => {
     expect(healthAt(town({ jobs: 0 })).parts.work).toBe(0);
   });
 });
+
+// Food access joins the parts (interdependence §2): the share of the neighbourhood's residents whose homes are fed.
+describe('neighbourhoodHealth: food', () => {
+  it('a sixth part, the share of residents with food access — when the food chain reports it', () => {
+    const t = town();
+    expect(healthAt(t).parts.food).toBeUndefined(); // no food reading yet: five parts
+    const fed = new Set<number>([t.homeTile]);
+    const some = neighbourhoodHealth({ ...t.inp, foodAccess: fed })[t.partition.tileToNeighborhood[t.homeTile]! - 1]!;
+    expect(some.parts.food).toBeGreaterThan(0);
+    expect(some.parts.food).toBeLessThan(255); // one home of six
+    const parts = Object.values(some.parts) as number[];
+    expect(parts).toHaveLength(6);
+    expect(some.health).toBeCloseTo(parts.reduce((a, b) => a + b, 0) / 6, 6);
+  });
+});

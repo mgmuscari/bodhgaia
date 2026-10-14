@@ -30,6 +30,7 @@ import { influenceOf } from '../ecology/influence';
 import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
 import { AI_CLEAN_RADIUS } from '../live/fields/pollution';
 import { SHELTER_BEDS, SHELTER_DRAW } from '../live/camps';
+import { ADJACENT_BONUS, BANK_REACH, GROW_REACH, PANTRY_REACH, PRODUCE } from '../live/food';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
@@ -151,6 +152,9 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (GATHERING_KINDS.has(kind)) effects.push("Gathering place: its neighbourhood's belonging +1 per civic tick");
   if (kind === BuiltKind.WastewaterWorks) effects.push(`Cleans contaminated water within ${WATER_TREAT_RADIUS} tiles`);
   if (kind === BuiltKind.RetentionPond) effects.push(`Keeps the land within ${POND_REACH} tiles from flooding`);
+  if (kind === BuiltKind.UrbanFarm) effects.push(`Grows ${PRODUCE.get(kind)} food an hour for a pantry or food bank nearby (×${ADJACENT_BONUS} right beside one); feeds the homes within ${GROW_REACH} tiles`);
+  if (kind === BuiltKind.FoodBank) effects.push(`Gathers the harvest of farms and gardens within ${BANK_REACH} tiles and sends vans to the pantries in reach`);
+  if (kind === BuiltKind.Pantry) effects.push(`Feeds the homes within ${PANTRY_REACH} tiles while it has stock — food access, part of neighbourhood health`);
   if (kind === BuiltKind.Shelter) effects.push(`${SHELTER_BEDS} beds: takes in the unhoused from camps within ${SHELTER_DRAW} tiles — safe from the cold nights`);
   if (GREEN_HEAL_KINDS.has(kind)) effects.push(`Heals ground pollution within ${GREEN_HEAL_RADIUS} tiles`);
   if (AMENITY_KINDS.has(kind)) effects.push("Raises its neighbours' land value");

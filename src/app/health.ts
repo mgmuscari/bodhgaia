@@ -15,6 +15,8 @@ export interface HealthDeps {
   partition(): NeighborhoodMap;
   occupancyAt(tile: number): number | undefined;
   coverage(): ReadonlySet<number>;
+  /** Homes with food access (live/food.ts), once the food chain has run. */
+  foodAccess?(): ReadonlySet<number> | undefined;
 }
 
 export interface HealthController {
@@ -38,6 +40,7 @@ export function createHealthController(deps: HealthDeps): HealthController {
         occupancyAt: deps.occupancyAt,
         coverage: deps.coverage(),
         jobsAt: (i) => parcelJobs(deps.parcels.get(i)),
+        foodAccess: deps.foodAccess?.(),
       });
     },
     byId,

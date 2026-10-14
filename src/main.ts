@@ -69,6 +69,7 @@ import { mountWhatsNew } from './ui/whatsNewPanel';
 import { GAME_VERSION } from './ui/creditsContent';
 import { travelModes } from './live/stats';
 import { createHealthController } from './app/health';
+import { foodHour } from './live/food';
 
 
 export function main(save: SaveV1 | null = null): void {
@@ -213,6 +214,7 @@ export function main(save: SaveV1 | null = null): void {
     partition: () => deps.partition,
     occupancyAt: (t) => live.state.occupancy.get(t),
     coverage: () => live.state.coverage,
+    foodAccess: () => live.state.foodAccess,
   });
   health.recompute();
 
@@ -517,6 +519,17 @@ export function main(save: SaveV1 | null = null): void {
       news.push('A life lost to violence on the street');
     }
   };
+  // The food chain (interdependence §2): once a game hour, the harvest flows to pantries and banks, banks send vans,
+  // and the homes fed have food access (a part of neighbourhood health).
+  let foodHourAt = -1;
+  const runFoodNow = (): void => {
+    const h = gameClock(gameSec()).hour;
+    if (h === foodHourAt) return;
+    foodHourAt = h;
+    const r = foodHour((live.state.food ??= { stock: new Map() }), world.map, world.parcels, (t) => live.state.occupancy.get(t) ?? 0);
+    live.state.foodAccess = r.access;
+    live.state.foodRuns = r.deliveries; // this hour's van runs
+  };
   const drawSpillsNow = (): void => {
     if (!disastersOn()) return;
     for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
@@ -633,6 +646,7 @@ export function main(save: SaveV1 | null = null): void {
       community.frame(now);
       fire.frame(now);
       drawSpillsNow();
+      runFoodNow();
       drawCrashesNow();
       drawCrimeNow();
       events.frame(now);

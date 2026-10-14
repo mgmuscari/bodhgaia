@@ -4,8 +4,8 @@
 //   ground — its soil and flora;
 //   repair — how well its buildings are kept (their mean condition);
 //   work   — jobs within WORK_REACH for its working residents, capped at all of them;
-//   care   — the share of its plots a fire station and a clinic reach.
-// (Food access joins when the food chain is built — interdependence §2.) Events read it; later, petitions and
+//   care   — the share of its plots a fire station and a clinic reach;
+//   food   — the share of its residents whose homes are fed (live/food.ts), once the food chain reports. Events read it; later, petitions and
 // narratives. Deterministic, PURE: the live inputs (occupancy, coverage, each plot's jobs) arrive as accessors.
 
 import type { GameMap } from '../engine/map';
@@ -29,6 +29,8 @@ export interface HealthInputs {
   coverage: ReadonlySet<number>;
   /** The jobs at parcel `i` (0 for a home or a green). */
   jobsAt(i: number): number;
+  /** Home anchor tiles with food access (live/food.ts) — absent before the food chain's first hour. */
+  foodAccess?: ReadonlySet<number>;
 }
 
 export interface HealthParts {
@@ -37,6 +39,8 @@ export interface HealthParts {
   repair: number;
   work: number;
   care: number;
+  /** The share of its residents whose homes are fed (once the food chain reports). */
+  food?: number;
 }
 
 export interface NeighbourhoodHealth {
@@ -72,6 +76,8 @@ export function neighbourhoodHealth(inp: HealthInputs): NeighbourhoodHealth[] {
   const condition = new Float64Array(n);
   const buildings = new Float64Array(n);
   const workers = new Float64Array(n);
+  const residents = new Float64Array(n);
+  const fed = new Float64Array(n);
   const workplaces: { x: number; y: number; jobs: number }[] = [];
   for (const i of parcels.aliveIndices()) {
     const p = parcels.get(i);
@@ -84,7 +90,12 @@ export function neighbourhoodHealth(inp: HealthInputs): NeighbourhoodHealth[] {
       condition[id - 1]! += p.condition;
       buildings[id - 1]! += 1;
     }
-    workers[id - 1]! += (inp.occupancyAt(anchor) ?? 0) * WORKING;
+    const occ = inp.occupancyAt(anchor) ?? 0;
+    workers[id - 1]! += occ * WORKING;
+    if (occ > 0) {
+      residents[id - 1]! += occ;
+      if (inp.foodAccess?.has(anchor)) fed[id - 1]! += occ;
+    }
   }
   const out: NeighbourhoodHealth[] = [];
   for (let k = 0; k < n; k++) {
@@ -100,7 +111,9 @@ export function neighbourhoodHealth(inp: HealthInputs): NeighbourhoodHealth[] {
       work: workers[k]! > 0 ? Math.min(1, jobs / workers[k]!) * 255 : 0,
       care: plotTiles[k]! > 0 ? (covered[k]! / plotTiles[k]!) * 255 : 0,
     };
-    const health = (parts.civic + parts.ground + parts.repair + parts.work + parts.care) / 5;
+    if (inp.foodAccess) parts.food = residents[k]! > 0 ? (fed[k]! / residents[k]!) * 255 : 0;
+    const all = Object.values(parts) as number[];
+    const health = all.reduce((a, b) => a + b, 0) / all.length;
     out.push({ health, parts });
   }
   return out;

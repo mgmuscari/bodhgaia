@@ -415,6 +415,10 @@ export interface AmbientState {
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
   ambulances?: Ambulance[];
+  /** The food chain (live/food.ts): pantries' and food banks' stocks; the homes fed this hour; the van runs to drive. */
+  food?: import('./food').FoodState;
+  foodAccess?: Set<number>;
+  foodRuns?: { from: number; to: number; amount: number }[];
   /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
    *  to the unhoused pool. */
   sheltered?: Map<number, number>;
