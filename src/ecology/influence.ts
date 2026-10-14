@@ -72,6 +72,7 @@ export const RADIUS = 2;
 export const INFLUENCE: ReadonlyMap<BuiltKind, KindInfluence> = new Map<BuiltKind, KindInfluence>([
   // Boosts
   [BuiltKind.CommunityGarden, { soil: 6, flora: 3, fauna: 2, fragmenting: false }],
+  [BuiltKind.UrbanFarm, { soil: 5, flora: 3, fauna: 1, fragmenting: false }], // below the garden's ceiling
   [BuiltKind.CompostHub, { soil: 4, flora: 1, fauna: 1, fragmenting: false }],
   [BuiltKind.Parklet, { soil: 2, flora: 3, fauna: 2, fragmenting: false }],
   [BuiltKind.QuietStreet, { soil: 1, flora: 1, fauna: 1, fragmenting: false }],

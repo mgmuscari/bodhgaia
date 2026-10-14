@@ -36,6 +36,9 @@ export const UPKEEP: ReadonlyMap<number, number> = new Map<number, number>([
   [BuiltKind.WastewaterWorks, 2],
   [BuiltKind.RetentionPond, 0.6],
   [BuiltKind.Shelter, 0.6],
+  [BuiltKind.UrbanFarm, 0.6],
+  [BuiltKind.FoodBank, 0.6],
+  [BuiltKind.Pantry, 0.3],
   [BuiltKind.EnergyNode, 0.8],
   [BuiltKind.AINode, 1.5],
 ]);
@@ -126,7 +129,7 @@ export function reachOf(parcels: ParcelStore, kinds: ReadonlySet<number>, r: num
 /** Compost Hub: the gardens and farms within this reach need COMPOST_TENDING of their tending. */
 export const COMPOST_RADIUS = 4;
 export const COMPOST_TENDING = 0.5;
-const COMPOSTED: ReadonlySet<number> = new Set<number>([BuiltKind.CommunityGarden, BuiltKind.VerticalFarm]);
+const COMPOSTED: ReadonlySet<number> = new Set<number>([BuiltKind.CommunityGarden, BuiltKind.VerticalFarm, BuiltKind.UrbanFarm]);
 /** Bazaar: the shops within this reach are assessed BAZAAR_LIFT × (the bazaar draws a crowd). */
 export const BAZAAR_RADIUS = 4;
 export const BAZAAR_LIFT = 1.25;

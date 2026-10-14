@@ -134,6 +134,8 @@ export function placeCategoryOf(kind: number | undefined): PlaceCategory {
     kind === BuiltKind.WastewaterWorks ||
     kind === BuiltKind.RetentionPond ||
     kind === BuiltKind.Shelter ||
+    kind === BuiltKind.FoodBank ||
+    kind === BuiltKind.Pantry ||
     kind === BuiltKind.AINode
   )
     return 'civic';
