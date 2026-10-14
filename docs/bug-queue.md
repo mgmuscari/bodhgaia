@@ -24,14 +24,17 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
 ### 1 — Live-game bugs (playtest loop, do first)
 - **Playtest batch (Maddy 2026-10-13):**
-  - Bulldoze works with no money.
-  - Bulldoze should leave a vacant lot that slowly recovers.
-  - Worldgen lays rail crossings between highways; trains don't stop at crossing stations.
-  - Rail crossings only where the player lays track over an existing road/highway.
-  - Music drones too loud.
-  - Single-item construction tools let a drag pan the map; transit lines drag — inconsistent.
-  - Input: right click? long press? WASD scrolling.
-  - Eco/civic overlays tedious to cycle; overlays should be easier to turn off — consider menus.
+  - ✅ Bulldoze works with no money — every bulldoze needs funds now; only freeway removal (salvage) works broke.
+  - ✅ Bulldoze leaves a vacant lot (kind 68) that grows back to open land as its soil heals (~3 min); campable.
+  - ✅ Rail crossings between highways — crossings are now recorded where track is laid across a way (map.crossing,
+    save v4), never inferred; v3 cities migrate once, skipping ways that run along the line.
+  - ✅ Trains not stopping at crossing stations — a train never forgot its last stop (one halt per life on a
+    one-station line).
+  - ✅ Music drones too loud — held notes fall as 1/√length past a second, to 0.4.
+  - ✅ Drag consistency — kept "only lines drag" (Maddy's pick); WASD/arrows pan while a line tool is held.
+  - ✅ Right click / long press drop the tool; WASD pans (Saves moved S → O).
+  - ✅ Overlay menus — Eco/Civic open a list of views; closing a menu or changing category drops the tool and the
+    overlay; Esc / right click / long press clear everything.
 - ✅ **Walkers warp across tiles** (Maddy 2026-10-08, her (106, 37)) — measured on a 96² lotus: 803 jumps > 0.2 tile in a
   50 ms step before the avenue-kerb change, 1,699 after (worst 0.9). Cause: the drawn pose is heading-relative
   (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. ✅ map-fixed sidewalks; and
