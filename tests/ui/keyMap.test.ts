@@ -142,3 +142,25 @@ describe('panFor: the panning keys', () => {
     for (const k of ['w', 'a', 's', 'd', 'W', 'A', 'S', 'D']) expect(resolveKey(press(k), false)).toBeNull();
   });
 });
+
+// Maddy 2026-10-13: "WASD scrolling should be smooth, not jumpy". Held panning keys give a velocity the camera moves
+// by every frame (not a 48 px hop per key repeat); two held at once go diagonally at the same speed.
+import { panVelocity, KEY_PAN_SPEED } from '../../src/ui/keyMap';
+describe('panVelocity: held panning keys', () => {
+  it('nothing held, no motion', () => {
+    expect(panVelocity(new Set())).toEqual([0, 0]);
+    expect(panVelocity(new Set(['e']))).toEqual([0, 0]);
+  });
+  it('one key: full speed its way, WASD as the arrows', () => {
+    expect(panVelocity(new Set(['w']))).toEqual([0, KEY_PAN_SPEED]);
+    expect(panVelocity(new Set(['ArrowLeft']))).toEqual([KEY_PAN_SPEED, 0]);
+  });
+  it('two at once go diagonally at the same speed; opposite keys cancel', () => {
+    const [vx, vy] = panVelocity(new Set(['w', 'd']));
+    expect(Math.hypot(vx, vy)).toBeCloseTo(KEY_PAN_SPEED, 5);
+    expect(panVelocity(new Set(['a', 'd']))).toEqual([0, 0]);
+  });
+  it('a key and its arrow twin count once', () => {
+    expect(panVelocity(new Set(['w', 'ArrowUp', 'W']))).toEqual([0, KEY_PAN_SPEED]);
+  });
+});

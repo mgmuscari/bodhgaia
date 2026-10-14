@@ -56,6 +56,31 @@ export function panFor(key: string): readonly [number, number] | null {
   return PAN_KEYS[key] ?? PAN_KEYS[key.toLowerCase()] ?? null;
 }
 
+/** Screen px a second the map moves while panning keys are held (Maddy 2026-10-13: smooth, not jumpy). */
+export const KEY_PAN_SPEED = 720;
+const DIAGONAL = 0.7071067811865476; // 1/√2: two keys at once go no faster
+
+/** The pan velocity (screen px/s) of the keys held — the arrows and WASD, a key and its twin counted once, opposite
+ *  keys cancelling, a diagonal at the same speed. */
+export function panVelocity(held: ReadonlySet<string>): [number, number] {
+  let sx = 0;
+  let sy = 0;
+  const seen = new Set<string>();
+  for (const k of held) {
+    const p = panFor(k);
+    if (!p) continue;
+    const dir = `${Math.sign(p[0])},${Math.sign(p[1])}`;
+    if (seen.has(dir)) continue;
+    seen.add(dir);
+    sx += Math.sign(p[0]);
+    sy += Math.sign(p[1]);
+  }
+  sx = Math.sign(sx);
+  sy = Math.sign(sy);
+  const k = sx !== 0 && sy !== 0 ? KEY_PAN_SPEED * DIAGONAL : KEY_PAN_SPEED;
+  return [sx * k + 0, sy * k + 0];
+}
+
 export interface KeyPress {
   key: string;
   metaKey: boolean;

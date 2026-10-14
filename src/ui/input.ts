@@ -12,7 +12,7 @@
 // click, a long press on a touch screen).
 
 import { Camera } from './camera';
-import { isEditableTarget, panFor } from './keyMap';
+import { isEditableTarget, panFor, panVelocity } from './keyMap';
 import { classifyPointer, lineTiles, pinchZoom, wheelZoom } from '../tools/inputGeometry';
 
 /** A wheel pause longer than this starts a fresh zoom gesture. */
@@ -276,13 +276,40 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     { passive: false },
   );
 
+  // Held panning keys (the arrows and WASD) glide the map at a steady speed, every frame, until let go (Maddy
+  // 2026-10-13: "WASD scrolling should be smooth, not jumpy") — not a hop per key repeat.
+  const held = new Set<string>();
+  let panFrame = 0;
+  let panAt = 0;
+  const glide = (t: number): void => {
+    const [vx, vy] = panVelocity(held);
+    if (vx === 0 && vy === 0) {
+      panFrame = 0;
+      return;
+    }
+    const dt = Math.min(0.05, (t - panAt) / 1000); // a stalled frame doesn't throw the view
+    panAt = t;
+    camera.pan(vx * dt, vy * dt);
+    handlers.onChange();
+    panFrame = requestAnimationFrame(glide);
+  };
+  const release = (key: string): void => {
+    held.delete(key);
+    held.delete(key.toLowerCase());
+  };
+  window.addEventListener('keyup', (e) => release(e.key));
+  window.addEventListener('blur', () => held.clear()); // a key let go in another window
+
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return; // don't shadow browser/OS shortcuts
     if (isEditableTarget(e.target)) return; // typing in a field isn't panning or picking a tool
-    const pan = panFor(e.key); // the arrows and WASD
-    if (pan) {
-      camera.pan(pan[0], pan[1]);
-      handlers.onChange();
+    if (panFor(e.key)) {
+      e.preventDefault(); // the arrows would scroll the page
+      held.add(e.key.length === 1 ? e.key.toLowerCase() : e.key);
+      if (panFrame === 0) {
+        panAt = performance.now();
+        panFrame = requestAnimationFrame(glide);
+      }
       return;
     }
     switch (e.key) {
