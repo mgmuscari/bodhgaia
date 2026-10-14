@@ -24,10 +24,13 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 
 ### 1 — Live-game bugs (playtest loop, do first)
 - **Playtest batch 2 (Maddy 2026-10-13)** — features synthesized in `docs/design/interdependence.md`; bugs:
-  - Elevated rail: cars path on top of the rail and no trains run.
-  - Residents at home should park cars beyond the first on the street.
-  - Update the building footprint preview.
-  - Add traffic costing to A* edges.
+  - ✅ Elevated rail: a deck over the streets is track (trains run, stations where a street passes under); cars,
+    walkers and cyclists draw beneath the deck, trains on it.
+  - ✅ Households keep their cars: one off-street, the rest (≤4) at the kerb near home; near transit they shed them.
+  - ✅ The footprint preview covers the whole building.
+  - ✅ A* traffic costing — already in (driveTileCost's live congestion for cars, trucks, ambulances); no change.
+  - ✅ (follow-ups) bulldoze/inspect put a building tool down and a category puts them down; WASD glides with
+    accel/decel.
   - Arcologies (feature, backlog).
 - **Playtest batch (Maddy 2026-10-13):**
   - ✅ Bulldoze works with no money — every bulldoze needs funds now; only freeway removal (salvage) works broke.
