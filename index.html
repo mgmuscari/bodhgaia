@@ -942,6 +942,11 @@
         border-color: var(--ui-accent);
         color: var(--ui-accent);
       }
+      /* What's new: the release notes as a list, in the help panel's frame — at a reading width (the help panel sizes
+         to its content, which squeezed sentences into a narrow column on a phone) */
+      .help-panel.whats-new {
+        width: min(32rem, calc(100vw - 1rem));
+      }
       /* What's new: the release notes as a list, in the help panel's frame */
       .whats-new__notes {
         margin: 0.25rem 0 0.75rem;
