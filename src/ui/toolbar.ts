@@ -147,9 +147,11 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
         }),
       );
       flyout.style.gridTemplateColumns = '';
-      const anchor = metaButtonEls.get(views.kind);
-      flyout.style.top = `${anchor ? anchor.getBoundingClientRect().top : 0}px`;
+      // it opens UPWARD, ending level with its button: the overlay's colour key sits below, at the foot of the map
       flyout.hidden = false;
+      const anchor = metaButtonEls.get(views.kind);
+      const bottom = anchor ? anchor.getBoundingClientRect().bottom : flyout.offsetHeight;
+      flyout.style.top = `${Math.max(0, bottom - flyout.offsetHeight)}px`;
     } else if (view.open === null || view.rows.length === 0) {
       flyout.replaceChildren();
       flyout.hidden = true;
@@ -221,6 +223,9 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
       flashTimer = null;
     }, FLASH_MS);
   }
+
+  // a click opens a menu beside the button: its tooltip would sit on the menu's first row
+  for (const host of [bar, flyout]) host.addEventListener('click', () => (tip.hidden = true));
 
   // Delegated listeners on the STABLE containers (bound once).
   const onToolClick = (e: Event): void => {
