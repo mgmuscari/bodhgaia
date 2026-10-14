@@ -1,10 +1,11 @@
 // The dock's one selection model (PURE — no DOM, no transcendental Math; on the pure-ui allowlist): which menu is
 // open — a build category's tools, or an overlay's views — the picked tool, and the shown overlay. Maddy 2026-10-13:
 // a menu per overlay button, and "closing a menu or changing category should now unselect the building tool or
-// infoview". So: closing a category's menu or opening another puts a building tool down (a mode — inspect,
-// bulldoze — belongs to no category and stays); closing an overlay's menu or opening another turns its overlay off.
-// An overlay with a single view has no menu: its button turns it on and off. Escape, a right click or a long press
-// clears all three. The overlay KEYS (E, C, …) still cycle through the registry's cycleComposite.
+// infoview". So: closing a category's menu or opening another puts a building tool down; closing an overlay's menu
+// or opening another turns its overlay off. Bulldoze and inspect (the modes) replace a building tool and close its
+// category's menu; opening a category puts a mode down. An overlay with a single view has no menu: its button turns
+// it on and off. Escape, a right click or a long press clears all three. The overlay KEYS (E, C, …) still cycle
+// through the registry's cycleComposite.
 
 import type { ToolCategory } from './toolMenuContent';
 import { OVERLAYS, type CompositeState, type OverlayKind } from './overlayRegistry';
@@ -36,7 +37,8 @@ function closeMenu(s: DockState, catOf: CategoryOf): DockState {
 export function toggleCategory(s: DockState, id: ToolCategory, catOf: CategoryOf): DockState {
   const wasOpen = s.menu?.kind === 'category' && s.menu.id === id;
   const closed = closeMenu(s, catOf);
-  return wasOpen ? closed : { ...closed, menu: { kind: 'category', id } };
+  // opening a building category puts bulldoze or inspect down too (Maddy 2026-10-13)
+  return wasOpen ? closed : { ...closed, tool: null, menu: { kind: 'category', id } };
 }
 
 /** An overlay's button: a menu of its views (showing the first at once), or — one view — on/off. Either way the
@@ -57,10 +59,11 @@ export function pickTool(s: DockState, tool: string | null): DockState {
   return { ...s, tool };
 }
 
-/** A mode picked (inspect, bulldoze — no category of its own): the open menu closes, as any change of category
- *  does (Maddy 2026-10-13: "bulldoze/inspect don't cause other tool menus to close"). */
+/** A mode picked (inspect, bulldoze): it replaces any building tool, and an open category's menu closes (Maddy
+ *  2026-10-13). An overlay and its menu stay — inspecting what an overlay shows is the point. */
 export function pickMode(s: DockState, tool: string, catOf: CategoryOf): DockState {
-  return { ...closeMenu(s, catOf), tool };
+  const base = s.menu?.kind === 'category' ? closeMenu(s, catOf) : s;
+  return { ...base, tool };
 }
 
 /** A view picked from an overlay's menu. */

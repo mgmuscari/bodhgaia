@@ -21,10 +21,10 @@ describe('the build categories', () => {
     const s = toggleCategory(pickTool(toggleCategory(none, 'transit', catOf), 'street'), 'residential', catOf);
     expect(s).toEqual({ menu: { kind: 'category', id: 'residential' }, tool: null, overlay: null });
   });
-  it('a mode (inspect, bulldoze) is no category tool: opening or closing a category keeps it', () => {
-    const s = toggleCategory({ ...none, tool: 'bulldoze' }, 'transit', catOf);
-    expect(s.tool).toBe('bulldoze');
-    expect(toggleCategory(s, 'transit', catOf).tool).toBe('bulldoze');
+  // Maddy 2026-10-13: "when you select a building category menu, it should deselect bulldoze/inspect"
+  it('opening a category puts bulldoze or inspect down', () => {
+    expect(toggleCategory({ ...none, tool: 'bulldoze' }, 'transit', catOf).tool).toBeNull();
+    expect(toggleCategory({ ...none, tool: 'inspect' }, 'residential', catOf).tool).toBeNull();
   });
 });
 
@@ -62,19 +62,16 @@ describe('the overlay menus', () => {
   });
 });
 
-// Maddy 2026-10-13: "bulldoze/inspect don't cause other tool menus to close".
+// Maddy 2026-10-13: "selecting bulldoze/inspect [should] deselect other active building tools".
 describe('the modes (inspect, bulldoze)', () => {
-  it('picking one closes an open category menu', () => {
+  it('picking one puts the building tool down and closes its category menu', () => {
     const s = pickMode(pickTool(toggleCategory(none, 'transit', catOf), 'street'), 'bulldoze', catOf);
     expect(s).toEqual({ menu: null, tool: 'bulldoze', overlay: null });
   });
-  it('picking one closes an open overlay menu, and its overlay with it', () => {
-    const s = pickMode(toggleOverlay(none, 'eco', catOf), 'inspect', catOf);
-    expect(s).toEqual({ menu: null, tool: 'inspect', overlay: null });
-  });
-  it('with no menu open, a key-cycled overlay stays on', () => {
-    const s = pickMode({ ...none, overlay: { kind: 'redline', view: 'grade' } }, 'inspect', catOf);
-    expect(s.overlay).toEqual({ kind: 'redline', view: 'grade' });
+  it('an overlay (and its menu) stays — inspecting what an overlay shows is the point', () => {
+    const eco = toggleOverlay(none, 'eco', catOf);
+    const s = pickMode(eco, 'inspect', catOf);
+    expect(s).toEqual({ menu: eco.menu, tool: 'inspect', overlay: eco.overlay });
   });
 });
 
