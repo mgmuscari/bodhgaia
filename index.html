@@ -638,6 +638,29 @@
       .toolbar-flyout[hidden] {
         display: none;
       }
+      /* An overlay's views (Maddy 2026-10-13): a list of names, beside its button */
+      .toolbar-flyout.is-views {
+        grid-template-columns: auto;
+        gap: 2px;
+      }
+      .flyout-view {
+        font-family: var(--ui-font);
+        font-size: 1rem;
+        color: var(--ui-text);
+        text-align: left;
+        white-space: nowrap;
+        cursor: pointer;
+        padding: 2px 6px;
+        border: 6px solid transparent;
+        border-image: var(--ui-frame-button) 4 fill / 6px stretch;
+        background: none;
+      }
+      .flyout-view:hover {
+        filter: brightness(1.1);
+      }
+      .flyout-view.is-selected {
+        border-image-source: var(--ui-frame-buttonDown);
+      }
       /* Status line (inspect readouts, legend captions): full width along the bottom, always present — the map
          pane ends above it, so a message never covers the map */
       .toolbar-status {

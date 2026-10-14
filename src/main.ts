@@ -226,6 +226,7 @@ export function main(save: SaveV1 | null = null): void {
   };
 
   const tools = createToolController({
+    overlays, // the dock's overlay menus show and clear it (ui/dockMenu.ts)
     world,
     tech,
     wallet: economy.wallet,
@@ -238,7 +239,7 @@ export function main(save: SaveV1 | null = null): void {
       onMeta: (id) => {
         if (id === 'life') setAmbient(!live.on);
         else if (isPanelId(id)) panels.toggle(id);
-        else overlays.cycle(id); // each the SAME closure its key calls
+        else overlays.cycle(id); // (the dock routes its overlay buttons through its own menus first)
       },
     },
     techPanel: () => mounted.tech,
@@ -341,7 +342,10 @@ export function main(save: SaveV1 | null = null): void {
   panels.attach({ ...mounted, saves });
   toolbar.refreshMeta();
 
-  installKeys({ target: window, openingUp: () => openingUp, cycleOverlay: overlays.cycle, toggleLife: () => setAmbient(!live.on), togglePanel: panels.toggle });
+  installKeys({ target: window, openingUp: () => openingUp, cycleOverlay: (k) => {
+      overlays.cycle(k);
+      tools.toolbar.refresh(); // an open overlay menu marks the view the key moved to
+    }, toggleLife: () => setAmbient(!live.on), togglePanel: panels.toggle });
   attachInput(canvas, camera, { onChange: markDirty, ...tools.input });
   window.addEventListener('resize', view.resize);
   // Back from a hidden tab: reset ONLY the live clock (the sim's catch-up stays clamped by its own loop, so sim

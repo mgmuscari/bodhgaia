@@ -5,7 +5,8 @@
 //
 // Layout (top→bottom, a 2-column grid of icon buttons, in the 16-bit console city-builders' manner): the modes (inspect,
 // bulldoze), the build categories, then the map toggles and panels. A category opens a FLYOUT beside the
-// sidebar with its tools, each shown as the very tile it builds. Labels, costs and hotkeys live in a
+// sidebar with its tools, each shown as the very tile it builds; an overlay with several views opens the same
+// flyout as a list of its views by name (ui/dockMenu.ts holds the rules). Labels, costs and hotkeys live in a
 // pixel tooltip. The status line (inspect readouts, legend captions) is a bar along the bottom of the map.
 //
 // Render discipline: render() runs only on discrete events (select / category toggle / unlock) and the
@@ -14,6 +15,7 @@
 
 import type { ToolMenuView, ToolCategory } from './toolMenuContent';
 import type { MetaButton } from './dockContent';
+import type { ViewRow } from './dockMenu';
 
 /** The sidebar's width (CSS px) — the map pane starts right of it. */
 export { SIDEBAR_W } from './layout';
@@ -29,6 +31,10 @@ export interface ToolbarDeps {
   getMetaButtons?(): MetaButton[];
   /** A map/panel button was clicked. Optional. */
   onMeta?(id: MetaButton['id']): void;
+  /** The open overlay menu — its views, beside its button — or null. Optional. */
+  getViewMenu?(): { kind: string; rows: ViewRow[] } | null;
+  /** A view was picked from an overlay's menu. Optional. */
+  onPickView?(kind: string, view: string): void;
   /** The image for an art key (a game tile or `@ui/` icon), or undefined if none. */
   art(key: string): CanvasImageSource | undefined;
 }
@@ -126,7 +132,25 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
         return btn;
       }),
     );
-    if (view.open === null || view.rows.length === 0) {
+    const views = deps.getViewMenu?.() ?? null;
+    flyout.classList.toggle('is-views', views !== null);
+    if (views !== null) {
+      // an overlay's menu: its views by name, beside its dock button (Maddy 2026-10-13)
+      flyout.replaceChildren(
+        ...views.rows.map((r) => {
+          const btn = document.createElement('button');
+          btn.className = `flyout-view${r.selected ? ' is-selected' : ''}`;
+          btn.textContent = r.label;
+          btn.dataset.viewKind = views.kind;
+          btn.dataset.view = r.view;
+          return btn;
+        }),
+      );
+      flyout.style.gridTemplateColumns = '';
+      const anchor = metaButtonEls.get(views.kind);
+      flyout.style.top = `${anchor ? anchor.getBoundingClientRect().top : 0}px`;
+      flyout.hidden = false;
+    } else if (view.open === null || view.rows.length === 0) {
       flyout.replaceChildren();
       flyout.hidden = true;
     } else {
@@ -206,6 +230,10 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
   };
   modesEl.addEventListener('click', onToolClick);
   flyout.addEventListener('click', onToolClick);
+  flyout.addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement).closest('[data-view]') as HTMLElement | null;
+    if (el?.dataset.viewKind !== undefined && el.dataset.view !== undefined) deps.onPickView?.(el.dataset.viewKind, el.dataset.view);
+  });
   catsEl.addEventListener('click', (e) => {
     const el = (e.target as HTMLElement).closest('[data-cat-id]') as HTMLElement | null;
     const id = el?.dataset.catId;
