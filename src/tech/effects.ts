@@ -52,6 +52,8 @@ export interface TechEffects {
   soilRecovery: number;
   /** The soil ceiling on sealed tiles (Soil and Soul raises it). */
   pavedSoilCap: number;
+  /** How far (tiles) a green shields a vacant lot from its neighbours' drag (Soil and Soul doubles it). */
+  vacantShield: number;
 }
 
 export type EffectKey = keyof TechEffects;
@@ -82,6 +84,7 @@ export const NEUTRAL_EFFECTS: Readonly<TechEffects> = Object.freeze({
   localGrids: false,
   soilRecovery: 1,
   pavedSoilCap: 40, // = ecology PAVED_CAP (pinned by tests/tech/effects.test.ts)
+  vacantShield: 3, // = ecology VACANT_SHIELD
 });
 
 /** Each practice's effects, by node id. */
@@ -118,6 +121,7 @@ export const NODE_EFFECTS: Readonly<Record<string, readonly Effect[]>> = {
   'soil-and-soul': [
     { key: 'soilRecovery', op: 'mul', value: 2 },
     { key: 'pavedSoilCap', op: 'set', value: 60 },
+    { key: 'vacantShield', op: 'mul', value: 2 },
   ],
 };
 

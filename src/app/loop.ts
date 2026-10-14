@@ -62,6 +62,7 @@ export function createSimTick(ctx: SimTickCtx): SimTicker {
       const r = simTick(sim, tick);
       changed = true; // effort accrued / grants may have moved → re-sync next frame
       ctx.overlays.onSimTick(r); // the active overlay's source ticked → re-push it
+      if (r.lotsRecovered) ctx.markDirty(); // a vacant lot grew back → rebuild the base
       if (!r.civicTicked) return;
       ctx.pulse.tick();
       // Restoration readout: sample the live metrics and trend vs the prior sample (no-op while closed).

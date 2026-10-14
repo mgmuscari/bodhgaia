@@ -244,6 +244,20 @@ describe('createMusicPlayer', () => {
     expect(kick.velocity).toBeLessThan(piano.velocity);
   });
 
+  // Maddy 2026-10-13: "turn down loudness on music drones". A held note sounds the whole time it is held, so its
+  // loudness is its level times its length: drones (pedals, pads, organ) sit well under the moving parts.
+  it('held notes (drones) play softer than short ones; short notes are untouched', async () => {
+    const p = piece([note(0, 60, { duration: 0.5 }), note(0, 48, { duration: 8, channel: 1 }), note(0, 52, { duration: 2, channel: 1 })]);
+    const { env, timer, player } = setup([{ id: 'dr', moods: ['day'] }], { dr: p });
+    await player.play('dr');
+    run(env, timer, 0.5);
+    const at = (pitch: number) => env.played.find((n) => n.pitch === pitch)!.velocity;
+    expect(at(60)).toBe(soften(1));
+    expect(at(52)).toBeLessThan(at(60));
+    expect(at(48)).toBeLessThan(at(52));
+    expect(at(48)).toBeLessThanOrEqual(soften(1) * 0.5);
+  });
+
   it('a rate below 1 slows the piece', async () => {
     const { env, timer, player } = setup([{ id: 'a', moods: ['day'], rate: 0.5 }], pieces);
     await player.play('a');

@@ -23,6 +23,30 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Playtest batch 2 (Maddy 2026-10-13)** — features synthesized in `docs/design/interdependence.md`; bugs:
+  - ✅ Elevated rail: a deck over the streets is track (trains run, stations where a street passes under); cars,
+    walkers and cyclists draw beneath the deck, trains on it.
+  - ✅ Households keep their cars: one off-street, the rest (≤4) at the kerb near home; near transit they shed them.
+  - ✅ The footprint preview covers the whole building.
+  - ✅ A* traffic costing — already in (driveTileCost's live congestion for cars, trucks, ambulances); no change.
+  - ✅ (follow-ups) bulldoze/inspect put a building tool down and a category puts them down; WASD glides with
+    accel/decel.
+  - Arcologies (feature, backlog).
+- **Playtest batch (Maddy 2026-10-13):**
+  - ✅ Bulldoze works with no money — every bulldoze needs funds now; only freeway removal (salvage) works broke.
+  - ✅ Bulldoze leaves a vacant lot (kind 68) that grows back to open land as its soil heals (~3 min); campable.
+  - ✅ (1.0.15: a green within 3 tiles shields a lot; Soil and Soul doubles it) **Vacant lots in built-up blocks never recover** (measured live 2026-10-13: the houses and streets around a lot
+    pull its soil down −16 a tick, pinned at 0). Maddy: fine as is — "we'll need to introduce mechanics for that"
+    — connected to the green techs and their related plots (what heals ground nearby).
+  - ✅ Rail crossings between highways — crossings are now recorded where track is laid across a way (map.crossing,
+    save v4), never inferred; v3 cities migrate once, skipping ways that run along the line.
+  - ✅ Trains not stopping at crossing stations — a train never forgot its last stop (one halt per life on a
+    one-station line).
+  - ✅ Music drones too loud — held notes fall as 1/√length past a second, to 0.4.
+  - ✅ Drag consistency — kept "only lines drag" (Maddy's pick); WASD/arrows pan while a line tool is held.
+  - ✅ Right click / long press drop the tool; WASD pans (Saves moved S → O).
+  - ✅ Overlay menus — Eco/Civic open a list of views; closing a menu or changing category drops the tool and the
+    overlay; Esc / right click / long press clear everything.
 - ✅ **Walkers warp across tiles** (Maddy 2026-10-08, her (106, 37)) — measured on a 96² lotus: 803 jumps > 0.2 tile in a
   50 ms step before the avenue-kerb change, 1,699 after (worst 0.9). Cause: the drawn pose is heading-relative
   (kerb on the walker's right, turn arcs), so it snaps when a walker turns or reverses. ✅ map-fixed sidewalks; and
@@ -142,7 +166,8 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   with vestigial building tiles + a thin wind turbine). FOLLOW-UP: a fully-automated intact GATE wired
   into the building generators needs per-kind size normalization (small buildings read sparse), so it's
   a manual-review tool for now.
-- 🔴 **Road structure remainder** — parcel-side setback/sidewalk frontage, tech-gated edge props (street
+- ✅ **Road structure remainder** (1.0.15: curbs, sidewalk strips, lane lines and medians were already in the pixel
+  roads; added street trees with Walkable Streets and bike racks with Bike Shares) — parcel-side setback/sidewalk frontage, tech-gated edge props (street
   trees, bike racks), per-corridor lane lines on wide roads. (Plan §5.5; curbs/median/ramps already done.)
 
 ### 4 — Agent / sim features (spec'd, not built)
@@ -153,7 +178,8 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   (head advances tile-to-tile via `nextRailStep`, U-turn at dead-ends → shuttles; cars trace the
   track); one per 26 rail tiles (cap 6), despawns if the line vanishes. Red locomotive + silver cars
   oriented along the track. Heavy rail (`Rail`) only — elevated rail/trams are a follow-up.
-- 🟡 **Multi-tile plots get built-in parking** — LIVE HALF DONE (`06173826`): `canDrive` now lets a car
+- ✅ **Multi-tile plots get built-in parking** (1.0.15: a 1-tile lot beside every big workplace/civic plot on a
+  street front, in worldgen — its own chronicle term — and when built) — LIVE HALF DONE (`06173826`): `canDrive` now lets a car
   enter/exit a `ParkingLot` from an adjacent freeway both ways (NJ-style frontage lots), so existing
   worldgen 2×2 lots are freeway-accessible. REMAINING (worldgen auto-reservation) needs DESIGN, not a
   blind edit: a parcel is a uniform-kind rectangle, so a `ParkingLot` tile INSIDE an Industrial/Civic
@@ -165,12 +191,13 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   smog→ground, then ground→adjacent-water/downhill, diluted per hop → harm relocates toward the low
   redlined banks, doesn't vanish). Live, non-hashed, deterministic; unit-tested. Cadence/dilution +
   a rain visual are tunable follow-ups. `docs/design/pollution-weather.md`.
-- 🟡 **Unhoused agents — shelter + days** — COUNT (shipped) + ENCAMPMENTS (2026-10-08: the unhoused live in
+- ✅ **Unhoused agents — shelter + days** (1.0.15: mutual-aid shelters under Mutual Aid, 24 beds drawing from camps
+  within 12 tiles, safe from the cold, days set out from them; displacement already covers every lost home) — COUNT (shipped) + ENCAMPMENTS (2026-10-08: the unhoused live in
   camps, `live/camps.ts`; tents are the people in them, not desire-path wear) + DAYS OUT (2026-10-08: from the camps
   to the commercial streets, thinning commerce's taxes there — `live/unhoused.ts`). Remaining (post-1.0): fuller
   shelter-anchored rounds, dedicated shelter kinds. REMAINING: per-event
   displacement, shelter-anchored daily rounds, dedicated shelter kinds. `docs/design/unhoused-residents.md`.
-- 🔲 **AI nodes clean up industry** (Maddy 2026-10-08): an AI node turns nearby industry into high-tech jobs —
+- ✅ **AI nodes clean up industry** (1.0.15: within 8 tiles no ground poison, seep, toxic runoff or spills) (Maddy 2026-10-08): an AI node turns nearby industry into high-tech jobs —
   the industrial pollution there goes away.
 
 ### 5 — Hybrid satellite shader (done — audited 2026-10-08)
@@ -187,7 +214,8 @@ the no-WebGL fallback. Shippable increments (each verifiable via `?shader`):
   over the baked albedo. (Foundation already has procedural water/grass/glints/shadows.)
 
 ### 6 — Theme mechanic
-- 💡 **"Falling Down" jams** (Maddy 2026-09-30, agreed it fits the car-dependence critique) — a driver
+- ✅ **"Falling Down" jams** (1.0.15: jammed past the rung twice, the driver leaves the car in its lane and walks;
+  towed after ~45 s; news + CCTV) (Maddy 2026-09-30, agreed it fits the car-dependence critique) — a driver
   jammed past the give-up rung with no route out parks in place and walks off (household −3 wellbeing).
   Lean in: make abandoned-in-traffic cars a visible jam signal, and/or a congestion beat on the Pulse panel.
 - ✅ **Asphalt-ground = redline / healing de-paves** (`be377120`) — `depaveAsphalt` (pure): redlined OPEN
@@ -231,7 +259,7 @@ low luminance and got keyed away). Output = glowing-lights-on-transparent, align
   (night), cruiser bars flash red/blue. Foundation for sodium-lamp light pollution.
 - ✅ **Smog → GPU** (`617a000a`) — `smogOverlay.ts`: a transparent WebGL canvas at z2 (above the sprites)
   sampling the live pollution field (R8 tex) + wind-drifted fBm haze. CPU plume draw gated off in gpuMode.
-- 🔴 **1×1 residential DIVERSITY** (Maddy 2026-06-20) — all single-tile residences share ONE light map (and
+- ✅ (stale — the SNES pixel houses have 6 variants picked per plot, emission derived per drawing) **1×1 residential DIVERSITY** (Maddy 2026-06-20) — all single-tile residences share ONE light map (and
   the albedo variant-selection makes auto-gen vs placed each use one variant). Bake N light variants per
   high-frequency 1×1 kind + per-parcel selection (reuse the albedo variant hash). Also fix the albedo
   variant selection so auto-gen residences vary (separate from lighting).

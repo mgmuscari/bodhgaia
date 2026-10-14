@@ -12,7 +12,7 @@
 // none imports back). NO worldgen edge — `world` is typed STRUCTURALLY as {map, parcels}.
 
 import type { GameMap } from '../engine/map';
-import type { ParcelStore } from '../engine/fabric';
+import { recoverVacantLots, type ParcelStore } from '../engine/fabric';
 import type { TechState } from '../tech/state';
 import { ECO_CADENCE } from '../ecology/influence';
 import { ecologyTick } from '../ecology/tick';
@@ -51,6 +51,8 @@ export interface SimDeps {
 export interface SimTickResult {
   ecoTicked: boolean;
   civicTicked: boolean;
+  /** Vacant lots that grew back to open land this tick (the built layer changed → rebuild the base). */
+  lotsRecovered?: number;
 }
 
 /**
@@ -74,8 +76,10 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
 
   // 1. Ecology cadence → tick + recompute means.
   let ecoTicked = false;
+  let lotsRecovered = 0;
   if (tick > 0 && tick % ECO_CADENCE === 0) {
     ecologyTick(deps.world.map, deps.tech.effects()); // Soil and Soul
+    lotsRecovered = recoverVacantLots(deps.world.map); // a bulldozed lot whose soil has healed is open land again
     const r = ecologyReport(deps.world);
     deps.ecoMeans = { soil: r.soilMean, flora: r.floraMean, fauna: r.faunaMean };
     ecoTicked = true;
@@ -98,5 +102,5 @@ export function simTick(deps: SimDeps, tick: number): SimTickResult {
     civicTicked = true;
   }
 
-  return { ecoTicked, civicTicked };
+  return { ecoTicked, civicTicked, lotsRecovered };
 }

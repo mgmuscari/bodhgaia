@@ -25,7 +25,7 @@ import {
 } from './renderKey';
 import { iconKey } from './tileset';
 import type { SkinImages, LazyImages } from './tilesetLoader';
-import { wideRoadAt, curbPoleAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
+import { wideRoadAt, curbPoleAt, streetTreeAt, bikeRackAt, innerCornerMask, roadPaintKind, crosswalkMask, encampmentLayout, junctionBox, stopBarMask, signalCorners, endCapMask } from './decoration';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import { isPowerConsumer, windFactor } from '../growth/power';
 import { ambientAlpha, laneOnTile, movingPose, streetAt, trainPoses, wandererPose } from '../live/poses';
@@ -499,6 +499,13 @@ export class Renderer {
     this.powered = poweredAnchors;
   }
 
+  /** The practice-gated kerb props: street trees (Walkable Streets), bike racks (Bike Shares). The host calls
+   *  invalidateBase after a change, as for the grid. */
+  setStreetProps(props: { trees: boolean; racks: boolean }): void {
+    this.streetProps = props;
+  }
+  private streetProps = { trees: false, racks: false };
+
   resize(cssWidth: number, cssHeight: number, dpr: number): void {
     this.dpr = dpr;
     this.cssWidth = cssWidth;
@@ -601,6 +608,7 @@ export class Renderer {
     };
     // Power poles (props), drawn AFTER the tile loop so no later tile paints over one.
     const poles: { x: number; y: number; axis: 'h' | 'v' | 'nw' }[] = [];
+    const props: { x: number; y: number; key: string }[] = [];
     // Traffic signals on stroad corners, drawn after the tile loop too (they reach over neighbouring lanes).
     const signals: { x: number; y: number; corners: number }[] = [];
     for (let ty = range.y0; ty <= range.y1; ty++) {
@@ -809,6 +817,11 @@ export class Renderer {
           // Curb-side power pole props (decoration.curbPoleAt owns every placement decision).
           const pa = curbPoleAt(map, tx, ty);
           if (pa) poles.push({ x: tx, y: ty, axis: pa });
+          // the practice-gated kerb props, drawn with the poles
+          const tree = this.streetProps.trees ? streetTreeAt(map, tx, ty) : null;
+          if (tree) props.push({ x: tx, y: ty, key: `@road/tree/${tree}` });
+          const rack = this.streetProps.racks ? bikeRackAt(map, tx, ty) : null;
+          if (rack) props.push({ x: tx, y: ty, key: `@road/rack/${rack}` });
 
           // Collect this parcel's power state and lights; the decision is pure (isPowerConsumer).
           if (full && !isT && pid !== 0) {
@@ -887,6 +900,10 @@ export class Renderer {
     for (const pl of poles) {
       const o = camera.tileOrigin(pl.x, pl.y);
       ink(`@road/pole/${pl.axis}`, o.dx, o.dy);
+    }
+    for (const pr of props) {
+      const o = camera.tileOrigin(pr.x, pr.y);
+      ink(pr.key, o.dx, o.dy);
     }
     for (const sg of signals) {
       const o = camera.tileOrigin(sg.x, sg.y);
@@ -1250,11 +1267,12 @@ export class Renderer {
       const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
       if (!onScreen(sx, sy)) continue;
       const tint = (((c.tint ?? 0) % AGENT_TINTS) + AGENT_TINTS) % AGENT_TINTS;
-      const frame = (heading8(pose.hx, pose.hy) + (c.wreck !== undefined ? 1 : 0)) % 8;
+      const crashed = c.wreck !== undefined && !c.leftInJam; // a car left in the jam stands straight, hazards on
+      const frame = (heading8(pose.hx, pose.hy) + (crashed ? 1 : 0)) % 8;
       const img = this.sprites.get(`@sprite/car/${tint}/${frame}`);
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
       if (c.wreck !== undefined) {
-        const debris = this.sprites.get('@sprite/debris');
+        const debris = crashed ? this.sprites.get('@sprite/debris') : undefined;
         if (debris) this.drawArt(ctx, debris, pose.x + pose.hx * 0.35, pose.y + pose.hy * 0.35 + 0.15, camera);
         if (hazardOn) {
           const lights = this.sprites.get(`@sprite/car-light/${frame}`);
@@ -1328,39 +1346,6 @@ export class Renderer {
       }
     }
 
-    // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
-    // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
-    // A stop's sign stands on its platform, at the edge by the track — where people wait (docs/design/transit.md).
-    for (const s of transitFor(world.map).lines.flatMap((l) => l.stops)) {
-      const px = s.platform % mapW;
-      const py = (s.platform - px) / mapW;
-      const tx = s.track % mapW;
-      const ty = (s.track - tx) / mapW;
-      const wx = px + 0.5 + (tx - px) * 0.4;
-      const wy = py + 0.5 + (ty - py) * 0.4;
-      const { sx, sy } = camera.worldToScreen(wx, wy);
-      const img = onScreen(sx, sy) ? this.sprites.get(`@sprite/transit-stop/${s.family}`) : undefined;
-      if (img) this.drawArt(ctx, img, wx, wy - 0.15, camera);
-    }
-    // Riders aboard show in the windows, a head a window, more as a car fills (Maddy 2026-10-08: she couldn't tell
-    // whether anyone rode); a train's riders fill the cars behind its loco.
-    const aboard = ridersAboard(ambient);
-    for (const tr of ambient.trains) {
-      const n = aboard.get(tr) ?? 0;
-      const seatedCars = tr.family === 'tram' ? tr.cells.length : Math.max(1, tr.cells.length - 1);
-      const lit = windowsLit(n / Math.max(1, seatedCars));
-      trainPoses(tr, mapW, alpha).forEach((q, k) => {
-        const { sx, sy } = camera.worldToScreen(q.x, q.y);
-        if (!onScreen(sx, sy)) return;
-        const img = this.sprites.get(
-          tr.family === 'tram'
-            ? `@sprite/tram/${k === 0 ? 'head' : 'car'}/${heading8(q.hx, q.hy)}/${lit}`
-            : k === 0 ? `@sprite/train/loco/${heading8(q.hx, q.hy)}` : `@sprite/train/car/${heading8(q.hx, q.hy)}/${lit}`,
-        );
-        if (img) this.drawArt(ctx, img, q.x, q.y, camera);
-        addBody(q.x, q.y, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
-      });
-    }
 
     // Citizens on foot and on bikes. On a STREET a ped hugs the kerb (sidewalk); crossing open ground (a
     // demand path) it stays centred. The person is FIXED per citizen (a stable hash of its identity —
@@ -1417,6 +1402,72 @@ export class Renderer {
       for (let y = 8; y <= 11; y++) px(8, y, '#f0e0b8'); // the candle
       px(8, 7, (flicker + m.x + m.y) % 3 === 0 ? '#f8f8c0' : '#f8c040'); // its flame
       px(8, 6, '#f89830');
+    }
+
+    // Elevated decks pass OVER the street (Maddy 2026-10-13: cars, then walkers and cyclists, showed on top of the
+    // elevated rail): the base drew them before anyone moved, so re-lay the decks in view over everything at street
+    // level — cars, people, the fallen — trains on a deck ride at its height.
+    const dmap = world.map;
+    const deckLift = 3 / BASE_TILE; // the base lifts a deck 3 art px above the road
+    {
+      const a = camera.screenToWorld(0, 0);
+      const z = camera.screenToWorld(camera.viewportWidth, camera.viewportHeight);
+      const x0 = Math.max(0, Math.floor(Math.min(a.wx, z.wx)) - 1);
+      const x1 = Math.min(dmap.width - 1, Math.ceil(Math.max(a.wx, z.wx)) + 1);
+      const y0 = Math.max(0, Math.floor(Math.min(a.wy, z.wy)) - 1);
+      const y1 = Math.min(dmap.height - 1, Math.ceil(Math.max(a.wy, z.wy)) + 1);
+      const ts = camera.tileSize;
+      const ps = ts / BASE_TILE;
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          const deck = dmap.deck[dmap.idx(tx, ty)]!;
+          if (deck === 0 || deck === BuiltKind.Parklet) continue;
+          const tile = this.atlas.get(builtRenderKey(deck, deckMask(dmap, tx, ty), 'c', 0));
+          if (!tile) continue;
+          const { dx, dy } = camera.tileOrigin(tx, ty);
+          this.drawTile(ctx, tile, dx, dy - 3 * ps, ts, ts);
+        }
+      }
+    }
+    const onDeck = (x: number, y: number): boolean => {
+      const tx = Math.round(x);
+      const ty = Math.round(y);
+      return dmap.inBounds(tx, ty) && dmap.deck[dmap.idx(tx, ty)] === BuiltKind.ElevatedRail;
+    };
+
+    // Trains: every car is a Mover on the shared mover path (trainPoses), interpolated between substeps
+    // like cars, rounding a bend in quarter arcs one car after another; each in its 8-way frame.
+    // A stop's sign stands on its platform, at the edge by the track — where people wait (docs/design/transit.md).
+    for (const s of transitFor(world.map).lines.flatMap((l) => l.stops)) {
+      const px = s.platform % mapW;
+      const py = (s.platform - px) / mapW;
+      const tx = s.track % mapW;
+      const ty = (s.track - tx) / mapW;
+      const wx = px + 0.5 + (tx - px) * 0.4;
+      const wy = py + 0.5 + (ty - py) * 0.4;
+      const { sx, sy } = camera.worldToScreen(wx, wy);
+      const img = onScreen(sx, sy) ? this.sprites.get(`@sprite/transit-stop/${s.family}`) : undefined;
+      if (img) this.drawArt(ctx, img, wx, wy - 0.15, camera);
+    }
+    // Riders aboard show in the windows, a head a window, more as a car fills (Maddy 2026-10-08: she couldn't tell
+    // whether anyone rode); a train's riders fill the cars behind its loco.
+    const aboard = ridersAboard(ambient);
+    for (const tr of ambient.trains) {
+      const n = aboard.get(tr) ?? 0;
+      const seatedCars = tr.family === 'tram' ? tr.cells.length : Math.max(1, tr.cells.length - 1);
+      const lit = windowsLit(n / Math.max(1, seatedCars));
+      trainPoses(tr, mapW, alpha).forEach((q, k) => {
+        const { sx, sy } = camera.worldToScreen(q.x, q.y);
+        if (!onScreen(sx, sy)) return;
+        const img = this.sprites.get(
+          tr.family === 'tram'
+            ? `@sprite/tram/${k === 0 ? 'head' : 'car'}/${heading8(q.hx, q.hy)}/${lit}`
+            : k === 0 ? `@sprite/train/loco/${heading8(q.hx, q.hy)}` : `@sprite/train/car/${heading8(q.hx, q.hy)}/${lit}`,
+        );
+        const lift = onDeck(q.x, q.y) ? deckLift : 0; // up on the viaduct
+        if (img) this.drawArt(ctx, img, q.x, q.y - lift, camera);
+        addBody(q.x, q.y - lift, q.hx, q.hy, 0.8, 0.4, 0, img); // a passing train stops a headlight too
+      });
     }
 
     // Headlights: cast every lamp until it hits a body or a wall (GPU glow draws the cut cones).

@@ -64,6 +64,9 @@ import { createDemo, type DemoKind } from './app/demo';
 import { BuiltKind } from './engine/fabric';
 import { registerServiceWorker } from './app/pwa';
 import { installNoBrowserZoom } from './app/noBrowserZoom';
+import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
+import { mountWhatsNew } from './ui/whatsNewPanel';
+import { GAME_VERSION } from './ui/creditsContent';
 
 
 export function main(save: SaveV1 | null = null): void {
@@ -226,6 +229,7 @@ export function main(save: SaveV1 | null = null): void {
   };
 
   const tools = createToolController({
+    overlays, // the dock's overlay menus show and clear it (ui/dockMenu.ts)
     world,
     tech,
     wallet: economy.wallet,
@@ -238,7 +242,7 @@ export function main(save: SaveV1 | null = null): void {
       onMeta: (id) => {
         if (id === 'life') setAmbient(!live.on);
         else if (isPanelId(id)) panels.toggle(id);
-        else overlays.cycle(id); // each the SAME closure its key calls
+        else overlays.cycle(id); // (the dock routes its overlay buttons through its own menus first)
       },
     },
     techPanel: () => mounted.tech,
@@ -291,6 +295,17 @@ export function main(save: SaveV1 | null = null): void {
       sound.sfx.uiClick();
     },
   });
+  // Practice-gated kerb props (road structure, 1.0.15): street trees with Walkable Streets, bike racks with Bike Shares.
+  let streetProps = '';
+  const syncStreetProps = (): void => {
+    const props = { trees: tech.unlocked.has('walkable-streets'), racks: tech.unlocked.has('bike-shares') };
+    const sig = `${props.trees}${props.racks}`;
+    if (sig === streetProps) return;
+    streetProps = sig;
+    renderer.setStreetProps(props);
+    markDirty();
+  };
+  syncStreetProps();
   const showLegend = mountOverlayLegend(document.body);
 
   // The news ticker along the status bar: the city's changes as headlines (arrests, homes lost and found, gridlock,
@@ -341,7 +356,10 @@ export function main(save: SaveV1 | null = null): void {
   panels.attach({ ...mounted, saves });
   toolbar.refreshMeta();
 
-  installKeys({ target: window, openingUp: () => openingUp, cycleOverlay: overlays.cycle, toggleLife: () => setAmbient(!live.on), togglePanel: panels.toggle });
+  installKeys({ target: window, openingUp: () => openingUp, cycleOverlay: (k) => {
+      overlays.cycle(k);
+      tools.toolbar.refresh(); // an open overlay menu marks the view the key moved to
+    }, toggleLife: () => setAmbient(!live.on), togglePanel: panels.toggle });
   attachInput(canvas, camera, { onChange: markDirty, ...tools.input });
   window.addEventListener('resize', view.resize);
   // Back from a hidden tab: reset ONLY the live clock (the sim's catch-up stays clamped by its own loop, so sim
@@ -357,6 +375,31 @@ export function main(save: SaveV1 | null = null): void {
   const sim = createSimTick({ sim: deps, startTick: save?.tick ?? 0, power, live, overlays, pulse, restore: () => mounted.restore, markDirty });
   // The opening's first act — the night: epigraphs, a walk to a death, the mantra, the dawn — then the city's
   // indictment (the statistics + chronicle overlay), then play.
+  // What's new (Maddy 2026-10-13): the release notes a returning player hasn't seen, once, on the first launch of a
+  // new version — a browser reload or an installed app picking up the release. A first-time player sees none; a
+  // city saved before the notes existed counts as having seen the version before them.
+  const SEEN_KEY = 'bodhgaia.lastSeenVersion';
+  const showWhatsNew = (): void => {
+    let seen: string | null = null;
+    try {
+      seen = localStorage.getItem(SEEN_KEY);
+    } catch {
+      /* no storage: show nothing, remember nothing */
+    }
+    const remember = (): void => {
+      try {
+        localStorage.setItem(SEEN_KEY, GAME_VERSION);
+      } catch {
+        /* best-effort */
+      }
+    };
+    const before = CHANGELOG.find((e) => compareVersions(e.version, GAME_VERSION) < 0)?.version ?? null; // the release before this
+    const notes = whatsNew(seen ?? (save ? before : null), GAME_VERSION);
+    if (notes.length === 0) return remember();
+    mountWhatsNew(document.body, notes, remember).open();
+  };
+  if (!openingUp) showWhatsNew();
+
   const night = openingUp
     ? createNightOpening({
         live: live.state,
@@ -391,6 +434,7 @@ export function main(save: SaveV1 | null = null): void {
             onDone: () => {
               openingUp = false;
               markDirty();
+              showWhatsNew(); // never over the intro: once the city is the player's
             },
           });
         },
@@ -558,7 +602,10 @@ export function main(save: SaveV1 | null = null): void {
     live,
     world,
     hidden: () => document.hidden,
-    syncDock: tools.syncDock,
+    syncDock: () => {
+      tools.syncDock();
+      syncStreetProps(); // a practice that just came into effect may plant the kerbs
+    },
     afterRender: (now) => {
       night?.frame(now);
       tutorial?.frame(now);

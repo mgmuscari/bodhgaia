@@ -8,6 +8,7 @@ import { availableTools, type Wallet } from '../../src/tools/tools';
 import { isRepairTool } from '../../src/ui/repairTools';
 import type { ToolbarDeps, ToolbarHandle } from '../../src/ui/toolbar';
 import type { MetaButton } from '../../src/ui/dockContent';
+import type { CompositeState } from '../../src/ui/overlayRegistry';
 
 // The tool controller owns the dock's selection state (the picked tool, the open category flyout), mounts the
 // toolbar over it, previews/applies the selected tool on the map, and keeps the sim-gated dock sync (Y5/Y7).
@@ -31,7 +32,15 @@ function setup(opts: { funds?: number; effort?: number } = {}) {
   };
   let techOpen = false;
   const previews: unknown[] = [];
+  let overlay: CompositeState = null;
   const deps: ToolsDeps = {
+    overlays: {
+      active: () => overlay,
+      set: (o) => {
+        overlay = o;
+        log.push(`overlay:${o ? `${o.kind}/${o.view}` : 'off'}`);
+      },
+    },
     world,
     tech,
     wallet,
@@ -60,6 +69,59 @@ function setup(opts: { funds?: number; effort?: number } = {}) {
   return { tools, deps, log, previews, wallet, tech, map, mount: () => mountDeps!, openTech: (o: boolean) => (techOpen = o) };
 }
 
+describe('createToolController: the overlay menus (Maddy 2026-10-13)', () => {
+  it('an overlay with several views opens its menu beside its button and shows the first view', () => {
+    const h = setup();
+    h.mount().onMeta?.('eco');
+    expect(h.log).toContain('overlay:eco/soil');
+    expect(h.log).not.toContain('meta:eco'); // the menus are the dock's, not the shell's cycle
+    const vm = h.mount().getViewMenu?.();
+    expect(vm?.kind).toBe('eco');
+    expect(vm?.rows.find((r) => r.selected)?.view).toBe('soil');
+    h.mount().onPickView?.('eco', 'fauna');
+    expect(h.log).toContain('overlay:eco/fauna');
+    h.mount().onMeta?.('eco'); // closing the menu turns it off
+    expect(h.log).toContain('overlay:off');
+    expect(h.mount().getViewMenu?.()).toBeNull();
+  });
+
+  it('opening an overlay puts a building tool down; a category closes the overlay menu and its overlay', () => {
+    const h = setup();
+    const cat = h.mount().getMenu().categories[0]!.id;
+    h.mount().onToggleCategory(cat);
+    h.mount().onSelect(h.mount().getMenu().rows[0]!.id);
+    h.mount().onMeta?.('civic');
+    expect(h.tools.selected()).toBeNull();
+    h.mount().onToggleCategory(cat);
+    expect(h.log.filter((l) => l.startsWith('overlay:')).at(-1)).toBe('overlay:off');
+  });
+
+  it('bulldoze/inspect put a building tool down; a building category puts them down (Maddy 2026-10-13)', () => {
+    const h = setup();
+    const cat = h.mount().getMenu().categories[0]!.id;
+    h.mount().onToggleCategory(cat);
+    h.mount().onSelect(h.mount().getMenu().rows[0]!.id);
+    h.mount().onSelect('bulldoze'); // by button
+    expect(h.tools.selected()).toBe('bulldoze');
+    expect(h.mount().getMenu().open).toBeNull();
+    expect(h.mount().getMenu().categories.some((c) => c.hasSelected)).toBe(false);
+    h.mount().onToggleCategory(cat); // a building category
+    expect(h.tools.selected()).toBeNull();
+    h.mount().onSelect(h.mount().getMenu().rows[0]!.id);
+    h.tools.hotkey('inspect'); // by key
+    expect(h.tools.selected()).toBe('inspect');
+    expect(h.mount().getMenu().open).toBeNull();
+  });
+
+  it('Escape (and a right click / long press) clears the tool, the menu and the overlay', () => {
+    const h = setup();
+    h.mount().onMeta?.('eco');
+    h.tools.hotkey('deselect');
+    expect(h.log).toContain('overlay:off');
+    expect(h.mount().getViewMenu?.()).toBeNull();
+  });
+});
+
 describe('createToolController: selection', () => {
   it('mounts the toolbar once, with nothing selected and no flyout open', () => {
     const h = setup();
@@ -76,7 +138,7 @@ describe('createToolController: selection', () => {
     h.mount().onSelect('bulldoze');
     expect(h.tools.selected()).toBe('bulldoze');
     expect(h.previews).toEqual([null]);
-    expect(h.log).toEqual(['status:null', 'previewDirty', 'refresh']);
+    expect(h.log).toEqual(['status:null', 'previewDirty', 'refresh', 'refreshMeta']);
     expect(h.mount().getMenu().modes.find((m) => m.id === 'bulldoze')!.selected).toBe(true);
   });
 
@@ -87,10 +149,11 @@ describe('createToolController: selection', () => {
     expect(h.mount().getMenu().open).toBe(cat);
     h.mount().onToggleCategory(cat);
     expect(h.mount().getMenu().open).toBeNull();
-    expect(h.log).toEqual(['refresh', 'refresh']);
+    expect(h.log).toEqual(['refresh', 'refreshMeta', 'refresh', 'refreshMeta']);
   });
 
-  it('opening another category puts the selected tool down; reopening its own keeps it (Maddy 2026-10-08)', () => {
+  // Maddy 2026-10-13: "closing a menu or changing category should now unselect the building tool or infoview"
+  it('closing its menu or opening another category puts the selected tool down', () => {
     const h = setup();
     const menu = () => h.mount().getMenu();
     const [a, b] = menu().categories;
@@ -98,8 +161,9 @@ describe('createToolController: selection', () => {
     const tool = menu().rows[0]!.id;
     h.mount().onSelect(tool);
     h.mount().onToggleCategory(a!.id); // close its own flyout
-    h.mount().onToggleCategory(a!.id); // and open it again
-    expect(menu().rows.find((r) => r.id === tool)?.selected).toBe(true);
+    expect(h.tools.selected()).toBeNull();
+    h.mount().onToggleCategory(a!.id); // open it again, pick, then another category
+    h.mount().onSelect(tool);
     h.mount().onToggleCategory(b!.id); // another category
     expect(menu().open).toBe(b!.id);
     expect(menu().categories.some((c) => c.hasSelected)).toBe(false); // nothing selected anywhere
@@ -164,6 +228,20 @@ describe('createToolController: preview / apply', () => {
     expect(h.log).toEqual(['previewDirty', 'previewDirty']);
   });
 
+  // Maddy 2026-10-13: "Update building footprint preview" — the preview tinted only the tile under the cursor, even
+  // for a 2×2 clinic or a 4×4 plant. It covers the building's whole footprint, all valid or all not.
+  it('a building previews its whole footprint from the hovered tile', () => {
+    const h = setup();
+    h.mount().onSelect(`build-${BuiltKind.Clinic}`);
+    h.previews.length = 0;
+    h.tools.previewAt(3, 4); // open land below the street
+    const tiles = h.previews.at(-1) as { x: number; y: number; valid: boolean }[];
+    expect(tiles.map((t) => [t.x, t.y]).sort()).toEqual([[3, 4], [3, 5], [4, 4], [4, 5]]);
+    expect(new Set(tiles.map((t) => t.valid)).size).toBe(1);
+    h.tools.previewAt(3, 1); // over the street: refused, every tile red
+    expect((h.previews.at(-1) as { valid: boolean }[]).every((t) => !t.valid)).toBe(true);
+  });
+
   it('inspect writes its readout to the status line and mutates nothing', () => {
     const h = setup();
     h.tools.hotkey('inspect');
@@ -177,7 +255,7 @@ describe('createToolController: preview / apply', () => {
     h.tools.hotkey('bulldoze');
     h.log.length = 0;
     h.tools.applyAt(3, 2);
-    expect(h.map.built[h.map.idx(3, 2)]).toBe(0);
+    expect(h.map.built[h.map.idx(3, 2)]).toBe(68); // a vacant lot (Maddy 2026-10-13)
     expect(h.log).toEqual(['placed', 'dirty', 'refresh', 'previewDirty']); // bulldoze is not a repair
     h.log.length = 0;
     h.openTech(true);

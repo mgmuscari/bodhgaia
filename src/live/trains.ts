@@ -7,7 +7,7 @@ import { CAR_STRAIGHT_WEIGHT, TRAIN_CAP, TRAIN_EVERY, TRAIN_LEN, TRAIN_SPEED, TR
 import { DIR_DX, DIR_DY, opposite } from './geometry';
 import type { AmbientState, Train } from './types';
 import { pickStep } from './network';
-import { DWELL, familyOf, transitFor, type LineFamily } from './transit';
+import { DWELL, familyAt, transitFor, type LineFamily } from './transit';
 import { syncTrainLegs } from './poses';
 
 /** Cars per vehicle: a tram is short. */
@@ -20,7 +20,7 @@ export function vehicleSpeed(family: 'tram' | 'rail'): number {
 
 /** Can a vehicle of `family` ride the tile at (x, y)? */
 export function trackTraversable(map: GameMap, x: number, y: number, family: LineFamily): boolean {
-  return map.inBounds(x, y) && familyOf(map.built[map.idx(x, y)]!) === family;
+  return map.inBounds(x, y) && familyAt(map, map.idx(x, y)) === family; // a viaduct's deck is track too
 }
 
 /** Top every line's fleet up (docs/design/transit.md): at least one vehicle per line, one per TRAM_EVERY (trams) or
@@ -91,10 +91,12 @@ export function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
     t.ty = t.ty + DIR_DY[nd]!;
     // a stop: halt here (once — then on). Only now, with the next tile chosen: the cars are placed by progress
     // toward it, and a vehicle halted before choosing was drawn a whole tile ahead (Maddy: trams snapped to stops)
-    if (transitFor(map).stopAt.has(head) && t.lastStop !== head) {
-      t.lastStop = head;
-      t.dwell = DWELL;
-    }
+    if (transitFor(map).stopAt.has(head)) {
+      if (t.lastStop !== head) {
+        t.lastStop = head;
+        t.dwell = DWELL;
+      }
+    } else t.lastStop = undefined; // moved on: the next time it comes to that stop it halts again (Maddy 2026-10-13)
   } else {
     t.hx += DIR_DX[t.dir]! * speed;
     t.hy += DIR_DY[t.dir]! * speed;

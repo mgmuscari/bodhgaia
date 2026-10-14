@@ -64,6 +64,8 @@ describe('transit lines and stops', () => {
     for (let x = 1; x <= 50; x++) if (x !== 20) placeTransport(map, x, 6, BuiltKind.RoadStreet); // a street alongside
     for (let y = 0; y <= 4; y++) placeTransport(map, 20, y, BuiltKind.RoadStreet); // a street crossing at x=20
     placeTransport(map, 20, 6, BuiltKind.RoadStreet);
+    map.setBuilt(20, 5, BuiltKind.RoadStreet);
+    placeTransport(map, 20, 5, BuiltKind.Rail); // the track laid across it (2026-10-13: crossings are recorded)
     for (let y = 6; y <= 11; y++) map.setBuilt(35, y, BuiltKind.Rail); // a branch joining at x=35
     const rail = transitLines(map).find((l) => l.family === 'rail')!;
     const at = rail.stops.map((s) => [s.track % map.width, Math.floor(s.track / map.width)]);
@@ -82,6 +84,8 @@ describe('tracks are closed to walkers (docs/design/transit.md step 4; Maddy 202
     for (let x = 1; x <= 25; x++) map.setBuilt(x, 5, BuiltKind.Rail);
     for (let x = 1; x <= 25; x++) map.setBuilt(x, 2, BuiltKind.ElevatedRail);
     for (const y of [1, 3, 4, 6]) placeTransport(map, 10, y, BuiltKind.RoadStreet); // a street across both
+    map.setBuilt(10, 5, BuiltKind.RoadStreet);
+    placeTransport(map, 10, 5, BuiltKind.Rail); // the track laid across it
     expect(isWalkable(map, 5, 5)).toBe(false);
     expect(isWalkable(map, 10, 5)).toBe(true); // the level crossing
     expect(isWalkable(map, 5, 2)).toBe(false);
@@ -118,6 +122,8 @@ describe('rail is crossed by more than streets (Maddy 2026-10-08: bike lanes, qu
       const map = new GameMap(20, 10);
       for (let x = 1; x <= 18; x++) map.setBuilt(x, 5, BuiltKind.Rail);
       for (const y of [3, 4, 6, 7]) placeTransport(map, 10, y, kind);
+      map.setBuilt(10, 5, kind);
+      placeTransport(map, 10, 5, BuiltKind.Rail); // the track laid across the way
       expect(railCrossingMask(map, 10, 5)).toBe(1 | 4); // N and S
       expect(railCrossingKind(map, 10, 5)).toBe(kind);
       expect(isWalkable(map, 10, 5)).toBe(true);

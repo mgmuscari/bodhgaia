@@ -18,7 +18,7 @@ describe('metaButtons', () => {
       'Power (U)',
       'Life (L)',
       'Restoration (G)',
-      'Saves (S)',
+      'Saves (O)',
       'Settings (,)',
       'Help (?)',
     ]);

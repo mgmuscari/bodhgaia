@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { KEY_BINDINGS, resolveKey, overlayKindOf, isEditableTarget, type KeyAction } from '../../src/ui/keyMap';
+import { KEY_BINDINGS, resolveKey, overlayKindOf, isEditableTarget, panFor, type KeyAction } from '../../src/ui/keyMap';
 import { CONTROLS } from '../../src/ui/controlsContent';
 
 const press = (key: string, mods: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean } = {}) => ({
@@ -18,7 +18,7 @@ const EXPECTED: [string, KeyAction][] = [
   ['v', 'overlay:coverage'],
   ['u', 'overlay:power'],
   ['b', 'budget'],
-  ['s', 'saves'],
+  ['o', 'saves'], // Maddy 2026-10-13: WASD pans, so Saves moved off S
   ['l', 'life'],
   ['g', 'restore'],
   [',', 'settings'],
@@ -36,7 +36,7 @@ describe('resolveKey: the one keyboard table', () => {
   });
 
   it('never matches with Cmd / Ctrl / Alt held — browser shortcuts pass through (the Cmd+L bug)', () => {
-    for (const key of ['l', 'L', 'g', ',', 'b', 's', 'r', 't', 'h', '?']) {
+    for (const key of ['l', 'L', 'g', ',', 'b', 'o', 'r', 't', 'h', '?']) {
       expect(resolveKey(press(key, { metaKey: true }), false)).toBeNull();
       expect(resolveKey(press(key, { ctrlKey: true }), false)).toBeNull();
       expect(resolveKey(press(key, { altKey: true }), false)).toBeNull();
@@ -124,5 +124,70 @@ describe('isEditableTarget', () => {
     expect(isEditableTarget(null)).toBe(false);
     expect(isEditableTarget(undefined)).toBe(false);
     expect(isEditableTarget('INPUT')).toBe(false);
+  });
+});
+
+// Maddy 2026-10-13: "ASDW for scrolling". The arrows and WASD pan the map the same way; W/A/S/D are no toggle key.
+describe('panFor: the panning keys', () => {
+  it('WASD pan as the arrows do, either case', () => {
+    expect(panFor('w')).toEqual(panFor('ArrowUp'));
+    expect(panFor('A')).toEqual(panFor('ArrowLeft'));
+    expect(panFor('s')).toEqual(panFor('ArrowDown'));
+    expect(panFor('D')).toEqual(panFor('ArrowRight'));
+    expect(panFor('ArrowUp')![1]).toBeGreaterThan(0); // the map moves down: the view goes up
+    expect(panFor('ArrowLeft')![0]).toBeGreaterThan(0);
+  });
+  it('other keys pan nothing, and no panning key is a toggle key', () => {
+    expect(panFor('e')).toBeNull();
+    for (const k of ['w', 'a', 's', 'd', 'W', 'A', 'S', 'D']) expect(resolveKey(press(k), false)).toBeNull();
+  });
+});
+
+// Maddy 2026-10-13: "WASD scrolling should be smooth, not jumpy". Held panning keys give a velocity the camera moves
+// by every frame (not a 48 px hop per key repeat); two held at once go diagonally at the same speed.
+import { panVelocity, KEY_PAN_SPEED } from '../../src/ui/keyMap';
+describe('panVelocity: held panning keys', () => {
+  it('nothing held, no motion', () => {
+    expect(panVelocity(new Set())).toEqual([0, 0]);
+    expect(panVelocity(new Set(['e']))).toEqual([0, 0]);
+  });
+  it('one key: full speed its way, WASD as the arrows', () => {
+    expect(panVelocity(new Set(['w']))).toEqual([0, KEY_PAN_SPEED]);
+    expect(panVelocity(new Set(['ArrowLeft']))).toEqual([KEY_PAN_SPEED, 0]);
+  });
+  it('two at once go diagonally at the same speed; opposite keys cancel', () => {
+    const [vx, vy] = panVelocity(new Set(['w', 'd']));
+    expect(Math.hypot(vx, vy)).toBeCloseTo(KEY_PAN_SPEED, 5);
+    expect(panVelocity(new Set(['a', 'd']))).toEqual([0, 0]);
+  });
+  it('a key and its arrow twin count once', () => {
+    expect(panVelocity(new Set(['w', 'ArrowUp', 'W']))).toEqual([0, KEY_PAN_SPEED]);
+  });
+});
+
+// Maddy 2026-10-13: "can we have it accel/decel". The glide eases up to speed when a key goes down and eases to a
+// stop when it's let go, rather than starting and stopping dead.
+import { easePan, PAN_ACCEL_S, PAN_DECEL_S } from '../../src/ui/keyMap';
+describe('easePan: the glide speeds up and slows down', () => {
+  const run = (v: [number, number], target: [number, number], seconds: number): [number, number] => {
+    for (let t = 0; t < seconds - 1e-9; t += 1 / 60) v = easePan(v, target, 1 / 60);
+    return v;
+  };
+  it('from rest it ramps up — part way after a frame, full speed by PAN_ACCEL_S', () => {
+    const one = easePan([0, 0], [KEY_PAN_SPEED, 0], 1 / 60);
+    expect(one[0]).toBeGreaterThan(0);
+    expect(one[0]).toBeLessThan(KEY_PAN_SPEED / 2);
+    expect(run([0, 0], [KEY_PAN_SPEED, 0], PAN_ACCEL_S + 1 / 60)[0]).toBeCloseTo(KEY_PAN_SPEED, 5);
+  });
+  it('let go, it slows to a stop by PAN_DECEL_S — and stops, not creeps', () => {
+    const half = run([KEY_PAN_SPEED, 0], [0, 0], PAN_DECEL_S / 2);
+    expect(half[0]).toBeGreaterThan(0);
+    expect(half[0]).toBeLessThan(KEY_PAN_SPEED);
+    expect(run([KEY_PAN_SPEED, 0], [0, 0], PAN_DECEL_S + 1 / 60)).toEqual([0, 0]);
+  });
+  it('the ramps are short: a quarter second or so', () => {
+    expect(PAN_ACCEL_S).toBeGreaterThan(0.1);
+    expect(PAN_ACCEL_S).toBeLessThanOrEqual(0.35);
+    expect(PAN_DECEL_S).toBeLessThanOrEqual(PAN_ACCEL_S);
   });
 });

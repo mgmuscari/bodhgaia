@@ -360,7 +360,7 @@ describe('applyTool spends + routes to single-writers', () => {
     expect(world.map.getParcel(2, 2)).toBe(0); // conversion never touches parcels
   });
 
-  it('routes bulldoze to demolishParcel for a building and demolishTransportAt for transport', () => {
+  it('routes bulldoze to bulldozeParcel for a building and bulldozeTransportAt for transport', () => {
     const world = freshWorld();
     const tech = freshTech(1000);
     const pid = placeParcel(world.map, world.parcels, {
@@ -373,11 +373,11 @@ describe('applyTool spends + routes to single-writers', () => {
     placeTransport(world.map, 6, 6, BuiltKind.RoadStreet);
 
     expect(applyTool(world, tech, toolDef('bulldoze')!, 4, 4).ok).toBe(true);
-    expect(world.map.getBuilt(4, 4)).toBe(0);
+    expect(world.map.getBuilt(4, 4)).toBe(BuiltKind.VacantLot); // the bulldozer leaves a vacant lot
     expect(world.parcels.isAlive(pid)).toBe(false);
 
     expect(applyTool(world, tech, toolDef('bulldoze')!, 6, 6).ok).toBe(true);
-    expect(world.map.getBuilt(6, 6)).toBe(0);
+    expect(world.map.getBuilt(6, 6)).toBe(BuiltKind.VacantLot);
   });
 
   it('rejects bulldoze on an empty tile (nothing to remove)', () => {
@@ -643,7 +643,7 @@ describe('overpass placement: an elevated kind built over a road decks it (grade
     expect(overpassAt(world.map, 5, 5)).toBe(0); // deck gone first
     expect(world.map.getBuilt(5, 5)).toBe(BuiltKind.RoadHighway); // road remains
     expect(applyTool(world, tech, toolDef('bulldoze')!, 5, 5).ok).toBe(true);
-    expect(world.map.getBuilt(5, 5)).toBe(0); // a second bulldoze clears the road
+    expect(world.map.getBuilt(5, 5)).toBe(BuiltKind.VacantLot); // a second bulldoze clears the road to a vacant lot
   });
 });
 

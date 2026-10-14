@@ -145,7 +145,11 @@ describe('live layer golden determinism', () => {
     // the same values a second later, but each band at its own moment, so later choices shift
     // 2026-10-09: the life layer steps 30 times a second (was 20), every per-step quantity converted to keep the real
     // pace — the same world, sampled 1.5× as often, so its draws and its digest differ
-    expect(first).toBe('cars=2 peds=169 cruisers=4 trains=5 flocks=13 #e7aac489');
+    // 2026-10-13: a train forgets its last stop once it moves on, so it halts at a station every pass (it stopped only
+    // once on a one-station line) — trains dwell more, riders board more
+    // 2026-10-13: mutual-aid shelters — the state carries a `sheltered` map (empty here): same motion, one more field
+    // 2026-10-13: every big workplace and civic plot gets a parking lot at its door in worldgen — a different city
+    expect(first).toBe('cars=4 peds=169 cruisers=4 trains=5 flocks=16 #779d6f07');
   });
 });
 

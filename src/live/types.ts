@@ -103,6 +103,9 @@ export interface Mover {
    *  'driving' phase) and retires it when its round ends. So it never vanishes while its owner is
    *  away on foot, and is never the same entity as the rider. */
   owned?: boolean;
+  /** (Car) A household's car parked at the kerb while its people are home (live/homeCars.ts) — the home tile. It
+   *  never moves, dwells or despawns on its own; someone driving off from home takes it. */
+  atHome?: number;
   /** (Car) An ABANDONED derelict — its citizen was arrested (removed from the game), so it sits on an
    *  empty tile rusting into ground pollution, then despawns. Exempt from the off-network despawn (it
    *  legitimately sits off the road) and from the owner-managed/parked-dwell branches. */
@@ -138,6 +141,11 @@ export interface Mover {
   personality?: number;
   /** A wrecked car (live/accidents.ts): substeps until it's towed; it doesn't move meanwhile. */
   wreck?: number;
+  /** (Car) Its driver has already given up one stop to a jam this trip — the next time, they walk off. */
+  gaveUp?: boolean;
+  /** (Car) Left in its lane by a driver who walked away from the jam ("Falling Down"); stands, hazards on, until
+   *  towed (its `wreck` timer), never spun round like a crash. */
+  leftInJam?: boolean;
 }
 
 export type Car = Mover;
@@ -249,7 +257,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'collapse' | 'rescue' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
+  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
   x: number;
   y: number;
   w: number;
@@ -407,6 +415,13 @@ export interface AmbientState {
   /** Fire trucks out on a call (disasters.md): driving to a fire, spraying it, or driving home. */
   trucks?: Truck[];
   ambulances?: Ambulance[];
+  /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
+   *  to the unhoused pool. */
+  sheltered?: Map<number, number>;
+  /** The cars each household owns now (live/homeCars.ts) — homes near transit give theirs up over time. */
+  carsOwned?: Map<number, number>;
+  /** How many times the household cars have been synced (the clock their shedding is drawn on). */
+  homeCarSyncs?: number;
   /** A storm, while one lasts (app/weather.ts): rain on screen and in the ears; a heavy one floods the low land. */
   rain?: { heavy: boolean };
   /** Tiles under flood water now (app/flood.ts): drawn as water, and routes go round them. */

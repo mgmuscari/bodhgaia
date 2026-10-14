@@ -92,7 +92,12 @@ function exposedCamps(state: AmbientState, map: GameMap): number[] {
     if (n < 1) continue;
     const x = t % map.width;
     const y = (t - x) / map.width;
-    if (nearKind(map, x, y, BuiltKind.HealingCommons, SHELTER_RADIUS) || nearKind(map, x, y, BuiltKind.TinyHomes, SHELTER_RADIUS)) continue;
+    if (
+      nearKind(map, x, y, BuiltKind.HealingCommons, SHELTER_RADIUS) ||
+      nearKind(map, x, y, BuiltKind.TinyHomes, SHELTER_RADIUS) ||
+      nearKind(map, x, y, BuiltKind.Shelter, SHELTER_RADIUS)
+    )
+      continue;
     out.push(t);
   }
   return out.sort((a, b) => a - b);
@@ -104,7 +109,10 @@ export function stepExposure(state: AmbientState, map: GameMap, rng: Rng): void 
   if (h === undefined || h === state.exposureHour) return;
   state.exposureHour = h;
   if (!isNight(h) || state.unhoused < 1) return;
-  const expected = exposureDeathsPerHour(state.unhoused);
+  // the cold takes only those sleeping out — not the sheltered (Maddy 2026-10-13: mutual-aid shelters)
+  let out = Math.max(0, state.unhoused);
+  for (const v of (state.sheltered ?? new Map<number, number>()).values()) out -= v;
+  const expected = exposureDeathsPerHour(Math.max(0, out));
   const n = Math.floor(expected) + (rng.next() < expected - Math.floor(expected) ? 1 : 0);
   if (n === 0) return;
   const camps = exposedCamps(state, map);

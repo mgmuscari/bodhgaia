@@ -23,8 +23,12 @@ import type { ToolbarDeps, ToolbarHandle } from '../ui/toolbar';
 import type { MetaButton } from '../ui/dockContent';
 import type { PreviewTile } from '../ui/renderer';
 import type { InputHandlers } from '../ui/input';
+import { closeAll, hasViewMenu, pickMode, pickTool, pickView, toggleCategory, toggleOverlay, viewRows, type DockState } from '../ui/dockMenu';
+import { OVERLAY_KINDS, type CompositeState, type OverlayKind } from '../ui/overlayRegistry';
 
 export interface ToolsDeps {
+  /** The map overlay the dock's menus show (app/overlays.ts); absent → the dock keeps its own (tests). */
+  overlays?: { active(): CompositeState; set(state: CompositeState): void };
   world: ToolWorld;
   tech: TechState;
   /** The treasury the fabric is bought from (the economy's wallet; the menu prices against its funds). */
@@ -57,7 +61,8 @@ export interface ToolController {
   selected(): ToolId | null;
   hasTool(): boolean;
   isLineTool(): boolean;
-  /** The I / X hotkeys (input.ts): select inspect / bulldoze, anything else deselects. */
+  /** The I / X hotkeys (input.ts): select inspect / bulldoze; anything else (Escape, a right click, a long press)
+   *  clears the tool, the open menu and the overlay. */
   hotkey(action: string): void;
   previewAt(tx: number, ty: number): void;
   applyAt(tx: number, ty: number): void;
@@ -73,8 +78,15 @@ export interface ToolController {
 export function createToolController(deps: ToolsDeps): ToolController {
   const { world, tech, wallet, renderer } = deps;
   let selectedToolId: ToolId | null = null;
-  // the open flyout; the picked tool stays selected with the flyout left open
-  let openCategory: ToolCategory | null = null;
+  // the open menu — a category's tools or an overlay's views (ui/dockMenu.ts); a picked tool keeps it open
+  let menu: DockState['menu'] = null;
+  let ownOverlay: CompositeState = null;
+  const overlayNow = (): CompositeState => (deps.overlays ? deps.overlays.active() : ownOverlay);
+  const openCategory = (): ToolCategory | null => (menu?.kind === 'category' ? menu.id : null);
+  const catOf = (tool: string | null): ToolCategory | null => {
+    const def = tool === null ? undefined : toolDef(tool as ToolId);
+    return def ? categoryOf(def) : null;
+  };
 
   const rows = () => toolbarRows(availableTools(tech), selectedToolId, tech.effort);
   const initRows = rows();
@@ -99,18 +111,34 @@ export function createToolController(deps: ToolsDeps): ToolController {
     snapshotDock(); // selection moved the signature → keep the sim-gated check a no-op
   };
 
+  /** Move the dock to `next` (ui/dockMenu.ts): the tool, the overlay and the open menu, each only if it changed. */
+  const commit = (next: DockState): void => {
+    menu = next.menu;
+    if (next.overlay !== overlayNow()) {
+      if (deps.overlays) deps.overlays.set(next.overlay);
+      else ownOverlay = next.overlay;
+    }
+    if (next.tool !== selectedToolId) select(next.tool as ToolId | null);
+    else toolbar.refresh();
+    toolbar.refreshMeta();
+  };
+  const state = (): DockState => ({ menu, tool: selectedToolId, overlay: overlayNow() });
+  const isOverlay = (id: string): id is OverlayKind => (OVERLAY_KINDS as readonly string[]).includes(id);
+
   const toolbar = deps.mount({
-    getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory, wallet.funds),
-    onSelect: (id) => select(id as ToolId),
-    onToggleCategory: (id) => {
-      openCategory = openCategory === id ? null : id;
-      // opening another category puts the selected tool down (Maddy 2026-10-08); its own category keeps it
-      const def = selectedDef();
-      if (openCategory !== null && def && categoryOf(def) !== openCategory) select(null);
-      else toolbar.refresh();
+    getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory(), wallet.funds),
+    // a mode (inspect, bulldoze) closes the open menu; a category's tool keeps its menu open
+    onSelect: (id) => (catOf(id) === null ? commit(pickMode(state(), id, catOf)) : select(pickTool(state(), id).tool as ToolId)),
+    // closing a menu or changing category puts the building tool down and the overlay off (Maddy 2026-10-13)
+    onToggleCategory: (id) => commit(toggleCategory(state(), id, catOf)),
+    getViewMenu: () => {
+      if (menu?.kind !== 'overlay' || !hasViewMenu(menu.id)) return null;
+      return { kind: menu.id, rows: viewRows(menu.id, overlayNow()) };
     },
+    onPickView: (kind, view) => commit(pickView(state(), kind as OverlayKind, view)),
     getMetaButtons: () => deps.meta.buttons(),
     onMeta: (id) => {
+      if (isOverlay(id)) return commit(toggleOverlay(state(), id, catOf)); // the overlay's menu, or on/off
       deps.meta.onMeta(id);
       toolbar.refreshMeta();
     },
@@ -123,7 +151,11 @@ export function createToolController(deps: ToolsDeps): ToolController {
     const def = selectedDef();
     if (!def) return;
     const p = previewTool(world, tech, def, tx, ty, wallet);
-    renderer.setPreview([{ x: tx, y: ty, valid: p.valid }]);
+    // a building shows its whole footprint from the hovered tile (Maddy 2026-10-13: only one tile was tinted)
+    const fp = def.footprint ?? { w: 1, h: 1 };
+    const tiles: PreviewTile[] = [];
+    for (let dy = 0; dy < fp.h; dy++) for (let dx = 0; dx < fp.w; dx++) tiles.push({ x: tx + dx, y: ty + dy, valid: p.valid });
+    renderer.setPreview(tiles);
     deps.markPreviewDirty(); // hover tile-change: preview only, never a base rebuild
   };
 
@@ -168,8 +200,10 @@ export function createToolController(deps: ToolsDeps): ToolController {
     const def = selectedDef();
     return def !== undefined && isLineTool(def);
   };
-  const hotkey = (action: string): void =>
-    select(action === 'inspect' ? 'inspect' : action === 'bulldoze' ? 'bulldoze' : null);
+  const hotkey = (action: string): void => {
+    if (action === 'inspect' || action === 'bulldoze') commit(pickMode(state(), action, catOf));
+    else commit(closeAll()); // Escape, a right click, a long press: the plain map again
+  };
   const clearHover = (): void => {
     renderer.setPreview(null);
     deps.markPreviewDirty(); // cleared the preview only — no base change

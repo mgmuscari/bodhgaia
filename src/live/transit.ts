@@ -7,7 +7,7 @@
 import { seconds } from './tuning';
 import { liveClock, tickLiveClock } from './clock';
 import type { GameMap } from '../engine/map';
-import { BuiltKind } from '../engine/fabric';
+import { BuiltKind, isRoadKind } from '../engine/fabric';
 import { isWalkable, railCrossing } from './network';
 import { DIR_DX, DIR_DY } from './geometry';
 
@@ -41,13 +41,24 @@ export function familyOf(kind: number): LineFamily | null {
   return null;
 }
 
+/** The track at tile `i`: elevated rail decked over a road is track too (Maddy 2026-10-13: a viaduct over the streets
+ *  ran no trains — the lines read only the ground). The road beneath keeps its cars. */
+export function trackKindAt(map: GameMap, i: number): number {
+  return map.deck[i] === BuiltKind.ElevatedRail ? BuiltKind.ElevatedRail : map.built[i]!;
+}
+
+/** The line family of the track at tile `i`, or null. */
+export function familyAt(map: GameMap, i: number): LineFamily | null {
+  return familyOf(trackKindAt(map, i));
+}
+
 /** A walkable tile beside track tile (x, y) that is not itself track — a platform — or -1. Neighbours are tried
  *  in a fixed order (south, north, east, west) so stops never depend on scan direction. */
 function platformBeside(map: GameMap, x: number, y: number): number {
   for (const d of [2, 0, 1, 3]) {
     const nx = x + DIR_DX[d]!;
     const ny = y + DIR_DY[d]!;
-    if (!map.inBounds(nx, ny) || familyOf(map.built[map.idx(nx, ny)]!) !== null) continue;
+    if (!map.inBounds(nx, ny) || familyAt(map, map.idx(nx, ny)) !== null) continue;
     if (isWalkable(map, nx, ny)) return map.idx(nx, ny);
   }
   return -1;
@@ -55,17 +66,22 @@ function platformBeside(map: GameMap, x: number, y: number): number {
 
 /** Where a train stops: a road crossing the line (at grade, or passing under the viaduct) or a junction of lines. */
 function railStation(map: GameMap, x: number, y: number): boolean {
-  const kindAt = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.built[map.idx(x + dx, y + dy)]! : BuiltKind.None);
+  const railAt = (dx: number, dy: number): boolean => map.inBounds(x + dx, y + dy) && familyAt(map, map.idx(x + dx, y + dy)) === 'rail';
   let track = 0;
-  for (let d = 0; d < 4; d++) if (familyOf(kindAt(DIR_DX[d]!, DIR_DY[d]!)) === 'rail') track++;
+  for (let d = 0; d < 4; d++) if (railAt(DIR_DX[d]!, DIR_DY[d]!)) track++;
   if (track >= 3) return true;
+  if (map.deck[map.idx(x, y)] === BuiltKind.ElevatedRail) {
+    // a viaduct over the streets: a station where a street passes under ACROSS the line (not the one it runs along)
+    const road = (dx: number, dy: number): boolean => map.inBounds(x + dx, y + dy) && isRoadKind(map.getBuilt(x + dx, y + dy)) && !railAt(dx, dy);
+    return (road(0, -1) && road(0, 1)) || (road(-1, 0) && road(1, 0));
+  }
   return railCrossing(map, x, y);
 }
 
 /** Is a stop's platform still a walkable tile beside the line (not built over)? */
 function platformOk(map: GameMap, t: number): boolean {
   const x = t % map.width;
-  return isWalkable(map, x, (t - x) / map.width) && familyOf(map.built[t]!) === null;
+  return isWalkable(map, x, (t - x) / map.width) && familyAt(map, t) === null;
 }
 
 /** Every transit line on the map, with its stops. */
@@ -73,7 +89,7 @@ export function transitLines(map: GameMap): Line[] {
   const seen = new Uint8Array(map.width * map.height);
   const lines: Line[] = [];
   for (let start = 0; start < seen.length; start++) {
-    const family = familyOf(map.built[start]!);
+    const family = familyAt(map, start);
     if (family === null || seen[start]) continue;
     const tiles: number[] = [];
     const queue = [start];
@@ -88,7 +104,7 @@ export function transitLines(map: GameMap): Line[] {
         const ny = y + DIR_DY[d]!;
         if (!map.inBounds(nx, ny)) continue;
         const n = map.idx(nx, ny);
-        if (!seen[n] && familyOf(map.built[n]!) === family) {
+        if (!seen[n] && familyAt(map, n) === family) {
           seen[n] = 1;
           queue.push(n);
         }
@@ -146,7 +162,7 @@ export function transitScans(): number {
 function trackSignature(map: GameMap): number {
   let h = 0;
   for (let i = 0; i < map.built.length; i++) {
-    const k = map.built[i]!;
+    const k = trackKindAt(map, i);
     if (familyOf(k) !== null) h = (Math.imul(h, 31) + i * 7 + k) | 0;
   }
   return h;

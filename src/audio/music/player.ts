@@ -70,6 +70,12 @@ const LEAD_HEADROOM = 2;
 const priority = (n: MidiNote): number => (n.channel === LEAD_CHANNEL ? 0 : n.percussion ? 2 : 1);
 /** Drums, when kept at all, sit well under the melody. */
 const PERCUSSION_GAIN = 0.4;
+/** Held notes (drones: pedals, pads, organ) sound the whole time they're held, so they play softer the longer they
+ *  are (Maddy 2026-10-13: "turn down loudness on music drones"): full level up to HELD_FROM seconds, then falling as
+ *  1/√length, never below HELD_FLOOR. */
+const HELD_FROM = 1;
+const HELD_FLOOR = 0.4;
+export const heldGain = (seconds: number): number => Math.max(HELD_FLOOR, Math.min(1, Math.sqrt(HELD_FROM / seconds)));
 /** A light stereo spread by register: low left, high right, never far. */
 const pan = (pitch: number) => Math.max(-0.35, Math.min(0.35, (pitch - 64) / 60));
 
@@ -158,7 +164,7 @@ export function createMusicPlayer(
     const at = start + n.time / rate();
     const duration = Math.min(MAX_NOTE, Math.max(0.05, n.duration / rate()));
     if (!poly.admit(at, at + duration, melody ? LEAD_HEADROOM : 0)) return;
-    const velocity = soften(n.velocity) * (n.percussion ? PERCUSSION_GAIN : 1);
+    const velocity = soften(n.velocity) * (n.percussion ? PERCUSSION_GAIN : heldGain(duration));
     const voice = engine.play({ instrument, pitch: n.pitch, velocity, bus: 'music', at, duration, pan: pan(n.pitch) });
     if (voice) sounding.push({ voice, end: at + duration });
   }

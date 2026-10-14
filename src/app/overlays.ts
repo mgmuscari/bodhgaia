@@ -32,6 +32,8 @@ export interface OverlayController {
   active(): CompositeState;
   /** A press of `kind`'s key / dock button: next view of that kind, off past the last, or switch kind. */
   cycle(kind: OverlayKind): void;
+  /** Show exactly this overlay (or none) — the dock's menus (ui/dockMenu.ts). */
+  set(state: CompositeState): void;
   /** After a sim tick: re-push the active overlay if its source ticked. */
   onSimTick(r: { ecoTicked: boolean; civicTicked: boolean }): void;
 }
@@ -46,17 +48,20 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     deps.renderer.setOverlay(active && entry?.source ? entry.source(active.view, deps.context()) : null);
   };
 
+  const set = (state: CompositeState): void => {
+    active = state;
+    apply();
+    const entry = active && OVERLAYS[active.kind];
+    deps.setStatus(active && entry ? entry.legendLine(active.view) : null);
+    deps.showLegend(active && entry ? entry.legend(active.view) : null);
+    deps.markDirty();
+    deps.refreshMeta();
+  };
+
   return {
     active: () => active,
-    cycle: (kind) => {
-      active = cycleComposite(active, kind);
-      apply();
-      const entry = active && OVERLAYS[active.kind];
-      deps.setStatus(active && entry ? entry.legendLine(active.view) : null);
-      deps.showLegend(active && entry ? entry.legend(active.view) : null);
-      deps.markDirty();
-      deps.refreshMeta();
-    },
+    cycle: (kind) => set(cycleComposite(active, kind)),
+    set,
     onSimTick: (r) => {
       // rebuild a derived source (biodiversity, the civic partition + values), then repaint the base
       const refresh = active && OVERLAYS[active.kind].refresh;

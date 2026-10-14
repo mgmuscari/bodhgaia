@@ -17,6 +17,7 @@
 
 import { Water, type GameMap } from '../engine/map';
 import {
+  addPlotParking,
   BuiltKind,
   isRoadKind,
   isPowerPlant,
@@ -2052,6 +2053,16 @@ export function era5Disinvestment(world: WorldState, rng: Rng, p: MosesParams, s
  * viable site" and every later era no-ops on the empty state.
  */
 /** Lay a back yard behind every standing house that can have one; chronicles `back yards: +N lots behind houses`. */
+/** A lot at the door of every big workplace and civic plot that has room for one by a street. Chronicles
+ *  `plot parking: +N lots at big plots`. */
+export function eraPlotParking(world: WorldState): number {
+  const { map, parcels } = world;
+  let lots = 0;
+  for (const i of parcels.aliveIndices()) if (addPlotParking(map, parcels, i)) lots++;
+  world.log.push(`plot parking: +${lots} lots at big plots`);
+  return lots;
+}
+
 export function eraBackYards(world: WorldState): number {
   const { map, parcels } = world;
   const houses = parcels.aliveIndices().filter((i) => parcels.kindAt(i) === BuiltKind.HouseSingle);
@@ -2116,6 +2127,9 @@ export function mosesCenturyStage(params: Partial<MosesParams> = {}): WorldgenSt
       // only OUTWARD into the fringe. It joins the world as its own chronicle term (the report's
       // store<->chronicle identity accounts for it) and leaves era-5's abandonment gradient intact.
       eraOrganicGrowth(world, rng.fork('organic'), p, state);
+      // Plot parking (docs/design/multitile-parking.md): every big workplace and civic plot gets a lot at its door,
+      // before the yards and ruins take the street fronts. Its own chronicle term.
+      eraPlotParking(world);
       // Back yards (Maddy 2026-10-07): the lot behind every standing house that faces one street, laid last so
       // they belong to the houses that survived the century. Its own chronicle term (the report's identity).
       eraBackYards(world);

@@ -1,8 +1,8 @@
 // The build-tools verb: a pure tool system over the fabric single-writers. A tool
 // is selected, previewed (no mutation), then applied — spending communal effort
 // through the guarded TechState.spend and routing to exactly one fabric writer
-// (placeParcel / placeTransport / convertTransport / demolishParcel /
-// demolishTransportAt). Pure module: no DOM, no rng, no Date, no transcendental
+// (placeParcel / placeTransport / convertTransport / bulldozeParcel /
+// bulldozeTransportAt). Pure module: no DOM, no rng, no Date, no transcendental
 // Math — deterministic in (world, tech, action), so it is guard-scanned alongside
 // the engine. It imports only from the engine and tech layers, never from ui.
 
@@ -21,8 +21,10 @@ import {
   layYardFor,
   canPlaceParklet,
   placeParklet,
-  demolishParcel,
-  demolishTransportAt,
+  addPlotParking,
+  bulldozeParcel,
+  bulldozeTransportAt,
+  isOpenGround,
   isInteriorRoadLane,
   isOverpassKind,
   canPlaceOverpass,
@@ -88,6 +90,7 @@ const VOLUNTEER_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.School,
   BuiltKind.WastewaterWorks,
   BuiltKind.RetentionPond,
+  BuiltKind.Shelter,
   BuiltKind.CoopHousing,
   BuiltKind.ADU,
   BuiltKind.Commune,
@@ -149,13 +152,13 @@ export function chargeFor(world: ToolWorld, tool: ToolDef, x: number, y: number,
 function chargeHere(world: ToolWorld, tool: ToolDef, x: number, y: number, wallet: Wallet): { effort: number; funds: number } {
   if (tool.id.startsWith('build-') && isSiteKind(tool.kind)) return { effort: 0, funds: 0 }; // paid as it rises
   const sticker = toolPrice(tool);
-  let volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
+  const volunteer = tool.kind !== undefined && VOLUNTEER_KINDS.has(tool.kind);
   if (tool.id === 'bulldoze') {
     const target = bulldozeTarget(world, x, y);
     if (target === BuiltKind.RoadHighway || target === BuiltKind.RoadRamp) return { effort: 0, funds: -FREEWAY_SALVAGE };
-    const effort = demolitionEffort(world, x, y, target);
-    if (effort > 0) return { effort, funds: 0 };
-    volunteer = true; // demolition is work a neighbourhood can do
+    // the bulldozer is paid from the treasury — a broke city can tear out only its freeways (Maddy 2026-10-13) —
+    // and tearing down where people live, are cared for or trade takes the community's effort as well
+    return { effort: demolitionEffort(world, x, y, target), funds: sticker.funds };
   }
   if (!volunteer || sticker.funds <= wallet.funds) return sticker;
   const paid = Math.max(0, wallet.funds);
@@ -264,6 +267,7 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.VerticalFarm]: { label: 'Vertical Farm', cost: 22, footprint: { w: 2, h: 2 } },
   [BuiltKind.WastewaterWorks]: { label: 'Wastewater Works', cost: 24, footprint: { w: 2, h: 2 } },
   [BuiltKind.RetentionPond]: { label: 'Retention Pond', cost: 16, footprint: { w: 2, h: 2 } },
+  [BuiltKind.Shelter]: { label: 'Mutual-Aid Shelter', cost: 14, footprint: { w: 2, h: 2 } },
   [BuiltKind.EnergyNode]: { label: 'Energy Node', cost: 16, footprint: { w: 1, h: 1 } },
   [BuiltKind.AINode]: { label: 'AI Node', cost: 26, footprint: { w: 1, h: 1 } },
   [BuiltKind.ADU]: { label: 'Accessory Dwelling', cost: 10, footprint: { w: 1, h: 1 } },
@@ -400,7 +404,7 @@ function geometryValid(world: ToolWorld, tool: ToolDef, x: number, y: number): P
 
   if (tool.id === 'bulldoze') {
     const built = map.built[map.idx(x, y)]!;
-    if (built === 0) return { valid: false, reason: 'nothing-to-bulldoze' };
+    if (isOpenGround(built)) return { valid: false, reason: 'nothing-to-bulldoze' };
     return { valid: true };
   }
 
@@ -536,8 +540,9 @@ export function applyTool(
       return { ok: true };
     }
     const pid = map.parcel[map.idx(x, y)]!;
-    if (pid !== 0) demolishParcel(map, parcels, pid - 1);
-    else demolishTransportAt(map, x, y);
+    // what the bulldozer clears is left a vacant lot that grows back (Maddy 2026-10-13)
+    if (pid !== 0) bulldozeParcel(map, parcels, pid - 1);
+    else bulldozeTransportAt(map, x, y);
     return { ok: true };
   }
   if (tool.id.startsWith('convert-')) {
@@ -557,7 +562,8 @@ export function applyTool(
   } else if (isSiteKind(kind)) {
     // a commons work goes up as a site; the city raises it as the commons pays (economy buildProject)
     const fp = tool.footprint!;
-    placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind: BuiltKind.Site });
+    const site = placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind: BuiltKind.Site });
+    addPlotParking(map, parcels, site, kind); // a big workplace comes with a lot at its door
     if (isCommonsKind(kind)) return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'effort' } };
     // a civic building is paid from the treasury — unless the city can't cover it, when a community work (clinic,
     // fire station…) rises on volunteer effort instead (the ways out of a deficit, 2026-10-01)
@@ -567,8 +573,9 @@ export function applyTool(
     return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'funds' } };
   } else if (isBuildingKind(kind)) {
     const fp = tool.footprint!;
-    placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });
+    const built = placeParcel(map, parcels, { x, y, width: fp.w, height: fp.h, kind });
     if (kind === BuiltKind.HouseSingle) layYardFor(map, parcels, x, y); // a house comes with its back yard
+    addPlotParking(map, parcels, built); // a big workplace comes with a lot at its door
   } else if (isOverpassKind(kind) && canPlaceOverpass(map, x, y, kind)) {
     placeOverpass(map, x, y, kind); // deck an overpass over the road below (grade-separated)
   } else {

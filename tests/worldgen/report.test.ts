@@ -206,7 +206,7 @@ describe('buildReport: real pipeline (terrain + moses)', () => {
       expect(r.yardsAdded).not.toBeNull();
       expect(r.ruinsAdded).not.toBeNull(); // ruins: the last pass, empty redlined street fronts (2026-10-08)
       expect(r.parcelsAlive).toBe(
-        r.preEra5Standing! - r.abandoned! + r.craters! + r.organicAdded! + r.yardsAdded! + r.ruinsAdded!,
+        r.preEra5Standing! - r.abandoned! + r.craters! + r.organicAdded! + r.plotLotsAdded! + r.yardsAdded! + r.ruinsAdded!,
       );
     });
 

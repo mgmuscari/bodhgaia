@@ -379,6 +379,41 @@ function pole(spot: 'h' | 'v' | 'nw'): Pixels {
   return p;
 }
 
+/** A street tree (Walkable Streets): a small round crown on the kerb opposite the poles — 'h' the south kerb, 'v' the
+ *  east — its trunk hidden under it; outlined like the poles. */
+function streetTree(side: 'h' | 'v'): Pixels {
+  const p = blank(T, T);
+  const [cx, cy] = side === 'h' ? [8, 13] : [13, 8];
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      if (Math.abs(dx) + Math.abs(dy) > 3) continue; // a rounded crown
+      px(p, cx + dx, cy + dy, dy < 0 || (dy === 0 && dx < 0) ? C.leafHi : dx + dy >= 2 ? C.leafLo : C.leaf);
+    }
+  }
+  outline(p, C.ink);
+  return p;
+}
+
+/** A bike rack (Bike Shares): two little slate hoops on the kerb on side `side` of the road tile. */
+function bikeRack(side: 'n' | 'e' | 's' | 'w'): Pixels {
+  const p = blank(T, T);
+  const put = (a: number, d: number, c: RGB): void => {
+    if (side === 's') px(p, a, T - 1 - d, c);
+    else if (side === 'n') px(p, a, d, c);
+    else if (side === 'e') px(p, T - 1 - d, a, c);
+    else px(p, d, a, c);
+  };
+  for (const h of [5, 9]) {
+    put(h, 1, C.slate); // the hoop's legs and top
+    put(h + 2, 1, C.slate);
+    put(h, 2, C.slateHi);
+    put(h + 1, 2, C.slateHi);
+    put(h + 2, 2, C.slateHi);
+  }
+  outline(p, C.ink);
+  return p;
+}
+
 /** Every SNES road tile + furniture overlay: atlas key → pixels. */
 export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly number[], wideKinds: readonly number[]): void {
   // every surface variant under its explicit `#v` key (the renderer cycles `road-…#0..#2` when a skin
@@ -419,5 +454,7 @@ export function snesRoadTiles(out: Map<string, Pixels>, roadKinds: readonly numb
     out.set(`@road/turn/${a}`, turnLane(a));
     out.set(`@road/median/${a}`, median(a));
     out.set(`@road/pole/${a}`, pole(a));
+    out.set(`@road/tree/${a}`, streetTree(a));
   }
+  for (const s of ['n', 'e', 's', 'w'] as const) out.set(`@road/rack/${s}`, bikeRack(s));
 }

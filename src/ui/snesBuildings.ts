@@ -512,6 +512,39 @@ const yard: Painter = (W, H, v) => {
   return p;
 };
 
+/** A mutual-aid shelter (Maddy 2026-10-13): a long hall under a brown gable, rows of lit windows, the door open
+ *  under a little awning, a bench and a tree by the path in. */
+const shelter: Painter = (W, H, v) => {
+  const p = lot(W, H, 'grass', 690 + v);
+  const L = blank(W, H);
+  gable(L, 2, 3, W - 4, 7, ROOF_BROWN);
+  wall(L, 2, 10, W - 4, H - 15, C.cream, C.creamLo);
+  windows(L, 4, 12, W - 8, H - 19, 4, 4, 2, 2);
+  door(L, (W >> 1) - 1, H - 7, 2, 2);
+  hline(L, (W >> 1) - 3, (W >> 1) + 2, H - 8, C.roofRed); // the awning
+  rect(L, (W >> 1) - 1, H - 5, 2, 4, C.paveHi); // the path in
+  hline(L, 4, 7, H - 3, C.roofBrownLo); // a bench
+  place(p, L);
+  tree(p, W - 4, H - 4, 2);
+  return p;
+};
+
+/** A vacant lot (Maddy 2026-10-13): what the bulldozer leaves — packed dirt with a little rubble and the first weeds,
+ *  kept sparse (it tiles across a whole cleared block). It grows back to open land as its soil heals. */
+const vacantLot: Painter = (W, H, v) => {
+  const p = blank(W, H);
+  rect(p, 0, 0, W, H, C.dirt);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const h = hash2(x, y, 680 + v) % 61;
+      if (h === 0) px(p, x, y, C.paveLo); // a broken brick
+      else if (h === 1) px(p, x, y, C.grassLo); // the first weeds
+      else if (h === 2) px(p, x, y, C.dirtLo);
+    }
+  }
+  return p;
+};
+
 /** A ruin (Maddy 2026-10-08): a lost house, still recognisably a house — its own drawing turned dingy grey and
  *  brown, the roof holed through to the dark inside, windows black, rubble at its feet, the yard gone to dirt. */
 const ruin: Painter = (W, H, v) => {
@@ -680,6 +713,8 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [63, [tinyHomes, 1]],
   [64, [yard, 2]],
   [65, [ruin, 3]],
+  [68, [vacantLot, 1]],
+  [69, [shelter, 1]],
   [58, [bazaar, 2]],
   [59, [makerSpace, 1]],
   [60, [healingCommons, 1]],

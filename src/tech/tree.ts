@@ -144,7 +144,7 @@ export const TECH_TREE: readonly TechNode[] = [
     'A star in a bottle, owned in common; limitless clean power and nothing to mine.'),
 
   // --- Anarcho-Communism -----------------------------------------------------
-  node('mutual-aid', AnarchoCommunism, 'Mutual Aid', [], 10, cap('mutual-aid'),
+  node('mutual-aid', AnarchoCommunism, 'Mutual Aid', [], 10, { capabilities: ['mutual-aid'], kinds: [BuiltKind.Shelter] },
     "Neighbors cover each other's needs directly; solidarity, not charity, not markets."),
   node('collective-ownership', AnarchoCommunism, 'Collective Ownership', ['mutual-aid', 'community-land-trust'], 25, cap('collective-ownership'),
     'The means of making things belong to the people who use them, together.'),

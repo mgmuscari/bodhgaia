@@ -9,8 +9,8 @@
 // The format is versioned. parseSave refuses anything that isn't a save or is newer than this build; an older
 // version is lifted through MIGRATIONS (one step per version) before use.
 
-import type { GameMap } from '../engine/map';
-import { BuiltKind, type ParcelColumns, type ParcelStore } from '../engine/fabric';
+import { GameMap } from '../engine/map';
+import { BuiltKind, inferLegacyCrossings, type ParcelColumns, type ParcelStore } from '../engine/fabric';
 import type { TechState } from '../tech/state';
 import type { CivicState } from '../civic/state';
 import type { EconomyRun } from '../economy/run';
@@ -19,7 +19,7 @@ import type { AmbientState } from '../live/types';
 export const SAVE_FORMAT = 'bodhgaia-save';
 /** Saves written before the rename (2026-10-07) — still read. */
 const LEGACY_FORMATS: ReadonlySet<unknown> = new Set([SAVE_FORMAT, 'bodhitropolis-save']);
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 /** The map layers a save carries, by GameMap field name (all of them: they are the world). v1 also carried
  *  'traffic' — an always-zero legacy layer, retired in v2 (MIGRATIONS[1] drops it). */
@@ -35,6 +35,7 @@ const LAYERS = [
   'floraVitality',
   'faunaPresence',
   'redline',
+  'crossing',
 ] as const;
 type LayerName = (typeof LAYERS)[number];
 
@@ -176,6 +177,21 @@ const MIGRATIONS: Record<number, (s: Record<string, unknown>) => Record<string, 
     for (let i = 0; i < built.length; i++) if (built[i] === BuiltKind.Parklet) built[i] = BuiltKind.Park;
     const kind = world.parcels.kind.map((k) => (k === BuiltKind.Parklet ? BuiltKind.Park : k));
     return { ...s, world: { ...world, layers: { ...world.layers, built: encodeBytes(bytes) }, parcels: { ...world.parcels, kind } } };
+  },
+  // v3 → v4 (Maddy 2026-10-13): level crossings are recorded where track is laid across a way (the `crossing`
+  // layer) instead of being inferred from the line's neighbours. An older city's are read once from its track
+  // (inferLegacyCrossings) — except where a way runs along the line, as between two parallel highways.
+  3: (s) => {
+    const world = s.world as { layers?: Record<string, string> } | undefined;
+    if (!world?.layers?.built || world.layers.crossing) return s;
+    const width = Number(s.width);
+    const height = Number(s.height);
+    const map = new GameMap(width, height);
+    const bytes = decodeBytes(world.layers.built);
+    if (bytes.length !== map.built.byteLength) return s;
+    bytesOf(map.built).set(bytes);
+    inferLegacyCrossings(map);
+    return { ...s, world: { ...world, layers: { ...world.layers, crossing: encodeBytes(bytesOf(map.crossing)) } } };
   },
 };
 

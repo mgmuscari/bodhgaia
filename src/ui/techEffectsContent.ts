@@ -27,7 +27,9 @@ import {
 } from '../growth/power';
 import { GATHERING_KINDS } from '../civic/dynamics';
 import { influenceOf } from '../ecology/influence';
-import { PAVED_CAP, SOIL_RECOVERY } from '../ecology/tick';
+import { PAVED_CAP, SOIL_RECOVERY, VACANT_SHIELD } from '../ecology/tick';
+import { AI_CLEAN_RADIUS } from '../live/fields/pollution';
+import { SHELTER_BEDS, SHELTER_DRAW } from '../live/camps';
 import { COMMUNE_COMMERCE_SHARE, RAIL_COMMERCE_LIFT, RAIL_COMMERCE_RADIUS, BAZAAR_LIFT, BAZAAR_RADIUS, COMMUNE_REGEN, COMPOST_RADIUS, COMPOST_TENDING, LAND_TRUST_RADIUS, PROTECTED, TENDING, UPKEEP } from '../economy/readings';
 import { ECON } from '../economy/model';
 import { visitValue } from '../citizens/plots';
@@ -114,6 +116,8 @@ function practiceLine(e: Effect): string {
       return `Open soil recovers ${num(SOIL_RECOVERY * (e.value as number))} a tick (was ${SOIL_RECOVERY})`;
     case 'pavedSoilCap':
       return `Soil under pavement can heal to ${e.value} (was ${PAVED_CAP})`;
+    case 'vacantShield':
+      return `A green heals vacant lots up to ${num(VACANT_SHIELD * (e.value as number))} tiles away (was ${VACANT_SHIELD})`;
   }
 }
 
@@ -147,6 +151,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (GATHERING_KINDS.has(kind)) effects.push("Gathering place: its neighbourhood's belonging +1 per civic tick");
   if (kind === BuiltKind.WastewaterWorks) effects.push(`Cleans contaminated water within ${WATER_TREAT_RADIUS} tiles`);
   if (kind === BuiltKind.RetentionPond) effects.push(`Keeps the land within ${POND_REACH} tiles from flooding`);
+  if (kind === BuiltKind.Shelter) effects.push(`${SHELTER_BEDS} beds: takes in the unhoused from camps within ${SHELTER_DRAW} tiles — safe from the cold nights`);
   if (GREEN_HEAL_KINDS.has(kind)) effects.push(`Heals ground pollution within ${GREEN_HEAL_RADIUS} tiles`);
   if (AMENITY_KINDS.has(kind)) effects.push("Raises its neighbours' land value");
   const eco = influenceOf(kind);
@@ -158,6 +163,7 @@ export function kindEffectLines(kind: BuiltKind): EffectLines {
   if (kind === BuiltKind.ADU) effects.push(`Built in a house's back yard: that house can fill to ${ADU_HOUSE_HEADROOM}× (was ${OCC_HEADROOM.get(BuiltKind.HouseSingle)}×)`);
   if (kind === BuiltKind.AINode) {
     effects.push(`Smart grid: homes within ${SMART_GRID_RADIUS} tiles draw ${pct(SMART_GRID_CUT)} less power ${SMART_GRID_FROM}:00–${SMART_GRID_TO}:00`);
+    effects.push(`High-tech industry: works within ${AI_CLEAN_RADIUS} tiles stop poisoning the ground and water, and never spill`);
   }
   if (kind === BuiltKind.Commune) {
     effects.push('Its residents work at home and own no cars');

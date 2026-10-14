@@ -115,6 +115,11 @@ export const BuiltKind = {
   // A construction site (Maddy 2026-10-08): a commons work being raised — fenced, no effects — until the effort is
   // paid (economy/run buildProject), when finishSite turns it into the building.
   Site: 67,
+  // A vacant lot (Maddy 2026-10-13): what the bulldozer leaves — bare ground, no one's, open to building again —
+  // that grows back to open land as its soil heals (recoverVacantLots).
+  VacantLot: 68,
+  // A mutual-aid shelter (Maddy 2026-10-13, under Mutual Aid): beds for the unhoused near it (live/camps.ts).
+  Shelter: 69,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
@@ -135,6 +140,7 @@ const COMMONS_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.MakerSpace,
   BuiltKind.VerticalFarm,
   BuiltKind.TinyHomes,
+  BuiltKind.Shelter,
 ]);
 export const isCommonsKind = (k: number): boolean => COMMONS_KINDS.has(k);
 /** Elevated transit that can deck OVER a road as an overpass: elevated rail (8) or promenade (9). */
@@ -438,7 +444,7 @@ export function canPlaceParcel(map: GameMap, x: number, y: number, w: number, h:
       if (!map.inBounds(tx, ty)) return false;
       const i = map.idx(tx, ty);
       if (map.water[i] !== Water.None) return false;
-      if (map.built[i] !== 0) return false;
+      if (!isOpenGround(map.built[i]!)) return false;
       if (map.parcel[i] !== 0) return false;
     }
   }
@@ -485,7 +491,7 @@ export function canPlaceTransport(map: GameMap, x: number, y: number, kind: numb
   const i = map.idx(x, y);
   if (map.water[i] !== Water.None) return false;
   const existing = map.built[i]!;
-  if (existing === 0) return true; // empty land: any transport kind (incl. 5..9)
+  if (isOpenGround(existing)) return true; // empty land or a vacant lot: any transport kind (incl. 5..9)
   if (isRoadKind(kind) && isRoadKind(existing)) return true; // road/road junction
   if (kind === BuiltKind.Rail && existing === BuiltKind.Rail) return true; // rail/rail
   if (kind === BuiltKind.Rail && crossesRail(existing)) return true; // track laid across a way: a level crossing
@@ -504,7 +510,9 @@ export function placeTransport(map: GameMap, x: number, y: number, kind: number)
   const i = map.idx(x, y);
   const existing = map.built[i]!;
   // track across a way takes the tile (the crossing); the way carries on either side of it
-  map.built[i] = existing === 0 || (kind === BuiltKind.Rail && crossesRail(existing)) ? kind : Math.max(existing, kind);
+  const across = kind === BuiltKind.Rail && crossesRail(existing);
+  map.built[i] = isOpenGround(existing) || across ? kind : Math.max(existing, kind);
+  if (across) map.crossing[i] = existing; // a level crossing: the record of the way the track was laid across
   return true;
 }
 
@@ -566,6 +574,7 @@ export function canConvertTransport(map: GameMap, x: number, y: number, to: numb
 export function convertTransport(map: GameMap, x: number, y: number, to: number): boolean {
   if (!canConvertTransport(map, x, y, to)) return false;
   map.built[map.idx(x, y)] = to;
+  map.crossing[map.idx(x, y)] = 0; // no longer track: no crossing
   return true;
 }
 
@@ -761,6 +770,108 @@ export function demolishParcel(map: GameMap, store: ParcelStore, i: number): boo
   return true;
 }
 
+/** Workplaces and civic buildings that get their own parking when 2×2 or more (docs/design/multitile-parking.md):
+ *  a car always has somewhere at the door. Not homes, not greens. */
+const PLOT_PARKING_KINDS: ReadonlySet<number> = new Set<number>([
+  BuiltKind.Industrial,
+  BuiltKind.Offices,
+  BuiltKind.CommercialStrip,
+  BuiltKind.Bazaar,
+  BuiltKind.MakerSpace,
+  BuiltKind.Civic,
+  BuiltKind.Clinic,
+  BuiltKind.Library,
+  BuiltKind.School,
+  BuiltKind.HealingCommons,
+  BuiltKind.Precinct,
+  BuiltKind.CoalPlant,
+  BuiltKind.GasPlant,
+  BuiltKind.HydroPlant,
+  BuiltKind.NuclearPlant,
+  BuiltKind.SolarPlant,
+  BuiltKind.FusionPlant,
+  BuiltKind.WastewaterWorks,
+  BuiltKind.VerticalFarm,
+  BuiltKind.AINode,
+]);
+
+/** Does a plot of `kind`, w×h, get its own parking? */
+export function needsPlotParking(kind: number, w: number, h: number): boolean {
+  return w >= 2 && h >= 2 && PLOT_PARKING_KINDS.has(kind);
+}
+
+/** Give parcel `i` its parking: a 1-tile lot just outside its footprint, edge-on (not a corner), on a free tile that
+ *  touches a street. False if it needs none, already has a lot beside it, or no such tile is free. Deterministic: a
+ *  hash of the tile picks among the candidates, never the scan order. */
+export function addPlotParking(map: GameMap, store: ParcelStore, i: number, as?: number): boolean {
+  if (i < 0 || i >= store.count() || !store.isAlive(i)) return false;
+  const p = store.get(i);
+  if (!needsPlotParking(as ?? p.kind, p.width, p.height)) return false; // `as`: what a construction site will become
+  let best = -1;
+  let bestH = Infinity;
+  for (let y = p.y - 1; y <= p.y + p.height; y++) {
+    for (let x = p.x - 1; x <= p.x + p.width; x++) {
+      if (!map.inBounds(x, y)) continue;
+      const inside = x >= p.x && x < p.x + p.width && y >= p.y && y < p.y + p.height;
+      if (inside) continue;
+      if (map.getBuilt(x, y) === BuiltKind.ParkingLot) return false; // it has one
+      const corner = (x < p.x || x >= p.x + p.width) && (y < p.y || y >= p.y + p.height);
+      if (corner || !canPlaceParcel(map, x, y, 1, 1)) continue;
+      let street = false;
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+        if (!map.inBounds(x + dx, y + dy)) continue;
+        const k = map.getBuilt(x + dx, y + dy);
+        if (isRoadKind(k) || k === BuiltKind.RoadRamp) street = true;
+      }
+      if (!street) continue;
+      const h = Math.imul(map.idx(x, y) + 1, 0x9e3779b1) >>> 0;
+      if (h < bestH) [best, bestH] = [map.idx(x, y), h];
+    }
+  }
+  if (best < 0) return false;
+  const bx = best % map.width;
+  return placeParcel(map, store, { x: bx, y: (best - bx) / map.width, width: 1, height: 1, kind: BuiltKind.ParkingLot }) !== -1;
+}
+
+/** Ground anything may be built on: open land, or a vacant lot. */
+export function isOpenGround(kind: number): boolean {
+  return kind === BuiltKind.None || kind === BuiltKind.VacantLot;
+}
+
+/** The bulldozer takes a building down: its footprint is left a vacant lot (Maddy 2026-10-13). */
+export function bulldozeParcel(map: GameMap, store: ParcelStore, i: number): boolean {
+  if (i < 0 || i >= store.count() || !store.isAlive(i)) return false;
+  const p = store.get(i);
+  demolishParcel(map, store, i);
+  for (let dy = 0; dy < p.height; dy++) for (let dx = 0; dx < p.width; dx++) map.built[map.idx(p.x + dx, p.y + dy)] = BuiltKind.VacantLot;
+  return true;
+}
+
+/** The bulldozer tears up a way: bare ground is left a vacant lot; a level crossing gives back the way it crossed. */
+export function bulldozeTransportAt(map: GameMap, x: number, y: number): boolean {
+  if (!demolishTransportAt(map, x, y)) return false;
+  const i = map.idx(x, y);
+  if (map.built[i] === BuiltKind.None) map.built[i] = BuiltKind.VacantLot;
+  return true;
+}
+
+/** The soil at which a vacant lot has grown back to open land. The ecology heals unsealed soil a point a tick (a tick
+ *  a second of play), and a cleared lot starts at the paved cap: a few minutes. */
+export const VACANT_RECOVERED = 200;
+
+/** Vacant lots whose soil has healed grow back to open land. Run after the ecology tick. Returns how many cleared. */
+export function recoverVacantLots(map: GameMap): number {
+  const { built, soilHealth } = map;
+  let n = 0;
+  for (let i = 0; i < built.length; i++) {
+    if (built[i] === BuiltKind.VacantLot && soilHealth[i]! >= VACANT_RECOVERED) {
+      built[i] = BuiltKind.None;
+      n++;
+    }
+  }
+  return n;
+}
+
 /**
  * Demolish the transport tile at (x, y): clear `built` to 0. Returns false
  * (writing nothing) unless the tile is in-bounds and holds a transport kind —
@@ -771,19 +882,45 @@ export function demolishTransportAt(map: GameMap, x: number, y: number): boolean
   if (!map.inBounds(x, y)) return false;
   const i = map.idx(x, y);
   if (!isTransportKind(map.built[i]!)) return false;
-  // a level crossing torn up gives the way it crossed back (Maddy 2026-10-08)
-  map.built[i] = map.built[i] === BuiltKind.Rail ? crossedWay(map, x, y) : 0;
+  // a level crossing torn up gives the way it crossed back (Maddy 2026-10-08) — the one it was laid across
+  map.built[i] = map.built[i] === BuiltKind.Rail ? map.crossing[i]! : 0;
+  map.crossing[i] = 0;
   return true;
 }
 
-/** The way a rail tile at (x, y) crosses — the same crossing kind on both sides of it, along one axis — or 0. */
-function crossedWay(map: GameMap, x: number, y: number): number {
-  const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : 0);
-  for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
-    const a = at(dx, dy);
-    if (crossesRail(a) && at(-dx, -dy) === a) return a;
+/** A city saved before crossings were recorded (save v3): its crossings, read once from the track's neighbours as
+ *  the drawing used to — a way on both sides across the line — except where that way runs along the track (5+
+ *  tiles: the line between two parallel highways, Maddy 2026-10-13), which was never a crossing. */
+export function inferLegacyCrossings(map: GameMap): void {
+  const along = (x: number, y: number, dx: number, dy: number): number => {
+    let n = 1;
+    for (const s of [1, -1]) {
+      for (let k = 1; k < 5; k++) {
+        const nx = x + dx * k * s;
+        const ny = y + dy * k * s;
+        if (!map.inBounds(nx, ny) || !crossesRail(map.getBuilt(nx, ny))) break;
+        n++;
+      }
+    }
+    return n;
+  };
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const i = map.idx(x, y);
+      if (map.built[i] !== BuiltKind.Rail || map.crossing[i] !== 0) continue;
+      for (const [dx, dy] of [[1, 0], [0, 1]] as const) {
+        // a way on both sides along (dx, dy) crosses a line running the other way
+        if (!map.inBounds(x + dx, y + dy) || !map.inBounds(x - dx, y - dy)) continue;
+        const a = map.getBuilt(x + dx, y + dy);
+        const b = map.getBuilt(x - dx, y - dy);
+        if (!crossesRail(a) || !crossesRail(b)) continue;
+        // the line's own axis is perpendicular: a way running along it (5+ tiles) is beside the line, not across it
+        if (along(x + dx, y + dy, dy, dx) >= 5 || along(x - dx, y - dy, dy, dx) >= 5) continue;
+        map.crossing[i] = a;
+        break;
+      }
+    }
   }
-  return 0;
 }
 
 // --- Connectivity queries ------------------------------------------------
@@ -966,6 +1103,9 @@ export function crossesRail(kind: number): boolean {
 /** What crosses the line at a level crossing (x, y) — the kind on its first crossing side — or 0 if none. */
 export function railCrossingKind(map: GameMap, x: number, y: number): number {
   const mask = railCrossingMask(map, x, y);
+  if (mask === 0) return 0;
+  const laid = map.crossing[map.idx(x, y)]!;
+  if (laid !== 0) return laid; // the way the track was laid across
   for (const [dx, dy, bit] of MASK_DIRS) if (mask & bit) return map.getBuilt(x + dx, y + dy);
   return 0;
 }
@@ -980,6 +1120,8 @@ export function railCrossingKind(map: GameMap, x: number, y: number): number {
 export function railCrossingMask(map: GameMap, x: number, y: number): number {
   const self = map.getBuilt(x, y);
   if (self !== BuiltKind.Rail && self !== BuiltKind.Streetcar) return 0;
+  // a rail crossing is only where track was laid across a way (map.crossing); a streetcar line is a street
+  if (self === BuiltKind.Rail && map.crossing[map.idx(x, y)] === 0) return 0;
   const at = (dx: number, dy: number): number => (map.inBounds(x + dx, y + dy) ? map.getBuilt(x + dx, y + dy) : BuiltKind.None);
   const track = (k: number): boolean => k === BuiltKind.Rail || k === BuiltKind.Streetcar;
   const road = (dx: number, dy: number): boolean => crossesRail(at(dx, dy));

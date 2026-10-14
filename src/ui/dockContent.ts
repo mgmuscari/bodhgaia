@@ -28,7 +28,7 @@ const META_LABELS: Record<MetaButton['id'], string> = {
   power: 'Power (U)',
   life: 'Life (L)',
   restore: 'Restoration (G)',
-  saves: 'Saves (S)',
+  saves: 'Saves (O)',
   settings: 'Settings (,)',
   help: 'Help (?)',
 };
