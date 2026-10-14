@@ -68,3 +68,8 @@ export function boostsOf(map: GameMap, parcels: ParcelStore, i: number, index?: 
   }
   return out;
 }
+
+/** Can a building of `kind` carry a boost at all? (A cheap pre-check before boostsOf.) */
+export function canBoost(kind: number): boolean {
+  return kind === BuiltKind.MakerSpace || kind === BuiltKind.Industrial || pairsFor(kind).length > 0;
+}

@@ -737,12 +737,14 @@ function encampmentTiles(out: Map<string, Pixels>): void {
 // ── Status icons ─────────────────────────────────────────────────────────────────────────────────
 // 8×8 badges on a transparent ground, drawn as 6×6 glyphs then ink-outlined: the blinking lightning bolt
 // of an unpowered zone (straight out of the SNES original), a heart for a thriving home, a raincloud for
-// a suffering one. Rows are strings so the glyph is legible in the source: '#' body, '+' highlight.
+// a suffering one, a sparkle for a boosted building. Rows are strings so the glyph is legible in the source: '#' body, '+' highlight.
 
 const ICONS: Record<string, { rows: readonly string[]; body: RGB; hi: RGB }> = {
   unpowered: { rows: ['...++.', '..##..', '.####.', '..##..', '.##...', '.#....'], body: C.gold, hi: C.lineYellow },
   thriving: { rows: ['.##.##', '#+####', '######', '.####.', '..##..', '......'], body: C.signal, hi: C.petal },
   suffering: { rows: ['..++..', '.####.', '######', '######', '.w..w.', '.w..w.'], body: C.slate, hi: C.slateHi },
+  // a four-point sparkle: a building carrying a pairing or maker/industry bonus (engine/boosts.ts)
+  boosted: { rows: ['..#...', '..#...', '##+##.', '..#...', '..#...', '......'], body: C.cyan, hi: C.petal },
 };
 
 function icon(name: string): Pixels {

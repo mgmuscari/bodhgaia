@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { GameMap } from '../../src/engine/map';
 import { BuiltKind, MAKER_SUPPLY, ParcelStore, placeParcel } from '../../src/engine/fabric';
-import { boostIndex, boostsOf, makerSupplied } from '../../src/engine/boosts';
+import { boostIndex, boostsOf, canBoost, makerSupplied } from '../../src/engine/boosts';
 
 function world() {
   const map = new GameMap(40, 20);
@@ -65,5 +65,12 @@ describe('building boosts', () => {
       'Pairs with the Library: the maker space reaches twice as far',
       'Supplied by the works nearby: reaches further, mends twice as fast',
     ]);
+  });
+
+  it('canBoost: only kinds that pair, makers and works can carry a boost (the renderer\'s cheap pre-check)', () => {
+    expect(canBoost(BuiltKind.School)).toBe(true);
+    expect(canBoost(BuiltKind.MakerSpace)).toBe(true);
+    expect(canBoost(BuiltKind.Industrial)).toBe(true);
+    expect(canBoost(BuiltKind.HouseSingle)).toBe(false);
   });
 });

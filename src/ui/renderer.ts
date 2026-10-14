@@ -49,6 +49,7 @@ import { OVERLAY_DIM } from './overlayLegend';
 const OVERLAY_DIM_CSS = `rgba(${OVERLAY_DIM[0]}, ${OVERLAY_DIM[1]}, ${OVERLAY_DIM[2]}, ${OVERLAY_DIM[3]})`;
 import { policeViolenceTint } from './policeViolenceOverlayContent';
 import { TravelMode } from '../citizens/modes';
+import { boostIndex, boostsOf, canBoost, type BoostIndex } from '../engine/boosts';
 
 /** A previewed tile for the hover/drag overlay: world coords + validity tint. */
 export interface PreviewTile {
@@ -267,6 +268,9 @@ export class Renderer {
   // Unpowered parcel footprints (WORLD coords) from the last base pass — drawn per frame as a blinking
   // icon when the skin supplies one (the base is cached, so a blink can't live there).
   private unpoweredFootprints: { x: number; y: number; w: number }[] = [];
+  /** Boosted buildings (engine/boosts.ts) in view, collected on each base rebuild for the sparkle badge. */
+  private boostedFootprints: { x: number; y: number; h: number }[] = [];
+  private boostIndexNow: BoostIndex | null = null;
   // GPU mode: the WebGL hybrid path renders the MAP underneath (day/night, building shadows), so the
   // Canvas2D base goes transparent. Sprites/decorations/UI still draw on top. The CPU path stays the
   // no-WebGL fallback. (Hybrid shader, Maddy 2026-06-20.)
@@ -586,6 +590,8 @@ export class Renderer {
     this.emissiveBuildings.length = 0; // re-collected this pass (refreshed on every base rebuild)
     this.turbines.length = 0; // likewise
     this.unpoweredFootprints.length = 0; // likewise
+    this.boostedFootprints.length = 0; // likewise
+    this.boostIndexNow = boostIndex(world.parcels); // the makers and works, once a pass
     this.bakedMarks.clear(); // re-recorded this pass
     this.bakedMurk.clear();
     this.paintTiles(world, camera, ambient, camera.visibleTileRange(), null);
@@ -832,6 +838,9 @@ export class Renderer {
               const unpowered =
                 this.powered !== null && isPowerConsumer(pp.kind) && !this.powered.has(i);
               if (unpowered) this.unpoweredFootprints.push({ x: tx, y: ty, w: pp.width });
+              if (this.boostIndexNow && canBoost(pp.kind) && boostsOf(map, parcels, pid - 1, this.boostIndexNow).length > 0) {
+                this.boostedFootprints.push({ x: tx, y: ty, h: pp.height });
+              }
               // Light-bearing building? Collect its footprint (world coords) for the per-frame emissive
               // overlay (drawSprites), with the skin's map for THIS footprint, tier and art variant (read
               // off the picked key). No power, no lights — an unpowered building stays dark at night.
@@ -1176,6 +1185,16 @@ export class Renderer {
         const { dx, dy } = camera.tileOrigin(f.x + f.w, f.y);
         if (!onScreen(dx, dy)) continue;
         ctx.drawImage(bolt, dx - bs, dy - iconScale, bs, bs);
+      }
+    }
+    // the boosted sparkle, bottom-left (the corner the heart and the bolt leave free); steady, not blinking
+    const sparkle = this.icons.get(iconKey('boosted'));
+    if (sparkle) {
+      const bs = 8 * iconScale;
+      for (const f of this.boostedFootprints) {
+        const { dx, dy } = camera.tileOrigin(f.x, f.y + f.h);
+        if (!onScreen(dx, dy)) continue;
+        ctx.drawImage(sparkle, dx - iconScale, dy - bs + iconScale, bs, bs);
       }
     }
     for (const [tile, health] of ambient.buildingHealth) {
