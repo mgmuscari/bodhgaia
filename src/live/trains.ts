@@ -91,10 +91,12 @@ export function stepTrain(map: GameMap, t: Train, rng: Rng): boolean {
     t.ty = t.ty + DIR_DY[nd]!;
     // a stop: halt here (once — then on). Only now, with the next tile chosen: the cars are placed by progress
     // toward it, and a vehicle halted before choosing was drawn a whole tile ahead (Maddy: trams snapped to stops)
-    if (transitFor(map).stopAt.has(head) && t.lastStop !== head) {
-      t.lastStop = head;
-      t.dwell = DWELL;
-    }
+    if (transitFor(map).stopAt.has(head)) {
+      if (t.lastStop !== head) {
+        t.lastStop = head;
+        t.dwell = DWELL;
+      }
+    } else t.lastStop = undefined; // moved on: the next time it comes to that stop it halts again (Maddy 2026-10-13)
   } else {
     t.hx += DIR_DX[t.dir]! * speed;
     t.hy += DIR_DY[t.dir]! * speed;
