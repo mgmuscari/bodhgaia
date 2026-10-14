@@ -23,7 +23,7 @@ import type { ToolbarDeps, ToolbarHandle } from '../ui/toolbar';
 import type { MetaButton } from '../ui/dockContent';
 import type { PreviewTile } from '../ui/renderer';
 import type { InputHandlers } from '../ui/input';
-import { closeAll, hasViewMenu, pickTool, pickView, toggleCategory, toggleOverlay, viewRows, type DockState } from '../ui/dockMenu';
+import { closeAll, hasViewMenu, pickMode, pickTool, pickView, toggleCategory, toggleOverlay, viewRows, type DockState } from '../ui/dockMenu';
 import { OVERLAY_KINDS, type CompositeState, type OverlayKind } from '../ui/overlayRegistry';
 
 export interface ToolsDeps {
@@ -127,7 +127,8 @@ export function createToolController(deps: ToolsDeps): ToolController {
 
   const toolbar = deps.mount({
     getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory(), wallet.funds),
-    onSelect: (id) => select(pickTool(state(), id).tool as ToolId),
+    // a mode (inspect, bulldoze) closes the open menu; a category's tool keeps its menu open
+    onSelect: (id) => (catOf(id) === null ? commit(pickMode(state(), id, catOf)) : select(pickTool(state(), id).tool as ToolId)),
     // closing a menu or changing category puts the building tool down and the overlay off (Maddy 2026-10-13)
     onToggleCategory: (id) => commit(toggleCategory(state(), id, catOf)),
     getViewMenu: () => {
@@ -200,7 +201,7 @@ export function createToolController(deps: ToolsDeps): ToolController {
     return def !== undefined && isLineTool(def);
   };
   const hotkey = (action: string): void => {
-    if (action === 'inspect' || action === 'bulldoze') select(action);
+    if (action === 'inspect' || action === 'bulldoze') commit(pickMode(state(), action, catOf));
     else commit(closeAll()); // Escape, a right click, a long press: the plain map again
   };
   const clearHover = (): void => {

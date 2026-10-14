@@ -2,7 +2,7 @@
 // easier to deactivate" — a menu per overlay button, and "closing a menu or changing category should now unselect
 // the building tool or infoview". The dock's one selection model: which menu is open, the tool, the overlay.
 import { describe, expect, it } from 'vitest';
-import { closeAll, pickTool, pickView, toggleCategory, toggleOverlay, viewRows, type DockState } from '../../src/ui/dockMenu';
+import { closeAll, pickMode, pickTool, pickView, toggleCategory, toggleOverlay, viewRows, type DockState } from '../../src/ui/dockMenu';
 
 // a tool's category: street → transit, house → residential; inspect/bulldoze are modes (none)
 const catOf = (tool: string | null) => (tool === 'street' ? 'transit' : tool === 'house' ? 'residential' : null);
@@ -59,6 +59,22 @@ describe('the overlay menus', () => {
     expect(rows.map((r) => r.label)).toContain('Air pollution');
     expect(rows.find((r) => r.selected)?.view).toBe('flora');
     expect(rows.filter((r) => r.selected)).toHaveLength(1);
+  });
+});
+
+// Maddy 2026-10-13: "bulldoze/inspect don't cause other tool menus to close".
+describe('the modes (inspect, bulldoze)', () => {
+  it('picking one closes an open category menu', () => {
+    const s = pickMode(pickTool(toggleCategory(none, 'transit', catOf), 'street'), 'bulldoze', catOf);
+    expect(s).toEqual({ menu: null, tool: 'bulldoze', overlay: null });
+  });
+  it('picking one closes an open overlay menu, and its overlay with it', () => {
+    const s = pickMode(toggleOverlay(none, 'eco', catOf), 'inspect', catOf);
+    expect(s).toEqual({ menu: null, tool: 'inspect', overlay: null });
+  });
+  it('with no menu open, a key-cycled overlay stays on', () => {
+    const s = pickMode({ ...none, overlay: { kind: 'redline', view: 'grade' } }, 'inspect', catOf);
+    expect(s.overlay).toEqual({ kind: 'redline', view: 'grade' });
   });
 });
 

@@ -52,9 +52,15 @@ export function toggleOverlay(s: DockState, kind: OverlayKind, catOf: CategoryOf
   return { menu: { kind: 'overlay', id: kind }, tool, overlay: wasOn ? s.overlay : first };
 }
 
-/** A tool picked (from a category's menu, or a mode): the menu stays open. */
+/** A tool picked from a category's menu: the menu stays open. */
 export function pickTool(s: DockState, tool: string | null): DockState {
   return { ...s, tool };
+}
+
+/** A mode picked (inspect, bulldoze — no category of its own): the open menu closes, as any change of category
+ *  does (Maddy 2026-10-13: "bulldoze/inspect don't cause other tool menus to close"). */
+export function pickMode(s: DockState, tool: string, catOf: CategoryOf): DockState {
+  return { ...closeMenu(s, catOf), tool };
 }
 
 /** A view picked from an overlay's menu. */

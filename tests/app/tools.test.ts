@@ -96,6 +96,18 @@ describe('createToolController: the overlay menus (Maddy 2026-10-13)', () => {
     expect(h.log.filter((l) => l.startsWith('overlay:')).at(-1)).toBe('overlay:off');
   });
 
+  it('picking bulldoze or inspect — button or key — closes an open menu (Maddy 2026-10-13)', () => {
+    const h = setup();
+    h.mount().onToggleCategory(h.mount().getMenu().categories[0]!.id);
+    h.mount().onSelect('bulldoze');
+    expect(h.mount().getMenu().open).toBeNull();
+    h.mount().onMeta?.('eco');
+    h.tools.hotkey('inspect');
+    expect(h.mount().getViewMenu?.()).toBeNull();
+    expect(h.tools.selected()).toBe('inspect');
+    expect(h.log.filter((l) => l.startsWith('overlay:')).at(-1)).toBe('overlay:off');
+  });
+
   it('Escape (and a right click / long press) clears the tool, the menu and the overlay', () => {
     const h = setup();
     h.mount().onMeta?.('eco');
@@ -121,7 +133,7 @@ describe('createToolController: selection', () => {
     h.mount().onSelect('bulldoze');
     expect(h.tools.selected()).toBe('bulldoze');
     expect(h.previews).toEqual([null]);
-    expect(h.log).toEqual(['status:null', 'previewDirty', 'refresh']);
+    expect(h.log).toEqual(['status:null', 'previewDirty', 'refresh', 'refreshMeta']);
     expect(h.mount().getMenu().modes.find((m) => m.id === 'bulldoze')!.selected).toBe(true);
   });
 
