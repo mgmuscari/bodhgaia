@@ -14,6 +14,7 @@ import { powerTint, powerLegend } from '../../src/ui/powerOverlayContent';
 import { GameMap, Water } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel } from '../../src/engine/fabric';
 import { biodiversityField } from '../../src/ecology/biodiversity';
+import { stretchRange, stretched } from '../../src/ui/overlayTint';
 
 // The overlay registry is the ONE dispatch for the map overlays (kind → views, legend line, colour key,
 // tint source, refresh cadence). Adding an overlay = one entry. These tests pin today's behaviour: the
@@ -86,6 +87,14 @@ describe('overlay registry: colour keys', () => {
     expect(OVERLAYS.coverage.legend('coverage')).toEqual(coverageLegend());
     expect(OVERLAYS.power.legend('power')).toEqual(powerLegend());
   });
+
+  it('a stretched view\'s key names the range it spans, so the colours never pass for the full scale', () => {
+    expect(OVERLAYS.civic.legend('health', { lo: 36, hi: 59 })).toEqual({
+      ...civicLegend('health'),
+      title: 'Neighbourhood health · 14–23%',
+    });
+    expect(OVERLAYS.eco.legend('soil', { lo: 0, hi: 255 }).title).toBe('Soil health · 0–100%');
+  });
 });
 
 // cycleComposite (defined in the registry) keeps its truth table in civicOverlayContent.test.ts.
@@ -145,16 +154,22 @@ describe('overlay registry: tint sources read the same data as before', () => {
     const { map, ctx } = ctxFixture();
     const layers = { soil: map.soilHealth, flora: map.floraVitality, fauna: map.faunaPresence } as const;
     for (const v of ['soil', 'flora', 'fauna'] as const) {
-      const got = tints(OVERLAYS.eco.source!(v, ctx));
-      expect(got).toEqual(Array.from({ length: 8 }, (_, i) => (i % 4 === 3 ? null : overlayTint(v, layers[v][i]!))));
+      const src = OVERLAYS.eco.source!(v, ctx);
+      // stretched over the land values (water excluded)
+      const range = stretchRange([0, 1, 2, 4, 5, 6].map((i) => layers[v][i]!));
+      expect(src.range).toEqual(range);
+      expect(tints(src)).toEqual(
+        Array.from({ length: 8 }, (_, i) => (i % 4 === 3 ? null : overlayTint(v, stretched(layers[v][i]!, range)))),
+      );
     }
   });
 
   it('eco biodiversity tints land from the derived field', () => {
     const { map, ctx } = ctxFixture();
     const field = biodiversityField(map);
+    const range = stretchRange([0, 1, 2, 4, 5, 6].map((i) => field[i]!));
     expect(tints(OVERLAYS.eco.source!('biodiversity', ctx))).toEqual(
-      Array.from({ length: 8 }, (_, i) => (i % 4 === 3 ? null : overlayTint('biodiversity', field[i]!))),
+      Array.from({ length: 8 }, (_, i) => (i % 4 === 3 ? null : overlayTint('biodiversity', stretched(field[i]!, range)))),
     );
   });
 
@@ -165,12 +180,15 @@ describe('overlay registry: tint sources read the same data as before', () => {
     expect(air[1]).toEqual(overlayTint('airPollution', 40));
     expect(air[2]).toEqual(overlayTint('airPollution', 0));
     expect(air[3]).toBeNull();
+    // stretched: the worst ground (99) and the dingiest creek (120) take the ramp's far end
     const ground = tints(OVERLAYS.eco.source!('groundPollution', ctx));
-    expect(ground[2]).toEqual(overlayTint('groundPollution', 99));
+    expect(ground[2]).toEqual(overlayTint('groundPollution', 255));
+    expect(ground[0]).toEqual(overlayTint('groundPollution', 0));
     expect(ground[3]).toBeNull();
     const water = tints(OVERLAYS.eco.source!('waterPollution', ctx));
+    expect(OVERLAYS.eco.source!('waterPollution', ctx).range).toEqual({ lo: 0, hi: 120 });
     expect(water[0]).toBeNull();
-    expect(water[3]).toEqual(overlayTint('waterPollution', 120));
+    expect(water[3]).toEqual(overlayTint('waterPollution', 255));
     expect(water[7]).toEqual(overlayTint('waterPollution', 0));
   });
 
@@ -178,14 +196,18 @@ describe('overlay registry: tint sources read the same data as before', () => {
     const { ctx, values, t2n } = ctxFixture();
     for (const v of CIVIC_VIEWS) {
       if (v === 'health') continue; // read from ctx.health (below)
+      // two neighbourhoods: stretched, the lower takes the ramp's low end and the higher its high end
+      const range = stretchRange(values.map((n) => n[v]));
       expect(tints(OVERLAYS.civic.source!(v, ctx))).toEqual(
-        Array.from(t2n, (id) => (id === 0 ? null : civicOverlayTint(v, values[id - 1]![v]))),
+        Array.from(t2n, (id) => (id === 0 ? null : civicOverlayTint(v, stretched(values[id - 1]![v], range)))),
       );
     }
-    // neighbourhood health: each tile tinted by its neighbourhood's health
-    const health = (id: number) => id * 50;
-    expect(tints(OVERLAYS.civic.source!('health', { ...ctx, health }))).toEqual(
-      Array.from(t2n, (id) => (id === 0 ? null : civicOverlayTint('health', health(id)))),
+    // neighbourhood health: each tile tinted by its neighbourhood's health — a city all at 14–23% spans the ramp
+    const health = (id: number) => (id === 1 ? 36 : 59);
+    const src = OVERLAYS.civic.source!('health', { ...ctx, health });
+    expect(src.range).toEqual({ lo: 36, hi: 59 });
+    expect(tints(src)).toEqual(
+      Array.from(t2n, (id) => (id === 0 ? null : civicOverlayTint('health', id === 1 ? 0 : 255))),
     );
   });
 
@@ -216,9 +238,10 @@ describe('overlay registry: tint sources read the same data as before', () => {
 });
 
 describe('overlay registry: sim-cadence refresh', () => {
-  it('eco re-pushes on the eco tick (re-deriving only biodiversity); civic re-derives on the civic tick', () => {
+  it('eco re-derives on the eco tick; civic re-derives on the civic tick', () => {
     expect(OVERLAYS.eco.refresh?.on).toBe('eco');
-    for (const v of OVERLAYS.eco.views) expect(OVERLAYS.eco.refresh!.rederive(v)).toBe(v === 'biodiversity');
+    // every eco view is stretched over the values on the map, so each tick re-derives its range
+    for (const v of OVERLAYS.eco.views) expect(OVERLAYS.eco.refresh!.rederive(v)).toBe(true);
     expect(OVERLAYS.civic.refresh?.on).toBe('civic');
     for (const v of OVERLAYS.civic.views) expect(OVERLAYS.civic.refresh!.rederive(v)).toBe(true);
     for (const k of ['redline', 'police', 'coverage'] as const) expect(OVERLAYS[k].refresh).toBeUndefined();

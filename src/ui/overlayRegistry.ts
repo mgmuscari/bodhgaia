@@ -10,7 +10,7 @@ import type { ParcelStore } from '../engine/fabric';
 import { biodiversityField } from '../ecology/biodiversity';
 import { isPowerConsumer } from '../growth/power';
 import type { OverlayLegend } from './overlayLegend';
-import { OVERLAY_ALPHA } from './overlayTint';
+import { OVERLAY_ALPHA, rangeLabel, stretchRange, stretched, type StretchRange } from './overlayTint';
 import { OVERLAY_VIEWS, overlayTint, legendLine, ecoLegend, type OverlayView } from './ecoOverlayContent';
 import { CIVIC_VIEWS, civicOverlayTint, civicLegendLine, civicLegend, type CivicOverlayView } from './civicOverlayContent';
 import { REDLINE_VIEWS, redlineOverlayTint, redlineLegendLine, redlineLegend } from './redlineOverlayContent';
@@ -30,6 +30,8 @@ export interface OverlayTintSource {
   tint(i: number): RGBA | null;
   /** Dim every tile the tint leaves null, so the data reads as a layer view. */
   dimBase?: boolean;
+  /** A stretched view: the values its ramp spans (the colour key names it). */
+  range?: StretchRange;
 }
 
 /** The world data a tint source reads — gathered fresh by the shell each time an overlay is (re)applied. */
@@ -59,8 +61,8 @@ export interface OverlayEntry {
   readonly alpha: number;
   /** The one-line caption shown in the dock status line. */
   legendLine(view: string): string;
-  /** The visible colour key. */
-  legend(view: string): OverlayLegend;
+  /** The visible colour key; a stretched view's `range` joins its title. */
+  legend(view: string, range?: StretchRange): OverlayLegend;
   /** The cached-base tint for a view; absent for a live overlay. */
   source?(view: string, ctx: OverlayContext): OverlayTintSource;
   /** A per-frame overlay the renderer draws from a live field instead (no base source). */
@@ -73,7 +75,7 @@ interface TypedEntry<V extends string> {
   views: readonly V[];
   alpha: number;
   legendLine(view: V): string;
-  legend(view: V): OverlayLegend;
+  legend(view: V, range?: StretchRange): OverlayLegend;
   source?(view: V, ctx: OverlayContext): OverlayTintSource;
   live?: 'police';
   refresh?: { on: 'eco' | 'civic'; rederive(view: V): boolean };
@@ -83,34 +85,52 @@ interface TypedEntry<V extends string> {
 const entry = <V extends string>(e: TypedEntry<V>): OverlayEntry => e as unknown as OverlayEntry;
 
 const isWater = (map: GameMap, i: number): boolean => map.water[i] !== Water.None;
+
+/** A colour key with the stretched range in its title. */
+const withRange =
+  <V extends string>(legend: (view: V) => OverlayLegend) =>
+  (view: V, range?: StretchRange): OverlayLegend => {
+    const key = legend(view);
+    return range ? { ...key, title: `${key.title} · ${rangeLabel(range)}` } : key;
+  };
+
+/** A field view stretched over the values it shows: `value(i)` on the tiles `shown(i)`, the rest untinted. */
+function stretchedField(
+  n: number,
+  shown: (i: number) => boolean,
+  value: (i: number) => number,
+  tint: (v: number) => RGBA,
+): OverlayTintSource {
+  const vals: number[] = [];
+  for (let i = 0; i < n; i++) if (shown(i)) vals.push(value(i));
+  const range = stretchRange(vals);
+  return { dimBase: true, range, tint: (i) => (shown(i) ? tint(stretched(value(i), range)) : null) };
+}
 const capped = (field: ReadonlyMap<number, number>, i: number): number => Math.min(255, field.get(i) ?? 0);
 
 function ecoSource(view: OverlayView, ctx: OverlayContext): OverlayTintSource {
   const { map } = ctx;
+  const n = map.width * map.height;
+  const land = (i: number): boolean => !isWater(map, i);
+  const tint = (v: number): RGBA => overlayTint(view, v);
   switch (view) {
     case 'biodiversity': {
       const field = biodiversityField(map);
-      return { dimBase: true, tint: (i) => (isWater(map, i) ? null : overlayTint(view, field[i]!)) };
+      return stretchedField(n, land, (i) => field[i]!, tint);
     }
-    case 'airPollution': {
+    case 'airPollution':
       // the live agent-driven smog field (cars + dirty plants), over land
-      const poll = ctx.live.pollution;
-      return { dimBase: true, tint: (i) => (isWater(map, i) ? null : overlayTint(view, capped(poll, i))) };
-    }
-    case 'groundPollution': {
+      return stretchedField(n, land, (i) => capped(ctx.live.pollution, i), tint);
+    case 'groundPollution':
       // the live land-contamination field (industry, dirty power, desire-path litter), over land
-      const gp = ctx.live.groundPollution;
-      return { dimBase: true, tint: (i) => (isWater(map, i) ? null : overlayTint(view, capped(gp, i))) };
-    }
-    case 'waterPollution': {
+      return stretchedField(n, land, (i) => capped(ctx.live.groundPollution, i), tint);
+    case 'waterPollution':
       // the live runoff field, over WATER — the dingy creeks downstream of redlined industry
-      const wp = ctx.live.waterPollution;
-      return { dimBase: true, tint: (i) => (isWater(map, i) ? overlayTint(view, capped(wp, i)) : null) };
-    }
+      return stretchedField(n, (i) => isWater(map, i), (i) => capped(ctx.live.waterPollution, i), tint);
     default: {
       // soil / flora / fauna read the live map layers; eco lives on land
       const layer = view === 'soil' ? map.soilHealth : view === 'flora' ? map.floraVitality : map.faunaPresence;
-      return { dimBase: true, tint: (i) => (isWater(map, i) ? null : overlayTint(view, layer[i]!)) };
+      return stretchedField(n, land, (i) => layer[i]!, tint);
     }
   }
 }
@@ -120,26 +140,28 @@ export const OVERLAYS = {
     views: OVERLAY_VIEWS,
     alpha: OVERLAY_ALPHA,
     legendLine,
-    legend: ecoLegend,
+    legend: withRange(ecoLegend),
     source: ecoSource,
-    // soil/flora/fauna/pollution read live data (a repaint picks it up); biodiversity is derived → rebuild
-    refresh: { on: 'eco', rederive: (view) => view === 'biodiversity' },
+    // every view is stretched over the values on the map → each eco tick re-derives its range
+    refresh: { on: 'eco', rederive: () => true },
   }),
   civic: entry<CivicOverlayView>({
     views: CIVIC_VIEWS,
     alpha: OVERLAY_ALPHA,
     legendLine: civicLegendLine,
-    legend: civicLegend,
+    legend: withRange(civicLegend),
     source: (view, ctx) => {
       const count = ctx.civic.count();
       const values = new Uint8Array(count); // per-neighbourhood value, snapshotted per (re)apply
       for (let id = 1; id <= count; id++) values[id - 1] = view === 'health' ? (ctx.health?.(id) ?? 0) : ctx.civic.getValues(id)[view];
+      const range = stretchRange(values); // stretched over the neighbourhoods
       const t2n = ctx.tileToNeighborhood;
       return {
         dimBase: true,
+        range,
         tint: (i) => {
           const id = t2n[i]!;
-          return id === 0 ? null : civicOverlayTint(view, values[id - 1]!);
+          return id === 0 ? null : civicOverlayTint(view, stretched(values[id - 1]!, range));
         },
       };
     },

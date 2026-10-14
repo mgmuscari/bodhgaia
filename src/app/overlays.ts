@@ -45,7 +45,10 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     // A live overlay (police) is drawn per frame from its field, not baked into the cached base.
     const entry = active && OVERLAYS[active.kind];
     deps.renderer.setLiveOverlay(entry?.live ?? null);
-    deps.renderer.setOverlay(active && entry?.source ? entry.source(active.view, deps.context()) : null);
+    const source = active && entry?.source ? entry.source(active.view, deps.context()) : null;
+    deps.renderer.setOverlay(source);
+    // the key follows the source: a stretched view names the range it spans, re-derived each tick
+    deps.showLegend(active && entry ? entry.legend(active.view, source?.range) : null);
   };
 
   const set = (state: CompositeState): void => {
@@ -53,7 +56,6 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     apply();
     const entry = active && OVERLAYS[active.kind];
     deps.setStatus(active && entry ? entry.legendLine(active.view) : null);
-    deps.showLegend(active && entry ? entry.legend(active.view) : null);
     deps.markDirty();
     deps.refreshMeta();
   };
