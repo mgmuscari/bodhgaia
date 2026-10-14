@@ -26,6 +26,7 @@ const META_LABELS: Record<MetaButton['id'], string> = {
   police: 'Police (P)',
   coverage: 'Coverage (V)',
   power: 'Power (U)',
+  status: 'Status (K)',
   life: 'Life (L)',
   restore: 'Restoration (G)',
   saves: 'Saves (O)',

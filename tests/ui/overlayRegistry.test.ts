@@ -11,6 +11,7 @@ import { redlineOverlayTint, redlineLegend } from '../../src/ui/redlineOverlayCo
 import { policeLegend, POLICE_OVERLAY_ALPHA } from '../../src/ui/policeViolenceOverlayContent';
 import { coverageTint, coverageLegend } from '../../src/ui/coverageOverlayContent';
 import { powerTint, powerLegend } from '../../src/ui/powerOverlayContent';
+import { statusLegend, statusLegendLine } from '../../src/ui/statusOverlayContent';
 import { GameMap, Water } from '../../src/engine/map';
 import { ParcelStore, BuiltKind, placeParcel } from '../../src/engine/fabric';
 import { biodiversityField } from '../../src/ecology/biodiversity';
@@ -21,8 +22,8 @@ import { stretchRange, stretched } from '../../src/ui/overlayTint';
 // cycle order, the exact legend strings, and that each kind's tint source reads the same data as before.
 
 describe('overlay registry: every kind registered', () => {
-  it('lists the six kinds in dock/key order, each with an entry', () => {
-    expect(OVERLAY_KINDS).toEqual(['eco', 'civic', 'redline', 'police', 'coverage', 'power']);
+  it('lists the seven kinds in dock/key order, each with an entry', () => {
+    expect(OVERLAY_KINDS).toEqual(['eco', 'civic', 'redline', 'police', 'coverage', 'power', 'status']);
     expect(Object.keys(OVERLAYS).sort()).toEqual([...OVERLAY_KINDS].sort());
   });
 
@@ -41,6 +42,7 @@ describe('overlay registry: every kind registered', () => {
     expect(OVERLAYS.police.views).toEqual(['violence']);
     expect(OVERLAYS.coverage.views).toEqual(['coverage']);
     expect(OVERLAYS.power.views).toEqual(['power']);
+    expect(OVERLAYS.status.views).toEqual(['status']);
   });
 
   it('carries each kind\'s fill alpha (police keeps its lighter stain)', () => {
@@ -69,6 +71,7 @@ describe('overlay registry: legend lines (pinned to today\'s strings)', () => {
     police: { violence: 'Police violence — where the state does harm' },
     coverage: { coverage: 'Service coverage — served (green) vs under-served (red)' },
     power: { power: 'Power grid — powered (green) vs dark (red)' },
+    status: { status: statusLegendLine() },
   };
   for (const k of OVERLAY_KINDS) {
     it(`${k}: one line per view, identical to today`, () => {
@@ -86,6 +89,7 @@ describe('overlay registry: colour keys', () => {
     expect(OVERLAYS.police.legend('violence')).toEqual(policeLegend());
     expect(OVERLAYS.coverage.legend('coverage')).toEqual(coverageLegend());
     expect(OVERLAYS.power.legend('power')).toEqual(powerLegend());
+    expect(OVERLAYS.status.legend('status')).toEqual(statusLegend());
   });
 
   it('a stretched view\'s key names the range it spans, so the colours never pass for the full scale', () => {
@@ -125,6 +129,7 @@ function ctxFixture() {
       groundPollution: new Map([[2, 99]]),
       waterPollution: new Map([[3, 120]]),
       coverage: new Set([0]),
+      buildingHealth: new Map<number, number>(),
     },
     poweredAnchors: new Set<number>(),
     civic: { count: () => 2, getValues: (id: number) => values[id - 1]! },
@@ -249,5 +254,41 @@ describe('overlay registry: sim-cadence refresh', () => {
     // at the grid it was opened with until toggled again
     expect(OVERLAYS.power.refresh?.on).toBe('civic');
     for (const v of OVERLAYS.power.views) expect(OVERLAYS.power.refresh!.rederive(v)).toBe(true);
+  });
+});
+
+describe('overlay registry: the building-status infoview', () => {
+  const LIT = [0, 0, 0, 0];
+  it('lights the buildings that wear a badge (no tint, so they show through), dims the rest', () => {
+    const { map, ctx } = ctxFixture();
+    // the home at (0,0) is a power consumer off the grid (poweredAnchors empty) → its bolt; the park wears nothing
+    const got = tints(OVERLAYS.status.source!('status', ctx));
+    expect(got[0]).toEqual(LIT);
+    expect(got[1]).toBeNull();
+    expect(got[2]).toBeNull();
+    // powered, the home wears nothing… until it thrives
+    const lit = { ...ctx, poweredAnchors: new Set([map.idx(0, 0)]) };
+    expect(tints(OVERLAYS.status.source!('status', lit))[0]).toBeNull();
+    const thriving = { ...lit, live: { ...lit.live, buildingHealth: new Map([[map.idx(0, 0), 9]]) } };
+    expect(tints(OVERLAYS.status.source!('status', thriving))[0]).toEqual(LIT);
+    expect(OVERLAYS.status.source!('status', ctx).dimBase).toBe(true);
+  });
+
+  it('lights a boosted building, every tile of its footprint', () => {
+    const map = new GameMap(12, 6);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 1, y: 1, width: 2, height: 2, kind: BuiltKind.School });
+    placeParcel(map, parcels, { x: 4, y: 1, width: 2, height: 2, kind: BuiltKind.Library });
+    const { ctx } = ctxFixture();
+    // a school and a library are civic (power consumers) — power them so only the boost lights them
+    const powered = new Set([map.idx(1, 1), map.idx(4, 1)]);
+    const src = OVERLAYS.status.source!('status', { ...ctx, map, parcels, poweredAnchors: powered });
+    for (const [x, y] of [[1, 1], [2, 2], [4, 1], [5, 2]]) expect(src.tint(map.idx(x!, y!))).toEqual(LIT);
+    expect(src.tint(map.idx(8, 1))).toBeNull();
+  });
+
+  it('follows the grid and the homes on the civic tick', () => {
+    expect(OVERLAYS.status.refresh?.on).toBe('civic');
+    expect(OVERLAYS.status.refresh!.rederive('status')).toBe(true);
   });
 });

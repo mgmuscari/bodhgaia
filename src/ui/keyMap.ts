@@ -29,6 +29,7 @@ export const KEY_BINDINGS: readonly KeyBindingEntry[] = [
   { keys: ['p', 'P'], action: 'overlay:police' },
   { keys: ['v', 'V'], action: 'overlay:coverage' },
   { keys: ['u', 'U'], action: 'overlay:power' },
+  { keys: ['k', 'K'], action: 'overlay:status' }, // the badges' key (Maddy 2026-10-14)
   { keys: ['b', 'B'], action: 'budget' },
   { keys: ['o', 'O'], action: 'saves' }, // S pans (WASD, Maddy 2026-10-13)
   { keys: ['l', 'L'], action: 'life' },

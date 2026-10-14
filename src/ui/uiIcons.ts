@@ -17,6 +17,7 @@ export const UI_ICONS = [
   'police',
   'coverage',
   'power',
+  'status',
   'life',
   'help',
   'settings',
@@ -170,6 +171,14 @@ const PAINT: Record<UiIcon, (p: Pixels) => void> = {
       '.yy......',
       'yy.......',
     ], { y: C.gold, Y: C.flower });
+  },
+  status: (p) => {
+    // a little key card: the four badges' colours, one per corner (bolt, cloud, heart, sparkle)
+    rect(p, 2, 2, 12, 12, C.cream);
+    rect(p, 4, 4, 3, 3, C.gold);
+    rect(p, 9, 4, 3, 3, C.slate);
+    rect(p, 4, 9, 3, 3, C.signal);
+    rect(p, 9, 9, 3, 3, C.cyan);
   },
   life: (p) => {
     disc(p, 8, 3, 2, C.cream); // head

@@ -337,7 +337,7 @@ export function main(save: SaveV1 | null = null): void {
     markDirty();
   };
   syncStreetProps();
-  const showLegend = mountOverlayLegend(document.body);
+  const showLegend = mountOverlayLegend(document.body, (name) => renderer.iconImage(name));
 
   // The news ticker along the status bar: the city's changes as headlines (arrests, homes lost and found, gridlock,
   // outages), plus the economy's moments pushed above.

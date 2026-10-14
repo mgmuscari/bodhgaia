@@ -16,7 +16,7 @@ function setup() {
     return {
       map,
       parcels: new ParcelStore(),
-      live: { pollution: new Map(), groundPollution: new Map(), waterPollution: new Map(), coverage: new Set() },
+      live: { pollution: new Map(), groundPollution: new Map(), waterPollution: new Map(), coverage: new Set(), buildingHealth: new Map() },
       poweredAnchors: new Set(),
       civic: { count: () => 0, getValues: () => ({ belonging: 0, voice: 0, trust: 0 }) },
       tileToNeighborhood: new Uint16Array(8),

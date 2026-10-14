@@ -50,6 +50,7 @@ const OVERLAY_DIM_CSS = `rgba(${OVERLAY_DIM[0]}, ${OVERLAY_DIM[1]}, ${OVERLAY_DI
 import { policeViolenceTint } from './policeViolenceOverlayContent';
 import { TravelMode } from '../citizens/modes';
 import { boostIndex, boostsOf, canBoost, type BoostIndex } from '../engine/boosts';
+import { homeBadge } from './statusOverlayContent';
 
 /** A previewed tile for the hover/drag overlay: world coords + validity tint. */
 export interface PreviewTile {
@@ -261,8 +262,13 @@ export class Renderer {
   // Per base key, how many hash-cycled variants the skin painted (`grass-1` → 4, `road-1-5` → 3). A tile
   // picks one by position hash so a field or a street stops repeating on the tile grid.
   private readonly tileVariants: ReadonlyMap<string, number>;
-  // Status icons (`@icon/unpowered`, `@icon/thriving`, `@icon/suffering`).
+  // Status icons (`@icon/unpowered`, `@icon/thriving`, `@icon/suffering`, `@icon/boosted`).
   private readonly icons: Map<string, AtlasImage>;
+
+  /** A status badge's art (`@icon/<name>`), for the status key (overlay legend) to draw. */
+  iconImage(name: string): AtlasImage | undefined {
+    return this.icons.get(iconKey(name));
+  }
   // Terrain edge overlays (`@edge/shore/<mask>`, `@edge/canopy/<mask>`, `@edge/coast/<mask>`).
   private readonly edges: Map<string, AtlasImage>;
   // Unpowered parcel footprints (WORLD coords) from the last base pass — drawn per frame as a blinking
@@ -1202,10 +1208,10 @@ export class Renderer {
       if (zoneTypeOf(world.map.built[tile]!) !== ZoneType.Residential) continue;
       const hx = tile % mapW;
       const hy = (tile - hx) / mapW;
-      // icons flag EXCEPTIONS, not every home: a heart for a standout (health ≥ 9, ~1 in 10 on a fresh
-      // city), a raincloud a little earlier (≤ −6) since suffering is the actionable case
-      if (health >= 0 ? health < 9 : health > -6) continue;
-      const badge = health >= 0 ? thriving : suffering;
+      // icons flag EXCEPTIONS, not every home (statusOverlayContent.ts homeBadge — the status key's rule too)
+      const which = homeBadge(health);
+      if (!which) continue;
+      const badge = which === 'thriving' ? thriving : suffering;
       const { dx, dy } = camera.tileOrigin(hx, hy);
       if (!badge || !onScreen(dx, dy)) continue;
       ctx.drawImage(badge, dx - iconScale, dy - iconScale, 8 * iconScale, 8 * iconScale);

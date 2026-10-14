@@ -17,9 +17,11 @@ import { REDLINE_VIEWS, redlineOverlayTint, redlineLegendLine, redlineLegend } f
 import { POLICE_VIEWS, POLICE_OVERLAY_ALPHA, policeLegendLine, policeLegend } from './policeViolenceOverlayContent';
 import { COVERAGE_VIEWS, coverageTint, coverageLegendLine, coverageLegend } from './coverageOverlayContent';
 import { POWER_VIEWS, powerTint, powerLegendLine, powerLegend } from './powerOverlayContent';
+import { STATUS_LIT, STATUS_VIEWS, homeBadge, statusLegend, statusLegendLine } from './statusOverlayContent';
+import { boostIndex, boostsOf, canBoost } from '../engine/boosts';
 
 /** Every overlay kind, in dock/key order. */
-export const OVERLAY_KINDS = ['eco', 'civic', 'redline', 'police', 'coverage', 'power'] as const;
+export const OVERLAY_KINDS = ['eco', 'civic', 'redline', 'police', 'coverage', 'power', 'status'] as const;
 /** Which overlay dimension is active. */
 export type OverlayKind = (typeof OVERLAY_KINDS)[number];
 
@@ -44,6 +46,8 @@ export interface OverlayContext {
     groundPollution: ReadonlyMap<number, number>;
     waterPollution: ReadonlyMap<number, number>;
     coverage: ReadonlySet<number>;
+    /** Each home's health (anchor → value), for its heart / raincloud badge. */
+    buildingHealth: ReadonlyMap<number, number>;
   };
   /** Anchor tiles of the powered consumers (the current grid). */
   poweredAnchors: ReadonlySet<number>;
@@ -215,6 +219,29 @@ export const OVERLAYS = {
         return powerTint(poweredAnchors.has(map.idx(p.x, p.y)));
       },
     }),
+  }),
+  status: entry({
+    views: STATUS_VIEWS,
+    alpha: OVERLAY_ALPHA,
+    legendLine: statusLegendLine,
+    legend: statusLegend,
+    // the grid and the homes' health move on the civic cadence (placements re-push via the dirty base)
+    refresh: { on: 'civic', rederive: () => true },
+    // every building that wears a badge shows through; the rest of the map is dimmed
+    source: (_view, { map, parcels, poweredAnchors, live }) => {
+      const index = boostIndex(parcels);
+      const lit = new Set<number>(); // parcel ids (1-based, as map.parcel)
+      for (const i of parcels.aliveIndices()) {
+        const p = parcels.get(i);
+        const anchor = map.idx(p.x, p.y);
+        const badged =
+          (isPowerConsumer(p.kind) && !poweredAnchors.has(anchor)) ||
+          homeBadge(live.buildingHealth.get(anchor)) !== null ||
+          (canBoost(p.kind) && boostsOf(map, parcels, i, index).length > 0);
+        if (badged) lit.add(i + 1);
+      }
+      return { dimBase: true, tint: (i) => (lit.has(map.parcel[i]!) ? STATUS_LIT : null) };
+    },
   }),
 } satisfies Record<OverlayKind, OverlayEntry>;
 

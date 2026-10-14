@@ -23,6 +23,13 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Demo review (Maddy 2026-10-14)** — after the interdependence demos (drones and vans: "look good"):
+  - ✅ Overlay ramps stretch over the values on the map (eco + civic), the key names the range ("· 19–30%").
+  - ✅ Boosted buildings (pairings, maker↔industry — `engine/boosts.ts`) wear a cyan sparkle; inspect says why.
+  - ✅ Building-status infoview (K): the map dimmed to the badged buildings, a key that draws each badge.
+  - Drift to settle: the pollution field's "maker reuses the works' scrap" (`live/fields/pollution.ts`
+    `makerReused`) is tile-to-tile ≤ MAKER_SUPPLY + 1, while repairs and the badge use footprint-to-footprint
+    ≤ MAKER_SUPPLY (`engine/boosts.ts`). Move pollution onto `boostsOf`'s rule (re-pin the golden if it moves).
 - **Playtest batch 2 (Maddy 2026-10-13)** — features synthesized in `docs/design/interdependence.md`; bugs:
   - ✅ Elevated rail: a deck over the streets is track (trains run, stations where a street passes under); cars,
     walkers and cyclists draw beneath the deck, trains on it.

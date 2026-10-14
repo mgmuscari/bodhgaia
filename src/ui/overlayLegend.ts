@@ -10,6 +10,8 @@ export interface LegendStop {
   color: readonly [number, number, number];
   /** The label shown beside the swatch (e.g. "broken", "living", "D redlined"). */
   label: string;
+  /** A status badge (`@icon/<name>`) the key draws in place of the swatch (statusOverlayContent.ts). */
+  icon?: string;
 }
 
 export interface OverlayLegend {

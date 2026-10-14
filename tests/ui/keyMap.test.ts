@@ -17,6 +17,7 @@ const EXPECTED: [string, KeyAction][] = [
   ['p', 'overlay:police'],
   ['v', 'overlay:coverage'],
   ['u', 'overlay:power'],
+  ['k', 'overlay:status'],
   ['b', 'budget'],
   ['o', 'saves'], // Maddy 2026-10-13: WASD pans, so Saves moved off S
   ['l', 'life'],
