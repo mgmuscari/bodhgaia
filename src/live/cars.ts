@@ -142,7 +142,7 @@ function stepMoving(state: AmbientState, map: GameMap, rng: Rng, ctx: VehicleCtx
 export function stepCar(state: AmbientState, map: GameMap, rng: Rng, ctx: VehicleCtx, c: Car): boolean {
   if (c.wreck !== undefined) return --c.wreck > 0; // a wreck blocks its lane until it's towed
   if (c.abandoned) return degradeAbandonedCar(state, map, c);
-  if (c.owned) return true;
+  if (c.owned || c.atHome !== undefined) return true; // driven by its owner; or parked at home
   if (c.parked) return stepParked(c);
   return stepMoving(state, map, rng, ctx, c);
 }

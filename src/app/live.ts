@@ -19,6 +19,7 @@ import { parkingLots, parkingStalls } from '../ui/parkingContent';
 import { residentialCensus } from '../citizens/census';
 import { plantPollution } from '../growth/power';
 import { restoreLive, type SaveV1 } from '../save/snapshot';
+import { syncHomeCars } from '../live/homeCars';
 
 /** How far a dirty plant's plume reaches past its footprint, in tiles. */
 export const PLUME_RADIUS = 2;
@@ -113,7 +114,10 @@ export function createLive(deps: LiveDeps): LiveLayer {
       })),
     );
   };
-  const refreshHouseholds = (): void => setHouseholds(state, residentialCensus(parcels));
+  const refreshHouseholds = (): void => {
+    setHouseholds(state, residentialCensus(parcels));
+    syncHomeCars(state, map); // the households' cars beyond the driveway, at the kerb near home
+  };
   const recomputePlantEmitters = (): void => setPlantEmitters(state, plantEmitters(map, parcels));
   refreshParkingLots();
   refreshHouseholds();

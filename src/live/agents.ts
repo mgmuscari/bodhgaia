@@ -50,6 +50,7 @@ import {
   walkPath,
 } from './pathing';
 import { curbStallOffsets, isCarRoad, isParkable } from './network';
+import { takeHomeCar } from './homeCars';
 
 /**
  * Put a citizen in its owned car and commit the car to a least-cost route to a free parking spot near
@@ -281,6 +282,9 @@ export function ensureOwnedCar(state: AmbientState, p: Ped, map: GameMap): Car |
     const existing = findCar(state, p.carId);
     if (existing) return existing;
   }
+  // setting off from home: take one of the household's cars from the kerb (live/homeCars.ts)
+  const kerbCar = p.homeTile !== undefined ? takeHomeCar(state, map, p) : null;
+  if (kerbCar) return kerbCar;
   const start = nearestDriveStart(map, Math.round(p.x), Math.round(p.y));
   if (!start) return null;
   // A freshly-spawned owned car must rest in a VALID STALL (a kerb slot / lot bay), never warped onto a
