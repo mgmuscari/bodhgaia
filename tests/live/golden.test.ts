@@ -152,7 +152,9 @@ describe('live layer golden determinism', () => {
     // 2026-10-14: schools — the state carries their learning (and the school-run hour): same motion, more fields
     // 2026-10-21: sideshows — the state carries their tire marks (`skids`, empty here): same motion (checked with the key
     // dropped: the old digest), one more field
-    expect(first).toBe('cars=4 peds=169 cruisers=4 trains=5 flocks=16 #76e4284f');
+    // 2026-10-21: the unhoused's fuller days — each day out draws its errand (a meal, warmth, care, rest, the shops)
+    // from the shared stream, so everything after it draws differently: a behaviour change, not a refactor
+    expect(first).toBe('cars=4 peds=172 cruisers=4 trains=5 flocks=13 #60cadb76');
   });
 });
 

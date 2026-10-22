@@ -6,10 +6,11 @@
 
 import type { GameMap } from '../engine/map';
 import type { Rng } from '../engine/rng';
-import type { AmbientState } from './types';
+import type { AmbientState, Ped } from './types';
 import { StopCategory } from '../citizens/itinerary';
 import { TravelMode } from '../citizens/modes';
-import { nearestOfCategory, nearestWalkable, walkPath } from './pathing';
+import { nearestOfCategory, nearestWalkable, nearestWhere, walkPath } from './pathing';
+import { BuiltKind } from '../engine/fabric';
 import { liveCaps } from './caps';
 
 /** One in this many of the unhoused is out at a time (as the housed: a third). */
@@ -17,9 +18,22 @@ export const UNHOUSED_OUT_DIVISOR = 3;
 /** A place's visit record keeps this share each occupancy pass (fading over a few in-game hours). */
 export const VISIT_KEEP = 0.97;
 
-/** Top up the unhoused out on their day from the camps: a camp picked by how many live there, a commercial place
- *  near it that they can walk to. */
-export function spawnUnhoused(state: AmbientState, map: GameMap, rng: Rng): void {
+/** What a day out is for, and where (Maddy 2026-10-21 "Unhoused as people": fuller days): a meal at a pantry or
+ *  food bank, warmth at a library or civic hall, a clinic, a park — or the shops, as before. Weights out of 100;
+ *  come evening (EVENING_FROM) warmth counts double. With none of an errand's places in reach, it's the shops. */
+type Errand = NonNullable<Ped['errand']>;
+const ERRANDS: readonly { errand: Exclude<Errand, 'shop'>; weight: number; kinds: ReadonlySet<number> }[] = [
+  { errand: 'meal', weight: 30, kinds: new Set([BuiltKind.Pantry, BuiltKind.FoodBank]) },
+  { errand: 'warmth', weight: 20, kinds: new Set([BuiltKind.Library, BuiltKind.Civic]) },
+  { errand: 'care', weight: 10, kinds: new Set([BuiltKind.Clinic]) },
+  { errand: 'rest', weight: 15, kinds: new Set([BuiltKind.Park, BuiltKind.CommunityGarden, BuiltKind.Parklet]) },
+];
+const SHOP_WEIGHT = 25;
+export const EVENING_FROM = 17;
+
+/** Top up the unhoused out on their day from the camps: a camp picked by how many live there, an errand, and a place
+ *  for it near the camp that they can walk to. */
+export function spawnUnhoused(state: AmbientState, map: GameMap, rng: Rng, hour?: number): void {
   // their days start from where they sleep: a camp, or a mutual-aid shelter
   const camps = new Map<number, number>([...(state.camps ?? new Map<number, number>()), ...(state.sheltered ?? new Map<number, number>())]);
   if (camps.size === 0) return;
@@ -44,7 +58,25 @@ export function spawnUnhoused(state: AmbientState, map: GameMap, rng: Rng): void
     const door = state.sheltered?.has(camp) ? nearestWalkable(map, camp % map.width, Math.floor(camp / map.width)) : null;
     const cx = door ? door.x : camp % map.width;
     const cy = door ? door.y : (camp - cx) / map.width;
-    const plot = nearestOfCategory(map, cx, cy, StopCategory.Shop, state.landValue, rng.nextInt(1 << 30));
+    // the errand: weighted, warmth doubled come evening; its nearest place, else the shops
+    const evening = hour !== undefined && (hour >= EVENING_FROM || hour < 6);
+    const weights = ERRANDS.map((e) => e.weight * (evening && e.errand === 'warmth' ? 2 : 1));
+    let u = rng.next() * (weights.reduce((a, b) => a + b, 0) + SHOP_WEIGHT);
+    let errand: Errand = 'shop';
+    for (let k = 0; k < ERRANDS.length; k++) {
+      u -= weights[k]!;
+      if (u < 0) {
+        errand = ERRANDS[k]!.errand;
+        break;
+      }
+    }
+    const pick = rng.nextInt(1 << 30);
+    const want = ERRANDS.find((e) => e.errand === errand);
+    let plot = want ? nearestWhere(map, cx, cy, (k) => want.kinds.has(k), state.landValue, pick) : null;
+    if (!plot) {
+      errand = 'shop';
+      plot = nearestOfCategory(map, cx, cy, StopCategory.Shop, state.landValue, pick);
+    }
     if (!plot || !walkPath(map, cx, cy, plot.x, plot.y)) continue; // nowhere they can walk to
     state.peds.push({
       x: cx,
@@ -53,6 +85,7 @@ export function spawnUnhoused(state: AmbientState, map: GameMap, rng: Rng): void
       tx: cx,
       ty: cy,
       shelter: camp,
+      errand,
       phase: 'to-building',
       walkTo: { x: plot.x, y: plot.y },
       building: { x: plot.x, y: plot.y },

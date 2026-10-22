@@ -72,6 +72,8 @@ export interface Mover {
   homeTile?: number;
   /** An unhoused person's camp (live/unhoused.ts): they set out from it and come back to it, in place of a home. */
   shelter?: number;
+  /** What an unhoused person's day out is for (live/unhoused.ts): the shops, a meal, warmth, care or rest. */
+  errand?: 'shop' | 'meal' | 'warmth' | 'care' | 'rest';
   /** For a street-parked car: the direction (0=N/1=E/2=S/3=W) toward its curb (the adjacent
    *  non-road tile), so the renderer draws it hugging the kerb instead of in the lane. */
   curbDir?: number;

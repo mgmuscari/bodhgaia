@@ -516,13 +516,26 @@ export function nearestOfCategory(
   landValue?: ReadonlyMap<number, number>,
   pick?: number,
 ): { x: number; y: number } | null {
+  return nearestWhere(map, cx, cy, (k) => stopCategoryOf(k) === category, landValue, pick);
+}
+
+/** The place nearest (cx, cy) whose built kind passes `accept` — nearestOfCategory's search for any set of kinds
+ *  (the unhoused's errands: a pantry, a library, a clinic…). */
+export function nearestWhere(
+  map: GameMap,
+  cx: number,
+  cy: number,
+  accept: (kind: number) => boolean,
+  landValue?: ReadonlyMap<number, number>,
+  pick?: number,
+): { x: number; y: number } | null {
   // the best-scoring tile of each place (a multi-tile plot counts once)
   const best = new Map<number, { score: number; h: number; x: number; y: number }>();
   for (let y = cy - CITIZEN_TRIP_RADIUS; y <= cy + CITIZEN_TRIP_RADIUS; y++) {
     for (let x = cx - CITIZEN_TRIP_RADIUS; x <= cx + CITIZEN_TRIP_RADIUS; x++) {
       if (!map.inBounds(x, y)) continue;
       const i = map.idx(x, y);
-      if (stopCategoryOf(map.built[i]!) !== category) continue;
+      if (!accept(map.built[i]!)) continue;
       // Distance, pulled DOWN by the plot's land value: a prized destination justifies up to LV_PULL
       // extra tiles of travel over a drab nearer one — citizens flow toward the nice parts of town.
       const d = Math.abs(x - cx) + Math.abs(y - cy);

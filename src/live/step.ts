@@ -96,7 +96,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   //    spawned here — they are the citizens' own cars, boarded when a leg is too long to walk
   //    (cars=trips). Last-mile walkers spawn on a car PARKING (see tryPark → spawnParkPed), not here.
   spawnCitizens(state, map, rng);
-  spawnUnhoused(state, map, rng); // the unhoused out on their day, from the camps
+  spawnUnhoused(state, map, rng, state.hour); // the unhoused out on their day, from the camps
   spawnFlocks(state, map, rng);
   spawnCruisers(state, map, rng); // top the patrol fleet up from the precincts
   spawnTrains(state, map, rng); // ambient trains on the rail network
