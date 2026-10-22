@@ -209,6 +209,7 @@ const CIVIC_SITE_KINDS: ReadonlySet<number> = new Set([
   BuiltKind.Library,
   BuiltKind.Precinct,
   BuiltKind.FireStation,
+  BuiltKind.SanitationDepot,
   BuiltKind.Clinic,
   BuiltKind.Civic,
 ]);
@@ -246,6 +247,7 @@ const BUILD_TABLE: Readonly<Record<number, BuildEntry>> = {
   [BuiltKind.Industrial]: { label: 'Industrial', cost: 6, footprint: { w: 1, h: 1 } },
   [BuiltKind.Civic]: { label: 'Civic', cost: 12, footprint: { w: 2, h: 2 } },
   [BuiltKind.FireStation]: { label: 'Fire Station', cost: 14, footprint: { w: 2, h: 2 } },
+  [BuiltKind.SanitationDepot]: { label: 'Sanitation Depot', cost: 12, footprint: { w: 2, h: 2 } },
   [BuiltKind.Clinic]: { label: 'Clinic', cost: 14, footprint: { w: 2, h: 2 } },
   [BuiltKind.Library]: { label: 'Library', cost: 12, footprint: { w: 2, h: 2 } },
   [BuiltKind.School]: { label: 'School', cost: 16, footprint: { w: 2, h: 2 } },
@@ -328,6 +330,7 @@ const CLASSIC_BUILD_KINDS: readonly BuiltKind[] = [
   BuiltKind.Industrial,
   BuiltKind.Civic,
   BuiltKind.FireStation,
+  BuiltKind.SanitationDepot,
   BuiltKind.Clinic,
   BuiltKind.Library,
   BuiltKind.School,

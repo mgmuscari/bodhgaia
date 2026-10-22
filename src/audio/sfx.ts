@@ -130,6 +130,7 @@ export function placeCategoryOf(kind: number | undefined): PlaceCategory {
   if (isCommonsKind(kind)) return 'commons';
   if (
     kind === BuiltKind.FireStation ||
+    kind === BuiltKind.SanitationDepot ||
     kind === BuiltKind.Clinic ||
     kind === BuiltKind.Library ||
     kind === BuiltKind.School ||

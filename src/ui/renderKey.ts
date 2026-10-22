@@ -60,6 +60,8 @@ const BUILDING_RENDER_KINDS: readonly number[] = [
   BuiltKind.Civic,
   BuiltKind.Precinct,
   BuiltKind.FireStation,
+  BuiltKind.SanitationDepot,
+  BuiltKind.Landfill,
   BuiltKind.Clinic,
   BuiltKind.Library,
   BuiltKind.School,

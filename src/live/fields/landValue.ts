@@ -10,6 +10,8 @@ import { layField, sampleField } from '../../citizens/field';
 import {
   AMENITY_KINDS,
   LV_RUIN,
+  LV_PILE,
+  LV_LANDFILL,
   COVERAGE_RADIUS,
   LV_AMENITY,
   LV_BASE,
@@ -73,6 +75,7 @@ export function landValueAt(
   water?: ReadonlyMap<number, number>,
   road?: ReadonlyMap<number, number>,
   coverage?: ReadonlySet<number>,
+  piles?: ReadonlySet<number>,
 ): number {
   const i = map.idx(x, y);
   let v = LV_BASE + (map.floraVitality[i]! / 255) * LV_FLORA + (map.faunaPresence[i]! / 255) * LV_FAUNA;
@@ -84,6 +87,8 @@ export function landValueAt(
   // is enough to drag a plot down).
   let amenity = 0;
   let ruins = 0; // empty shells nearby: a dead street drags a living one
+  let junk = 0; // piles left on the street (live/evictions.ts), until a truck or the neighbours clear them
+  let dumpNear = 0; // the landfill (Maddy 2026-10-21): the nearest of its tiles sets the drag
   let pollNear = 0;
   let trafNear = 0;
   let wearNear = 0;
@@ -100,6 +105,8 @@ export function landValueAt(
       const falloff = 1 - dist / (LV_RADIUS + 1); // 1 on the tile → ~0 at the edge of the radius
       if (AMENITY_KINDS.has(map.built[ni]!) || map.deck[ni] === BuiltKind.Parklet) amenity += falloff; // a kerb parklet too
       else if (map.built[ni] === BuiltKind.Ruin) ruins += falloff;
+      if (piles?.has(ni)) junk += falloff;
+      if (map.built[ni] === BuiltKind.Landfill) dumpNear = Math.max(dumpNear, falloff); // the dump next door
       // Nuisances felt by distance: the worst weighted road nearby sets the drag (one jam is enough).
       if (pollution) pollNear = Math.max(pollNear, sampleField(pollution, ni) * falloff);
       if (traffic) trafNear = Math.max(trafNear, sampleField(traffic, ni) * falloff);
@@ -112,6 +119,8 @@ export function landValueAt(
   }
   v += amenity * LV_AMENITY;
   v -= ruins * LV_RUIN;
+  v -= junk * LV_PILE;
+  v -= dumpNear * LV_LANDFILL;
   v -= (pollNear / POLL_MAX) * LV_POLL_PEN;
   v -= (trafNear / TRAFFIC_MAX) * LV_TRAFFIC_PEN;
   v -= (wearNear / WEAR_MAX) * LV_WEAR_PEN;
@@ -140,6 +149,7 @@ export function recomputeLandValueBand(state: AmbientState, map: GameMap, k: num
 /** Recompute rows [y0, y1); `drop` deletes the value of any tile there that is no longer a plot. */
 function recomputeRows(state: AmbientState, map: GameMap, y0: number, y1: number, drop = false): void {
   const W = map.width;
+  const piles = state.evictedPiles?.length ? new Set(state.evictedPiles.map((p) => map.idx(p.x, p.y))) : undefined;
   for (let y = y0; y < y1; y++) {
     for (let x = 0; x < W; x++) {
       const i = map.idx(x, y);
@@ -150,7 +160,7 @@ function recomputeRows(state: AmbientState, map: GameMap, y0: number, y1: number
       state.landValue.set(
         i,
         landValueAt(
-          map, x, y, state.pollution, state.traffic, state.wear, state.waterPollution, state.roadDecay, state.coverage,
+          map, x, y, state.pollution, state.traffic, state.wear, state.waterPollution, state.roadDecay, state.coverage, piles,
         ),
       );
     }

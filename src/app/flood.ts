@@ -57,11 +57,13 @@ export function createFloodController(deps: FloodDeps): FloodController {
         const n = Math.floor(live.occupancy.get(anchor) ?? 0);
         evacuated.set(anchor, n);
         live.occupancy.set(anchor, 0);
+        (live.evacuated ??= new Set()).add(anchor); // evacuated, not evicted (live/evictions.ts)
         leftHome(live, anchor, n);
       }
       for (const [anchor, n] of [...evacuated]) {
         if (under.has(anchor)) continue;
         evacuated.delete(anchor);
+        live.evacuated?.delete(anchor);
         const back = wentHome(live, anchor, Math.min(n, Math.floor(live.unhoused)));
         live.occupancy.set(anchor, (live.occupancy.get(anchor) ?? 0) + back);
       }

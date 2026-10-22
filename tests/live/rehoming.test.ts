@@ -229,3 +229,23 @@ describe('co-ops and communes are sized by their footprint (2026-10-08)', () => 
     expect(commune).toBe(house! * 9);
   });
 });
+
+// Maddy 2026-10-21: "people shouldn't get evicted from tiny homes or communes". Secure tenure — a co-op, a commune, a
+// tiny-home village — never puts its residents out when conditions turn; rent already spared them, now the drift does.
+describe('secure tenure: nobody is put out of a co-op, a commune or a tiny home', () => {
+  for (const kind of [BuiltKind.Commune, BuiltKind.CoopHousing, BuiltKind.TinyHomes]) {
+    it(`a harm doesn't empty a ${kind === BuiltKind.Commune ? 'commune' : kind === BuiltKind.CoopHousing ? 'co-op' : 'tiny-home village'}`, () => {
+      const c = street([{ x: 2, count: 10 }]);
+      c.map.built[c.t(2)] = kind;
+      c.state.occupancy.set(c.t(2), 10);
+      settle(c);
+      const housed = c.state.occupancy.get(c.t(2))!;
+      expect(housed).toBeGreaterThan(0);
+      const pool = c.state.unhoused;
+      c.state.pollution.set(c.t(2), 255); // the same smokestack that empties an apartment
+      for (let i = 0; i < 60; i++) stepOccupancy(c.state, c.map);
+      expect(c.state.occupancy.get(c.t(2))!).toBeGreaterThanOrEqual(housed);
+      expect(c.state.unhoused).toBeLessThanOrEqual(pool);
+    });
+  }
+});

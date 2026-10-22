@@ -39,6 +39,7 @@ import { stepWanderer } from './wanderer';
 import { stepTrucks } from './trucks';
 import { stepAmbulances } from './ambulances';
 import { spawnVans, stepVans } from './vans';
+import { stepGarbage } from './garbage';
 import { stepDrones } from './drones';
 import { schoolRun, stepPupils } from './schoolRun';
 import { stepClouds, stepToxic } from './spills';
@@ -46,6 +47,7 @@ import { stepGatherings } from './gatherings';
 import { spawnTrains, stepTrain } from './trains';
 import { advanceFlock, flockTile, spawnFlocks } from './birds';
 import { stepOccupancy } from './fields/occupancy';
+import { spawnEvictions, stepEvictionPiles } from './evictions';
 import { settleCamps } from './camps';
 import { fadeVisits, spawnUnhoused } from './unhoused';
 import { computeCoverage, recomputeLandValueBand, stepRoadDecay } from './fields/landValue';
@@ -66,6 +68,7 @@ import { snapshotMovers } from './poses';
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // the fallen and the memorials; the night's exposure deaths (once per in-game hour, with a host clock)
   stepDeaths(state);
+  stepEvictionPiles(state); // an eviction's things on the kerb, for a while
   stepExposure(state, map, rng);
   if (state.wanderer) stepWanderer(state, map, rng); // the opening's night walker
   if (state.trucks) stepTrucks(state, map); // fire trucks on a call
@@ -73,6 +76,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.drones?.length) stepDrones(state); // deliveries in the air
   schoolRun(state, map, state.hour); // the walk to school, and home (once at each hour)
   if (state.pupils?.length) stepPupils(state, map);
+  stepGarbage(state, map); // the depots' trucks clear the piles on the street (a no-op with none and no trucks)
   if (state.foodRuns?.length || state.vans?.length) {
     spawnVans(state, map); // this hour's food-bank runs, made visible
     stepVans(state, map);
@@ -96,7 +100,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   //    spawned here — they are the citizens' own cars, boarded when a leg is too long to walk
   //    (cars=trips). Last-mile walkers spawn on a car PARKING (see tryPark → spawnParkPed), not here.
   spawnCitizens(state, map, rng);
-  spawnUnhoused(state, map, rng); // the unhoused out on their day, from the camps
+  spawnUnhoused(state, map, rng, state.hour); // the unhoused out on their day, from the camps
   spawnFlocks(state, map, rng);
   spawnCruisers(state, map, rng); // top the patrol fleet up from the precincts
   spawnTrains(state, map, rng); // ambient trains on the rail network
@@ -220,6 +224,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.occTick % OCC_CADENCE === 0) {
     stepOccupancy(state, map);
     settleCamps(state, map); // the unhoused go to the camps (and the re-housed leave them)
+    spawnEvictions(state, map); // …and the newly put-out are seen to walk there
     fadeVisits(state);
   }
 

@@ -60,3 +60,56 @@ describe("the unhoused's days", () => {
     expect(busy).toBeGreaterThan(calm * 0.5); // one shop of three thinned, not the street emptied
   });
 });
+
+// Fuller days (Maddy 2026-10-21 "Unhoused as people"): not only the shops — a meal at a pantry or food bank, warmth
+// at a library or civic hall (more of it come evening), a clinic, a park. Where there's none of a kind in reach,
+// they go where there is; only the shops' visits thin commerce's taxes.
+describe('fuller days', () => {
+  function town() {
+    const { map, parcels, state } = street();
+    placeParcel(map, parcels, { x: 12, y: 5, width: 1, height: 1, kind: BuiltKind.Pantry });
+    placeParcel(map, parcels, { x: 14, y: 5, width: 1, height: 1, kind: BuiltKind.Library });
+    placeParcel(map, parcels, { x: 16, y: 5, width: 1, height: 1, kind: BuiltKind.Clinic });
+    placeParcel(map, parcels, { x: 10, y: 7, width: 2, height: 2, kind: BuiltKind.Park });
+    return { map, parcels, state };
+  }
+  const WANT: Record<string, number[]> = {
+    shop: [BuiltKind.CommercialStrip],
+    meal: [BuiltKind.Pantry, BuiltKind.FoodBank],
+    warmth: [BuiltKind.Library, BuiltKind.Civic],
+    care: [BuiltKind.Clinic],
+    rest: [BuiltKind.Park, BuiltKind.CommunityGarden, BuiltKind.Parklet],
+  };
+  const errands = (hour: number) => {
+    const { map, state } = town();
+    const rng = createRng('d').fork('d');
+    const seen: Record<string, number> = {};
+    for (let k = 0; k < 400; k++) {
+      state.peds = [];
+      spawnUnhoused(state, map, rng, hour);
+      for (const p of state.peds) {
+        const e = p.errand ?? 'none';
+        seen[e] = (seen[e] ?? 0) + 1;
+        expect(WANT[e], e).toContain(map.built[map.idx(p.building!.x, p.building!.y)]);
+      }
+    }
+    return seen;
+  };
+
+  it('a day out may be a meal, warmth, care, rest or the shops', () => {
+    const seen = errands(12);
+    for (const e of ['shop', 'meal', 'warmth', 'care', 'rest']) expect(seen[e] ?? 0, e).toBeGreaterThan(0);
+  });
+
+  it('come evening, more go somewhere warm', () => {
+    const share = (s: Record<string, number>) => (s.warmth ?? 0) / Object.values(s).reduce((a, b) => a + b, 0);
+    expect(share(errands(19))).toBeGreaterThan(share(errands(12)));
+  });
+
+  it('with only shops in reach, the shops it is', () => {
+    const { map, state } = street();
+    const rng = createRng('d').fork('d');
+    for (let k = 0; k < 40; k++) spawnUnhoused(state, map, rng, 12);
+    for (const p of state.peds) expect(p.errand).toBe('shop');
+  });
+});

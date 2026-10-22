@@ -152,7 +152,15 @@ describe('live layer golden determinism', () => {
     // 2026-10-14: schools — the state carries their learning (and the school-run hour): same motion, more fields
     // 2026-10-21: sideshows — the state carries their tire marks (`skids`, empty here): same motion (checked with the key
     // dropped: the old digest), one more field
-    expect(first).toBe('cars=4 peds=169 cruisers=4 trains=5 flocks=16 #76e4284f');
+    // 2026-10-21: the unhoused's fuller days — each day out draws its errand (a meal, warmth, care, rest, the shops)
+    // from the shared stream, so everything after it draws differently: a behaviour change, not a refactor
+    // 2026-10-21: new cities have a sanitation depot (underserved, on the greenlined side) — a different city
+    // 2026-10-21: …and a landfill on the most redlined frontage (the depots' trucks dump there) — a different city
+    // 2026-10-21: the landfill's fill is a live stock (`landfill`, empty here): same motion (checked with the key
+    // dropped: the old digest), one more field
+    // 2026-10-21: the landfill holds the city's history, poisons the ground and water round it and drags land value —
+    // a behaviour change
+    expect(first).toBe('cars=3 peds=181 cruisers=3 trains=5 flocks=11 #a15213aa');
   });
 });
 

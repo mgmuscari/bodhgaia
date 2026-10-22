@@ -43,6 +43,7 @@ import {
 } from '../tuning';
 import { DIR_DX, DIR_DY } from '../geometry';
 import { seedInheritedOccupancy } from './occupancy';
+import { LANDFILL_HISTORY, landfillHarm, pruneLandfills } from '../garbage';
 import { settleCamps } from '../camps';
 import type { AmbientState } from '../types';
 import { mapEpoch } from '../network';
@@ -96,7 +97,9 @@ export function accumulateWaterRunoff(state: AmbientState, map: GameMap): void {
         const ni = map.idx(nx, ny);
         if (map.water[ni] !== 0) continue; // a water neighbour sheds nothing
         const k = map.built[ni]!;
-        if (zoneTypeOf(k) === ZoneType.Industrial && !cleaned.has(ni)) {
+        if (k === BuiltKind.Landfill) {
+          runoff += RUNOFF_INDUSTRY * 2 * landfillHarm(state); // leachate: the dump bleeds into the creek (Maddy 2026-10-21)
+        } else if (zoneTypeOf(k) === ZoneType.Industrial && !cleaned.has(ni)) {
           // Industry is the toxic source; redlined industry sheds the MOST (least
           // regulated, concentrated there by policy) — scale by the tile's grade.
           // This is the Hackensack: the contamination starts at the redlined plant.
@@ -189,6 +192,8 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
   const reused = makerReused(map); // industry the makers take scrap from poisons half as much
   const W = map.width;
   const H = map.height;
+  pruneLandfills(state, map); // a capped landfill's fill harms no more
+  const dumpHarm = landfillHarm(state); // the fuller the landfill, the worse (live/garbage.ts)
   const plants =
     state.plantEmitters && state.plantEmitters.length > 0
       ? new Set(state.plantEmitters.map((e) => e.tile))
@@ -202,6 +207,7 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
       // The tile's OWN source-ness: industry + dirty power poison the ground they stand on.
       if (zoneTypeOf(k) === ZoneType.Industrial && !cleaned.has(i)) load += GROUND_INDUSTRY * (1 + map.redline[i]! / 255) * (reused.has(i) ? REUSED_SHARE : 1);
       if (plants && plants.has(i)) load += GROUND_PLANT;
+      if (k === BuiltKind.Landfill) load += GROUND_INDUSTRY * 2 * dumpHarm; // the dump poisons its own ground
       // Demand-path litter: the trampled, littered ground of a beaten path leaches into the soil.
       const wear = state.wear.get(i) ?? 0;
       if (wear > 0) load += (wear / WEAR_MAX) * GROUND_LITTER;
@@ -216,6 +222,8 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
           load += GROUND_SEEP * (1 + map.redline[ni]! / 255) * (reused.has(ni) ? REUSED_SHARE : 1);
         } else if (plants && plants.has(ni)) {
           load += GROUND_SEEP;
+        } else if (map.built[ni] === BuiltKind.Landfill) {
+          load += GROUND_SEEP * 2 * dumpHarm; // and seeps out past its fence
         }
       }
       if (load > 0) layField(state.groundPollution, i, load, GROUND_POLL_MAX);
@@ -490,5 +498,12 @@ export function seedDecay(state: AmbientState, map: GameMap, historyPct = 100): 
   for (let n = 0; n < 60; n++) accumulateWaterRunoff(state, map);
   // …and a century of disinvestment already emptied the redlined homes: the inherited unhoused.
   seedInheritedOccupancy(state, map, historyPct);
+  // the landfill already holds decades of the city's garbage (Maddy 2026-10-21)
+  for (let t = 0; t < map.built.length; t++) {
+    if (map.built[t] !== BuiltKind.Landfill) continue;
+    const x = t % map.width;
+    if ((x > 0 && map.built[t - 1] === BuiltKind.Landfill) || (t >= map.width && map.built[t - map.width] === BuiltKind.Landfill)) continue; // the anchor
+    if (!state.landfill.has(t)) state.landfill.set(t, LANDFILL_HISTORY);
+  }
   settleCamps(state, map); // …who live in the camps by the homes they lost
 }

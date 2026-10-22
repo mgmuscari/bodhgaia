@@ -276,7 +276,10 @@ const arriveAtVehicle: PedStep = (state, map, _rng, ctx, p) => {
 /** Reached the building → go inside; a successful visit refuels, and a citizen on a daily round
  *  BANKS the stop's wellbeing at home (less the leg's walk tolls). */
 const arriveAtBuilding: PedStep = (state, map, rng, _ctx, p) => {
-  if (p.shelter !== undefined && p.building) recordVisit(state, map.idx(p.building.x, p.building.y)); // a day out of the camp
+  // a day out of the camp at the shops: recorded where (commerce's tax base thins there)
+  if (p.shelter !== undefined && p.building && (p.errand ?? 'shop') === 'shop') recordVisit(state, map.idx(p.building.x, p.building.y));
+  // a meal at a pantry or food bank: it counts against tonight's cold (live/death.ts stepExposure)
+  if (p.shelter !== undefined && p.errand === 'meal') state.mealsToday = (state.mealsToday ?? 0) + 1;
   p.phase = 'inside';
   p.dwellInside = INSIDE_DWELL_MIN + rng.nextInt(INSIDE_DWELL_SPAN);
   if (p.building) {

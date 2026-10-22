@@ -72,6 +72,10 @@ export interface Mover {
   homeTile?: number;
   /** An unhoused person's camp (live/unhoused.ts): they set out from it and come back to it, in place of a home. */
   shelter?: number;
+  /** What an unhoused person's day out is for (live/unhoused.ts): the shops, a meal, warmth, care or rest. */
+  errand?: 'shop' | 'meal' | 'warmth' | 'care' | 'rest';
+  /** Someone just put out of their home, walking to a camp with what they carry (live/evictions.ts). */
+  carrying?: boolean;
   /** For a street-parked car: the direction (0=N/1=E/2=S/3=W) toward its curb (the adjacent
    *  non-road tile), so the renderer draws it hugging the kerb instead of in the lane. */
   curbDir?: number;
@@ -230,6 +234,20 @@ export interface Van extends Mover {
   wait: number;
 }
 
+/** A garbage truck (live/garbage.ts): out from its depot to a pile on the street, loading it, back. */
+export interface GarbageTruck extends Mover {
+  job: 'out' | 'loading' | 'haul' | 'dumping' | 'back';
+  /** The landfill it's hauling its load to (anchor tile). */
+  landfill?: number;
+  /** The road tile by its depot, to drive back to; the depot's anchor tile. */
+  home: { x: number; y: number };
+  depot: number;
+  /** The pile it's going for. */
+  pile: { x: number; y: number };
+  /** Substeps left loading. */
+  wait: number;
+}
+
 /** An ambulance on a call (Maddy 2026-10-12): out to a collapsed resident, a moment to take them aboard, back to its
  *  clinic — where the patient goes home (rescueResident). */
 export interface Ambulance extends Mover {
@@ -266,7 +284,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival' | 'sideshow';
+  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival' | 'sideshow' | 'eviction';
   x: number;
   y: number;
   w: number;
@@ -392,6 +410,20 @@ export interface AmbientState {
   /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
    *  people back from it; it never moves without a cause. */
   unhoused: number;
+  /** Meals the unhoused had today at a pantry or food bank (live/unhoused.ts errands) — reset at dawn; a meal halves
+   *  the night's exposure risk for those fed (live/death.ts). */
+  mealsToday?: number;
+  /** Evictions are walked out where they happen (live/evictions.ts) — on once the city is shown, not for the
+   *  opening's inherited crisis. */
+  evictionsShown?: boolean;
+  /** Per home: the people put out of it not yet seen to go (a fraction builds to a person), and the camp they join. */
+  evictDue?: Map<number, { n: number; camp: number }>;
+  /** A household's things piled on the kerb at the door after an eviction (live/evictions.ts), there until cleared — by a
+   *  garbage truck or the neighbours; `age` in substeps. (hx, hy) points from the kerb tile back to the home, so
+   *  they're drawn at the kerb's edge, not in the lane. Saved with the city. */
+  evictedPiles?: { x: number; y: number; seed: number; hx?: number; hy?: number; age: number }[];
+  /** Walks to show this pass: from a home to a camp, `people` of them. */
+  evictWalks?: { from: number; to: number; people: number }[];
   /** Commercial places the unhoused spent their days at (live/unhoused.ts): tile → visits, fading. */
   unhousedVisits?: Map<number, number>;
   /** Where the unhoused live (live/camps.ts): encampment tile → people. Sums to `unhoused` once settled. */
@@ -429,6 +461,9 @@ export interface AmbientState {
   foodAccess?: Set<number>;
   foodRuns?: { from: number; to: number; amount: number }[];
   vans?: Van[];
+  /** Garbage trucks on the road (live/garbage.ts), and the substep count their depots dispatch on. */
+  garbageTrucks?: GarbageTruck[];
+  garbageTick?: number;
   /** Delivery drones in the air (live/drones.ts). */
   drones?: import('./drones').Drone[];
   /** Children on their walk to or from school (live/schoolRun.ts), and the hour the last walk set off. */
@@ -438,6 +473,8 @@ export interface AmbientState {
   learning: Map<number, number>;
   /** Tire marks a sideshow leaves in a crossing, by road tile, 0..SKID_MAX — fading slowly; saved with the city. */
   skids: Map<number, number>;
+  /** Each landfill's fill, by its anchor tile, in truckloads (live/garbage.ts) — saved with the city. */
+  landfill: Map<number, number>;
   /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
    *  to the unhoused pool. */
   sheltered?: Map<number, number>;
@@ -449,6 +486,8 @@ export interface AmbientState {
   rain?: { heavy: boolean };
   /** Tiles under flood water now (app/flood.ts): drawn as water, and routes go round them. */
   flooded?: ReadonlySet<number>;
+  /** Homes a flood has evacuated (app/flood.ts), until their people come back — no eviction (live/evictions.ts). */
+  evacuated?: Set<number>;
   /** Toxic clouds drifting downwind from a spill (live/spills.ts). */
   clouds?: ToxicCloud[];
   /** The toxic smog the clouds lay: drifts and spreads like smog, drawn greenish-yellow by the smog overlay.
@@ -522,6 +561,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     occExpect: new Map(),
     learning: new Map(),
     skids: new Map(),
+    landfill: new Map(),
     occPasses: 0,
     unhoused: 0,
     roadDecay: new Map(),

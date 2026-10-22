@@ -28,6 +28,39 @@ occupancy) lowers it — so "build/heal housing" is the legible counter-move, ex
 perturbs — the delicate occupancy/wellbeing loop (it's a pure read, zero feedback). The richer pieces
 below change game feel and need playtest judgement, so they're Maddy's call.
 
+## Built 2026-10-21 (Maddy: "Unhoused as people" — fuller days, evictions you can see, tied into the systems)
+
+- **Fuller days** (`live/unhoused.ts`): a day out from a camp or shelter is a meal (pantry, food bank), warmth
+  (library, civic hall — doubled from 17:00), care (clinic), rest (park, garden, parklet) or the shops. With none of
+  an errand's places in reach, it's the shops. Only shop visits thin commerce's taxes.
+- **Evictions you can see** (`live/evictions.ts`): people put out of a home (rent, a home torn down, a flood) walk
+  from its door to the camp they joined, carrying a bundle or a box, one after another. A trickle of rent
+  displacement shows once it adds up to a person. This is off for the opening's inherited crisis. The camera feed
+  (rate-limited) and the news say so.
+- **Ties**: a meal today halves the night's exposure risk for the share of those sleeping out who ate (reset at
+  dawn), and an eviction costs its neighbourhood 2 belonging.
+- **The piles stay until cleared** (Maddy: "trash cluttering the streets … garbage trucks"; `live/garbage.ts`,
+  `app/garbage.ts`). An eviction's things stay on the kerb, saved with the city, until one of two things clears them:
+  - a **Sanitation Depot** (civic, available from the start, cost 12, upkeep 1.5/h) keeps up to 2 green garbage
+    trucks on the road, each sent to the nearest pile within 25 tiles;
+  - **the neighbours** clear their own block, a few piles an hour, where Mutual Aid is practised and belonging is 0.3
+    above the opening level.
+
+  While a pile stands it drags nearby land value (half a ruin). After a game day it costs its neighbourhood 1
+  belonging an hour, at most 3.
+- **Sanitation in a new city** (Maddy: "new cities should have sanitation but underserved"): worldgen sites one depot on
+  the least-redlined frontage, like the fire stations, so its trucks don't reach the redlined streets.
+- **The landfill** (Maddy: "the depots should feed a landfill"; `live/garbage.ts`, worldgen `moses.ts`):
+  - **Sited:** every new city has one 3×3 landfill on the most redlined frontage. The service went to the greenlined
+    districts, the burden to the redlined. Disinvestment never abandons it. It isn't in the build menu.
+  - **Hauling:** after loading a pile, a truck hauls it to the landfill, dumps it, then drives home.
+  - **Fill:** it's a saved stock. A new city's landfill starts with 60 loads of history.
+  - **Diversion:** each compost hub keeps 15% of every load out of it, and each maker space 10%, up to 80% in all.
+  - **Harm:** it poisons its own ground, seeps past its fence and leaches into adjacent water. All of that scales
+    from 1× empty to 2× at 300 loads. It also drags nearby land value.
+  - **Capping:** Rezone: Park caps it. Its fill stops harming, and what's already in the ground heals in time.
+- Not built (Maddy chose to leave it): living in cars.
+
 ## Open questions / next steps (for Maddy)
 
 1. **Visible sheltering agents — SPEC'D (Maddy 2026-06-19).** "unhoused people either live in empty

@@ -20,6 +20,9 @@ import { createCity } from './app/city';
 import { takePendingMode } from './save/pendingMode';
 import { disasterRatePct, historyPct } from './engine/mode';
 import { createDisasterHours } from './app/disasterHours';
+import { garbageHour } from './app/garbage';
+import { leftHome, settleCamps } from './live/camps';
+import { spawnEvictions } from './live/evictions';
 import { createSettingsController } from './app/settings';
 import { createView } from './app/view';
 import { createLive } from './app/live';
@@ -64,7 +67,7 @@ import { createFloodController } from './app/flood';
 import { createCommunity } from './app/community';
 import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
-import { BuiltKind } from './engine/fabric';
+import { BuiltKind, isRoadKind, placeParcel, SECURE_TENURE } from './engine/fabric';
 import { registerServiceWorker } from './app/pwa';
 import { installNoBrowserZoom } from './app/noBrowserZoom';
 import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
@@ -593,6 +596,16 @@ export function main(save: SaveV1 | null = null): void {
     live.state.foodAccess = r.access;
     live.state.foodRuns = r.deliveries; // this hour's van runs
   };
+  // The piles on the street (Maddy 2026-10-21): once a game hour the neighbours clear some (with Mutual Aid and
+  // belonging) and the ones left a day cost belonging; the depots' trucks run in the live layer (app/garbage.ts).
+  const garbageRng = createRng(seed).fork('garbage');
+  let garbageHourAt = -1;
+  const garbageNow = (): void => {
+    const h = gameClock(gameSec()).hour;
+    if (h === garbageHourAt) return;
+    garbageHourAt = h;
+    garbageHour({ live: live.state, map: world.map, partition: deps.partition, civic, practised: (id) => tech.unlocked.has(id), rng: garbageRng, news: (t) => news.push(t) });
+  };
   const drawSpillsNow = (): void => {
     if (!disastersOn()) return;
     const h = gameClock(gameSec()).hour;
@@ -658,7 +671,7 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'eviction' || demoKind === 'garbage' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
@@ -670,6 +683,61 @@ export function main(save: SaveV1 | null = null): void {
             return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
           },
           setHour: (h) => setGameHour(h),
+          followTruck: () => {
+            const k = live.state.garbageTrucks?.[0];
+            if (!k) return false;
+            camera.centerOn(k.x + 0.5, k.y + 0.5, 3);
+            markDirty();
+            return true;
+          },
+          depot: () => {
+            // a 2×2 of open land beside a street, nearest the newest pile, within 12 tiles: a depot goes up there
+            const pile = live.state.evictedPiles?.at(-1);
+            if (!pile) return false;
+            const m = world.map;
+            let best: { x: number; y: number; d: number } | null = null;
+            for (let y = pile.y - 12; y <= pile.y + 12; y++) {
+              for (let x = pile.x - 12; x <= pile.x + 12; x++) {
+                const free = [0, 1].every((dy) => [0, 1].every((dx) => m.inBounds(x + dx, y + dy) && m.built[m.idx(x + dx, y + dy)] === BuiltKind.None && m.parcel[m.idx(x + dx, y + dy)] === 0 && m.water[m.idx(x + dx, y + dy)] === 0));
+                if (!free) continue;
+                const street = [[-1, 0], [2, 0], [0, -1], [0, 2], [-1, 1], [2, 1], [1, -1], [1, 2]].some(([dx, dy]) => m.inBounds(x + dx!, y + dy!) && isRoadKind(m.built[m.idx(x + dx!, y + dy!)]!));
+                const d = Math.abs(x - pile.x) + Math.abs(y - pile.y);
+                if (street && (!best || d < best.d)) best = { x, y, d };
+              }
+            }
+            if (!best) return false;
+            placeParcel(m, world.parcels, { x: best.x, y: best.y, width: 2, height: 2, kind: BuiltKind.SanitationDepot });
+            camera.centerOn(best.x + 1, best.y + 1, 3);
+            markDirty();
+            return true;
+          },
+          evict: () => {
+            // the fullest home 5–10 tiles from a camp (a walk long enough to watch): three of its people put out
+            const st = live.state;
+            const camps = [...(st.camps ?? new Map<number, number>()).keys()];
+            let best = -1;
+            let most = 0;
+            for (const [t, v] of st.occupancy) {
+              if (v < 3 || v <= most || SECURE_TENURE.has(world.map.built[t]!)) continue; // nobody is evicted from secure tenure
+              const x = t % world.map.width;
+              const y = (t - x) / world.map.width;
+              const d = Math.min(...camps.map((c) => Math.abs((c % world.map.width) - x) + Math.abs(Math.floor(c / world.map.width) - y)));
+              if (d < 5 || d > 10) continue;
+              best = t;
+              most = v;
+            }
+            if (best < 0) return null;
+            st.occupancy.set(best, most - 3);
+            leftHome(st, best, 3);
+            settleCamps(st, world.map);
+            spawnEvictions(st, world.map);
+            const x = best % world.map.width;
+            const y = Math.floor(best / world.map.width);
+            camera.centerOn(x + 0.5, y + 0.5, 4); // close: the people are small
+            renderer.setMark({ kind: 'eviction', x, y, w: 1, h: 1 }, performance.now());
+            markDirty();
+            return null; // the camera is set
+          },
           view: (x, y) => {
             camera.centerOn(x, y, 3);
             markDirty();
@@ -733,6 +801,7 @@ export function main(save: SaveV1 | null = null): void {
       fire.frame(now);
       drawSpillsNow();
       runFoodNow();
+      garbageNow();
       drawCrashesNow();
       drawCrimeNow();
       events.frame(now);

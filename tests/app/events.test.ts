@@ -66,3 +66,18 @@ describe('handleEvents', () => {
     expect(c.log).toEqual([]);
   });
 });
+
+// Evictions (Maddy 2026-10-21 "Unhoused as people"): a household put out of its home is news, and its neighbourhood
+// belongs a little less — its people are being pushed out.
+import { EVICTION_BELONGING } from '../../src/app/events';
+describe('an eviction', () => {
+  it('is news, and its neighbourhood belongs a little less', () => {
+    const c = city();
+    const id = c.partition.tileToNeighborhood[c.map.idx(3, 3)]!;
+    const before = c.civic.getValues(id).belonging;
+    handleEvents([{ kind: 'eviction', x: 3, y: 3, w: 1, h: 1 }], c.deps);
+    expect(c.log).toEqual(['news A household put out of its home']);
+    expect(c.civic.getValues(id).belonging).toBe(before - EVICTION_BELONGING);
+    expect(EVICTION_BELONGING).toBeLessThan(DEATH_BELONGING);
+  });
+});

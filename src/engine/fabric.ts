@@ -125,8 +125,19 @@ export const BuiltKind = {
   UrbanFarm: 70,
   FoodBank: 71,
   Pantry: 72,
+  // A sanitation depot (Maddy 2026-10-21: "trash cluttering the streets … garbage trucks"): a city service whose trucks
+  // clear the piles left on the street (live/garbage.ts).
+  SanitationDepot: 73,
+  // The landfill (Maddy 2026-10-21): where the depots' trucks dump the city's garbage — history sited it on redlined
+  // ground (worldgen/moses.ts); it fills, and poisons the ground and water round it, until it's capped (live/garbage.ts).
+  Landfill: 74,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
+
+/** Secure tenure (Maddy 2026-10-21: "people shouldn't get evicted from tiny homes or communes"): homes nobody is put out
+ *  of — not by rent (economy/readings.ts) and not when conditions turn (live/fields/occupancy.ts). Only tearing one
+ *  down empties it. */
+export const SECURE_TENURE: ReadonlySet<number> = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune, BuiltKind.TinyHomes]);
 
 /** Roads (street/avenue/highway). Rail is transport but not a road. */
 export const isRoadKind = (k: number): boolean => k >= 1 && k <= 3;

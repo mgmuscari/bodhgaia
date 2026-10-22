@@ -32,6 +32,8 @@ const NAME_OF: ReadonlyMap<number, string> = new Map<number, string>([
   [BuiltKind.Civic, 'Civic Building'],
   [BuiltKind.Precinct, 'Police Precinct'],
   [BuiltKind.FireStation, 'Fire Station'],
+  [BuiltKind.SanitationDepot, 'Sanitation Depot'],
+  [BuiltKind.Landfill, 'Landfill'],
   [BuiltKind.Clinic, 'Clinic'],
   [BuiltKind.Library, 'Library'],
   [BuiltKind.School, 'School'],

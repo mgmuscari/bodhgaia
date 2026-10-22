@@ -9,7 +9,8 @@
 // @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame},
 // @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant},
 // @sprite/firetruck/{dir8}/{phase}, @sprite/ambulance/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant},
-// @sprite/rain/{0 light|1 heavy}, @sprite/debris, @sprite/stall/{0..2}, @sprite/placard/{0|1}.
+// @sprite/rain/{0 light|1 heavy}, @sprite/debris, @sprite/stall/{0..2}, @sprite/placard/{0|1},
+// @sprite/bundle/{0|1}, @sprite/pile/{0|1}, @sprite/garbage/{dir8}.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
@@ -43,6 +44,9 @@ const AMB_E = ['.kkkkk.', 'kwwwLgw', 'krrrMgw', '.kkkkk.'];
 const AMB_NE = ['...kkk', '..kwgk', '.kLwwk', 'kwMrk.', 'krrk..', 'kkk...'];
 // Delivery vans (food banks): the same frame in cream (w) with a green stripe (r) — no light bar.
 const VAN_E = ['.kkkkk.', 'kwwwwgw', 'krrrwgw', '.kkkkk.'];
+// Garbage trucks (Maddy 2026-10-21): a municipal-green box body (b, ribbed r) behind a white cab (w, g windscreen).
+const GARBAGE_E = ['.kkkkk.', 'kbrbwgw', 'kbrbwgw', '.kkkkk.'];
+const GARBAGE_NE = ['...kkk', '..kwgk', '.kbwwk', 'kbrbk.', 'kbbk..', 'kkk...'];
 const VAN_NE = ['...kkk', '..kwgk', '.kwwwk', 'kwwrk.', 'krrk..', 'kkk...'];
 const LIGHT_E = ['.......', 'T.....H', 'T.....H', '.......'];
 const LIGHT_NE = ['....H.', '.....H', '......', '......', 'T.....', '.T....'];
@@ -314,6 +318,10 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
     const cols = { k: C.creamLo, w: C.cream, r: C.leaf, g: C.glassLo };
     eightWays(glyph(VAN_E, cols), glyph(VAN_NE, cols)).forEach((f, d) => out.set(`@sprite/van/${d}`, f));
   }
+  {
+    const cols = { k: C.leafLo, b: C.leaf, r: C.leafHi, w: C.cream, g: C.glassLo };
+    eightWays(glyph(GARBAGE_E, cols), glyph(GARBAGE_NE, cols)).forEach((f, d) => out.set(`@sprite/garbage/${d}`, f));
+  }
   for (let f = 0; f < FIRE_FRAMES; f++) out.set(`@sprite/fire/${f}`, flame(f));
   out.set('@sprite/drop', glyph(['w'], { w: C.foam }));
   // a craft fair's stalls: a striped awning (a colour and cream) over a wooden table on two legs
@@ -321,6 +329,14 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   [C.signal, C.roofBlue, C.leaf].forEach((stripe, v) =>
     out.set(`@sprite/stall/${v}`, glyph(STALL, { a: stripe, s: C.cream, d: C.roofBrownLo, t: C.roofBrown, l: C.roofBrownLo })),
   );
+  // someone put out of their home carries what they can (Maddy 2026-10-21): a tied cloth bundle, or a box
+  out.set('@sprite/bundle/0', glyph(['.t.', 'bbb', 'bbb'], { t: C.creamLo, b: C.roofBlue }));
+  out.set('@sprite/bundle/1', glyph(['ccc', 'cdc', 'ccc'], { c: C.dirtHi, d: C.roofBrown }));
+  // an eviction's things on the kerb (Maddy 2026-10-21: the walk was hard to see): a striped mattress (m/s) on its
+  // side, cardboard boxes (c, d tape), a chair (h); two arrangements
+  const PILE_COLS = { m: C.cream, s: C.roofBlue, c: C.dirtHi, d: C.roofBrown, h: C.roofBrownLo, k: C.ink };
+  out.set('@sprite/pile/0', glyph(['msms......', 'msms.cdc..', 'msms.ccc.h', 'msms.cdcch', 'msms.ccc.h', 'kkkk.kkk.k'], PILE_COLS));
+  out.set('@sprite/pile/1', glyph(['..cdc.....', '..ccc.msms', 'h.cdc.msms', 'hhccc.msms', 'h.ccc.msms', 'k.kkk.kkkk'], PILE_COLS));
   // protest placards: a cream sign (one with a red word) held up on a pole
   out.set('@sprite/placard/0', glyph(['ccc', 'ccc', '.p.'], { c: C.cream, p: C.roofBrownLo }));
   out.set('@sprite/placard/1', glyph(['ccc', 'crc', '.p.'], { c: C.cream, r: C.signal, p: C.roofBrownLo }));

@@ -212,6 +212,51 @@ const fireStation: Painter = (W, H, v) => {
   return p;
 };
 
+/** A sanitation depot (Maddy 2026-10-21): a service garage in municipal green, roll-up bay doors, a row of bins by the
+ *  yard, a garbage truck parked out front. */
+const sanitationDepot: Painter = (W, H, v) => {
+  const p = lot(W, H, 'pave', 730 + v);
+  service(p, [C.leafHi, C.leaf, C.leafLo], C.paveHi, C.pave, (L, x, _y, w, _r, wy, wh) => {
+    for (let gx = x + 2; gx + 4 < x + w; gx += 6) {
+      rect(L, gx, wy + wh - 5, 4, 4, C.slate); // roll-up bay doors
+      hline(L, gx, gx + 3, wy + wh - 4, C.slateLo);
+      hline(L, gx, gx + 3, wy + wh - 2, C.slateLo);
+    }
+  });
+  for (let k = 0; k < 3; k++) rect(p, 2 + k * 3, H - 4, 2, 3, k === 1 ? C.roofBlue : C.leafLo); // the bins
+  rect(p, W - 9, H - 5, 6, 3, C.leaf); // a truck out front: its green body…
+  rect(p, W - 4, H - 5, 2, 3, C.cream); // …and white cab
+  hline(p, W - 9, W - 3, H - 2, C.ink); // its wheels' shadow
+  return p;
+};
+
+/** The landfill (Maddy 2026-10-21): mounds of the city's garbage behind a chain-link fence — browns and greys, a
+ *  scatter of colour from what was thrown out, a bulldozer working the top, gulls. */
+const landfill: Painter = (W, H, v) => {
+  const p = lot(W, H, 'dirt', 740 + v);
+  const fx = (x: number, y: number): boolean => x === 0 || y === 0 || x === W - 1 || y === H - 1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (fx(x, y)) {
+        if ((x + y) % 2 === 0) px(p, x, y, C.paveHi); // the chain-link fence
+        continue;
+      }
+      // mounds: a few rounded heaps, darker at their feet, flecked with what was thrown out
+      const cx = W / 2 + (v % 3) - 1;
+      const cy = H / 2;
+      const d = Math.abs(x - cx) * 0.8 + Math.abs(y - cy);
+      // low-noise (Maddy: ground stays quiet): smooth shaded mounds, a sparse fleck of what was thrown out
+      const h = hash2(x, y, 7400 + v) % 48;
+      const base = d < W * 0.22 ? C.dirtHi : d < W * 0.38 ? C.dirt : C.dirtLo;
+      px(p, x, y, h === 0 ? C.slate : h === 1 ? (hash2(y, x, 7500) & 1 ? C.roofBlue : C.cream) : base);
+    }
+  }
+  rect(p, (W >> 1) + 2, (H >> 1) - 4, 4, 2, C.flower); // a bulldozer on the top
+  hline(p, (W >> 1) + 1, (W >> 1) + 6, (H >> 1) - 2, C.ink);
+  for (const [gx, gy] of [[4, 5], [W - 7, 8], [9, H - 9]] as const) px(p, gx, gy, C.petal); // gulls
+  return p;
+};
+
 const clinic: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 330 + v);
   const L = blank(W, H);
@@ -738,6 +783,8 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [30, [fusionPlant, 1]],
   [31, [precinct, 1]],
   [32, [fireStation, 1]],
+  [73, [sanitationDepot, 1]],
+  [74, [landfill, 1]],
   [33, [clinic, 1]],
   [34, [library, 1]],
   [35, [school, 1]],
