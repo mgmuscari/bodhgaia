@@ -279,3 +279,16 @@ describe('what the evicted carry', () => {
     }
   });
 });
+
+// …and their things stay piled on the kerb a while.
+describe('an eviction pile', () => {
+  it('two arrangements, a few pixels bigger than a person, smaller than a tile', () => {
+    for (const v of [0, 1]) {
+      const s = tiles.get(`@sprite/pile/${v}`)!;
+      expect(s).toBeDefined();
+      expect(s.w).toBeGreaterThan(4);
+      expect(s.w).toBeLessThanOrEqual(12);
+      expect(s.h).toBeLessThanOrEqual(8);
+    }
+  });
+});

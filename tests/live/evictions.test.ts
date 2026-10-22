@@ -82,3 +82,33 @@ describe('evictions you can see', () => {
     expect(state.peds).toHaveLength(0);
   });
 });
+
+// Hard to see (Maddy 2026-10-21): the walk is a few seconds of small people. An eviction leaves the household's things
+// piled on the kerb at the door — boxes, a mattress, a chair — for most of a game day, then they're gone.
+import { stepEvictionPiles, PILE_LIFE } from '../../src/live/evictions';
+describe('belongings on the kerb', () => {
+  it('an eviction leaves a pile at the door, which stays a while and then is gone', () => {
+    const { map, state, home } = block();
+    leftHome(state, home, 2);
+    settleCamps(state, map);
+    spawnEvictions(state, map);
+    expect(state.evictedPiles).toHaveLength(1);
+    const pile = state.evictedPiles![0]!;
+    expect([pile.x, pile.y]).toEqual([10, 6]); // on the street in front of the home, not in a yard
+    expect([pile.hx, pile.hy]).toEqual([0, -1]); // drawn at the kerb's edge, by the home
+    for (let k = 0; k < PILE_LIFE - 1; k++) stepEvictionPiles(state);
+    expect(state.evictedPiles).toHaveLength(1);
+    stepEvictionPiles(state);
+    expect(state.evictedPiles).toHaveLength(0);
+    expect(PILE_LIFE).toBeGreaterThan(60 * 20); // more than a minute of play
+  });
+  it('a second eviction from the same home renews its pile, not a second one', () => {
+    const { map, state, home } = block();
+    for (let k = 0; k < 2; k++) {
+      leftHome(state, home, 1);
+      settleCamps(state, map);
+      spawnEvictions(state, map);
+    }
+    expect(state.evictedPiles).toHaveLength(1);
+  });
+});

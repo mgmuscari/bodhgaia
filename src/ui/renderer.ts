@@ -1472,6 +1472,14 @@ export class Renderer {
       const img = this.sprites.get(personKey('ped', seed, frame));
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
     }
+    // An eviction's things piled on the kerb at the door (live/evictions.ts), for most of a game day.
+    for (const pl of ambient.evictedPiles ?? []) {
+      const { sx, sy } = camera.worldToScreen(pl.x + 0.5, pl.y + 0.5);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/pile/${pl.seed & 1}`);
+      // at the kerb's edge by the home (hx, hy point back to it), not out in the lane
+      if (img) this.drawArt(ctx, img, pl.x + 0.5 + (pl.hx ?? 0) * 0.32, pl.y + 0.55 + (pl.hy ?? 0) * 0.32, camera);
+    }
     // The fallen and the street memorials (bodhgaia-opening.md §2): someone who has died lies on the ground
     // where they fell, quietly fading; then a candle and flowers stay on that spot for a while.
     const psx = camera.tileSize / BASE_TILE;

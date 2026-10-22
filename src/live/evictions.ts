@@ -7,11 +7,15 @@
 import type { GameMap } from '../engine/map';
 import type { AmbientState } from './types';
 import { nearestWalkable } from './pathing';
+import { isWalkable } from './network';
+import { isRoadKind } from '../engine/fabric';
 import { TravelMode } from '../citizens/modes';
 import { seconds } from './tuning';
 
 /** At most this many walk out of one home at once (the rest are counted, not drawn). */
 export const EVICTION_WALKERS = 3;
+/** How long a household's things stay piled on the kerb after an eviction (most of a game day, ~157 s). */
+export const PILE_LIFE = seconds(120);
 /** Substeps between one of a household coming out of the door and the next. */
 export const EVICTION_STAGGER = seconds(0.7);
 const EPS = 1e-6;
@@ -34,6 +38,14 @@ export function noteEviction(state: AmbientState, from: number, camp: number, n:
   else due.set(from, d);
 }
 
+/** The street in front of a home (a road beside it — south, north, east, west), or null: where its things go out. */
+function streetDoor(map: GameMap, x: number, y: number): { x: number; y: number } | null {
+  for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) {
+    if (map.inBounds(x + dx, y + dy) && isRoadKind(map.built[map.idx(x + dx, y + dy)]!) && isWalkable(map, x + dx, y + dy)) return { x: x + dx, y: y + dy };
+  }
+  return null;
+}
+
 /** Walk this pass's evictions out: from each home's door toward its camp, with what they carry. */
 export function spawnEvictions(state: AmbientState, map: GameMap): void {
   const walks = state.evictWalks;
@@ -42,7 +54,7 @@ export function spawnEvictions(state: AmbientState, map: GameMap): void {
   for (const w of walks) {
     const fx = w.from % map.width;
     const fy = (w.from - fx) / map.width;
-    const door = nearestWalkable(map, fx, fy);
+    const door = streetDoor(map, fx, fy) ?? nearestWalkable(map, fx, fy);
     if (!door) continue;
     const cx = w.to % map.width;
     const cy = (w.to - cx) / map.width;
@@ -51,5 +63,18 @@ export function spawnEvictions(state: AmbientState, map: GameMap): void {
       state.peds.push({ x: door.x, y: door.y, dir: 0, tx: door.x, ty: door.y, shelter: w.to, carrying: true, phase: 'inside', dwellInside: 1 + k * EVICTION_STAGGER, walkTo: { x: cx, y: cy }, mode: TravelMode.Walk });
     }
     state.events?.push({ kind: 'eviction', x: fx, y: fy, w: 1, h: 1 });
+    // their things on the kerb at the door — the mark an eviction leaves (Maddy 2026-10-21: the walk was hard to see)
+    const piles = (state.evictedPiles ??= []);
+    const at = piles.find((p) => p.x === door.x && p.y === door.y);
+    if (at) at.t = PILE_LIFE;
+    else piles.push({ x: door.x, y: door.y, t: PILE_LIFE, seed: w.from, hx: Math.sign(fx - door.x), hy: Math.sign(fy - door.y) });
   }
+}
+
+/** The piles on the kerb age one substep; gone when their time is up. */
+export function stepEvictionPiles(state: AmbientState): void {
+  const piles = state.evictedPiles;
+  if (!piles?.length) return;
+  for (const p of piles) p.t--;
+  state.evictedPiles = piles.filter((p) => p.t > 0);
 }

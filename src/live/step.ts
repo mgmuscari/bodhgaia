@@ -46,7 +46,7 @@ import { stepGatherings } from './gatherings';
 import { spawnTrains, stepTrain } from './trains';
 import { advanceFlock, flockTile, spawnFlocks } from './birds';
 import { stepOccupancy } from './fields/occupancy';
-import { spawnEvictions } from './evictions';
+import { spawnEvictions, stepEvictionPiles } from './evictions';
 import { settleCamps } from './camps';
 import { fadeVisits, spawnUnhoused } from './unhoused';
 import { computeCoverage, recomputeLandValueBand, stepRoadDecay } from './fields/landValue';
@@ -67,6 +67,7 @@ import { snapshotMovers } from './poses';
 function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   // the fallen and the memorials; the night's exposure deaths (once per in-game hour, with a host clock)
   stepDeaths(state);
+  stepEvictionPiles(state); // an eviction's things on the kerb, for a while
   stepExposure(state, map, rng);
   if (state.wanderer) stepWanderer(state, map, rng); // the opening's night walker
   if (state.trucks) stepTrucks(state, map); // fire trucks on a call

@@ -673,7 +673,7 @@ export function main(save: SaveV1 | null = null): void {
           },
           setHour: (h) => setGameHour(h),
           evict: () => {
-            // the fullest home within a few tiles of a camp: three of its people put out, walking there now
+            // the fullest home 5–10 tiles from a camp (a walk long enough to watch): three of its people put out
             const st = live.state;
             const camps = [...(st.camps ?? new Map<number, number>()).keys()];
             let best = -1;
@@ -682,7 +682,8 @@ export function main(save: SaveV1 | null = null): void {
               if (v < 3 || v <= most) continue;
               const x = t % world.map.width;
               const y = (t - x) / world.map.width;
-              if (!camps.some((c) => Math.abs((c % world.map.width) - x) + Math.abs(Math.floor(c / world.map.width) - y) <= 8)) continue;
+              const d = Math.min(...camps.map((c) => Math.abs((c % world.map.width) - x) + Math.abs(Math.floor(c / world.map.width) - y)));
+              if (d < 5 || d > 10) continue;
               best = t;
               most = v;
             }
@@ -691,7 +692,12 @@ export function main(save: SaveV1 | null = null): void {
             leftHome(st, best, 3);
             settleCamps(st, world.map);
             spawnEvictions(st, world.map);
-            return { x: best % world.map.width, y: Math.floor(best / world.map.width) };
+            const x = best % world.map.width;
+            const y = Math.floor(best / world.map.width);
+            camera.centerOn(x + 0.5, y + 0.5, 4); // close: the people are small
+            renderer.setMark({ kind: 'eviction', x, y, w: 1, h: 1 }, performance.now());
+            markDirty();
+            return null; // the camera is set
           },
           view: (x, y) => {
             camera.centerOn(x, y, 3);
