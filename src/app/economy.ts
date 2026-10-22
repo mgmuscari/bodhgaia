@@ -80,7 +80,12 @@ export interface EconomyDeps {
   /** Take the hour's rent-displaced people out of real homes (live displaceFromHomes), sparing each home by its
    *  protection; returns how many actually left. Absent ⇒ displacement is only counted. */
   displace?(amount: number, protectionAt: (tile: number) => number): number;
+  /** A sandbox city (engine/mode.ts): never short of money or effort — topped up each hour, shown as ∞. */
+  sandbox?: boolean;
 }
+
+/** What a sandbox's treasury is topped back up to each hour: more than any one hour's building can spend. */
+export const SANDBOX_FUNDS = 10_000_000;
 
 export interface EconomyController {
   /** Start raising a construction site: its effort is drawn hour by hour (economy/run buildProject). */
@@ -217,6 +222,11 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
       if (site && finishSite(map, parcels, site.x, site.y, site.kind)) raised = true;
     }
     if (raised) deps.built?.();
+    if (deps.sandbox) {
+      // no limits: the treasury back up, the effort full (prices stand, so a site still takes its hours)
+      setState({ ...econ.state, funds: Math.max(econ.state.funds, SANDBOX_FUNDS), effort: econCapacity });
+      tech.effort = Math.floor(econCapacity);
+    }
     ui.hourRefreshed(reliefNow); // refreshes; the relief grant opens the Budget window with its strings
     if (econ.state.tick % AUTOSAVE_HOURS === 0) deps.autosave();
     ui.pulse();
@@ -247,6 +257,7 @@ export function createEconomyController(deps: EconomyDeps): EconomyController {
         approval: econ.state.approval,
         goodwill: econ.state.goodwill,
         burnout: econ.state.burnout,
+        sandbox: deps.sandbox === true,
       }),
     runHour,
     advance: (nowMs) => {

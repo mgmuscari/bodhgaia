@@ -171,6 +171,7 @@ export function main(save: SaveV1 | null = null): void {
   }
 
   const economy = createEconomyController({
+    sandbox: mode.sandbox, // never short of money or effort
     map: world.map,
     parcels: world.parcels,
     tech,
@@ -270,6 +271,7 @@ export function main(save: SaveV1 | null = null): void {
     world,
     tech,
     wallet: economy.wallet,
+    mode, // the city's difficulty scales every price
     renderer,
     markDirty,
     markPreviewDirty,

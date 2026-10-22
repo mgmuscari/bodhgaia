@@ -13,7 +13,8 @@ import type { ApplyResult } from '../tools/tools';
 import { TECH_TREE } from '../tech/tree';
 import type { TechState } from '../tech/state';
 import { refusalText } from '../ui/toolbarContent';
-import { availableTools, previewTool, applyTool, toolDef, type ToolDef, type ToolId, type ToolWorld, type Wallet } from '../tools/tools';
+import { availableTools, previewTool, applyTool, toolDef, FUNDS_PER_COST, type ToolDef, type ToolId, type ToolWorld, type Wallet } from '../tools/tools';
+import { scaleCost, scaleFunds, type CityMode } from '../engine/mode';
 import { isLineTool } from '../ui/lineTools';
 import { isRepairTool } from '../ui/repairTools';
 import { toolbarRows, refreshSignature, addedIds } from '../ui/toolbarContent';
@@ -34,6 +35,8 @@ export interface ToolsDeps {
   tech: TechState;
   /** The treasury the fabric is bought from (the economy's wallet; the menu prices against its funds). */
   wallet: Wallet;
+  /** The city's mode: its difficulty scales every price (engine/mode.ts). Default standard. */
+  mode?: CityMode;
   renderer: { setPreview(tiles: readonly PreviewTile[] | null): void; artImage(key: string): CanvasImageSource | undefined };
   /** The built layer changed → rebuild the cached base. */
   markDirty: () => void;
@@ -78,6 +81,11 @@ export interface ToolController {
 
 export function createToolController(deps: ToolsDeps): ToolController {
   const { world, tech, wallet, renderer } = deps;
+  /** A tool at the city's difficulty: its cost units (effort, a site's bill) and its money price scaled. */
+  const priced = <T extends ToolDef | undefined>(d: T): T => {
+    if (!d || !deps.mode || deps.mode.difficulty === 'standard') return d;
+    return { ...d, cost: scaleCost(d.cost, deps.mode), funds: scaleFunds(d.funds ?? d.cost * FUNDS_PER_COST, deps.mode) };
+  };
   let selectedToolId: ToolId | null = null;
   // the open menu — a category's tools or an overlay's views (ui/dockMenu.ts); a picked tool keeps it open
   let menu: DockState['menu'] = null;
@@ -85,11 +93,11 @@ export function createToolController(deps: ToolsDeps): ToolController {
   const overlayNow = (): CompositeState => (deps.overlays ? deps.overlays.active() : ownOverlay);
   const openCategory = (): ToolCategory | null => (menu?.kind === 'category' ? menu.id : null);
   const catOf = (tool: string | null): ToolCategory | null => {
-    const def = tool === null ? undefined : toolDef(tool as ToolId);
+    const def = tool === null ? undefined : priced(toolDef(tool as ToolId));
     return def ? categoryOf(def) : null;
   };
 
-  const rows = () => toolbarRows(availableTools(tech), selectedToolId, tech.effort);
+  const rows = () => toolbarRows(availableTools(tech).map(priced) as ToolDef[], selectedToolId, tech.effort);
   const initRows = rows();
   let lastToolSig = refreshSignature(initRows);
   let prevToolIds: string[] = initRows.map((r) => r.id);
@@ -127,7 +135,7 @@ export function createToolController(deps: ToolsDeps): ToolController {
   const isOverlay = (id: string): id is OverlayKind => (OVERLAY_KINDS as readonly string[]).includes(id);
 
   const toolbar = deps.mount({
-    getMenu: () => buildToolMenu(availableTools(tech), selectedToolId, tech.effort, openCategory(), wallet.funds),
+    getMenu: () => buildToolMenu(availableTools(tech).map(priced) as ToolDef[], selectedToolId, tech.effort, openCategory(), wallet.funds),
     // a mode (inspect, bulldoze) closes the open menu; a category's tool keeps its menu open
     onSelect: (id) => (catOf(id) === null ? commit(pickMode(state(), id, catOf)) : select(pickTool(state(), id).tool as ToolId)),
     // closing a menu or changing category puts the building tool down and the overlay off (Maddy 2026-10-13)
@@ -146,7 +154,7 @@ export function createToolController(deps: ToolsDeps): ToolController {
     art: (key) => renderer.artImage(key),
   });
 
-  const selectedDef = (): ToolDef | undefined => (selectedToolId === null ? undefined : toolDef(selectedToolId));
+  const selectedDef = (): ToolDef | undefined => (selectedToolId === null ? undefined : priced(toolDef(selectedToolId)));
 
   let pairing = false; // the status line is showing a pairing (clear it when the hover leaves one)
   const previewAt = (tx: number, ty: number): void => {

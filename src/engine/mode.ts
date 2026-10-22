@@ -28,6 +28,12 @@ export function scaleCost(cost: number, mode: CityMode): number {
   return Math.max(1, Math.floor((cost * COST_PCT[mode.difficulty] + 50) / 100));
 }
 
+/** A money price under this mode's difficulty, to the dollar (never below 1 if it had one). */
+export function scaleFunds(funds: number, mode: CityMode): number {
+  if (funds <= 0) return funds;
+  return Math.max(1, Math.floor((funds * COST_PCT[mode.difficulty] + 50) / 100));
+}
+
 /** Disaster chances under this mode, percent of standard (for the draws scaled by rate, not by repeat). */
 export function disasterRatePct(mode: CityMode): number {
   return mode.difficulty === 'gentle' ? 50 : mode.difficulty === 'hard' ? 160 : 100;
