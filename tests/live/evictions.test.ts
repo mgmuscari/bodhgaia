@@ -32,6 +32,7 @@ describe('evictions you can see', () => {
     const out = state.peds.filter((p) => p.carrying);
     expect(out.length).toBe(2);
     const camp = [...state.camps!.keys()][0]!;
+    expect(new Set(out.map((p) => p.dwellInside)).size).toBe(2); // one after another, not stacked
     for (const p of out) {
       expect(Math.max(Math.abs(p.x - 10), Math.abs(p.y - 5))).toBeLessThanOrEqual(1); // at the home's door (the walkable tile nearest it)
       expect(p.shelter).toBe(camp);

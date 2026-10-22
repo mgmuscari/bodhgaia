@@ -8,9 +8,12 @@ import type { GameMap } from '../engine/map';
 import type { AmbientState } from './types';
 import { nearestWalkable } from './pathing';
 import { TravelMode } from '../citizens/modes';
+import { seconds } from './tuning';
 
 /** At most this many walk out of one home at once (the rest are counted, not drawn). */
 export const EVICTION_WALKERS = 3;
+/** Substeps between one of a household coming out of the door and the next. */
+export const EVICTION_STAGGER = seconds(0.7);
 const EPS = 1e-6;
 
 /** `n` people from home `from` were camped at `camp` (settleCamps): note it, and queue a walk once a whole person is
@@ -44,7 +47,8 @@ export function spawnEvictions(state: AmbientState, map: GameMap): void {
     const cx = w.to % map.width;
     const cy = (w.to - cx) / map.width;
     for (let k = 0; k < Math.min(EVICTION_WALKERS, w.people); k++) {
-      state.peds.push({ x: door.x, y: door.y, dir: 0, tx: door.x, ty: door.y, shelter: w.to, carrying: true, phase: 'to-home', walkTo: { x: cx, y: cy }, mode: TravelMode.Walk });
+      // they come out one after another (inside the door a moment, then out toward the camp — peds.ts stepInside)
+      state.peds.push({ x: door.x, y: door.y, dir: 0, tx: door.x, ty: door.y, shelter: w.to, carrying: true, phase: 'inside', dwellInside: 1 + k * EVICTION_STAGGER, walkTo: { x: cx, y: cy }, mode: TravelMode.Walk });
     }
     state.events?.push({ kind: 'eviction', x: fx, y: fy, w: 1, h: 1 });
   }
