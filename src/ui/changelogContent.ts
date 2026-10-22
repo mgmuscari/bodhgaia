@@ -10,6 +10,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '1.2.0',
+    notes: [
+      'Playing on a phone: held upright, the tools are a bar along the bottom (swipe it for more), and the map takes the whole width. Menus open up from their button and stay on the screen.',
+      'Touch: two fingers move the map and pinch to zoom. With a tool, one finger aims — the building follows your finger — and builds where you lift; roads, rails and the bulldozer draw as you drag, the line shown as you go.',
+      'A short guide to playing by touch, the first time you play on a phone.',
+      'Smaller maps: Pocket and Tiny, in Settings. A phone starts with a tiny city.',
+      'Clicking the camera feed frames the whole event, marks the spot, and closes the feed.',
+      'A road or rail you drag shows its whole line before you let go.',
+    ],
+  },
+  {
     version: '1.1.0',
     notes: [
       'Neighbourhood health: one score for each neighbourhood — its belonging, voice and trust, its ground, how well its buildings are kept, work within reach, care and food. The Civic overlay opens on it.',
