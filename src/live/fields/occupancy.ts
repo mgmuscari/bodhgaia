@@ -160,13 +160,14 @@ function moveFromPool(state: AmbientState, tile: number, cur: number, to: number
 }
 
 /** The inherited housing crisis: open each home emptied by INHERITED_VACANCY × its redline grade, floored at
- *  OCC_FLOOR — the displaced are the city's opening unhoused population. Called by seedDecay (the city starts
+ *  OCC_FLOOR — the displaced are the city's opening unhoused population. `historyPct` scales it (difficulty). Called by seedDecay (the city starts
  *  decayed); a resumed game's saved occupancy overwrites it. */
-export function seedInheritedOccupancy(state: AmbientState, map: GameMap): void {
+export function seedInheritedOccupancy(state: AmbientState, map: GameMap, historyPct = 100): void {
+  const vacancy = (INHERITED_VACANCY * historyPct) / 100; // the difficulty's history (engine/mode.ts; standard: 100)
   for (const h of state.households ?? []) {
     const t = map.idx(h.x, h.y);
     const grade = map.redline[t]! / 255;
-    const raw = h.count * (1 - INHERITED_VACANCY * grade);
+    const raw = h.count * (1 - vacancy * grade);
     const left = raw < h.count * OCC_FLOOR ? h.count * OCC_FLOOR : raw;
     state.occupancy.set(t, left);
     leftHome(state, t, h.count - left); // the displaced are the opening's unhoused

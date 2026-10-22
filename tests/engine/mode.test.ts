@@ -24,7 +24,7 @@ describe('city mode', () => {
     expect(historyPct(m('hard'))).toBeGreaterThan(100);
   });
 
-  it('costs stay whole numbers, and a priced thing never becomes free (except in a sandbox)', () => {
+  it('costs stay whole numbers, and a priced thing never becomes free', () => {
     for (const c of [1, 3, 17, 99]) {
       for (const d of ['gentle', 'hard'] as const) {
         expect(Number.isInteger(scaleCost(c, m(d)))).toBe(true);
@@ -34,9 +34,15 @@ describe('city mode', () => {
     expect(scaleCost(0, m('hard'))).toBe(0);
   });
 
-  it('a sandbox costs nothing, whatever its difficulty', () => {
-    expect(scaleCost(500, m('hard', true))).toBe(0);
-    expect(scaleCost(500, m('gentle', true))).toBe(0);
+  it('a sandbox keeps its difficulty\'s prices (its money never runs short instead, so sites still take their hours)', () => {
+    expect(scaleCost(500, m('hard', true))).toBe(scaleCost(500, m('hard')));
+  });
+
+  it('disaster chances scale with difficulty, standard unchanged', async () => {
+    const { disasterRatePct } = await import('../../src/engine/mode');
+    expect(disasterRatePct(STANDARD_MODE)).toBe(100);
+    expect(disasterRatePct(m('gentle'))).toBeLessThan(100);
+    expect(disasterRatePct(m('hard'))).toBeGreaterThan(100);
   });
 
   it('reads a saved or stored mode, falling back to standard for anything else', () => {

@@ -9,7 +9,7 @@ import { OCC_FLOOR } from '../../src/live/tuning';
 // Maddy 2026-10-06: "we do expect high homeless population in distressed cities". The crisis is INHERITED — the
 // city opens with homes emptied by disinvestment, in proportion to how redlined their ground is — rather than
 // ratcheting up from zero after the player arrives.
-function city() {
+function city(historyPct = 100) {
   const map = new GameMap(8, 4);
   const homes = [
     { x: 1, y: 1, count: 10, grade: 0 }, // greenlined: full
@@ -22,7 +22,7 @@ function city() {
   }
   const state = createAmbientState();
   setHouseholds(state, homes.map(({ x, y, count }) => ({ x, y, count })));
-  seedDecay(state, map);
+  seedDecay(state, map, historyPct);
   return { map, state };
 }
 
@@ -39,5 +39,14 @@ describe('the inherited housing crisis', () => {
   it('the city opens with unhoused residents — the crisis is visible from the first frame', () => {
     const { state } = city();
     expect(state.unhoused).toBeGreaterThan(0);
+  });
+});
+
+// Difficulty (Maddy 2026-10-21): a gentle history displaced fewer people, a hard one more.
+describe('the inherited crisis scales with the history', () => {
+  it('gentle leaves fewer unhoused than standard, hard more', () => {
+    const unhoused = (pct: number) => city(pct).state.unhoused ?? 0;
+    expect(unhoused(60)).toBeLessThan(unhoused(100));
+    expect(unhoused(140)).toBeGreaterThan(unhoused(100));
   });
 });

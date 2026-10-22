@@ -1,7 +1,7 @@
 // A city's mode (interdependence §10, Maddy 2026-10-21): its difficulty — gentle, standard, hard — and whether it is
 // a sandbox, both chosen at New city and saved with the city. Difficulty scales three existing knobs: what building
 // costs, how often disasters are drawn, and how much damage the history stage leaves. A sandbox has no money or effort
-// limits and the whole tech tree open. Standard reproduces the game exactly. Pure; integer math.
+// limits (never short of either) and the whole tech tree open. Standard reproduces the game exactly. Pure; integer math.
 
 export type Difficulty = 'gentle' | 'standard' | 'hard';
 export const DIFFICULTIES: readonly Difficulty[] = ['gentle', 'standard', 'hard'];
@@ -21,10 +21,16 @@ const HISTORY_PCT: Record<Difficulty, number> = { gentle: 60, standard: 100, har
 const GENTLE_DRAW_PCT = 50;
 const HARD_EXTRA_PCT = 60;
 
-/** A price under this mode: scaled and rounded, never below 1 if it had one; nothing in a sandbox. */
+/** A price under this mode's difficulty: scaled and rounded, never below 1 if it had one. (A sandbox keeps prices —
+ *  its money and effort never run short instead, so a site still takes its hours to rise.) */
 export function scaleCost(cost: number, mode: CityMode): number {
-  if (mode.sandbox || cost <= 0) return mode.sandbox ? 0 : cost;
+  if (cost <= 0) return cost;
   return Math.max(1, Math.floor((cost * COST_PCT[mode.difficulty] + 50) / 100));
+}
+
+/** Disaster chances under this mode, percent of standard (for the draws scaled by rate, not by repeat). */
+export function disasterRatePct(mode: CityMode): number {
+  return mode.difficulty === 'gentle' ? 50 : mode.difficulty === 'hard' ? 160 : 100;
 }
 
 /** How many disaster draws this hour gets, for a roll 0..99 drawn for the hour. */

@@ -62,6 +62,8 @@ export interface LiveDeps {
   hour?(): number;
   /** An older save's economy rent-displacement count, folded into the unhoused pool on resume. */
   legacyDisplaced?: number;
+  /** How hard the history stage was, percent of standard (the city's difficulty, engine/mode.ts). Default 100. */
+  historyPct?: number;
   /** Wall-clock ms (default performance.now). */
   now?(): number;
 }
@@ -126,7 +128,7 @@ export function createLive(deps: LiveDeps): LiveLayer {
   // The city starts DECAYED: a century of car-culture has already trampled the urban ground into desire paths
   // and polluted the shorelines, before the player arrives to heal it. A resumed city's saved stocks go OVER
   // the seeded decay — so restore strictly after seed.
-  seedDecay(state, map);
+  seedDecay(state, map, deps.historyPct ?? 100);
   if (deps.saved) restoreLive(state, deps.saved, map.width, deps.legacyDisplaced ?? 0);
 
   return {

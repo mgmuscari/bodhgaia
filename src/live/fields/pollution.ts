@@ -458,7 +458,7 @@ export function urbanNeighbours(map: GameMap, x: number, y: number): number {
  *  starts degraded rather than pristine: empty urban ground is already trampled brown (wear,
  *  by how hemmed-in it is) and the shorelines are already polluted (runoff). Derived from the
  *  worldgen world; the live layers evolve from here as the player heals or neglects the city. */
-export function seedDecay(state: AmbientState, map: GameMap): void {
+export function seedDecay(state: AmbientState, map: GameMap, historyPct = 100): void {
   const PLOT_SEED_RADIUS = 5; // how far a home "feels" the plots around it
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
@@ -489,6 +489,6 @@ export function seedDecay(state: AmbientState, map: GameMap): void {
   // A century of runoff already in the water — saturate the urban shorelines.
   for (let n = 0; n < 60; n++) accumulateWaterRunoff(state, map);
   // …and a century of disinvestment already emptied the redlined homes: the inherited unhoused.
-  seedInheritedOccupancy(state, map);
+  seedInheritedOccupancy(state, map, historyPct);
   settleCamps(state, map); // …who live in the camps by the homes they lost
 }
