@@ -525,6 +525,8 @@ export const GRIEF_HEALTH = 20;
 export const LV_RUIN = 12;
 /** A pile left on the street (an eviction's things, uncollected — Maddy 2026-10-21) drags nearby plots: half a ruin. */
 export const LV_PILE = 6;
+/** The landfill drags the plots near it — the nearest of its tiles, by distance (Maddy 2026-10-21). */
+export const LV_LANDFILL = 24;
 
 // ── Fire trucks (docs/design/disasters.md) ──────────────────────────────────────────────────────────────────
 /** Tiles a truck moves per substep — faster than a car, lights on. */

@@ -11,6 +11,7 @@ import {
   AMENITY_KINDS,
   LV_RUIN,
   LV_PILE,
+  LV_LANDFILL,
   COVERAGE_RADIUS,
   LV_AMENITY,
   LV_BASE,
@@ -87,6 +88,7 @@ export function landValueAt(
   let amenity = 0;
   let ruins = 0; // empty shells nearby: a dead street drags a living one
   let junk = 0; // piles left on the street (live/evictions.ts), until a truck or the neighbours clear them
+  let dumpNear = 0; // the landfill (Maddy 2026-10-21): the nearest of its tiles sets the drag
   let pollNear = 0;
   let trafNear = 0;
   let wearNear = 0;
@@ -104,6 +106,7 @@ export function landValueAt(
       if (AMENITY_KINDS.has(map.built[ni]!) || map.deck[ni] === BuiltKind.Parklet) amenity += falloff; // a kerb parklet too
       else if (map.built[ni] === BuiltKind.Ruin) ruins += falloff;
       if (piles?.has(ni)) junk += falloff;
+      if (map.built[ni] === BuiltKind.Landfill) dumpNear = Math.max(dumpNear, falloff); // the dump next door
       // Nuisances felt by distance: the worst weighted road nearby sets the drag (one jam is enough).
       if (pollution) pollNear = Math.max(pollNear, sampleField(pollution, ni) * falloff);
       if (traffic) trafNear = Math.max(trafNear, sampleField(traffic, ni) * falloff);
@@ -117,6 +120,7 @@ export function landValueAt(
   v += amenity * LV_AMENITY;
   v -= ruins * LV_RUIN;
   v -= junk * LV_PILE;
+  v -= dumpNear * LV_LANDFILL;
   v -= (pollNear / POLL_MAX) * LV_POLL_PEN;
   v -= (trafNear / TRAFFIC_MAX) * LV_TRAFFIC_PEN;
   v -= (wearNear / WEAR_MAX) * LV_WEAR_PEN;

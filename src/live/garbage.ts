@@ -17,6 +17,16 @@ export const DEPOT_REACH = 25;
 export const TRUCKS_PER_DEPOT = 2;
 /** Substeps a truck stands at a pile, loading it (~2.5 s). */
 export const LOAD = seconds(2.5);
+/** The truckloads a new city's landfill already holds — decades of the city's garbage (live/fields/pollution.ts
+ *  seedDecay) — and the fill at which its harm has doubled (it keeps harming more past it, to that double). */
+export const LANDFILL_HISTORY = 60;
+export const LANDFILL_FULL = 300;
+
+/** How much worse a landfill's harm is for its fill: 1 when empty, 2 once full. */
+export function landfillHarm(state: AmbientState): number {
+  return 1 + Math.min(1, landfillFill(state) / LANDFILL_FULL);
+}
+
 /** Substeps a truck stands at the landfill, dumping (~2 s). */
 export const DUMP = seconds(2);
 /** The share of every load a compost hub and a maker space each keep out of the landfill, and the ceiling. */

@@ -158,7 +158,9 @@ describe('live layer golden determinism', () => {
     // 2026-10-21: …and a landfill on the most redlined frontage (the depots' trucks dump there) — a different city
     // 2026-10-21: the landfill's fill is a live stock (`landfill`, empty here): same motion (checked with the key
     // dropped: the old digest), one more field
-    expect(first).toBe('cars=1 peds=183 cruisers=4 trains=5 flocks=7 #a5de23f5');
+    // 2026-10-21: the landfill holds the city's history, poisons the ground and water round it and drags land value —
+    // a behaviour change
+    expect(first).toBe('cars=3 peds=181 cruisers=3 trains=5 flocks=11 #a15213aa');
   });
 });
 

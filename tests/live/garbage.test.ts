@@ -141,3 +141,53 @@ describe('hauling to the landfill', () => {
     expect(divertShare(map)).toBeLessThan(1);
   });
 });
+
+// The landfill's harm (Maddy 2026-10-21): it poisons the ground round it and the water beside it, the more the fuller
+// it is, and drags the land value near it. A new city's landfill already holds decades of the city's garbage.
+import { accumulateGroundPollution, accumulateWaterRunoff, seedDecay } from '../../src/live/fields/pollution';
+import { LANDFILL_HISTORY } from '../../src/live/garbage';
+describe("the landfill's harm", () => {
+  function dump(fill: number) {
+    const map = new GameMap(20, 12);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 8, y: 4, width: 3, height: 3, kind: BuiltKind.Landfill });
+    for (let x = 0; x < 20; x++) map.water[map.idx(x, 7)] = 1; // a creek along its fence
+    const state = createAmbientState();
+    state.landfill.set(map.idx(8, 4), fill);
+    return { map, state };
+  }
+  it('poisons the ground round it, more the fuller it is', () => {
+    const empty = dump(0);
+    const full = dump(400);
+    for (let k = 0; k < 20; k++) {
+      accumulateGroundPollution(empty.state, empty.map);
+      accumulateGroundPollution(full.state, full.map);
+    }
+    const near = (s: ReturnType<typeof dump>) => s.state.groundPollution.get(s.map.idx(7, 5)) ?? 0; // beside its fence
+    expect(near(empty)).toBeGreaterThan(0);
+    expect(near(full)).toBeGreaterThan(near(empty));
+  });
+  it('leaches into the water beside it', () => {
+    const d = dump(100);
+    const map2 = new GameMap(20, 12);
+    for (let x = 0; x < 20; x++) map2.water[map2.idx(x, 7)] = 1;
+    const clean = createAmbientState();
+    accumulateWaterRunoff(d.state, d.map);
+    accumulateWaterRunoff(clean, map2);
+    expect(d.state.waterPollution.get(d.map.idx(9, 7)) ?? 0).toBeGreaterThan(clean.waterPollution.get(map2.idx(9, 7)) ?? 0);
+  });
+  it('drags the land value of the homes near it', () => {
+    const map = new GameMap(30, 12);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 10, y: 4, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    const clean = landValueAt(map, 10, 4);
+    placeParcel(map, parcels, { x: 12, y: 4, width: 3, height: 3, kind: BuiltKind.Landfill });
+    expect(landValueAt(map, 10, 4)).toBeLessThan(clean);
+  });
+  it("a new city's landfill already holds the city's history", () => {
+    const { map, state } = dump(0);
+    state.landfill.clear();
+    seedDecay(state, map);
+    expect(state.landfill.get(map.idx(8, 4))).toBe(LANDFILL_HISTORY);
+  });
+});
