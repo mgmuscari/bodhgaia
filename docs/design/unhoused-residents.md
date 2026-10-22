@@ -28,6 +28,19 @@ occupancy) lowers it — so "build/heal housing" is the legible counter-move, ex
 perturbs — the delicate occupancy/wellbeing loop (it's a pure read, zero feedback). The richer pieces
 below change game feel and need playtest judgement, so they're Maddy's call.
 
+## Built 2026-10-21 (Maddy: "Unhoused as people" — fuller days, evictions you can see, tied into the systems)
+
+- **Fuller days** (`live/unhoused.ts`): a day out from a camp or shelter is a meal (pantry, food bank), warmth
+  (library, civic hall — doubled from 17:00), care (clinic), rest (park, garden, parklet) or the shops. With none of
+  an errand's places in reach, it's the shops. Only shop visits thin commerce's taxes.
+- **Evictions you can see** (`live/evictions.ts`): people put out of a home (rent, a home torn down, a flood) walk
+  from its door to the camp they joined, carrying a bundle or a box, one after another. A trickle of rent
+  displacement shows once it adds up to a person. This is off for the opening's inherited crisis. The camera feed
+  (rate-limited) and the news say so.
+- **Ties**: a meal today halves the night's exposure risk for the share of those sleeping out who ate (reset at
+  dawn), and an eviction costs its neighbourhood 2 belonging.
+- Not built (Maddy chose to leave it): living in cars.
+
 ## Open questions / next steps (for Maddy)
 
 1. **Visible sheltering agents — SPEC'D (Maddy 2026-06-19).** "unhoused people either live in empty
