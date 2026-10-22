@@ -64,7 +64,7 @@ export function mountSettingsPanel(
   const panel = document.createElement('div');
   panel.className = 'settings-panel';
   // four sections no longer fit a short viewport centred — scroll inside the frame rather than off-screen
-  panel.style.maxHeight = 'calc(100vh - var(--topbar-h) - var(--status-h) - 1rem)'; // inside the chrome
+  panel.style.maxHeight = 'calc(100vh - var(--topbar-h) - var(--status-h) - var(--dock-h) - 1rem)'; // inside the chrome
   panel.style.boxSizing = 'border-box'; // the cap includes the frame and padding
   panel.style.overflowY = 'auto';
 
