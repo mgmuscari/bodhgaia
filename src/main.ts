@@ -683,6 +683,13 @@ export function main(save: SaveV1 | null = null): void {
             return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
           },
           setHour: (h) => setGameHour(h),
+          followTruck: () => {
+            const k = live.state.garbageTrucks?.[0];
+            if (!k) return false;
+            camera.centerOn(k.x + 0.5, k.y + 0.5, 3);
+            markDirty();
+            return true;
+          },
           depot: () => {
             // a 2×2 of open land beside a street, nearest the newest pile, within 12 tiles: a depot goes up there
             const pile = live.state.evictedPiles?.at(-1);

@@ -68,6 +68,8 @@ export interface DemoDeps {
   evict?(): { x: number; y: number } | null;
   /** Build a sanitation depot on open land near the street's piles (live/garbage.ts); false if there's nowhere. */
   depot?(): boolean;
+  /** Keep the camera on the garbage truck that's out, if one is (pile → landfill → home); false if none. */
+  followTruck?(): boolean;
   /** Move the clock forward to the start of `hour` (ui/gameTime.ts setGameHour). */
   setHour?(hour: number): void;
 }
@@ -165,6 +167,8 @@ export function createDemo(kind: DemoKind, deps: DemoDeps): { frame(now: number)
     frame(now) {
       start ??= now;
       while (steps.length > 0 && now - start >= steps[0]!.at) steps.shift()!.run();
+      // the garbage demo rides along with the truck: to the pile, to the landfill, home (a minute and a half at most)
+      if (kind === 'garbage' && now - start >= SETTLE_MS + 6000 && now - start < SETTLE_MS + 96_000) deps.followTruck?.();
     },
   };
 }
