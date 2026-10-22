@@ -526,6 +526,7 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
 
 /** Buildings with no zone that no one walks through. */
 const CLOSED_KINDS: ReadonlySet<number> = new Set([
+  BuiltKind.Landfill,
   BuiltKind.CoalPlant,
   BuiltKind.GasPlant,
   BuiltKind.HydroPlant,

@@ -230,6 +230,32 @@ const sanitationDepot: Painter = (W, H, v) => {
   return p;
 };
 
+/** The landfill (Maddy 2026-10-21): mounds of the city's garbage behind a chain-link fence — browns and greys, a
+ *  scatter of colour from what was thrown out, a bulldozer working the top, gulls. */
+const landfill: Painter = (W, H, v) => {
+  const p = lot(W, H, 'dirt', 740 + v);
+  const fx = (x: number, y: number): boolean => x === 0 || y === 0 || x === W - 1 || y === H - 1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (fx(x, y)) {
+        if ((x + y) % 2 === 0) px(p, x, y, C.paveHi); // the chain-link fence
+        continue;
+      }
+      // mounds: a few rounded heaps, darker at their feet, flecked with what was thrown out
+      const cx = W / 2 + (v % 3) - 1;
+      const cy = H / 2;
+      const d = Math.abs(x - cx) * 0.8 + Math.abs(y - cy);
+      const h = hash2(x, y, 7400 + v) % 16;
+      const base = d < W * 0.22 ? C.dirtHi : d < W * 0.38 ? C.dirt : C.dirtLo;
+      px(p, x, y, h < 2 ? C.slate : h === 2 ? C.roofBlue : h === 3 ? C.signal : h === 4 ? C.cream : base);
+    }
+  }
+  rect(p, (W >> 1) + 2, (H >> 1) - 4, 4, 2, C.flower); // a bulldozer on the top
+  hline(p, (W >> 1) + 1, (W >> 1) + 6, (H >> 1) - 2, C.ink);
+  for (const [gx, gy] of [[4, 5], [W - 7, 8], [9, H - 9]] as const) px(p, gx, gy, C.petal); // gulls
+  return p;
+};
+
 const clinic: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 330 + v);
   const L = blank(W, H);
@@ -757,6 +783,7 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [31, [precinct, 1]],
   [32, [fireStation, 1]],
   [73, [sanitationDepot, 1]],
+  [74, [landfill, 1]],
   [33, [clinic, 1]],
   [34, [library, 1]],
   [35, [school, 1]],

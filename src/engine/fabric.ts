@@ -128,6 +128,9 @@ export const BuiltKind = {
   // A sanitation depot (Maddy 2026-10-21: "trash cluttering the streets … garbage trucks"): a city service whose trucks
   // clear the piles left on the street (live/garbage.ts).
   SanitationDepot: 73,
+  // The landfill (Maddy 2026-10-21): where the depots' trucks dump the city's garbage — history sited it on redlined
+  // ground (worldgen/moses.ts); it fills, and poisons the ground and water round it, until it's capped (live/garbage.ts).
+  Landfill: 74,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 

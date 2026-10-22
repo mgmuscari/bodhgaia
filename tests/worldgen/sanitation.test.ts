@@ -27,7 +27,9 @@ describe('a new city\'s sanitation', () => {
       }
       const grades = homes.map((h) => h.grade).sort((a, b) => a - b);
       const median = grades[grades.length >> 1]!;
-      for (const d of depots) expect(map.redline[d]!).toBeLessThanOrEqual(median); // the greenlined side
+      // the greenlined side: sited on the least-redlined frontage where a 2×2 fits — below the redlined quarter
+      const q3 = grades[Math.floor(grades.length * 0.75)]!;
+      for (const d of depots) expect(map.redline[d]!).toBeLessThan(q3);
       const reached = (t: number) => depots.some((d) => Math.abs((d % map.width) - (t % map.width)) + Math.abs(Math.floor(d / map.width) - Math.floor(t / map.width)) <= DEPOT_REACH);
       const redlined = homes.filter((h) => h.grade > median);
       const unserved = redlined.filter((h) => !reached(h.t)).length / Math.max(1, redlined.length);

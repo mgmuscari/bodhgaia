@@ -930,6 +930,7 @@ describe('era3Highways', () => {
       const servicesPlaced = Number(/(\d+) services/.exec(line)![1]);
       const civicServicesPlaced = Number(/(\d+) civic services/.exec(line)![1]);
       const sanitationPlaced = Number(/(\d+) sanitation/.exec(line)![1]); // the depot (Maddy 2026-10-21)
+      const landfillPlaced = Number(/(\d+) landfill/.exec(line)![1]); // …and where it dumps
 
       expect(demolished).toBeGreaterThanOrEqual(5);
       // Chronicle honesty: projects are placed only after carving and none
@@ -948,7 +949,8 @@ describe('era3Highways', () => {
           precinctsPlaced +
           servicesPlaced +
           civicServicesPlaced +
-          sanitationPlaced,
+          sanitationPlaced +
+          landfillPlaced,
       );
     });
 
