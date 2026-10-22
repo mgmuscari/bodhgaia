@@ -728,10 +728,45 @@ function wear(level: number): Pixels {
   return p;
 }
 
+/** A sideshow's tire marks at depth 1..3, variant `v` (Maddy 2026-10-21): black rubber laid in rings where cars spun
+ *  donuts — one broken ring for a scuff, more and darker overlapping rings as they build. A midpoint circle (integer). */
+export function skidMarks(level: number, v: number): Pixels {
+  const p = blank(T, T);
+  const rings = level === 1 ? 1 : level === 2 ? 2 : 4;
+  for (let r = 0; r < rings; r++) {
+    const h = hash2(r, v, 7700);
+    const cx = 5 + (h % 7);
+    const cy = 5 + ((h >>> 4) % 7);
+    const rad = 3 + ((h >>> 8) % 4);
+    let x = rad;
+    let y = 0;
+    let err = 1 - rad;
+    const plot = (px0: number, py0: number): void => {
+      if (px0 < 0 || py0 < 0 || px0 >= T || py0 >= T) return;
+      const k = hash2(px0, py0, 7800 + r + v * 9) % 8;
+      if (level === 1 && k < 4) return; // a scuff: a broken ring
+      if (level === 2 && k < 1) return;
+      px(p, px0, py0, k < 3 && level < 3 ? C.asphaltLo : C.ink);
+    };
+    while (x >= y) {
+      for (const [a, b] of [[x, y], [y, x], [-y, x], [-x, y], [-x, -y], [-y, -x], [y, -x], [x, -y]] as const) plot(cx + a, cy + b);
+      y++;
+      if (err < 0) err += 2 * y + 1;
+      else {
+        x--;
+        err += 2 * (y - x) + 1;
+      }
+    }
+  }
+  return p;
+}
+export const SKID_VARIANTS = 3;
+
 function encampmentTiles(out: Map<string, Pixels>): void {
   TENTS.forEach((t, i) => out.set(`@sprite/tent/${i}`, t));
   JUNK.forEach((t, i) => out.set(`@sprite/junk/${i}`, t));
   for (let level = 1; level <= 3; level++) out.set(`@wear/${level}`, wear(level));
+  for (let level = 1; level <= 3; level++) for (let v = 0; v < SKID_VARIANTS; v++) out.set(`@wear/skid/${level}/${v}`, skidMarks(level, v));
 }
 
 // ── Status icons ─────────────────────────────────────────────────────────────────────────────────

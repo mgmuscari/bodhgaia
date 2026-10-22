@@ -40,7 +40,7 @@ const LAYERS = [
 type LayerName = (typeof LAYERS)[number];
 
 /** The live layer's STOCKS (Maps keyed by tile) — everything else in the live layer is derived or transient. */
-export const LIVE_MAPS = ['occupancy', 'occExpect', 'wear', 'roadDecay', 'waterPollution', 'groundPollution', 'pollution', 'buildingHealth', 'learning'] as const;
+export const LIVE_MAPS = ['occupancy', 'occExpect', 'wear', 'roadDecay', 'waterPollution', 'groundPollution', 'pollution', 'buildingHealth', 'learning', 'skids'] as const;
 type LiveMapName = (typeof LIVE_MAPS)[number];
 
 export interface SaveV1 {

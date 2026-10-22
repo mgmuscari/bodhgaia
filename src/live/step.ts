@@ -23,6 +23,7 @@ import {
   TRAFFIC_DECAY,
   WATER_RUNOFF_CADENCE,
   WEAR_DECAY,
+  SKID_DECAY,
   WEAR_MAX,
   WEAR_RATE,
   WIND_CADENCE,
@@ -155,6 +156,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
     }
   }
   decayField(state.wear, WEAR_DECAY);
+  decayField(state.skids, SKID_DECAY); // a sideshow's tire marks fade slowly
 
   // 5b. Live traffic eases back where no car is passing — so the agent-driven field tracks CURRENT
   //     driving, and a calmed/bypassed road clears.

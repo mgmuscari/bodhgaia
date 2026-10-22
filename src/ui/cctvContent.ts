@@ -103,10 +103,11 @@ const LABELS: Record<LiveEvent['kind'], string> = {
   party: 'Block party',
   fair: 'Craft fair',
   festival: 'Festival',
+  sideshow: 'Sideshow',
 };
 
 /** Deaths first, then disasters and protest; arrests and celebrations give way to everything else. */
-const RANK: Record<LiveEvent['kind'], number> = { death: 0, collapse: 0, rescue: 1, fire: 1, spill: 1, flood: 1, crash: 1, walkoff: 2, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2 };
+const RANK: Record<LiveEvent['kind'], number> = { death: 0, collapse: 0, rescue: 1, fire: 1, spill: 1, flood: 1, crash: 1, walkoff: 2, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2, sideshow: 2 };
 
 /** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
  *  only a few wait. */

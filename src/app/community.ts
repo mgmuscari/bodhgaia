@@ -5,13 +5,15 @@
 // trusts more after.
 
 import type { GameMap } from '../engine/map';
-import { BuiltKind, type ParcelStore } from '../engine/fabric';
+import { BuiltKind, isRoadKind, type ParcelStore } from '../engine/fabric';
 import { ZoneType, zoneTypeOf } from '../engine/zone';
 import type { Rng } from '../engine/rng';
 import type { AmbientState } from '../live/types';
 import type { CivicState } from '../civic/state';
 import { SEED_BELONGING, SEED_TRUST, SEED_VOICE } from '../civic/state';
-import { POLICE_VIOLENCE_MAX, REFUGE_KINDS, SAFE_RADIUS, seconds } from '../live/tuning';
+import { POLICE_VIOLENCE_MAX, POLL_LAY_BASE, POLL_MAX, REFUGE_KINDS, SAFE_RADIUS, SKID_LAY, SKID_MAX, seconds } from '../live/tuning';
+import { junctionBox } from '../ui/decoration';
+import { layField } from '../citizens/field';
 import type { NeighborhoodMap } from '../civic/neighborhoods';
 import { GATHER_LEAVE, startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
 import { closeTiles } from '../live/network';
@@ -72,6 +74,23 @@ export const UPRISING_MAX_LIFE = seconds(160);
 export const CALM_VOICE = 0.6;
 export const UPRISING_AFTERMATH = { trust: -10, voice: 20 } as const;
 export const UPRISING_APPROVAL = -4;
+/** Sideshows (Maddy 2026-10-21: car sideshows, "due to community stress", "at intersections, … more likely and
+ *  bigger in bigger intersections", leaving tire marks): at night, below this neighbourhood health (0..255), cars take
+ *  over its biggest crossing and spin donuts while the neighbours ring it. The chance an hour scales with how far below,
+ *  and with the crossing's size (tiles in its junction box, up to SIDESHOW_SIZE_CAP); so does the number of cars. */
+export const SIDESHOW_HEALTH = 100;
+export const SIDESHOW_CHANCE = 0.1;
+export const SIDESHOW_SIZE_CAP = 6;
+export const SIDESHOW_LIFE = seconds(50);
+/** Watchers: a few per car. */
+export const SIDESHOW_CROWD_PER_CAR = 4;
+export const SIDESHOW_MAX_CARS = 4;
+export const SIDESHOW_BELONGING_GAIN = 4;
+/** Fireworks (interdependence §6): a festival still on at FIREWORKS_HOUR or later puts on one show — the city belongs
+ *  a little more (so its wellbeing rises), and the smoke lays a whisper of smog over the park. */
+export const FIREWORKS_HOUR = 20;
+export const FIREWORKS_BELONGING = 3;
+export const FIREWORKS_SMOG = POLL_LAY_BASE * 6;
 /** At most this many gatherings at once, city-wide. */
 export const MAX_GATHERINGS = 4;
 
@@ -195,7 +214,7 @@ export interface Community {
   frame(now: number): void;
   /** Hold a gathering now, whatever the conditions (demos, live checks): in the neighbourhood with the most homes.
    *  False if there's nowhere to hold it. */
-  hold(kind: 'block-party' | 'craft-fair' | 'festival' | 'protest' | 'uprising'): boolean;
+  hold(kind: 'block-party' | 'craft-fair' | 'festival' | 'protest' | 'uprising' | 'sideshow'): boolean;
 }
 
 export function createCommunity(deps: CommunityDeps): Community {
@@ -214,6 +233,7 @@ export function createCommunity(deps: CommunityDeps): Community {
   const endOf = (g: Gathering): void => {
     closeTiles(map, `gathering:${g.id}`, null);
     if (g.kind === 'block-party') lift(g.hood, { belonging: PARTY_BELONGING_GAIN, trust: PARTY_TRUST_GAIN });
+    else if (g.kind === 'sideshow') lift(g.hood, { belonging: SIDESHOW_BELONGING_GAIN }); // the neighbours' night out
     else if (g.kind === 'craft-fair') {
       lift(g.hood, { belonging: FAIR_BELONGING_GAIN });
       deps.cheer({ funds: FAIR_TRADE });
@@ -353,6 +373,88 @@ export function createCommunity(deps: CommunityDeps): Community {
     } else deps.news('A protest — the neighbours are speaking out');
     return true;
   };
+  /** The crossings (junction boxes of streets and avenues, not freeways) a neighbourhood touches: each a box of tiles.
+   *  A crossing is usually on a neighbourhood's edge (its own tiles in none), so it counts for every neighbourhood its
+   *  approaches reach. */
+  type Crossing = { tiles: number[]; x: number; y: number; w: number; h: number; hoods: Set<number> };
+  const crossings = (part: NeighborhoodMap): Crossing[] => {
+    const isBox = (t: number): boolean => {
+      const k = map.built[t]!;
+      if (k !== BuiltKind.RoadStreet && k !== BuiltKind.RoadAvenue && k !== BuiltKind.QuietStreet) return false;
+      const x = t % map.width;
+      return junctionBox(map, x, (t - x) / map.width);
+    };
+    const seen = new Set<number>();
+    const out: Crossing[] = [];
+    for (let t = 0; t < map.built.length; t++) {
+      if (seen.has(t) || !isBox(t)) continue;
+      const tiles: number[] = [];
+      const stack = [t];
+      seen.add(t);
+      while (stack.length) {
+        const c = stack.pop()!;
+        tiles.push(c);
+        const cx = c % map.width;
+        const cy = (c - cx) / map.width;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          if (!map.inBounds(cx + dx, cy + dy)) continue;
+          const n = map.idx(cx + dx, cy + dy);
+          if (!seen.has(n) && isBox(n)) {
+            seen.add(n);
+            stack.push(n);
+          }
+        }
+      }
+      const xs = tiles.map((i) => i % map.width);
+      const ys = tiles.map((i) => Math.floor(i / map.width));
+      const x0 = Math.min(...xs);
+      const y0 = Math.min(...ys);
+      const box: Crossing = { tiles, x: x0, y: y0, w: Math.max(...xs) - x0 + 1, h: Math.max(...ys) - y0 + 1, hoods: new Set() };
+      const ring = around(map, box.x, box.y, box.w, box.h);
+      for (let dy = 0; dy < ring.h; dy++) for (let dx = 0; dx < ring.w; dx++) box.hoods.add(part.tileToNeighborhood[map.idx(ring.x + dx, ring.y + dy)] ?? 0);
+      out.push(box);
+    }
+    return out;
+  };
+  /** A sideshow at the neighbourhood's biggest crossing, at `chance` scaled by its size; false if none was held. */
+  const trySideshow = (part: NeighborhoodMap, all: readonly Crossing[], hood: number, stress: number, force = false): boolean => {
+    const xs = all.filter((c) => c.hoods.has(hood));
+    if (xs.length === 0) return false;
+    const box = xs.reduce((a, b) => (b.tiles.length > a.tiles.length || (b.tiles.length === a.tiles.length && b.tiles[0]! < a.tiles[0]!) ? b : a));
+    const size = Math.min(SIDESHOW_SIZE_CAP, box.tiles.length);
+    if (!force && rng.next() >= SIDESHOW_CHANCE * stress * (0.5 + size / 2)) return false; // a 2×2 box: 5× a lone crossing's
+    const cars = Math.min(SIDESHOW_MAX_CARS, 1 + Math.floor(size / 2));
+    const site = around(map, box.x, box.y, box.w, box.h); // the crossing and its approaches, where people stand
+    const g = holdAt('sideshow', site, hood, SIDESHOW_LIFE, homesIn(part, hood), cars * SIDESHOW_CROWD_PER_CAR, true);
+    if (!g) return false;
+    g.cars = cars;
+    skid(g);
+    live.events?.push({ kind: 'sideshow', x: site.x, y: site.y, w: site.w, h: site.h });
+    deps.news(cars > 1 ? `A sideshow — ${cars} cars spinning donuts in the crossing, the neighbours out to watch` : 'A sideshow — a car spinning donuts in the crossing, the neighbours out to watch');
+    return true;
+  };
+  /** A sideshow's cars lay tire marks on the crossing's road (once an hour while it runs), and a little tire smoke. */
+  const skid = (g: Gathering): void => {
+    for (let dy = 1; dy < g.site.h - 1; dy++) {
+      for (let dx = 1; dx < g.site.w - 1; dx++) {
+        const t = map.idx(g.site.x + dx, g.site.y + dy);
+        if (!isRoadKind(map.built[t]!)) continue;
+        layField(live.skids, t, SKID_LAY * (g.cars ?? 1), SKID_MAX);
+        layField(live.pollution, t, POLL_LAY_BASE * 2 * (g.cars ?? 1), POLL_MAX);
+      }
+    }
+  };
+  /** After dark, a festival still on puts on its fireworks — once. */
+  const tendFestivals = (hour: number): void => {
+    if (hour < FIREWORKS_HOUR && hour >= 5) return;
+    for (const g of live.gatherings ?? []) {
+      if (g.kind !== 'festival' || g.leaving || g.fireworks) continue;
+      g.fireworks = true;
+      for (let hood = 1; hood <= civic.count(); hood++) lift(hood, { belonging: FIREWORKS_BELONGING });
+      for (const t of siteTiles(map, g.site)) layField(live.pollution, t, Math.ceil(FIREWORKS_SMOG / (g.site.w * g.site.h)), POLL_MAX);
+      deps.news('Fireworks over the park');
+    }
+  };
   const holdFestival = (part: NeighborhoodMap): boolean => {
     const site = findParcel(map, parcels, part, 0, [BuiltKind.Park, BuiltKind.Civic]);
     if (!site || !holdAt('festival', site, 0, FEST_LIFE, homesIn(part, 0), FEST_CROWD, false)) return false;
@@ -367,6 +469,19 @@ export function createCommunity(deps: CommunityDeps): Community {
     const part = deps.partition();
     const busy = new Set((live.gatherings ?? []).map((g) => g.hood));
     const daytime = hour >= 10 && hour < 20;
+    if (hour >= 21 || hour < 3) {
+      // the night: a hard-pressed neighbourhood's sideshows (the crossings found once, only if one is hard pressed)
+      let all: Crossing[] | null = null;
+      for (let hood = 1; hood <= civic.count(); hood++) {
+        if ((live.gatherings?.length ?? 0) >= MAX_GATHERINGS) return;
+        if (busy.has(hood)) continue;
+        const health = deps.health?.(hood);
+        if (health === undefined || health >= SIDESHOW_HEALTH) continue;
+        all ??= crossings(part);
+        if (trySideshow(part, all, hood, (SIDESHOW_HEALTH - health) / SIDESHOW_HEALTH)) busy.add(hood);
+      }
+      return;
+    }
     if (!daytime) return;
     // the city's festival (with its parade): at most one at a time
     if (!busy.has(0) && (live.gatherings?.length ?? 0) + 2 <= MAX_GATHERINGS && deps.approval() >= FEST_APPROVAL) {
@@ -411,6 +526,11 @@ export function createCommunity(deps: CommunityDeps): Community {
     hold(kind) {
       const part = deps.partition();
       if (kind === 'festival') return holdFestival(part);
+      if (kind === 'sideshow') {
+        const all = crossings(part);
+        for (let hood = 1; hood <= civic.count(); hood++) if (!(live.gatherings ?? []).some((g) => g.hood === hood) && trySideshow(part, all, hood, 1, true)) return true;
+        return false;
+      }
       if (kind === 'protest' || kind === 'uprising') {
         // the neighbourhood the police have harmed most, if it isn't already out
         let best = 0;
@@ -445,6 +565,8 @@ export function createCommunity(deps: CommunityDeps): Community {
       if (hour === undefined || hour === lastHour) return;
       lastHour = hour;
       tendUprisings(deps.partition());
+      tendFestivals(hour);
+      for (const g of live.gatherings ?? []) if (g.kind === 'sideshow' && !g.leaving) skid(g);
       if (deps.on()) draw(hour);
     },
   };

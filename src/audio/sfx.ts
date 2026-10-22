@@ -33,6 +33,7 @@ export const CUE_NAMES = [
   'unlock',
   'relief',
   'loanTaken',
+  'firework',
 ] as const;
 export type CueName = (typeof CUE_NAMES)[number];
 
@@ -92,6 +93,8 @@ export const CUES: Readonly<Record<CueName, Cue>> = {
   ],
   // A loan: a coin set down, then a step down — weight taken on.
   loanTaken: [n('marimba', 60, 0.24, 0, 0.14), n('pluck', 55, 0.2, 0.1, 0.25)],
+  // A firework over the festival (interdependence §6): a soft, distant pop, then its crackle — never a bang.
+  firework: [n('thud', 43, 0.12, 0, 0.12), n('noise', 86, 0.06, 0.07, 0.06), n('noise', 81, 0.05, 0.14, 0.05), n('noise', 88, 0.04, 0.21, 0.05)],
 };
 
 /** Seconds from a cue's start to its last note's end. */

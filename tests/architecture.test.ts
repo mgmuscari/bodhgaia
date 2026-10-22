@@ -110,6 +110,8 @@ const PURE_UI_ALLOWLIST = [
   'src/ui/techContent.ts',
   'src/ui/techEffectsContent.ts',
   'src/ui/cctvContent.ts',
+  'src/ui/fireworksContent.ts',
+  'src/ui/sideshowContent.ts',
   'src/ui/gameTime.ts',
   'src/ui/glRect.ts',
   'src/ui/tourContent.ts',

@@ -266,7 +266,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival';
+  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival' | 'sideshow';
   x: number;
   y: number;
   w: number;
@@ -436,6 +436,8 @@ export interface AmbientState {
   schoolRunHour?: number;
   /** Each school's learning, by its anchor tile, 0..LEARN_MAX (live/school.ts) — saved with the city. */
   learning: Map<number, number>;
+  /** Tire marks a sideshow leaves in a crossing, by road tile, 0..SKID_MAX — fading slowly; saved with the city. */
+  skids: Map<number, number>;
   /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
    *  to the unhoused pool. */
   sheltered?: Map<number, number>;
@@ -519,6 +521,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     practices: { ...NEUTRAL_PRACTICES },
     occExpect: new Map(),
     learning: new Map(),
+    skids: new Map(),
     occPasses: 0,
     unhoused: 0,
     roadDecay: new Map(),
