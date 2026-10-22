@@ -27,6 +27,9 @@ export interface Gathering {
   leaving: boolean;
   /** A sideshow's cars spinning donuts in the crossing (the site is the crossing grown by a tile, where people stand). */
   cars?: number;
+  /** A sideshow the police were called to (live/police.ts), and whether they came — they broke it up. */
+  called?: boolean;
+  policed?: boolean;
   /** A festival still on after dark: fireworks over the park (ui/fireworksContent.ts). */
   fireworks?: boolean;
 }

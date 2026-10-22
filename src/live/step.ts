@@ -33,7 +33,7 @@ import type { AmbientState } from './types';
 import { spawnCitizens } from './agents';
 import { buildVehicleCtx, stepCar } from './cars';
 import { stepPed } from './peds';
-import { safeZonesFor, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
+import { callToSideshows, safeZonesFor, policePhase, spawnCruisers, stepArrests, stepCruisers } from './police';
 import { stepDeaths, stepExposure } from './death';
 import { stepWanderer } from './wanderer';
 import { stepTrucks } from './trucks';
@@ -120,10 +120,12 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   state.policeTick += 1;
   // Community safe-zones the cruisers avoid + never sweep (built fresh only when there ARE cruisers).
   const safe = state.cruisers.length > 0 ? safeZonesFor(map) : undefined; // cached until something is built
+  callToSideshows(state, map); // a sideshow calls the cruisers out of a precinct in reach (Maddy 2026-10-22)
   stepCruisers(state, map, rng, safe, ctx.moverGrid);
   state.arrestTick += 1;
-  if (state.arrestTick % ARREST_CADENCE === 0 && policePhase(state.policeTick) === 'chase') {
-    stepArrests(state, map, rng, safe);
+  if (state.arrestTick % ARREST_CADENCE === 0) {
+    // the chase sweeps, as ever; between them only a sideshow's scene is swept (no draw at all without one)
+    stepArrests(state, map, rng, safe, policePhase(state.policeTick) !== 'chase');
   }
 
   // 3b. Move the pedestrians (peds.ts: the citizen state machine — hidden phases, walking a leg

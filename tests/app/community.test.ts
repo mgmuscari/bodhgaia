@@ -402,3 +402,52 @@ describe('fireworks', () => {
     expect(t.news.filter((n) => /fireworks/i.test(n))).toHaveLength(1); // one show a festival
   });
 });
+
+// Sideshows' costs and gains (Maddy 2026-10-22: "a boost to community stats but also create pollution and can injure
+// residents, also lead to arrests with hurt trust").
+import { SIDESHOW_INJURY_CHANCE, SIDESHOW_POLICED_TRUST } from '../../src/app/community';
+describe('a sideshow, its gains and costs', () => {
+  it('the neighbourhood belongs more and finds its voice after', () => {
+    const t = crossTown(true, 20);
+    const [g] = sideshows(t, 300);
+    expect(g).toBeDefined();
+    const hood = g!.hood;
+    const before = t.civic.getValues(hood);
+    t.tick(g!.life + 600);
+    t.hourPasses(23);
+    const after = t.civic.getValues(hood);
+    expect(after.belonging).toBeGreaterThan(before.belonging);
+    expect(after.voice).toBeGreaterThan(before.voice);
+  });
+  it('broken up by the police, it costs the neighbourhood trust', () => {
+    const t = crossTown(true, 20);
+    let g: NonNullable<typeof t.live.gatherings>[number] | undefined;
+    for (let k = 0; k < 300 && !g; k++) {
+      t.hourPasses(NIGHT[k % NIGHT.length]!);
+      g = t.live.gatherings?.find((x) => x.kind === 'sideshow');
+    }
+    expect(g).toBeDefined();
+    g!.policed = true; // the cruisers came (live/police.ts)
+    const hood = g!.hood;
+    const before = t.civic.getValues(hood).trust;
+    t.tick(g!.life + 600);
+    t.hourPasses(23);
+    expect(t.civic.getValues(hood).trust).toBe(Math.max(0, before - SIDESHOW_POLICED_TRUST));
+  });
+  it('the cars can hit someone watching: they collapse where they stood', () => {
+    expect(SIDESHOW_INJURY_CHANCE).toBeGreaterThan(0);
+    let hurt = 0;
+    for (let run = 0; run < 12 && hurt === 0; run++) {
+      const t = crossTown(true, 10);
+      sideshows(t, 400);
+      hurt += t.live.dying?.length ?? 0;
+    }
+    expect(hurt).toBeGreaterThan(0);
+  });
+  it('the tire smoke hangs over the crossing', () => {
+    const t = crossTown(true, 10);
+    const [g] = sideshows(t, 300);
+    expect(g).toBeDefined();
+    expect([...t.box].some((i) => (t.live.pollution.get(i) ?? 0) > 0)).toBe(true);
+  });
+});

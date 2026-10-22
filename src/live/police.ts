@@ -24,6 +24,7 @@ import {
   SAFE_RADIUS,
   SCATTER_LEN,
   SHY_RADIUS,
+  seconds,
 } from './tuning';
 import { DIR_DX, DIR_DY } from './geometry';
 import type { AmbientState, Mover, Ped } from './types';
@@ -31,6 +32,7 @@ import { offStreet } from './types';
 import { advanceMover, blockedAhead } from './motion';
 import { adjacentRoad, canDrive, carPassable, mapEpoch } from './network';
 import { abandonOwnedCar, depositHealth } from './agents';
+import { GATHER_LEAVE } from './gatherings';
 
 /** The set of tiles within SAFE_RADIUS of any community-power building — refuge the cruisers avoid
  *  and never sweep. Built fresh from the map (sparse refuges); the player grows it by building. */
@@ -218,6 +220,39 @@ export function nextPatrolStep(
  * counting down its patrol life so the fleet recirculates from the precincts. Renderer-side;
  * deterministic in `rng`.
  */
+/** How far (Manhattan) from a precinct the police come to a sideshow, how many cruisers, and how long they stay. */
+export const SIDESHOW_POLICE_REACH = 30;
+export const SIDESHOW_RESPONDERS = 2;
+export const SCENE_TIME = seconds(20);
+/** How near the scene (tiles) a cruiser has arrived — the crossing itself is closed to cars. */
+const SCENE_NEAR = 3;
+
+/** A sideshow calls the police (Maddy 2026-10-22: "we can send police to sideshows"): a precinct within reach sends its
+ *  nearest free cruisers, which drive there instead of patrolling. Once per sideshow. Defunded — no precinct — no one. */
+export function callToSideshows(state: AmbientState, map: GameMap): void {
+  for (const g of state.gatherings ?? []) {
+    if (g.kind !== 'sideshow' || g.leaving || g.called) continue;
+    g.called = true;
+    const cx = Math.round(g.site.x + g.site.w / 2 - 0.5);
+    const cy = Math.round(g.site.y + g.site.h / 2 - 0.5);
+    const inReach = precinctsOf(map).some((p) => Math.abs((p % map.width) - cx) + Math.abs(Math.floor(p / map.width) - cy) <= SIDESHOW_POLICE_REACH);
+    if (!inReach) continue;
+    const free = state.cruisers
+      .map((c, i) => ({ c, i, d: Math.abs(c.x - cx) + Math.abs(c.y - cy) }))
+      .filter((e) => e.c.respond === undefined)
+      .sort((a, b) => a.d - b.d || a.i - b.i)
+      .slice(0, SIDESHOW_RESPONDERS);
+    for (const { c } of free) {
+      c.respond = { x: cx, y: cy, g: g.id };
+      c.onScene = 0;
+      c.dwell = Math.max(c.dwell ?? 0, SCENE_TIME * 4); // the shift runs on until they're done there
+    }
+  }
+}
+
+/** Is cruiser `c` at the sideshow it was sent to? */
+const atScene = (c: Mover): boolean => c.respond !== undefined && Math.abs(c.x - c.respond.x) + Math.abs(c.y - c.respond.y) <= SCENE_NEAR;
+
 export function stepCruisers(state: AmbientState, map: GameMap, rng: Rng, safe?: ReadonlySet<number>, grid?: Map<number, Mover[]>): void {
   const chasing = policePhase(state.policeTick) === 'chase';
   const blocked = grid ? (mm: Mover): boolean => blockedAhead(grid, map.width, mm) : undefined;
@@ -225,8 +260,19 @@ export function stepCruisers(state: AmbientState, map: GameMap, rng: Rng, safe?:
     if ((c.dwell ?? 0) <= 0) return false; // shift over → recycle (respawn tops up from the precinct)
     c.dwell! -= 1;
     if (!carPassable(map, Math.round(c.x), Math.round(c.y))) return false; // road gone
-    // Chase → aim per the cruiser's ghost personality; scatter → no target, so it seeks redlined streets.
-    const target = chasing ? huntTarget(c, state.peds) : null;
+    // A call to a sideshow: there, the crowd breaks up; they stay a while, then back to patrol
+    if (c.respond && atScene(c)) {
+      const g = state.gatherings?.find((x) => x.id === c.respond!.g);
+      if (g && !g.policed) {
+        g.policed = true;
+        g.life = Math.min(g.life, g.age + GATHER_LEAVE); // everyone heads home
+      }
+      c.onScene = (c.onScene ?? 0) + 1;
+      if (!g || c.onScene >= SCENE_TIME) c.respond = undefined;
+      return true; // holding the scene
+    }
+    // Chase → aim per the cruiser's ghost personality; scatter → no target, so it seeks redlined streets; a call → there.
+    const target = c.respond ? { x: c.respond.x, y: c.respond.y } : chasing ? huntTarget(c, state.peds) : null;
     return advanceMover(c, CAR_SPEED, map, (x, y, fromDir, recent) =>
       nextPatrolStep(map, x, y, fromDir, rng, recent, target, safe), blocked,
     );
@@ -240,15 +286,18 @@ export function stepCruisers(state: AmbientState, map: GameMap, rng: Rng, safe?:
  * redlined). For nothing: no cause, only the grade. The player ends it by defunding the precinct
  * (no precinct → no cruisers → no arrests). Renderer-side; deterministic in `rng`.
  */
-export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: ReadonlySet<number>): void {
+export function stepArrests(state: AmbientState, map: GameMap, rng: Rng, safe?: ReadonlySet<number>, sceneOnly = false): void {
   if (state.cruisers.length === 0 || state.peds.length === 0) return;
   for (const c of state.cruisers) {
     const cx = Math.round(c.x);
     const cy = Math.round(c.y);
     if (!map.inBounds(cx, cy)) continue;
+    const onScene = atScene(c);
+    if (sceneOnly && !onScene) continue; // between the chase sweeps, only a scene is swept
     if (safe?.has(map.idx(cx, cy))) continue; // no arrests inside a community refuge
-    // Arrest pressure scales with how redlined the ground is (0 at greenlined) — no threshold.
-    if (!rng.chance(arrestChance(map.redline[map.idx(cx, cy)]!))) continue;
+    // Arrest pressure scales with how redlined the ground is (0 at greenlined) — no threshold; at a sideshow they
+    // came to break up, the full rate (Maddy 2026-10-22).
+    if (!rng.chance(onScene ? ARREST_CHANCE_MAX : arrestChance(map.redline[map.idx(cx, cy)]!))) continue;
     // Nearest on-foot citizen within reach (riders/indoors aren't on the street).
     let victim = -1;
     let best = ARREST_RADIUS + 1;
