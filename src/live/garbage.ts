@@ -17,6 +17,12 @@ export const DEPOT_REACH = 25;
 export const TRUCKS_PER_DEPOT = 2;
 /** Substeps a truck stands at a pile, loading it (~2.5 s). */
 export const LOAD = seconds(2.5);
+/** Substeps a truck stands at the landfill, dumping (~2 s). */
+export const DUMP = seconds(2);
+/** The share of every load a compost hub and a maker space each keep out of the landfill, and the ceiling. */
+export const COMPOST_DIVERT = 0.15;
+export const MAKER_DIVERT = 0.1;
+export const DIVERT_MAX = 0.8;
 /** How often (substeps) the depots look for work. */
 const DISPATCH_EVERY = seconds(1);
 
@@ -53,13 +59,91 @@ export function stepGarbage(state: AmbientState, map: GameMap): void {
     if (k.job === 'loading') {
       if (--k.wait > 0) return true;
       state.evictedPiles = (state.evictedPiles ?? []).filter((p) => p.x !== k.pile.x || p.y !== k.pile.y); // loaded up
-      const back = roadPath(map, Math.round(k.x), Math.round(k.y), k.home.x, k.home.y, state.traffic);
-      if (!back || !board(k, back, map)) return false;
-      k.job = 'back';
+      // to the landfill with the load (Maddy 2026-10-21), if the city has one it can reach; else straight home
+      const fill = nearestLandfill(map, Math.round(k.x), Math.round(k.y));
+      const to = fill === null ? null : roadNear(map, fill % map.width, Math.floor(fill / map.width), 3, 3);
+      const there = to ? roadPath(map, Math.round(k.x), Math.round(k.y), to.x, to.y, state.traffic) : null;
+      if (fill !== null && there && board(k, there, map)) {
+        k.job = 'haul';
+        k.landfill = fill;
+        return true;
+      }
+      if (fill !== null && to && Math.round(k.x) === to.x && Math.round(k.y) === to.y) {
+        dump(state, map, fill); // already at its gate
+      }
+      return homeward(k);
+    }
+    if (k.job === 'haul') {
+      if (drive(k, map)) {
+        k.job = 'dumping';
+        k.wait = DUMP;
+        k.path = undefined;
+      }
       return true;
+    }
+    if (k.job === 'dumping') {
+      if (--k.wait > 0) return true;
+      if (k.landfill !== undefined) dump(state, map, k.landfill);
+      return homeward(k);
     }
     return !drive(k, map); // home at the depot: gone
   });
+
+  /** Set a truck on its way back to the depot; false if it's there already (or can't get there): gone. */
+  function homeward(k: GarbageTruck): boolean {
+    const back = roadPath(map, Math.round(k.x), Math.round(k.y), k.home.x, k.home.y, state.traffic);
+    if (!back || !board(k, back, map)) return false;
+    k.job = 'back';
+    return true;
+  }
+}
+
+/** The landfill nearest (x, y) — its anchor tile (top-left) — or null if the city has none. */
+function nearestLandfill(map: GameMap, x: number, y: number): number | null {
+  let best: number | null = null;
+  let bestD = Infinity;
+  for (let t = 0; t < map.built.length; t++) {
+    if (map.built[t] !== BuiltKind.Landfill) continue;
+    const tx = t % map.width;
+    const ty = (t - tx) / map.width;
+    if (tx > 0 && map.built[t - 1] === BuiltKind.Landfill) continue; // the anchor only
+    if (ty > 0 && map.built[t - map.width] === BuiltKind.Landfill) continue;
+    const d = Math.abs(tx - x) + Math.abs(ty - y);
+    if (d < bestD) {
+      best = t;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** The share of a load kept out of the landfill: each compost hub and maker space in the city takes some, to a ceiling. */
+export function divertShare(map: GameMap): number {
+  const seen = new Set<number>();
+  let compost = 0;
+  let makers = 0;
+  for (let t = 0; t < map.built.length; t++) {
+    const k = map.built[t];
+    if (k !== BuiltKind.CompostHub && k !== BuiltKind.MakerSpace) continue;
+    const id = map.parcel[t]!;
+    if (id !== 0 && seen.has(id)) continue;
+    seen.add(id);
+    if (k === BuiltKind.CompostHub) compost++;
+    else makers++;
+  }
+  return Math.min(DIVERT_MAX, compost * COMPOST_DIVERT + makers * MAKER_DIVERT);
+}
+
+/** A load reaches landfill `t`: it fills by what wasn't diverted. */
+function dump(state: AmbientState, map: GameMap, t: number): void {
+  state.landfill.set(t, (state.landfill.get(t) ?? 0) + (1 - divertShare(map)));
+}
+
+/** All the city's landfills' fill, in loads. */
+export function landfillFill(state: AmbientState): number {
+  let n = 0;
+  for (const v of state.landfill.values()) n += v;
+  return n;
 }
 
 function dispatch(state: AmbientState, map: GameMap): void {

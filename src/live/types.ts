@@ -236,7 +236,9 @@ export interface Van extends Mover {
 
 /** A garbage truck (live/garbage.ts): out from its depot to a pile on the street, loading it, back. */
 export interface GarbageTruck extends Mover {
-  job: 'out' | 'loading' | 'back';
+  job: 'out' | 'loading' | 'haul' | 'dumping' | 'back';
+  /** The landfill it's hauling its load to (anchor tile). */
+  landfill?: number;
   /** The road tile by its depot, to drive back to; the depot's anchor tile. */
   home: { x: number; y: number };
   depot: number;
@@ -471,6 +473,8 @@ export interface AmbientState {
   learning: Map<number, number>;
   /** Tire marks a sideshow leaves in a crossing, by road tile, 0..SKID_MAX — fading slowly; saved with the city. */
   skids: Map<number, number>;
+  /** Each landfill's fill, by its anchor tile, in truckloads (live/garbage.ts) — saved with the city. */
+  landfill: Map<number, number>;
   /** Mutual-aid shelters (live/camps.ts): shelter anchor tile → the people sleeping there. With the camps, it sums
    *  to the unhoused pool. */
   sheltered?: Map<number, number>;
@@ -557,6 +561,7 @@ export function createAmbientState(rng?: Rng): AmbientState {
     occExpect: new Map(),
     learning: new Map(),
     skids: new Map(),
+    landfill: new Map(),
     occPasses: 0,
     unhoused: 0,
     roadDecay: new Map(),

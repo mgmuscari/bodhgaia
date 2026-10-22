@@ -90,3 +90,54 @@ describe('garbage in the running live layer', () => {
     expect(t.state.garbageTrucks?.length).toBe(1);
   });
 });
+
+// The landfill (Maddy 2026-10-21: "the depots should feed a landfill"): a truck hauls its load there before going
+// home, and the landfill fills. Compost hubs and maker spaces divert a share of every load — less reaches the dump.
+import { landfillFill, divertShare } from '../../src/live/garbage';
+describe('hauling to the landfill', () => {
+  function withLandfill(extras: (map: GameMap, parcels: ParcelStore) => void = () => {}) {
+    const map = new GameMap(80, 12);
+    const parcels = new ParcelStore();
+    for (let x = 0; x < 80; x++) placeTransport(map, x, 5, BuiltKind.RoadStreet);
+    placeParcel(map, parcels, { x: 3, y: 3, width: 2, height: 2, kind: BuiltKind.SanitationDepot });
+    placeParcel(map, parcels, { x: 60, y: 6, width: 3, height: 3, kind: BuiltKind.Landfill });
+    extras(map, parcels);
+    const state = createAmbientState();
+    state.evictedPiles = [{ x: 20, y: 5, seed: 0, hx: 0, hy: -1, age: 0 }];
+    return { map, state };
+  }
+  const haul = (t: ReturnType<typeof withLandfill>) => {
+    let dumped = false;
+    for (let k = 0; k < 60_000 && !(dumped && !(t.state.garbageTrucks?.length)); k++) {
+      stepGarbage(t.state, t.map);
+      if (t.state.garbageTrucks?.[0]?.job === 'dumping') dumped = true;
+    }
+    return dumped;
+  };
+
+  it('after loading, the truck drives to the landfill and dumps, then goes home; the landfill fills by a load', () => {
+    const t = withLandfill();
+    expect(haul(t)).toBe(true);
+    expect(t.state.evictedPiles).toHaveLength(0);
+    expect(t.state.garbageTrucks ?? []).toHaveLength(0);
+    expect(landfillFill(t.state)).toBeCloseTo(1, 6);
+  });
+
+  it('compost hubs and maker spaces divert part of each load', () => {
+    const t = withLandfill((map, parcels) => {
+      placeParcel(map, parcels, { x: 30, y: 6, width: 2, height: 2, kind: BuiltKind.CompostHub });
+      placeParcel(map, parcels, { x: 34, y: 6, width: 2, height: 2, kind: BuiltKind.MakerSpace });
+    });
+    expect(divertShare(t.map)).toBeGreaterThan(0);
+    haul(t);
+    expect(landfillFill(t.state)).toBeLessThan(1);
+    expect(landfillFill(t.state)).toBeCloseTo(1 - divertShare(t.map), 6);
+  });
+
+  it('diversion has a ceiling — some always reaches the dump', () => {
+    const map = new GameMap(60, 60);
+    const parcels = new ParcelStore();
+    for (let k = 0; k < 40; k++) placeParcel(map, parcels, { x: (k % 10) * 5, y: Math.floor(k / 10) * 5, width: 2, height: 2, kind: BuiltKind.CompostHub });
+    expect(divertShare(map)).toBeLessThan(1);
+  });
+});

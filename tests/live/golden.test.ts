@@ -156,7 +156,9 @@ describe('live layer golden determinism', () => {
     // from the shared stream, so everything after it draws differently: a behaviour change, not a refactor
     // 2026-10-21: new cities have a sanitation depot (underserved, on the greenlined side) — a different city
     // 2026-10-21: …and a landfill on the most redlined frontage (the depots' trucks dump there) — a different city
-    expect(first).toBe('cars=1 peds=183 cruisers=4 trains=5 flocks=7 #0177129e');
+    // 2026-10-21: the landfill's fill is a live stock (`landfill`, empty here): same motion (checked with the key
+    // dropped: the old digest), one more field
+    expect(first).toBe('cars=1 peds=183 cruisers=4 trains=5 flocks=7 #a5de23f5');
   });
 });
 
