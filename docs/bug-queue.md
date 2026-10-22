@@ -27,6 +27,9 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   ✅ meals against the cold and evictions against belonging (unhoused-residents.md). Living in cars: not chosen.
   ✅ Street garbage: eviction piles stay until a sanitation depot's trucks or the neighbours (Mutual Aid) clear them.
   - Follow-up idea: the desire-path junk (wear) as garbage the trucks also collect.
+  - Follow-up idea (Maddy 2026-10-21, "not seeing trucks at the dump"): routine collection rounds — each depot sends a
+    truck every few game hours to collect its area's household garbage and haul it to the landfill, so the dump is
+    busy and fills steadily (diversion then matters more).
 - **Next feature release** (not cut yet, Maddy 2026-10-21): festivity (#173), sandbox + difficulty (#174), unhoused
   as people — its What's-new entry is written at the cut.
 - **Sandbox + difficulty (Maddy 2026-10-21)** — branch `sandbox-difficulty`: ✅ Gentle / Standard / Hard and Sandbox at
