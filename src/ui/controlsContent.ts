@@ -38,9 +38,10 @@ export const POINTER_HINTS: string[] = [
 
 /** Touch gestures — the whole of "how do I play this" on a touch screen, which has no keys or mouse. */
 export const TOUCH_HINTS: string[] = [
-  'Drag — pan the map',
-  'Pinch — zoom in/out',
-  'Tap — use the selected tool',
+  'Two fingers — move the map, pinch to zoom',
+  'One finger, no tool — move the map too',
+  'With a tool — tap, or drag to aim and lift to build',
+  'Roads, rails, bulldozer — drag to draw',
   'Long press — drop the tool',
 ];
 

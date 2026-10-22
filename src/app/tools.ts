@@ -204,6 +204,15 @@ export function createToolController(deps: ToolsDeps): ToolController {
     if (isRepairTool(def)) deps.repaired(tx, ty);
   };
 
+  /** A line drag's tiles, each tinted by whether the tool would take there (Maddy 2026-10-21: on a phone a road was
+   *  drawn blind under the finger). */
+  const previewLine = (line: readonly { x: number; y: number }[]): void => {
+    const def = selectedDef();
+    if (!def) return;
+    renderer.setPreview(line.map((t) => ({ x: t.x, y: t.y, valid: previewTool(world, tech, def, t.x, t.y, wallet).valid })));
+    deps.markPreviewDirty();
+  };
+
   const hasTool = (): boolean => selectedToolId !== null;
   const lineTool = (): boolean => {
     const def = selectedDef();
@@ -227,7 +236,7 @@ export function createToolController(deps: ToolsDeps): ToolController {
     previewAt,
     applyAt,
     clearHover,
-    input: { hasTool, isLineTool: lineTool, applyAt, hover: previewAt, clearHover, onHotkey: hotkey },
+    input: { hasTool, isLineTool: lineTool, isPassiveTool: () => selectedToolId === 'inspect', applyAt, hover: previewAt, previewLine, clearHover, onHotkey: hotkey },
     afterEffortChange: () => {
       toolbar.refresh();
       snapshotDock();

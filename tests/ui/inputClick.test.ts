@@ -104,3 +104,79 @@ describe('touch', () => {
     expect(pans.slice(before).every(([dx]) => Math.abs(dx) <= 50)).toBe(true);
   });
 });
+
+// Maddy 2026-10-21: on a phone, building and drawing collided with scrolling the map. One finger with a build tool
+// never pans — a line tool draws (its line previewed as it goes), anything else aims (the ghost follows the finger)
+// and builds where it lifts; two fingers always scroll. With no tool, or Inspect, one finger still pans.
+describe('touch: one finger builds, two scroll', () => {
+  function setup(kind: 'none' | 'inspect' | 'line' | 'place') {
+    const canvas = Object.assign(fakeCanvas(), { style: {} as Record<string, string> });
+    const applied: [number, number][] = [];
+    const hovered: [number, number][] = [];
+    const lines: { x: number; y: number }[][] = [];
+    const pans: [number, number][] = [];
+    const camera = {
+      screenToWorld: (x: number, y: number) => ({ wx: x / 16, wy: y / 16 }),
+      pan: (dx: number, dy: number) => pans.push([dx, dy]),
+      zoomAt() {},
+    };
+    attachInput(canvas as unknown as HTMLCanvasElement, camera as never, {
+      onChange() {},
+      hasTool: () => kind !== 'none',
+      isLineTool: () => kind === 'line',
+      isPassiveTool: () => kind === 'inspect',
+      applyAt: (x, y) => applied.push([x, y]),
+      hover: (x, y) => hovered.push([x, y]),
+      previewLine: (tiles) => lines.push([...tiles]),
+      clearHover() {},
+      onHotkey() {},
+    });
+    const finger = (t: string, id: number, x: number, y: number) =>
+      canvas.fire(t, { pointerId: id, pointerType: 'touch', clientX: x, clientY: y, button: 0, buttons: t === 'pointerup' ? 0 : 1 });
+    return { canvas, applied, hovered, lines, pans, finger };
+  }
+
+  it('a placing tool: one finger aims without panning, and builds where it lifts', () => {
+    const { applied, hovered, pans, finger } = setup('place');
+    finger('pointerdown', 1, 100, 100);
+    finger('pointermove', 1, 180, 100);
+    finger('pointermove', 1, 260, 100);
+    expect(pans).toEqual([]);
+    expect(hovered.at(-1)).toEqual([16, 6]); // the ghost under the finger
+    finger('pointerup', 1, 260, 100);
+    expect(applied).toEqual([[16, 6]]);
+  });
+
+  it('a line tool: one finger draws, the line previewed as it goes', () => {
+    const { applied, lines, pans, finger } = setup('line');
+    finger('pointerdown', 1, 16, 16);
+    finger('pointermove', 1, 80, 16);
+    expect(pans).toEqual([]);
+    expect(lines.at(-1)!.length).toBe(5); // tiles 1..5 along the row
+    finger('pointerup', 1, 80, 16);
+    expect(applied.length).toBe(5);
+  });
+
+  it('two fingers scroll with a tool held, and build nothing', () => {
+    const { applied, pans, finger } = setup('place');
+    finger('pointerdown', 1, 100, 100);
+    finger('pointerdown', 2, 200, 100);
+    finger('pointermove', 1, 100, 160);
+    finger('pointermove', 2, 200, 160);
+    finger('pointerup', 1, 100, 160);
+    finger('pointerup', 2, 200, 160);
+    expect(pans.reduce((s, p) => s + p[1], 0)).toBeCloseTo(60);
+    expect(applied).toEqual([]);
+  });
+
+  it('with no tool, or Inspect, one finger pans as before', () => {
+    for (const kind of ['none', 'inspect'] as const) {
+      const { pans, applied, finger } = setup(kind);
+      finger('pointerdown', 1, 100, 100);
+      finger('pointermove', 1, 160, 100);
+      finger('pointerup', 1, 160, 100);
+      expect(pans.reduce((s, p) => s + p[0], 0)).toBe(60);
+      expect(applied).toEqual([]);
+    }
+  });
+});

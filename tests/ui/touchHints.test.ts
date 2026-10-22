@@ -16,7 +16,8 @@ describe('no keyboard hints on a touch screen', () => {
   it('the help panel lists touch gestures on touch — no keys, no mouse', () => {
     const lines = controlsLines(true);
     expect(lines).toEqual(TOUCH_HINTS);
-    expect(lines.join(' ')).toMatch(/Pinch/);
+    expect(lines.join(' ')).toMatch(/pinch/);
+    expect(lines.join(' ')).toMatch(/Two fingers — move the map/); // Maddy 2026-10-21: one finger builds, two scroll
     expect(lines.join(' ')).not.toMatch(/Scroll|Click|Esc/);
   });
 

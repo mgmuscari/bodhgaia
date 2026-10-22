@@ -75,7 +75,7 @@ describe('clampSettings (tolerates partial / corrupt persisted data)', () => {
     const lo = clampSettings({ live: { pedCap: -5, flockCap: -1 }, world: { mapHeight: 4 } });
     expect(lo.live.pedCap).toBeGreaterThanOrEqual(50);
     expect(lo.live.flockCap).toBeGreaterThanOrEqual(0);
-    expect(lo.world.mapHeight).toBeGreaterThanOrEqual(40); // the floor under the pocket map (48²);
+    expect(lo.world.mapHeight).toBeGreaterThanOrEqual(40); // the floor under the pocket map (48²)
   });
 
   it('coerces non-finite / wrong-type to the default (corrupt JSON)', () => {

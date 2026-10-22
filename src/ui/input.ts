@@ -10,6 +10,10 @@
 // selected, a drag PAINTS lineTiles (pan suppressed) and a click applies one tile.
 // To pan with a line tool held, use WASD / the arrows, hold the middle button, or drop the tool (Escape, a right
 // click, a long press on a touch screen).
+//
+// On a touch screen (Maddy 2026-10-21: building collided with scrolling) one finger with a build tool never pans: a
+// line tool draws, anything else AIMS — its ghost follows the finger — and builds where the finger lifts. Two fingers
+// always scroll and pinch. With no tool, or Inspect (passive), one finger pans as with the mouse.
 
 import { Camera } from './camera';
 import { easePan, isEditableTarget, panFor, panVelocity } from './keyMap';
@@ -29,6 +33,10 @@ export interface InputHandlers {
   hasTool(): boolean;
   /** True iff the selected tool paints transport lines (drag paints, pan suppressed). */
   isLineTool(): boolean;
+  /** True iff the selected tool only looks (Inspect): one finger still pans with it on a touch screen. */
+  isPassiveTool?(): boolean;
+  /** Preview a line-tool drag's tiles as it is drawn. */
+  previewLine?(tiles: readonly { x: number; y: number }[]): void;
   /** Apply the selected tool at world tile (tx, ty). */
   applyAt(tx: number, ty: number): void;
   /** Preview the selected tool at the hovered world tile. */
@@ -41,7 +49,8 @@ export interface InputHandlers {
 
 export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers: InputHandlers): void {
   let dragging = false;
-  let suppressPan = false; // true during a line-tool drag (paint, don't pan)
+  let suppressPan = false; // true during a line-tool drag (paint, don't pan) — or a touch aim
+  let aiming = false; // a touch drag with a placing tool: the ghost follows the finger, it builds where it lifts
   // The whole captured drag/click path is sourced from clientX/clientY, NOT
   // offsetX/offsetY: at pointerup the event is DISPATCHED while the pointer is
   // still captured (releasePointerCapture runs after, in-handler), and WebKit's
@@ -91,6 +100,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     cancelLongPress();
     dragging = false; // the press that dropped the tool applies nothing when it lifts
     suppressPan = false;
+    aiming = false;
     hoverX = Number.NaN;
     hoverY = Number.NaN;
     handlers.clearHover();
@@ -114,6 +124,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
       pinching = true;
       dragging = false;
       suppressPan = false;
+      aiming = false;
       const p = pinchNow();
       pinchBase = p.spread;
       pinchMidX = p.mx;
@@ -135,6 +146,15 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     if (e.pointerType === 'touch' && handlers.hasTool()) longPress = setTimeout(dropTool, LONG_PRESS_MS);
     // A line tool paints on drag (pan suppressed); the middle button always pans.
     suppressPan = handlers.isLineTool() && e.button !== MIDDLE_BUTTON;
+    aiming = e.pointerType === 'touch' && handlers.hasTool() && !handlers.isLineTool() && !(handlers.isPassiveTool?.() ?? false);
+    if (aiming) {
+      suppressPan = true;
+      const rect = canvas.getBoundingClientRect();
+      const t = tileUnder(e.clientX - rect.left, e.clientY - rect.top);
+      hoverX = t.tx;
+      hoverY = t.ty;
+      handlers.hover(t.tx, t.ty); // the ghost shows where the finger is, before it moves
+    }
     // Pointer capture can throw (e.g. an invalid/stale pointerId in some browsers);
     // a failed capture must not abort the drag — pan still works off clientX/Y.
     try {
@@ -172,8 +192,8 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
       const kind = classifyPointer(downClientX, downClientY, e.clientX, e.clientY);
       const rect = canvas.getBoundingClientRect();
       const end = tileUnder(e.clientX - rect.left, e.clientY - rect.top);
-      if (kind === 'click') {
-        handlers.applyAt(end.tx, end.ty);
+      if (kind === 'click' || aiming) {
+        handlers.applyAt(end.tx, end.ty); // a touch aim builds where the finger lifts
       } else if (suppressPan) {
         // Line-tool drag: paint every tile from the down tile to the up tile.
         const start = tileUnder(downClientX - rect.left, downClientY - rect.top);
@@ -182,6 +202,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
       // A non-line tool drag was a pan (handled live in pointermove); nothing to apply.
     }
     suppressPan = false;
+    aiming = false;
   });
 
   // Safety net: a window-level release clears the drag even if the canvas pointerup is missed (capture
@@ -191,6 +212,7 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
     cancelLongPress();
     dragging = false;
     suppressPan = false;
+    aiming = false;
     touches.delete(e.pointerId); // a finger lifted off the canvas, or cancelled
     if (touches.size === 0) pinching = false;
   };
@@ -223,7 +245,24 @@ export function attachInput(canvas: HTMLCanvasElement, camera: Camera, handlers:
         suppressPan = false;
         return;
       }
-      if (suppressPan) return; // line-tool paint drag: no pan
+      if (suppressPan) {
+        // no pan: a touch aim moves the ghost; a line drag previews the line so far
+        const rect = canvas.getBoundingClientRect();
+        const end = tileUnder(e.clientX - rect.left, e.clientY - rect.top);
+        if (aiming) {
+          if (end.tx !== hoverX || end.ty !== hoverY) {
+            hoverX = end.tx;
+            hoverY = end.ty;
+            handlers.hover(end.tx, end.ty);
+          }
+        } else if (handlers.previewLine && (end.tx !== hoverX || end.ty !== hoverY)) {
+          hoverX = end.tx;
+          hoverY = end.ty;
+          const start = tileUnder(downClientX - rect.left, downClientY - rect.top);
+          handlers.previewLine(lineTiles(start.tx, start.ty, end.tx, end.ty));
+        }
+        return;
+      }
       // Capture-stable pan: delta from the last clientX/Y (NOT e.movementX/Y, which
       // is unreliable under capture in WebKit). camera.pan takes screen-pixel deltas.
       const dx = e.clientX - lastClientX;
