@@ -17,6 +17,8 @@ import type { ToolMenuView, ToolCategory } from './toolMenuContent';
 import type { MetaButton } from './dockContent';
 import type { ViewRow } from './dockMenu';
 
+import { dockH, flyoutLeft } from './layout';
+
 /** The sidebar's width (CSS px) — the map pane starts right of it. */
 export { SIDEBAR_W } from './layout';
 
@@ -115,6 +117,16 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
 
   const metaButtonEls = new Map<string, HTMLButtonElement>();
 
+  // On a phone in portrait the palette is a row along the bottom (ui/layout.ts DOCK_H): a menu opens UP from its
+  // button, above the status line, held inside the screen — beside the sidebar it would start off the right edge.
+  const docked = (): boolean => dockH(window.innerWidth) > 0;
+  const placeFlyout = (anchor: HTMLElement | null | undefined): void => {
+    const r = anchor?.getBoundingClientRect();
+    flyout.style.top = 'auto';
+    flyout.style.bottom = 'calc(var(--dock-h) + var(--status-h))';
+    flyout.style.left = `${flyoutLeft(r ? r.left : 0, flyout.offsetWidth, window.innerWidth)}px`;
+  };
+
   function render(): void {
     const view = deps.getMenu();
     modesEl.replaceChildren(
@@ -150,8 +162,12 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
       // it opens UPWARD, ending level with its button: the overlay's colour key sits below, at the foot of the map
       flyout.hidden = false;
       const anchor = metaButtonEls.get(views.kind);
-      const bottom = anchor ? anchor.getBoundingClientRect().bottom : flyout.offsetHeight;
-      flyout.style.top = `${Math.max(0, bottom - flyout.offsetHeight)}px`;
+      if (docked()) placeFlyout(anchor);
+      else {
+        flyout.style.left = flyout.style.bottom = '';
+        const bottom = anchor ? anchor.getBoundingClientRect().bottom : flyout.offsetHeight;
+        flyout.style.top = `${Math.max(0, bottom - flyout.offsetHeight)}px`;
+      }
     } else if (view.open === null || view.rows.length === 0) {
       flyout.replaceChildren();
       flyout.hidden = true;
@@ -167,8 +183,12 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
       flyout.style.gridTemplateColumns = `repeat(${Math.min(4, view.rows.length)}, 44px)`; // sized to its tools
       // open beside its category button
       const anchor = catsEl.querySelector(`[data-cat-id="${view.open}"]`) as HTMLElement | null;
-      flyout.style.top = `${anchor ? anchor.getBoundingClientRect().top : 0}px`;
       flyout.hidden = false;
+      if (docked()) placeFlyout(anchor);
+      else {
+        flyout.style.left = flyout.style.bottom = '';
+        flyout.style.top = `${anchor ? anchor.getBoundingClientRect().top : 0}px`;
+      }
     }
   }
 
@@ -256,9 +276,15 @@ export function mountToolbar(container: HTMLElement, deps: ToolbarDeps): Toolbar
     if (!el) return;
     const r = el.getBoundingClientRect();
     tip.textContent = el.dataset.tip ?? '';
-    tip.style.left = `${r.right + 6}px`;
-    tip.style.top = `${r.top + 4}px`;
     tip.hidden = false;
+    if (docked()) {
+      // above the button, inside the screen
+      tip.style.left = `${flyoutLeft(r.left, tip.offsetWidth, window.innerWidth)}px`;
+      tip.style.top = `${Math.max(0, r.top - tip.offsetHeight - 4)}px`;
+    } else {
+      tip.style.left = `${r.right + 6}px`;
+      tip.style.top = `${r.top + 4}px`;
+    }
   };
   const onOut = (): void => {
     tip.hidden = true;

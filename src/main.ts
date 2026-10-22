@@ -65,7 +65,8 @@ import { BuiltKind } from './engine/fabric';
 import { registerServiceWorker } from './app/pwa';
 import { installNoBrowserZoom } from './app/noBrowserZoom';
 import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
-import { mountWhatsNew } from './ui/whatsNewPanel';
+import { mountNotice, mountWhatsNew } from './ui/whatsNewPanel';
+import { PHONE_TIPS, PHONE_TIPS_VERSION, phoneTipsDue } from './ui/controlsContent';
 import { GAME_VERSION } from './ui/creditsContent';
 import { travelModes } from './live/stats';
 import { createHealthController } from './app/health';
@@ -429,7 +430,27 @@ export function main(save: SaveV1 | null = null): void {
     if (notes.length === 0) return remember();
     mountWhatsNew(document.body, notes, remember).open();
   };
-  if (!openingUp) showWhatsNew();
+  // The phone guide (Maddy 2026-10-21): on a touch screen, the gestures and where the tools are — on first play, and
+  // again when PHONE_TIPS_VERSION moves (an updated client). It comes first; What's new follows when it closes.
+  const TIPS_KEY = 'bodhgaia.phoneTipsSeen';
+  const showWelcome = (): void => {
+    let seen: string | null = null;
+    try {
+      seen = localStorage.getItem(TIPS_KEY);
+    } catch {
+      /* no storage: shown each time is better than never */
+    }
+    if (!phoneTipsDue(touchScreen(), seen)) return showWhatsNew();
+    mountNotice(document.body, 'Playing on a phone', [{ lines: PHONE_TIPS }], () => {
+      try {
+        localStorage.setItem(TIPS_KEY, String(PHONE_TIPS_VERSION));
+      } catch {
+        /* best-effort */
+      }
+      showWhatsNew();
+    }).open();
+  };
+  if (!openingUp) showWelcome();
 
   const night = openingUp
     ? createNightOpening({
@@ -465,7 +486,7 @@ export function main(save: SaveV1 | null = null): void {
             onDone: () => {
               openingUp = false;
               markDirty();
-              showWhatsNew(); // never over the intro: once the city is the player's
+              showWelcome(); // never over the intro: once the city is the player's
             },
           });
         },

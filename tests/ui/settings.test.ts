@@ -26,6 +26,14 @@ describe('settings defaults reproduce today’s game', () => {
     expect(MAP_SIZES.medium).toBe(128);
   });
 
+  it('offers maps much smaller than small, for a phone (Maddy 2026-10-21), and keeps them through the clamp', () => {
+    expect(MAP_SIZES.pocket).toBe(48);
+    expect(MAP_SIZES.tiny).toBe(64);
+    expect(MAP_SIZES.pocket).toBeLessThan(MAP_SIZES.tiny);
+    expect(MAP_SIZES.tiny).toBeLessThan(MAP_SIZES.small);
+    expect(clampSettings({ world: { mapWidth: 48, mapHeight: 48 } }).world).toEqual({ mapWidth: 48, mapHeight: 48 });
+  });
+
   it('there is no skin setting any more — the Super look is the one aesthetic (Maddy 2026-09-30)', () => {
     expect('tileset' in DEFAULT_SETTINGS).toBe(false);
   });
@@ -67,7 +75,7 @@ describe('clampSettings (tolerates partial / corrupt persisted data)', () => {
     const lo = clampSettings({ live: { pedCap: -5, flockCap: -1 }, world: { mapHeight: 4 } });
     expect(lo.live.pedCap).toBeGreaterThanOrEqual(50);
     expect(lo.live.flockCap).toBeGreaterThanOrEqual(0);
-    expect(lo.world.mapHeight).toBeGreaterThanOrEqual(64);
+    expect(lo.world.mapHeight).toBeGreaterThanOrEqual(40); // the floor under the pocket map (48²)
   });
 
   it('coerces non-finite / wrong-type to the default (corrupt JSON)', () => {

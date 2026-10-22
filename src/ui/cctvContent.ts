@@ -29,12 +29,58 @@ export function cctvFrame(ev: LiveEvent, vw: number, vh: number): { zoom: number
   return { zoom, cx: ev.x + ev.w / 2, cy: ev.y + ev.h / 2 };
 }
 
-/** The main view's zoom when the feed is clicked (the guided tour's close view). */
+/** The main view's zoom when the feed is clicked (the guided tour's close view) — the closest it goes. */
 export const GO_TO_ZOOM = 3;
+/** The zooms going there may pick, close to far (the camera snaps a fractional one to what the display offers). */
+const GO_TO_ZOOMS = [3, 2, 1, 1 / 2, 1 / 3];
 
-/** Where clicking the feed takes the main view: the event's centre, close up. */
-export function cctvGoTo(ev: LiveEvent): { x: number; y: number; zoom: number } {
-  return { x: ev.x + ev.w / 2, y: ev.y + ev.h / 2, zoom: GO_TO_ZOOM };
+/** Where clicking the feed takes the main view (a pane of vw × vh CSS px): the event's centre, at the closest zoom
+ *  up to GO_TO_ZOOM that frames all of it — a flood isn't cropped to its middle (Maddy 2026-10-21). */
+export function cctvGoTo(ev: LiveEvent, vw: number, vh: number): { x: number; y: number; zoom: number } {
+  let zoom = GO_TO_ZOOMS[GO_TO_ZOOMS.length - 1]!;
+  for (const z of GO_TO_ZOOMS) {
+    const ts = BASE_TILE * z;
+    if (vw / ts >= ev.w + 2 * MARGIN && vh / ts >= ev.h + 2 * MARGIN) {
+      zoom = z;
+      break;
+    }
+  }
+  return { x: ev.x + ev.w / 2, y: ev.y + ev.h / 2, zoom };
+}
+
+/** How long the spot stays marked after going there, and its blink (on half of each period). */
+export const MARK_MS = 4000;
+const MARK_BLINK_MS = 500;
+/** The reticle's arms: art pixels long and thick, set this many art pixels outside the event's tiles. */
+const ARM = 6;
+const THICK = 2;
+const GAP = 2;
+
+export interface ArtRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** The CCTV reticle marking an event the view just went to (Maddy 2026-10-21: nothing showed WHERE it was): four
+ *  corner brackets just outside its tiles, in world ART pixels (BASE_TILE per tile), blinking for MARK_MS after
+ *  `since` — null while blinked off and once done. */
+export function reticle(ev: LiveEvent, since: number, now: number): ArtRect[] | null {
+  const t = now - since;
+  if (t < 0 || t >= MARK_MS || Math.floor(t / MARK_BLINK_MS) % 2 === 1) return null;
+  const x0 = ev.x * BASE_TILE - GAP - THICK;
+  const y0 = ev.y * BASE_TILE - GAP - THICK;
+  const x1 = (ev.x + ev.w) * BASE_TILE + GAP + THICK; // exclusive
+  const y1 = (ev.y + ev.h) * BASE_TILE + GAP + THICK;
+  const out: ArtRect[] = [];
+  for (const [cx, sx] of [[x0, 1], [x1, -1]] as const) {
+    for (const [cy, sy] of [[y0, 1], [y1, -1]] as const) {
+      out.push({ x: sx > 0 ? cx : cx - ARM, y: sy > 0 ? cy : cy - THICK, w: ARM, h: THICK }); // horizontal arm
+      out.push({ x: sx > 0 ? cx : cx - THICK, y: sy > 0 ? cy : cy - ARM, w: THICK, h: ARM }); // vertical arm
+    }
+  }
+  return out;
 }
 
 /** The caption under the feed. */
@@ -89,5 +135,10 @@ export class CctvQueue {
       if (next) this.showing = { ev: next, since: now };
     }
     return this.showing?.ev ?? null;
+  }
+
+  /** Take the showing event off the feed (the view went there); the next waiting one follows. */
+  dismiss(): void {
+    this.showing = null;
   }
 }

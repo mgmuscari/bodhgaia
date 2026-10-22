@@ -42,7 +42,7 @@ export interface SettingsPanelCallbacks {
 }
 
 const PRESET_TIERS: PresetTier[] = ['low', 'medium', 'high'];
-const MAP_KEYS: MapSizeKey[] = ['small', 'medium', 'large', 'huge'];
+const MAP_KEYS: MapSizeKey[] = ['pocket', 'tiny', 'small', 'medium', 'large', 'huge'];
 
 /** Which cap preset (if any) the live caps currently equal — drives the active-button highlight. */
 function activeTier(live: LiveCaps): PresetTier | null {
@@ -64,7 +64,7 @@ export function mountSettingsPanel(
   const panel = document.createElement('div');
   panel.className = 'settings-panel';
   // four sections no longer fit a short viewport centred — scroll inside the frame rather than off-screen
-  panel.style.maxHeight = 'calc(100vh - var(--topbar-h) - var(--status-h) - 1rem)'; // inside the chrome
+  panel.style.maxHeight = 'calc(100vh - var(--topbar-h) - var(--status-h) - var(--dock-h) - 1rem)'; // inside the chrome
   panel.style.boxSizing = 'border-box'; // the cap includes the frame and padding
   panel.style.overflowY = 'auto';
 

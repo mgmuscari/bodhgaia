@@ -23,6 +23,16 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Mobile + zoom-to-event (Maddy 2026-10-21)** — branch `mobile-and-zoom`:
+  - ✅ Zoom to event: the centring was exact (measured live); a wide event is now framed whole, the spot is marked
+    with a blinking CCTV reticle, and the feed steps aside.
+  - ✅ Pocket (48²) and Tiny (64²) maps; a phone with no saved settings starts at Tiny.
+  - ✅ Touch: one finger builds (a placing tool aims, builds where it lifts; a line tool draws, previewed), two fingers
+    scroll; no tool or Inspect still pans with one.
+  - ✅ Phone portrait: the palette is a swipeable row along the bottom, the map full width, menus open up from their
+    button inside the screen; the overlay key moves top-left. No window overflows 390 px (measured).
+  - ✅ A phone guide on first touch play and when `PHONE_TIPS_VERSION` moves; What's new follows it.
+  - Open: the long press that drops the tool can fire while a player holds still to aim — watch for it in play.
 - **Demo review (Maddy 2026-10-14)** — after the interdependence demos (drones and vans: "look good"):
   - ✅ Overlay ramps stretch over the values on the map (eco + civic), the key names the range ("· 19–30%").
   - ✅ Boosted buildings (pairings, maker↔industry — `engine/boosts.ts`) wear a cyan sparkle; inspect says why.

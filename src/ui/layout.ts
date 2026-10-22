@@ -22,6 +22,27 @@ export function topbarH(innerW: number): number {
  *  the map pane never resizes when a message comes and goes. */
 export const STATUS_H = 40;
 
+/** On a phone in portrait (≤ NARROW_W) the palette is a row along the bottom instead (Maddy 2026-10-21: the side
+ *  palette took a third of the width, and menus opened over the map): a row of 44-px buttons in an 8-px frame, scrolled
+ *  sideways. The status line sits above it, so the tools are at the thumb. */
+export const DOCK_H = 60;
+
+/** The side palette's width for a window `innerW` CSS px wide — none on a phone in portrait. */
+export function sidebarW(innerW: number): number {
+  return innerW <= NARROW_W ? 0 : SIDEBAR_W;
+}
+/** The bottom dock's height — only on a phone in portrait. */
+export function dockH(innerW: number): number {
+  return innerW <= NARROW_W ? DOCK_H : 0;
+}
+
+/** Where a menu `width` px wide opens over its button at `anchorLeft` on a screen `vw` px wide: level with the button,
+ *  pulled back inside an 8-px margin at either edge (Maddy 2026-10-21: menus stretched off the side of the screen). */
+export function flyoutLeft(anchorLeft: number, width: number, vw: number): number {
+  const m = 8;
+  return Math.max(m, Math.min(anchorLeft, vw - width - m));
+}
+
 export interface PaneRect {
   left: number;
   top: number;
@@ -32,16 +53,21 @@ export interface PaneRect {
 /** The map pane inside a window of innerW × innerH CSS px. */
 export function mapPane(innerW: number, innerH: number): PaneRect {
   return {
-    left: SIDEBAR_W,
+    left: sidebarW(innerW),
     top: topbarH(innerW),
-    width: Math.max(1, innerW - SIDEBAR_W),
-    height: Math.max(1, innerH - topbarH(innerW) - STATUS_H),
+    width: Math.max(1, innerW - sidebarW(innerW)),
+    height: Math.max(1, innerH - topbarH(innerW) - STATUS_H - dockH(innerW)),
   };
 }
 
 /** The chrome sizes as CSS custom properties, for :root. */
 export function layoutVars(innerW = Infinity): Record<string, string> {
-  return { '--sidebar-w': `${SIDEBAR_W}px`, '--topbar-h': `${topbarH(innerW)}px`, '--status-h': `${STATUS_H}px` };
+  return {
+    '--sidebar-w': `${sidebarW(innerW)}px`,
+    '--topbar-h': `${topbarH(innerW)}px`,
+    '--status-h': `${STATUS_H}px`,
+    '--dock-h': `${dockH(innerW)}px`,
+  };
 }
 
 /** The most device pixels per CSS pixel the canvases render at on a touch screen: pixel art gains nothing past 2×,

@@ -7,6 +7,16 @@ import { panelVisibility, type PanelHandle } from './panelHandle';
 
 /** Mount the (hidden) What's new window; `onClose` fires when the player dismisses it. */
 export function mountWhatsNew(container: HTMLElement, entries: readonly ChangelogEntry[], onClose: () => void): PanelHandle {
+  return mountNotice(container, 'What’s new', entries.map((e) => ({ heading: `Bodhgaia ${e.version}`, lines: e.notes })), onClose);
+}
+
+/** A notice in the same frame — headed lists, scrolling — e.g. the phone guide (controlsContent PHONE_TIPS). */
+export function mountNotice(
+  container: HTMLElement,
+  titleText: string,
+  sections: readonly { heading?: string; lines: readonly string[] }[],
+  onClose: () => void,
+): PanelHandle {
   const panel = document.createElement('div');
   panel.className = 'help-panel whats-new';
 
@@ -18,19 +28,21 @@ export function mountWhatsNew(container: HTMLElement, entries: readonly Changelo
 
   const title = document.createElement('div');
   title.className = 'help-panel__title';
-  title.textContent = 'What’s new';
+  title.textContent = titleText;
   panel.appendChild(title);
 
   const scroll = document.createElement('div');
   scroll.className = 'help-panel__scroll';
-  for (const e of entries) {
-    const heading = document.createElement('div');
-    heading.className = 'help-panel__credits-heading';
-    heading.textContent = `Bodhgaia ${e.version}`;
-    scroll.appendChild(heading);
+  for (const sec of sections) {
+    if (sec.heading) {
+      const heading = document.createElement('div');
+      heading.className = 'help-panel__credits-heading';
+      heading.textContent = sec.heading;
+      scroll.appendChild(heading);
+    }
     const list = document.createElement('ul');
     list.className = 'whats-new__notes';
-    for (const n of e.notes) {
+    for (const n of sec.lines) {
       const li = document.createElement('li');
       li.textContent = n;
       list.appendChild(li);

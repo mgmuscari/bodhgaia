@@ -41,11 +41,14 @@ export interface AudioSettings {
 }
 
 export type PresetTier = 'low' | 'medium' | 'high';
-export type MapSizeKey = 'small' | 'medium' | 'large' | 'huge';
+export type MapSizeKey = 'pocket' | 'tiny' | 'small' | 'medium' | 'large' | 'huge';
 
 /** Square map presets. `medium` is 128 — the historical default, so the default settings reproduce
  *  today's seeded world byte-for-byte. */
 export const MAP_SIZES: Record<MapSizeKey, number> = {
+  // a phone's (Maddy 2026-10-21): a 64² town opens nearly whole on a phone's screen, and generates 90–600 parcels
+  pocket: 48,
+  tiny: 64,
   small: 96,
   medium: 128,
   large: 176,
@@ -77,7 +80,7 @@ const CAP_BOUNDS: Record<keyof LiveCaps, readonly [number, number]> = {
   citizenOutDivisor: [1, 20],
   spawnPerSubstep: [1, 32],
 };
-const MAP_BOUNDS: readonly [number, number] = [64, 384];
+const MAP_BOUNDS: readonly [number, number] = [40, 384];
 
 /** Clamp + round a value into [lo, hi]; non-finite / wrong-type → `dflt` (tolerates corrupt JSON). */
 function clampInt(v: unknown, lo: number, hi: number, dflt: number): number {
