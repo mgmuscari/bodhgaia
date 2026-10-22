@@ -4,7 +4,7 @@
 // quota-blocked storage by falling back to the clamped defaults. Every read runs through
 // clampSettings, so a corrupt or stale-schema blob can never poison the running game.
 
-import { clampSettings, type Settings } from './settings';
+import { clampSettings, MAP_SIZES, type Settings } from './settings';
 
 /** localStorage key (versioned so a future schema change can migrate rather than silently mis-merge). */
 export const SETTINGS_KEY = 'bodhipolis.settings.v1';
@@ -18,16 +18,18 @@ function ambientStorage(): Storage | undefined {
   }
 }
 
-/** Load + sanitize the persisted settings. Absent/corrupt/blocked storage → the clamped defaults. */
-export function loadSettings(storage: Storage | undefined = ambientStorage()): Settings {
-  if (!storage) return clampSettings();
+/** Load + sanitize the persisted settings. Absent/corrupt/blocked storage → the clamped defaults — on a `touch` screen
+ *  (a phone) with a tiny map: a 128² city is mostly off a phone's screen (Maddy 2026-10-21). */
+export function loadSettings(storage: Storage | undefined = ambientStorage(), touch = false): Settings {
+  const fresh = (): Settings => clampSettings(touch ? { world: { mapWidth: MAP_SIZES.tiny, mapHeight: MAP_SIZES.tiny } } : undefined);
+  if (!storage) return fresh();
   let raw: string | null = null;
   try {
     raw = storage.getItem(SETTINGS_KEY);
   } catch {
-    return clampSettings(); // read blocked → defaults
+    return fresh(); // read blocked → defaults
   }
-  if (!raw) return clampSettings();
+  if (!raw) return fresh();
   try {
     return clampSettings(JSON.parse(raw) as Partial<Settings>);
   } catch {

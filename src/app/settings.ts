@@ -6,6 +6,7 @@
 
 import { clampSettings, type AudioSettings, type LiveCaps, type RendererMode, type Settings } from '../ui/settings';
 import { loadSettings, saveSettings } from '../ui/settingsStore';
+import { touchScreen } from '../ui/touch';
 import type { SettingsPanelCallbacks } from '../ui/settingsPanel';
 import type { MusicControl } from '../ui/musicPickerContent';
 
@@ -27,7 +28,7 @@ export interface SettingsController {
 }
 
 export function createSettingsController(deps: SettingsDeps): SettingsController {
-  let settings = loadSettings(deps.storage);
+  let settings = loadSettings(deps.storage, touchScreen()); // a phone's first city is a tiny one
   const update = (next: Partial<Settings>): void => {
     settings = clampSettings({ ...settings, ...next });
     saveSettings(settings, deps.storage);

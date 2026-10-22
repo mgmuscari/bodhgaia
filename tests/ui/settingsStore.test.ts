@@ -50,4 +50,17 @@ describe('settingsStore load/save (localStorage IO, injectable)', () => {
     expect(loadSettings(undefined)).toEqual(DEFAULT_SETTINGS);
     expect(() => saveSettings(DEFAULT_SETTINGS, undefined)).not.toThrow();
   });
+
+  // Maddy 2026-10-21: "we should allow much smaller maps for mobile players" — a phone's first city is a tiny one.
+  it('a phone with nothing saved starts at the tiny map; a desktop keeps the 128² default', async () => {
+    const { MAP_SIZES } = await import('../../src/ui/settings');
+    expect(loadSettings(memStorage(), true).world).toEqual({ mapWidth: MAP_SIZES.tiny, mapHeight: MAP_SIZES.tiny });
+    expect(loadSettings(memStorage(), false)).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('a phone that saved a size keeps it', () => {
+    const store = memStorage();
+    saveSettings({ ...DEFAULT_SETTINGS, world: { mapWidth: 176, mapHeight: 176 } }, store);
+    expect(loadSettings(store, true).world.mapWidth).toBe(176);
+  });
 });

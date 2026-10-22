@@ -42,7 +42,7 @@ export interface SettingsPanelCallbacks {
 }
 
 const PRESET_TIERS: PresetTier[] = ['low', 'medium', 'high'];
-const MAP_KEYS: MapSizeKey[] = ['small', 'medium', 'large', 'huge'];
+const MAP_KEYS: MapSizeKey[] = ['pocket', 'tiny', 'small', 'medium', 'large', 'huge'];
 
 /** Which cap preset (if any) the live caps currently equal — drives the active-button highlight. */
 function activeTier(live: LiveCaps): PresetTier | null {
