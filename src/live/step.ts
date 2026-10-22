@@ -76,10 +76,10 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.drones?.length) stepDrones(state); // deliveries in the air
   schoolRun(state, map, state.hour); // the walk to school, and home (once at each hour)
   if (state.pupils?.length) stepPupils(state, map);
+  stepGarbage(state, map); // the depots' trucks clear the piles on the street (a no-op with none and no trucks)
   if (state.foodRuns?.length || state.vans?.length) {
     spawnVans(state, map); // this hour's food-bank runs, made visible
     stepVans(state, map);
-    stepGarbage(state, map); // the depots' trucks clear the piles on the street
   }
   if (state.clouds?.length) stepClouds(state, map, rng); // toxic clouds from a spill (no draws without one)
   if (state.gatherings?.length) stepGatherings(state); // community gatherings: age them, send people home, end them

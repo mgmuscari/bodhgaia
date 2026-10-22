@@ -67,7 +67,7 @@ import { createFloodController } from './app/flood';
 import { createCommunity } from './app/community';
 import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
-import { BuiltKind } from './engine/fabric';
+import { BuiltKind, isRoadKind, placeParcel } from './engine/fabric';
 import { registerServiceWorker } from './app/pwa';
 import { installNoBrowserZoom } from './app/noBrowserZoom';
 import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
@@ -671,7 +671,7 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'eviction' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'eviction' || demoKind === 'garbage' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
@@ -683,6 +683,27 @@ export function main(save: SaveV1 | null = null): void {
             return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
           },
           setHour: (h) => setGameHour(h),
+          depot: () => {
+            // a 2×2 of open land beside a street, nearest the newest pile, within 12 tiles: a depot goes up there
+            const pile = live.state.evictedPiles?.at(-1);
+            if (!pile) return false;
+            const m = world.map;
+            let best: { x: number; y: number; d: number } | null = null;
+            for (let y = pile.y - 12; y <= pile.y + 12; y++) {
+              for (let x = pile.x - 12; x <= pile.x + 12; x++) {
+                const free = [0, 1].every((dy) => [0, 1].every((dx) => m.inBounds(x + dx, y + dy) && m.built[m.idx(x + dx, y + dy)] === BuiltKind.None && m.parcel[m.idx(x + dx, y + dy)] === 0 && m.water[m.idx(x + dx, y + dy)] === 0));
+                if (!free) continue;
+                const street = [[-1, 0], [2, 0], [0, -1], [0, 2], [-1, 1], [2, 1], [1, -1], [1, 2]].some(([dx, dy]) => m.inBounds(x + dx!, y + dy!) && isRoadKind(m.built[m.idx(x + dx!, y + dy!)]!));
+                const d = Math.abs(x - pile.x) + Math.abs(y - pile.y);
+                if (street && (!best || d < best.d)) best = { x, y, d };
+              }
+            }
+            if (!best) return false;
+            placeParcel(m, world.parcels, { x: best.x, y: best.y, width: 2, height: 2, kind: BuiltKind.SanitationDepot });
+            camera.centerOn(best.x + 1, best.y + 1, 3);
+            markDirty();
+            return true;
+          },
           evict: () => {
             // the fullest home 5–10 tiles from a camp (a walk long enough to watch): three of its people put out
             const st = live.state;

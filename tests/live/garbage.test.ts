@@ -78,3 +78,15 @@ describe('a pile on the street', () => {
     expect(far).toBeGreaterThan(near);
   });
 });
+
+// Wired into the live step (a first build called it only while food vans were out — caught live).
+import { stepAmbient } from '../../src/live/step';
+import { createRng } from '../../src/engine/rng';
+describe('garbage in the running live layer', () => {
+  it('the live step sends the trucks out, with no food vans on the road', () => {
+    const t = town([{ x: 20, y: 5 }]);
+    stepAmbient(t.state, t.map, createRng('g'), 3000);
+    expect(t.state.vans ?? []).toHaveLength(0);
+    expect(t.state.garbageTrucks?.length).toBe(1);
+  });
+});
