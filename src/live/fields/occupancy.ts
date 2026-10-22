@@ -3,7 +3,7 @@
 // it implies. Cut verbatim from ui/ambientContent.ts; the stepper sets the cadence.
 
 import type { GameMap } from '../../engine/map';
-import { BuiltKind } from '../../engine/fabric';
+import { BuiltKind, SECURE_TENURE } from '../../engine/fabric';
 import { sampleField } from '../../citizens/field';
 import { nearKind } from '../pathing';
 import { liveCaps } from '../caps';
@@ -120,6 +120,8 @@ export function stepOccupancy(state: AmbientState, map: GameMap): void {
     // a new home (or the opening) takes its conditions as normal
     const was = settling ? raw : (state.occExpect.get(t) ?? raw);
     let to = occupancyStep(cur, floor, cap, raw - was);
+    // secure tenure (co-op, commune, tiny homes): nobody is put out when conditions turn — they can only fill
+    if (SECURE_TENURE.has(map.built[t]!) && to < cur) to = cur;
     if (poolOnly && to > cur) to = cur + Math.min(to - cur, state.unhoused);
     let occ = moveFromPool(state, t, cur, to);
     // Re-homing into room below the home's baseline: a fresh home fills at REHOME_FRESH (from the pool,

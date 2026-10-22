@@ -23,6 +23,7 @@ const EPS = 1e-6;
 export function noteEviction(state: AmbientState, from: number, camp: number, n: number, campTiles: ReadonlyMap<number, number>): void {
   if (!state.evictionsShown || !(n > 0)) return;
   if (campTiles.has(from) || state.sheltered?.has(from)) return;
+  if (state.evacuated?.has(from)) return; // evacuated from a flood, not evicted: they come back when the water goes
   const due = (state.evictDue ??= new Map());
   const d = due.get(from) ?? { n: 0, camp };
   d.n += n;

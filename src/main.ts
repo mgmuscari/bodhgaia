@@ -67,7 +67,7 @@ import { createFloodController } from './app/flood';
 import { createCommunity } from './app/community';
 import { applyRain } from './live/fields/pollution';
 import { createDemo, type DemoKind } from './app/demo';
-import { BuiltKind, isRoadKind, placeParcel } from './engine/fabric';
+import { BuiltKind, isRoadKind, placeParcel, SECURE_TENURE } from './engine/fabric';
 import { registerServiceWorker } from './app/pwa';
 import { installNoBrowserZoom } from './app/noBrowserZoom';
 import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
@@ -711,7 +711,7 @@ export function main(save: SaveV1 | null = null): void {
             let best = -1;
             let most = 0;
             for (const [t, v] of st.occupancy) {
-              if (v < 3 || v <= most) continue;
+              if (v < 3 || v <= most || SECURE_TENURE.has(world.map.built[t]!)) continue; // nobody is evicted from secure tenure
               const x = t % world.map.width;
               const y = (t - x) / world.map.width;
               const d = Math.min(...camps.map((c) => Math.abs((c % world.map.width) - x) + Math.abs(Math.floor(c / world.map.width) - y)));

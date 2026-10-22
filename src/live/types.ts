@@ -482,6 +482,8 @@ export interface AmbientState {
   rain?: { heavy: boolean };
   /** Tiles under flood water now (app/flood.ts): drawn as water, and routes go round them. */
   flooded?: ReadonlySet<number>;
+  /** Homes a flood has evacuated (app/flood.ts), until their people come back — no eviction (live/evictions.ts). */
+  evacuated?: Set<number>;
   /** Toxic clouds drifting downwind from a spill (live/spills.ts). */
   clouds?: ToxicCloud[];
   /** The toxic smog the clouds lay: drifts and spreads like smog, drawn greenish-yellow by the smog overlay.

@@ -112,3 +112,17 @@ describe('belongings on the kerb', () => {
     expect(state.evictedPiles).toHaveLength(1);
   });
 });
+
+// A flood evacuates; it doesn't evict (Maddy 2026-10-21: "people shouldn't get evicted from tiny homes or communes" —
+// and an evacuation from any home is no eviction: they come back when the water goes).
+describe('a flood is no eviction', () => {
+  it('people evacuated from a flooded home leave no walk, no pile', () => {
+    const { map, state, home } = block();
+    state.evacuated = new Set([home]);
+    leftHome(state, home, 3);
+    settleCamps(state, map);
+    spawnEvictions(state, map);
+    expect(state.peds.filter((p) => p.carrying)).toHaveLength(0);
+    expect(state.evictedPiles ?? []).toHaveLength(0);
+  });
+});

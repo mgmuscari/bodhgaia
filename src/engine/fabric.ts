@@ -131,6 +131,11 @@ export const BuiltKind = {
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 
+/** Secure tenure (Maddy 2026-10-21: "people shouldn't get evicted from tiny homes or communes"): homes nobody is put out
+ *  of — not by rent (economy/readings.ts) and not when conditions turn (live/fields/occupancy.ts). Only tearing one
+ *  down empties it. */
+export const SECURE_TENURE: ReadonlySet<number> = new Set<number>([BuiltKind.CoopHousing, BuiltKind.Commune, BuiltKind.TinyHomes]);
+
 /** Roads (street/avenue/highway). Rail is transport but not a road. */
 export const isRoadKind = (k: number): boolean => k >= 1 && k <= 3;
 
