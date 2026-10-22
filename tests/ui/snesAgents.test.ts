@@ -266,3 +266,4 @@ describe('snes trains + birds — the last flat-shape agents, as pixel art', () 
     expect([...a.data]).not.toEqual([...b.data]);
   });
 });
+

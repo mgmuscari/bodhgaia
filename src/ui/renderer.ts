@@ -43,6 +43,8 @@ import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
 import { gameSec } from './gameTime';
 import type { AmbientState, LiveEvent } from '../live/types';
 import { MARK_MS, reticle } from './cctvContent';
+import { fireworkSparks } from './fireworksContent';
+import { donutPoses, skidLevel } from './sideshowContent';
 import { dayNightBrightness, gameClock } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 
@@ -144,7 +146,10 @@ function wearMarks(wear: number, people: number): { level: number; nJunk: number
 }
 
 /** A signature of exactly what wearMarks draws on a tile (0 = nothing), with or without the encampment layer. */
-function wearSig(wear: number, people: number, encampments: boolean): number {
+function wearSig(wear: number, people: number, encampments: boolean, skids = 0): number {
+  return wearSigBase(wear, people, encampments) | (skidLevel(skids) << 7); // + a sideshow's tire marks
+}
+function wearSigBase(wear: number, people: number, encampments: boolean): number {
   const m = wearMarks(wear, people);
   if (!encampments || (m.nJunk === 0 && m.nTents === 0)) return m.level;
   return m.level | (m.nJunk << 2) | (m.nTents << 4) | 64;
@@ -154,6 +159,7 @@ function wearSig(wear: number, people: number, encampments: boolean): number {
 function markTiles(ambient: AmbientState): number[] {
   const tiles = new Set<number>(ambient.wear.keys());
   for (const t of ambient.camps?.keys() ?? []) tiles.add(t);
+  for (const t of ambient.skids?.keys() ?? []) tiles.add(t);
   return [...tiles].sort((a, b) => a - b);
 }
 
@@ -889,7 +895,7 @@ export class Renderer {
         if (near && (wx < near.x0 || wx > near.x1 || wy < near.y0 || wy > near.y1)) continue;
         if (!this.wearShown(camera, wx, wy)) continue;
         if (full) {
-          const sig = wearSig(wear, people, encampments);
+          const sig = wearSig(wear, people, encampments, ambient.skids?.get(tile) ?? 0);
           if (sig !== 0) this.bakedMarks.set(tile, sig);
         }
         const tileHash = Math.imul(((wx * 73856093) ^ (wy * 19349663)) >>> 0, 0x9e3779b1) >>> 0;
@@ -899,6 +905,10 @@ export class Renderer {
           const o = camera.tileOrigin(wx, wy);
           const img = level > 0 ? this.sprites.get(`@wear/${level}`) : undefined;
           if (img) this.drawTile(ctx, img, o.dx, o.dy, ts, ts);
+          // a sideshow's tire marks, black rubber in rings on the crossing
+          const skid = skidLevel(ambient.skids?.get(tile) ?? 0);
+          const marks = skid > 0 ? this.sprites.get(`@wear/skid/${skid}/${tileHash % 3}`) : undefined;
+          if (marks) this.drawTile(ctx, marks, o.dx, o.dy, ts, ts);
           if (encampments && nJunk + nTents > 0) {
             const pick = (set: AtlasImage[], k: number): AtlasImage =>
               set[(Math.imul((tileHash ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0, 0xc2b2ae35) >>> 16) % set.length]!;
@@ -951,7 +961,7 @@ export class Renderer {
     for (const tile of markTiles(ambient)) {
       const wx = tile % map.width;
       if (!this.wearShown(camera, wx, (tile - wx) / map.width)) continue;
-      const sig = wearSig(ambient.wear.get(tile) ?? 0, ambient.camps?.get(tile) ?? 0, encampments);
+      const sig = wearSig(ambient.wear.get(tile) ?? 0, ambient.camps?.get(tile) ?? 0, encampments, ambient.skids?.get(tile) ?? 0);
       if (sig !== 0) marks.set(tile, sig);
       if (sig !== (this.bakedMarks.get(tile) ?? 0)) dirty.add(tile);
     }
@@ -1320,6 +1330,15 @@ export class Renderer {
         const img = this.sprites.get(`@sprite/stall/${(g.id + k) % 3}`);
         if (img) this.drawArt(ctx, img, sx, sy, camera);
       });
+    }
+
+    // A sideshow (Maddy 2026-10-21): its cars spinning donuts in the crossing, the watchers milling round it.
+    for (const g of ambient.gatherings ?? []) {
+      if (g.kind !== 'sideshow' || g.leaving) continue;
+      for (const c of donutPoses(g.site, g.cars ?? 1, g.id, performance.now())) {
+        const img = this.sprites.get(`@sprite/car/${c.tint}/${c.dir8}`);
+        if (img) this.drawArt(ctx, img, c.x, c.y, camera);
+      }
     }
 
     // A wreck (live/accidents.ts) sits spun a frame round, glass on the road beside it, hazards flashing.
@@ -1742,6 +1761,22 @@ export class Renderer {
         }
       }
     }
+
+    // Fireworks over a festival's park after dark (fireworksContent.ts): one art pixel per spark, after the lighting
+    // pass like the flames, so they glow on the night.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter'; // light on the night, like the headlights
+    for (const g of ambient.gatherings ?? []) {
+      if (!g.fireworks || g.leaving) continue;
+      const ap = camera.tileSize / BASE_TILE;
+      for (const sp of fireworkSparks(g.site, g.id, performance.now())) {
+        const { sx, sy } = camera.worldToScreen(sp.x / BASE_TILE, sp.y / BASE_TILE);
+        if (sx < -ap || sy < -ap || sx > w || sy > h) continue;
+        ctx.fillStyle = `rgb(${sp.colour[0]}, ${sp.colour[1]}, ${sp.colour[2]})`;
+        ctx.fillRect(Math.round(sx), Math.round(sy), Math.ceil(ap), Math.ceil(ap));
+      }
+    }
+    ctx.restore();
 
     // Vehicle headlights/taillights — NIGHT-GATED (off at midday, ramping on at dusk) and evading shading
     // (drawn here, after the sprite lighting pass), on the art grid with the car body.

@@ -11,7 +11,7 @@ import { isWalkable } from './network';
 import { advanceMover, commitHeading, pathStep } from './motion';
 import { PED_SPEED, seconds } from './tuning';
 
-export type GatheringKind = 'craft-fair' | 'block-party' | 'festival' | 'parade' | 'protest' | 'uprising';
+export type GatheringKind = 'craft-fair' | 'block-party' | 'festival' | 'parade' | 'protest' | 'uprising' | 'sideshow';
 
 export interface Gathering {
   id: number;
@@ -25,6 +25,10 @@ export interface Gathering {
   life: number;
   /** People have started for home. */
   leaving: boolean;
+  /** A sideshow's cars spinning donuts in the crossing (the site is the crossing grown by a tile, where people stand). */
+  cars?: number;
+  /** A festival still on after dark: fireworks over the park (ui/fireworksContent.ts). */
+  fireworks?: boolean;
 }
 
 /** Substeps before the end that people start for home (they walk there inside the gathering's life). */

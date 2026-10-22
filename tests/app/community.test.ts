@@ -20,6 +20,8 @@ interface TownOpts {
   /** The neighbourhood's belonging (raw 0..255) when it belongs; default 220. */
   belonging?: number;
   approval?: number;
+  /** Every neighbourhood's health, 0..255 (undefined: no reading yet). */
+  health?: number;
   extras?: (map: GameMap, parcels: ParcelStore) => void;
 }
 
@@ -54,6 +56,7 @@ function town(belongs: boolean, o: TownOpts = {}) {
     news: (t) => news.push(t),
     practised: (id) => id === 'craft-fairs' && o.craft === true,
     approval: () => o.approval ?? 50,
+    health: () => o.health,
     cheer: (d) => cheers.push(d),
     ignite: (i) => ignited.push(i),
   });
@@ -274,5 +277,128 @@ describe('a demo of protest', () => {
     expect(t.community.hold('protest')).toBe(true);
     expect(t.community.hold('uprising')).toBe(false); // that neighbourhood is already out
     expect(kinds(t)).toEqual(['protest']);
+  });
+});
+
+// Sideshows (Maddy 2026-10-21): car sideshows — "due to community stress", "they should happen at intersections, and be
+// more likely and bigger in bigger intersections", and "leave tire marks in intersections". At night, in a
+// hard-pressed neighbourhood, cars take over a crossing and spin donuts while the neighbours ring it to watch.
+import { SIDESHOW_HEALTH } from '../../src/app/community';
+function crossTown(wide: boolean, health: number | undefined) {
+  const map = new GameMap(32, 16);
+  const rows = wide ? [7, 8] : [7];
+  const cols = wide ? [15, 16] : [15];
+  for (const y of rows) for (let x = 0; x < 32; x++) placeTransport(map, x, y, BuiltKind.RoadStreet);
+  for (const x of cols) for (let y = 0; y < 16; y++) placeTransport(map, x, y, BuiltKind.RoadStreet);
+  const parcels = new ParcelStore();
+  for (let x = 1; x < 31; x += 2) {
+    if (cols.includes(x)) continue;
+    placeParcel(map, parcels, { x, y: 6, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    placeParcel(map, parcels, { x, y: rows[rows.length - 1]! + 1, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+  }
+  const live = createAmbientState();
+  live.events = [];
+  setHouseholds(live, residentialCensus(parcels));
+  const partition = computeNeighborhoods(map);
+  const civic = createCivicState(partition);
+  let hour = 22;
+  const news: string[] = [];
+  const community = createCommunity({
+    world: { map, parcels }, live, civic, partition: () => partition, rng: createRng('ss').fork('c'), hour: () => hour, on: () => true,
+    news: (t) => news.push(t), practised: () => false, approval: () => 50, health: () => health, cheer() {}, ignite() {},
+  });
+  let now = 0;
+  const liveRng = createRng('l').fork('l');
+  const tick = (substeps: number) => {
+    for (let i = 0; i < substeps; i++) {
+      const ctx = buildVehicleCtx(live, map);
+      live.peds = live.peds.filter((p) => stepPed(live, map, liveRng, ctx, p));
+      stepGatherings(live);
+    }
+  };
+  const hourPasses = (h: number) => {
+    hour = h;
+    now += COMMUNITY_STEP_MS;
+    community.frame(now);
+  };
+  const box = new Set<number>();
+  for (const y of rows) for (const x of cols) box.add(map.idx(x, y));
+  return { map, live, civic, partition, news, tick, hourPasses, box };
+}
+const NIGHT = [21, 22, 23, 0, 1, 2];
+function sideshows(t: ReturnType<typeof crossTown>, hours: number) {
+  const seen = new Map<number, NonNullable<ReturnType<typeof crossTown>['live']['gatherings']>[number]>();
+  for (let k = 0; k < hours; k++) {
+    t.hourPasses(NIGHT[k % NIGHT.length]!);
+    for (const g of t.live.gatherings ?? []) if (g.kind === 'sideshow') seen.set(g.id, g);
+    t.tick(30);
+  }
+  return [...seen.values()];
+}
+
+describe('sideshows', () => {
+  it('a hard-pressed neighbourhood: at night, cars take over its crossing, the neighbours ring it, through traffic is shut out', () => {
+    const t = crossTown(false, 30);
+    const [g] = sideshows(t, 300);
+    expect(g).toBeDefined();
+    const inBox = [...t.box].some((i) => {
+      const x = i % t.map.width, y = (i - x) / t.map.width;
+      return x >= g!.site.x && x < g!.site.x + g!.site.w && y >= g!.site.y && y < g!.site.y + g!.site.h;
+    });
+    expect(inBox).toBe(true);
+    expect(g!.cars).toBeGreaterThanOrEqual(1);
+    expect(t.news.some((n) => /sideshow/i.test(n))).toBe(true);
+  });
+
+  it('never in a thriving neighbourhood, never with no reading, and never by day', () => {
+    expect(sideshows(crossTown(false, SIDESHOW_HEALTH + 40), 300)).toHaveLength(0);
+    expect(sideshows(crossTown(false, undefined), 300)).toHaveLength(0);
+    const day = crossTown(false, 10);
+    for (let k = 0; k < 300; k++) day.hourPasses(10 + (k % 8));
+    expect((day.live.gatherings ?? []).filter((g) => g.kind === 'sideshow')).toHaveLength(0);
+  });
+
+  it('a bigger crossing: likelier, and bigger — more cars', () => {
+    const small = sideshows(crossTown(false, 40), 600);
+    const big = sideshows(crossTown(true, 40), 600);
+    expect(big.length).toBeGreaterThan(small.length);
+    expect(Math.max(...big.map((g) => g.cars ?? 0))).toBeGreaterThan(Math.max(...small.map((g) => g.cars ?? 0)));
+  });
+
+  it('leaves tire marks in the crossing, which fade slowly', () => {
+    const t = crossTown(true, 20);
+    const [g] = sideshows(t, 300);
+    expect(g).toBeDefined();
+    const marked = [...t.box].filter((i) => (t.live.skids?.get(i) ?? 0) > 0);
+    expect(marked.length).toBeGreaterThan(0);
+  });
+});
+
+// Fireworks (interdependence §6): at a festival's night, bursts over the park — they lift the city's belonging (so
+// its wellbeing) for the night, and leave a whisper of smog: even joy has a cost.
+describe('fireworks', () => {
+  const fest = () =>
+    town(false, {
+      extras: (map, parcels) => {
+        placeParcel(map, parcels, { x: 12, y: 8, width: 3, height: 2, kind: BuiltKind.Park });
+      },
+    });
+
+  it('a festival still on after dark puts on a show — once — and the city belongs a little more', () => {
+    const t = fest();
+    t.hourPasses(18);
+    expect(t.community.hold('festival')).toBe(true);
+    const g = t.live.gatherings!.find((x) => x.kind === 'festival')!;
+    t.hourPasses(19);
+    expect(g.fireworks ?? false).toBe(false); // not yet dark
+    const before = t.civic.getValues(t.hood).belonging;
+    const smogBefore = [...t.live.pollution.values()].reduce((a, b) => a + b, 0);
+    t.hourPasses(21);
+    expect(g.fireworks).toBe(true);
+    expect(t.news.filter((n) => /fireworks/i.test(n))).toHaveLength(1);
+    expect(t.civic.getValues(t.hood).belonging).toBeGreaterThan(before);
+    expect([...t.live.pollution.values()].reduce((a, b) => a + b, 0)).toBeGreaterThan(smogBefore);
+    t.hourPasses(22);
+    expect(t.news.filter((n) => /fireworks/i.test(n))).toHaveLength(1); // one show a festival
   });
 });

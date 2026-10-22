@@ -367,6 +367,11 @@ export const WEAR_RATE = perSecond(30);
 // a single faint crossing fading at once; the path still regrows over minutes if foot traffic
 // reroutes (e.g. onto a promenade the player lays down).
 export const WEAR_DECAY = perSecond(0.4);
+/** Tire marks (sideshows, Maddy 2026-10-21): laid per car each game hour a sideshow runs, capped; they fade over
+ *  several game days (a day is ~157 s). */
+export const SKID_MAX = 255;
+export const SKID_LAY = 70;
+export const SKID_DECAY = perSecond(0.25);
 
 /** Water-runoff pollution: water tiles are impassable and instead collect runoff from the
  *  ground around them, growing heavily polluted over time. Computed every WATER_RUNOFF_CADENCE

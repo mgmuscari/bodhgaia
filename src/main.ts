@@ -66,6 +66,7 @@ import { registerServiceWorker } from './app/pwa';
 import { installNoBrowserZoom } from './app/noBrowserZoom';
 import { CHANGELOG, compareVersions, whatsNew } from './ui/changelogContent';
 import { mountNotice, mountWhatsNew } from './ui/whatsNewPanel';
+import { launchesBetween } from './ui/fireworksContent';
 import { PHONE_TIPS, PHONE_TIPS_VERSION, phoneTipsDue } from './ui/controlsContent';
 import { GAME_VERSION } from './ui/creditsContent';
 import { travelModes } from './live/stats';
@@ -617,7 +618,7 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
@@ -628,6 +629,7 @@ export function main(save: SaveV1 | null = null): void {
             const g = live.state.gatherings!.find((x) => x.kind === kind)!;
             return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
           },
+          setHour: (h) => setGameHour(h),
           view: (x, y) => {
             camera.centerOn(x, y, 3);
             markDirty();
@@ -657,6 +659,7 @@ export function main(save: SaveV1 | null = null): void {
       return `${String(h).padStart(2, '0')}:00`;
     },
   });
+  let lastFireworkAt = performance.now();
   const frame = createFrame({
     prof: frameProfile,
     start: performance.now(),
@@ -679,6 +682,14 @@ export function main(save: SaveV1 | null = null): void {
       demo?.frame(now);
       flood.frame(now);
       community.frame(now);
+      // fireworks over a festival on screen: one soft pop per burst (fireworksContent launchesBetween)
+      for (const g of live.state.gatherings ?? []) {
+        if (!g.fireworks || g.leaving || launchesBetween(g.id, lastFireworkAt, now) === 0) continue;
+        const cx = g.site.x + g.site.w / 2 - camera.x;
+        const cy = g.site.y + g.site.h / 2 - camera.y;
+        if (cx >= 0 && cy >= 0 && cx * camera.tileSize <= camera.viewportWidth && cy * camera.tileSize <= camera.viewportHeight) sound.sfx.play('firework');
+      }
+      lastFireworkAt = now;
       fire.frame(now);
       drawSpillsNow();
       runFoodNow();
