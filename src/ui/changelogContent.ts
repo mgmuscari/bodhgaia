@@ -10,6 +10,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: '1.3.0',
+    notes: [
+      'New city lets you choose Gentle, Standard or Hard — what building costs, how often disasters come, and how hard the century was on the city — and Sandbox: every practice open, money and effort that never run short.',
+      'The unhoused have fuller days: a meal at a pantry or food bank, warmth at a library or civic hall (more of it come evening), a clinic, a park. A meal today halves the danger of the night’s cold.',
+      'Evictions you can see: a household put out of its home walks to the camps with what it can carry, and its things are left on the kerb. Each costs the neighbourhood a little belonging.',
+      'Nobody is put out of a co-op, a commune or a tiny home. A flood’s evacuation isn’t an eviction — people come home when the water goes.',
+      'Garbage: a Sanitation Depot’s trucks clear the piles on the street; with Mutual Aid, neighbours clear their own block. A pile left standing drags down the street around it.',
+      'Every new city has a depot — on the better-off side of town — and a landfill in a redlined district. The trucks haul there; it fills, and poisons the ground and water around it. Compost hubs and maker spaces keep part of every load out of it, and Rezone: Park caps it.',
+      'Sideshows: at night, at a struggling neighbourhood’s biggest crossing, cars spin donuts while the neighbours watch. The tire marks stay on the asphalt and fade over days.',
+      'Fireworks over a festival that runs into the night.',
+    ],
+  },
+  {
     version: '1.2.0',
     notes: [
       'Playing on a phone: held upright, the tools are a bar along the bottom (swipe it for more), and the map takes the whole width. Menus open up from their button and stay on the screen.',
