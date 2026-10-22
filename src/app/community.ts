@@ -18,6 +18,7 @@ import type { NeighborhoodMap } from '../civic/neighborhoods';
 import { GATHER_LEAVE, startGathering, takeEndedGatherings, type Gathering } from '../live/gatherings';
 import { closeTiles } from '../live/network';
 import { pairedHoods } from '../engine/pairings';
+import { residentCollapses } from '../live/death';
 
 /** Wall ms between community steps (events are drawn once a game hour). */
 export const COMMUNITY_STEP_MS = 1000;
@@ -86,6 +87,11 @@ export const SIDESHOW_LIFE = seconds(50);
 export const SIDESHOW_CROWD_PER_CAR = 4;
 export const SIDESHOW_MAX_CARS = 4;
 export const SIDESHOW_BELONGING_GAIN = 4;
+/** …and finds its voice (Maddy 2026-10-22: "a boost to community stats"); broken up by the police, it trusts less. */
+export const SIDESHOW_VOICE_GAIN = 3;
+export const SIDESHOW_POLICED_TRUST = 8;
+/** The chance an hour, per car, that one hits someone watching — they collapse where they stood (an ambulance's minute). */
+export const SIDESHOW_INJURY_CHANCE = 0.04;
 /** Fireworks (interdependence §6): a festival still on at FIREWORKS_HOUR or later puts on one show — the city belongs
  *  a little more (so its wellbeing rises), and the smoke lays a whisper of smog over the park. */
 export const FIREWORKS_HOUR = 20;
@@ -233,7 +239,10 @@ export function createCommunity(deps: CommunityDeps): Community {
   const endOf = (g: Gathering): void => {
     closeTiles(map, `gathering:${g.id}`, null);
     if (g.kind === 'block-party') lift(g.hood, { belonging: PARTY_BELONGING_GAIN, trust: PARTY_TRUST_GAIN });
-    else if (g.kind === 'sideshow') lift(g.hood, { belonging: SIDESHOW_BELONGING_GAIN }); // the neighbours' night out
+    else if (g.kind === 'sideshow') {
+      // the neighbours' night out — and if the police broke it up, the trust it cost (Maddy 2026-10-22)
+      lift(g.hood, { belonging: SIDESHOW_BELONGING_GAIN, voice: SIDESHOW_VOICE_GAIN, trust: g.policed ? -SIDESHOW_POLICED_TRUST : 0 });
+    }
     else if (g.kind === 'craft-fair') {
       lift(g.hood, { belonging: FAIR_BELONGING_GAIN });
       deps.cheer({ funds: FAIR_TRADE });
@@ -433,6 +442,16 @@ export function createCommunity(deps: CommunityDeps): Community {
     deps.news(cars > 1 ? `A sideshow — ${cars} cars spinning donuts in the crossing, the neighbours out to watch` : 'A sideshow — a car spinning donuts in the crossing, the neighbours out to watch');
     return true;
   };
+  /** A car hits someone watching: they collapse where they stood (live/death.ts — the clinic's ambulance has a minute). */
+  const injure = (g: Gathering): void => {
+    if (rng.next() >= SIDESHOW_INJURY_CHANCE * (g.cars ?? 1)) return;
+    const watchers = live.peds.filter((p) => p.gather?.id === g.id && p.gather.go === 'here');
+    if (watchers.length === 0) return;
+    const p = watchers[rng.nextInt(watchers.length)]!;
+    live.peds = live.peds.filter((q) => q !== p);
+    residentCollapses(live, Math.round(p.x), Math.round(p.y), p.homeTile !== undefined ? { home: p.homeTile } : {});
+    deps.news('Someone watching the sideshow was hit by a car');
+  };
   /** A sideshow's cars lay tire marks on the crossing's road (once an hour while it runs), and a little tire smoke. */
   const skid = (g: Gathering): void => {
     for (let dy = 1; dy < g.site.h - 1; dy++) {
@@ -440,7 +459,7 @@ export function createCommunity(deps: CommunityDeps): Community {
         const t = map.idx(g.site.x + dx, g.site.y + dy);
         if (!isRoadKind(map.built[t]!)) continue;
         layField(live.skids, t, SKID_LAY * (g.cars ?? 1), SKID_MAX);
-        layField(live.pollution, t, POLL_LAY_BASE * 2 * (g.cars ?? 1), POLL_MAX);
+        layField(live.pollution, t, POLL_LAY_BASE * 5 * (g.cars ?? 1), POLL_MAX); // the tire smoke
       }
     }
   };
@@ -527,8 +546,19 @@ export function createCommunity(deps: CommunityDeps): Community {
       const part = deps.partition();
       if (kind === 'festival') return holdFestival(part);
       if (kind === 'sideshow') {
+        // a demo: the crossing nearest a precinct, so the police come (else any)
         const all = crossings(part);
-        for (let hood = 1; hood <= civic.count(); hood++) if (!(live.gatherings ?? []).some((g) => g.hood === hood) && trySideshow(part, all, hood, 1, true)) return true;
+        const pre: number[] = [];
+        for (let t = 0; t < map.built.length; t++) if (map.built[t] === BuiltKind.Precinct) pre.push(t);
+        const dist = (c: (typeof all)[number]): number =>
+          pre.length === 0 ? 0 : Math.min(...pre.map((t) => Math.abs((t % map.width) - c.x) + Math.abs(Math.floor(t / map.width) - c.y)));
+        const near = [...all].sort((a, b) => dist(a) - dist(b) || a.tiles[0]! - b.tiles[0]!);
+        for (const c of near) {
+          for (const hood of [...c.hoods].sort((a, b) => a - b)) {
+            if (hood <= 0 || (live.gatherings ?? []).some((g) => g.hood === hood)) continue;
+            if (trySideshow(part, [c], hood, 1, true)) return true;
+          }
+        }
         return false;
       }
       if (kind === 'protest' || kind === 'uprising') {
@@ -566,7 +596,10 @@ export function createCommunity(deps: CommunityDeps): Community {
       lastHour = hour;
       tendUprisings(deps.partition());
       tendFestivals(hour);
-      for (const g of live.gatherings ?? []) if (g.kind === 'sideshow' && !g.leaving) skid(g);
+      for (const g of live.gatherings ?? []) if (g.kind === 'sideshow' && !g.leaving) {
+        skid(g);
+        injure(g);
+      }
       if (deps.on()) draw(hour);
     },
   };

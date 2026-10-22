@@ -143,6 +143,9 @@ export interface Mover {
    *  ambush (target AHEAD of the citizen's heading, Pinky), 2 = shy (only pounce when close, else
    *  patrol, Clyde). Assigned at spawn; read by huntTarget. */
   personality?: number;
+  /** A cruiser called to a sideshow (live/police.ts callToSideshows): where, and which gathering; substeps on scene. */
+  respond?: { x: number; y: number; g: number };
+  onScene?: number;
   /** A wrecked car (live/accidents.ts): substeps until it's towed; it doesn't move meanwhile. */
   wreck?: number;
   /** (Car) How many stops its driver has given up to jams this trip (live/agents.ts skipJammedStop). */

@@ -30,13 +30,13 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   - Follow-up idea (Maddy 2026-10-21, "not seeing trucks at the dump"): routine collection rounds — each depot sends a
     truck every few game hours to collect its area's household garbage and haul it to the landfill, so the dump is
     busy and fills steadily (diversion then matters more).
-- **Next feature release** (not cut yet, Maddy 2026-10-21): festivity (#173), sandbox + difficulty (#174), unhoused
-  as people — its What's-new entry is written at the cut.
+- ✅ **Feature release 1.3.0** (2026-10-21): festivity, sandbox + difficulty, unhoused as people, garbage + landfill.
 - **Sandbox + difficulty (Maddy 2026-10-21)** — branch `sandbox-difficulty`: ✅ Gentle / Standard / Hard and Sandbox at
   New city (interdependence §10).
 - **Festivity (Maddy 2026-10-21)** — branch `festivity`: ✅ car sideshows at stressed neighbourhoods' crossings by
   night (bigger box → likelier, more cars; tire marks that fade); ✅ festival fireworks after dark.
-  - Follow-ups to consider: police response to a sideshow (cruisers, arrests — and what that does to voice/trust);
+  - ✅ Police at sideshows (2026-10-22, branch `sideshow-police`): cruisers come from a precinct in reach, break it up, arrest; trust falls.
+  - Follow-ups to consider:
     a screech on the effects bus; headlights on the spinning cars at night.
 - **Mobile + zoom-to-event (Maddy 2026-10-21)** — branch `mobile-and-zoom`:
   - ✅ Zoom to event: the centring was exact (measured live); a wide event is now framed whole, the spot is marked
