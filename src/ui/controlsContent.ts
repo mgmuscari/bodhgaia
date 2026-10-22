@@ -65,3 +65,19 @@ export function soundStartNote(touch = false): string {
     ? 'Sound starts after your first tap (the browser asks for that).'
     : 'Sound starts after your first click or key press (the browser asks for that).';
 }
+
+/** The phone guide (Maddy 2026-10-21): how to play by touch, shown on a touch screen the first time — and again when
+ *  this version is bumped, for a phone that updated into a changed interface. Bump it when the touch UI changes. */
+export const PHONE_TIPS_VERSION = 1;
+export const PHONE_TIPS: string[] = [
+  ...TOUCH_HINTS,
+  'Tools — the bar of buttons; swipe it sideways for more',
+  'A menu opens over its button — tap the button again to close it',
+  'Controls — these gestures again, any time',
+];
+/** Whether the phone guide is due: on a touch screen whose `seen` version (stored; null if never) is older. */
+export function phoneTipsDue(touch: boolean, seen: string | null): boolean {
+  if (!touch) return false;
+  const v = Number(seen);
+  return seen === null || !Number.isFinite(v) || v < PHONE_TIPS_VERSION;
+}

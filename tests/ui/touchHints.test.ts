@@ -40,3 +40,25 @@ describe('the sound note names no key on touch', () => {
     expect(soundStartNote(true)).not.toMatch(/key|click/);
   });
 });
+
+// Maddy 2026-10-21: "better UI tutorial messages on mobile, to be triggered on first mobile play or for an updating
+// mobile client" — a phone guide, shown on a touch screen until its version has been seen.
+import { PHONE_TIPS, PHONE_TIPS_VERSION, phoneTipsDue } from '../../src/ui/controlsContent';
+describe('the phone guide', () => {
+  it('teaches the gestures and where the tools are, naming no key or mouse', () => {
+    const text = PHONE_TIPS.join(' ');
+    expect(text).toMatch(/Two fingers/);
+    expect(text).toMatch(/lift to build/);
+    expect(text).toMatch(/swipe/i);
+    expect(text).not.toMatch(/click|Esc|key/i);
+  });
+  it('shows on a touch screen that has not seen this version of it — first play, or a client that updated it', () => {
+    expect(phoneTipsDue(true, null)).toBe(true);
+    expect(phoneTipsDue(true, String(PHONE_TIPS_VERSION - 1))).toBe(true);
+    expect(phoneTipsDue(true, String(PHONE_TIPS_VERSION))).toBe(false);
+    expect(phoneTipsDue(true, 'garbage')).toBe(true);
+  });
+  it('never on a desktop', () => {
+    expect(phoneTipsDue(false, null)).toBe(false);
+  });
+});
