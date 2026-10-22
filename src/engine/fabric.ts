@@ -125,6 +125,9 @@ export const BuiltKind = {
   UrbanFarm: 70,
   FoodBank: 71,
   Pantry: 72,
+  // A sanitation depot (Maddy 2026-10-21: "trash cluttering the streets … garbage trucks"): a city service whose trucks
+  // clear the piles left on the street (live/garbage.ts).
+  SanitationDepot: 73,
 } as const;
 export type BuiltKind = (typeof BuiltKind)[keyof typeof BuiltKind];
 

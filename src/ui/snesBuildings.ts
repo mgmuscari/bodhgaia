@@ -212,6 +212,24 @@ const fireStation: Painter = (W, H, v) => {
   return p;
 };
 
+/** A sanitation depot (Maddy 2026-10-21): a service garage in municipal green, roll-up bay doors, a row of bins by the
+ *  yard, a garbage truck parked out front. */
+const sanitationDepot: Painter = (W, H, v) => {
+  const p = lot(W, H, 'pave', 730 + v);
+  service(p, [C.leafHi, C.leaf, C.leafLo], C.paveHi, C.pave, (L, x, _y, w, _r, wy, wh) => {
+    for (let gx = x + 2; gx + 4 < x + w; gx += 6) {
+      rect(L, gx, wy + wh - 5, 4, 4, C.slate); // roll-up bay doors
+      hline(L, gx, gx + 3, wy + wh - 4, C.slateLo);
+      hline(L, gx, gx + 3, wy + wh - 2, C.slateLo);
+    }
+  });
+  for (let k = 0; k < 3; k++) rect(p, 2 + k * 3, H - 4, 2, 3, k === 1 ? C.roofBlue : C.leafLo); // the bins
+  rect(p, W - 9, H - 5, 6, 3, C.leaf); // a truck out front: its green body…
+  rect(p, W - 4, H - 5, 2, 3, C.cream); // …and white cab
+  hline(p, W - 9, W - 3, H - 2, C.ink); // its wheels' shadow
+  return p;
+};
+
 const clinic: Painter = (W, H, v) => {
   const p = lot(W, H, 'pave', 330 + v);
   const L = blank(W, H);
@@ -738,6 +756,7 @@ export const BUILDING_PAINTERS: ReadonlyMap<number, readonly [Painter, number]> 
   [30, [fusionPlant, 1]],
   [31, [precinct, 1]],
   [32, [fireStation, 1]],
+  [73, [sanitationDepot, 1]],
   [33, [clinic, 1]],
   [34, [library, 1]],
   [35, [school, 1]],

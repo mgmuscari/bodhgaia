@@ -22,6 +22,7 @@ export const UPKEEP: ReadonlyMap<number, number> = new Map<number, number>([
   [BuiltKind.Promenade, 0.02],
   [BuiltKind.Civic, 1.5],
   [BuiltKind.FireStation, 2],
+  [BuiltKind.SanitationDepot, 1.5],
   [BuiltKind.Clinic, 2],
   [BuiltKind.Library, 1.2],
   [BuiltKind.School, 2],
