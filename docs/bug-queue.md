@@ -25,6 +25,8 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
 ### 1 — Live-game bugs (playtest loop, do first)
 - **Unhoused as people (Maddy 2026-10-21)** — branch `unhoused-people`: ✅ fuller days, ✅ evictions you can see,
   ✅ meals against the cold and evictions against belonging (unhoused-residents.md). Living in cars: not chosen.
+  ✅ Street garbage: eviction piles stay until a sanitation depot's trucks or the neighbours (Mutual Aid) clear them.
+  - Follow-up idea: the desire-path junk (wear) as garbage the trucks also collect.
 - **Next feature release** (not cut yet, Maddy 2026-10-21): festivity (#173), sandbox + difficulty (#174), unhoused
   as people — its What's-new entry is written at the cut.
 - **Sandbox + difficulty (Maddy 2026-10-21)** — branch `sandbox-difficulty`: ✅ Gentle / Standard / Hard and Sandbox at

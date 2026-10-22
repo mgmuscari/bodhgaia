@@ -39,6 +39,15 @@ below change game feel and need playtest judgement, so they're Maddy's call.
   (rate-limited) and the news say so.
 - **Ties**: a meal today halves the night's exposure risk for the share of those sleeping out who ate (reset at
   dawn), and an eviction costs its neighbourhood 2 belonging.
+- **The piles stay until cleared** (Maddy: "trash cluttering the streets … garbage trucks"; `live/garbage.ts`,
+  `app/garbage.ts`). An eviction's things stay on the kerb, saved with the city, until one of two things clears them:
+  - a **Sanitation Depot** (civic, available from the start, cost 12, upkeep 1.5/h) keeps up to 2 green garbage
+    trucks on the road, each sent to the nearest pile within 25 tiles;
+  - **the neighbours** clear their own block, a few piles an hour, where Mutual Aid is practised and belonging is 0.3
+    above the opening level.
+
+  While a pile stands it drags nearby land value (half a ruin). After a game day it costs its neighbourhood 1
+  belonging an hour, at most 3.
 - Not built (Maddy chose to leave it): living in cars.
 
 ## Open questions / next steps (for Maddy)
