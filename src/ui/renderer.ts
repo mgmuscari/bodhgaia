@@ -1451,6 +1451,11 @@ export class Renderer {
       const bike = (p.mode ?? TravelMode.Walk) === TravelMode.Bike;
       const img = this.sprites.get(personKey(bike ? 'bike' : 'ped', seed, frame, bike ? bikeFacing(pose.hx, pose.hy) : undefined));
       if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      // someone just put out of their home carries what they can, to the camp (live/evictions.ts)
+      if (p.carrying) {
+        const load = this.sprites.get(`@sprite/bundle/${seed & 1}`);
+        if (load) this.drawArt(ctx, load, pose.x + 0.12, pose.y - 0.02, camera);
+      }
       if (p.gather && marching.has(p.gather.id)) {
         const sign = this.sprites.get(`@sprite/placard/${seed & 1}`);
         if (sign) this.drawArt(ctx, sign, pose.x + 0.06, pose.y - 0.22, camera);

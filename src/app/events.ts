@@ -43,6 +43,9 @@ export function handleEvents(events: readonly LiveEvent[], deps: EventCostDeps):
   // "Falling Down": a driver jammed twice left the car in its lane and walked on (Maddy 2026-09-30)
   const walkoffs = events.filter((e) => e.kind === 'walkoff').length;
   if (walkoffs > 0) deps.news(walkoffs === 1 ? 'A driver left their car in the jam and walked' : `${walkoffs} drivers left their cars in the jam and walked`);
+  // people put out of their homes (rent, a home torn down, a flood) — seen walking to the camps (live/evictions.ts)
+  const evictions = events.filter((e) => e.kind === 'eviction').length;
+  if (evictions > 0) deps.news(evictions === 1 ? 'A household put out of its home' : `${evictions} households put out of their homes`);
   const deaths = events.filter((e) => e.kind === 'death');
   if (deaths.length === 0) return;
   deps.mourn(deaths.length);

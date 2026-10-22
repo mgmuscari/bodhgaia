@@ -13,6 +13,7 @@
 import type { GameMap } from '../engine/map';
 import { BuiltKind, isOpenGround } from '../engine/fabric';
 import type { AmbientState } from './types';
+import { noteEviction } from './evictions';
 
 /** Beds in a mutual-aid shelter, and how far (Manhattan) it draws people in from the camps (Maddy 2026-10-13). */
 export const SHELTER_BEDS = 24;
@@ -110,7 +111,7 @@ function newSite(map: GameMap, state: AmbientState, camps: Map<number, number>, 
 
 /** Camp `n` people who came from `from`: into camps near it with room, then new camps on open land nearby; if the
  *  city has no open land left near them, into the nearest camp whatever its size. */
-function place(map: GameMap, state: AmbientState, camps: Map<number, number>, from: number, n: number): void {
+function place(map: GameMap, state: AmbientState, camps: Map<number, number>, from: number, n: number, placed?: (camp: number, n: number) => void): void {
   const [x, y] = xy(map, from);
   let left = n;
   while (left > EPS) {
@@ -124,6 +125,7 @@ function place(map: GameMap, state: AmbientState, camps: Map<number, number>, fr
     const cur = camps.get(c)!;
     const add = cur < CAMP_CAP ? Math.min(left, CAMP_CAP - cur) : left;
     camps.set(c, cur + add);
+    placed?.(c, add);
     left -= add;
   }
 }
@@ -223,7 +225,9 @@ export function settleCamps(state: AmbientState, map: GameMap): void {
     place(map, state, camps, t, n);
   }
   for (const [t, n] of [...(state.campOut ?? new Map())].sort((a, b) => a[0] - b[0])) take(map, camps, n, t);
-  for (const [t, n] of [...(state.campIn ?? new Map())].sort((a, b) => a[0] - b[0])) place(map, state, camps, t, n);
+  // the newly unhoused camp near the homes they left — and are seen to go (live/evictions.ts)
+  const campsBefore = new Map(camps);
+  for (const [t, n] of [...(state.campIn ?? new Map())].sort((a, b) => a[0] - b[0])) place(map, state, camps, t, n, (c, k) => noteEviction(state, t, c, k, campsBefore));
   state.campIn?.clear();
   state.campOut?.clear();
   let held = 0;

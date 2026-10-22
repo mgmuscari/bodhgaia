@@ -13,6 +13,8 @@ export const CCTV_MS = 4000;
 const MARGIN = 0.5;
 /** Arrests are common (a sweep makes several a minute): at most one reaches the feed per this gap. Deaths always do. */
 export const ARREST_GAP_MS = 20_000;
+/** Evictions likewise (rent puts people out of many homes an hour): one per this gap reaches the feed. */
+export const EVICTION_GAP_MS = 30_000;
 /** How many events may wait behind the one showing. */
 const QUEUE_MAX = 2;
 
@@ -104,10 +106,11 @@ const LABELS: Record<LiveEvent['kind'], string> = {
   fair: 'Craft fair',
   festival: 'Festival',
   sideshow: 'Sideshow',
+  eviction: 'Put out of their home',
 };
 
 /** Deaths first, then disasters and protest; arrests and celebrations give way to everything else. */
-const RANK: Record<LiveEvent['kind'], number> = { death: 0, collapse: 0, rescue: 1, fire: 1, spill: 1, flood: 1, crash: 1, walkoff: 2, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2, sideshow: 2 };
+const RANK: Record<LiveEvent['kind'], number> = { death: 0, collapse: 0, rescue: 1, fire: 1, spill: 1, flood: 1, crash: 1, walkoff: 2, protest: 1, uprising: 1, arrest: 2, party: 2, fair: 2, festival: 2, sideshow: 2, eviction: 2 };
 
 /** One event at a time, each for CCTV_MS; deaths go before arrests; arrests thinned to one per ARREST_GAP_MS;
  *  only a few wait. */
@@ -115,12 +118,17 @@ export class CctvQueue {
   private showing: { ev: LiveEvent; since: number } | null = null;
   private waiting: LiveEvent[] = [];
   private lastArrest = -Infinity;
+  private lastEviction = -Infinity;
 
   push(events: readonly LiveEvent[], now: number): void {
     for (const ev of events) {
       if (ev.kind === 'arrest') {
         if (now - this.lastArrest < ARREST_GAP_MS) continue;
         this.lastArrest = now;
+      }
+      if (ev.kind === 'eviction') {
+        if (now - this.lastEviction < EVICTION_GAP_MS) continue;
+        this.lastEviction = now;
       }
       this.waiting.push(ev);
     }

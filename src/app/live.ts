@@ -130,6 +130,7 @@ export function createLive(deps: LiveDeps): LiveLayer {
   // the seeded decay — so restore strictly after seed.
   seedDecay(state, map, deps.historyPct ?? 100);
   if (deps.saved) restoreLive(state, deps.saved, map.width, deps.legacyDisplaced ?? 0);
+  state.evictionsShown = true; // from here on, people put out of a home are seen to go (live/evictions.ts)
 
   return {
     state,

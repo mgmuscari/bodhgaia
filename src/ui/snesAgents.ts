@@ -9,7 +9,8 @@
 // @sprite/cop/{dir8}/{phase}, @sprite/ped/{tone}/{shirt}/{frame}, @sprite/bike/{tone}/{shirt}/{frame},
 // @sprite/train/{loco|car}/{dir8}, @sprite/bird/{frame}, @sprite/smog/{size}/{variant},
 // @sprite/firetruck/{dir8}/{phase}, @sprite/ambulance/{dir8}/{phase}, @sprite/fire/{frame}, @sprite/drop, @sprite/toxic/{size}/{variant},
-// @sprite/rain/{0 light|1 heavy}, @sprite/debris, @sprite/stall/{0..2}, @sprite/placard/{0|1}.
+// @sprite/rain/{0 light|1 heavy}, @sprite/debris, @sprite/stall/{0..2}, @sprite/placard/{0|1},
+// @sprite/bundle/{0|1}.
 // dir8: 0 = N, clockwise (2 = E, 4 = S, 6 = W).
 
 import { blank, hash2, px, type Pixels, type RGB } from './pixelArt';
@@ -321,6 +322,9 @@ export function paintSnesAgents(out: Map<string, Pixels>): void {
   [C.signal, C.roofBlue, C.leaf].forEach((stripe, v) =>
     out.set(`@sprite/stall/${v}`, glyph(STALL, { a: stripe, s: C.cream, d: C.roofBrownLo, t: C.roofBrown, l: C.roofBrownLo })),
   );
+  // someone put out of their home carries what they can (Maddy 2026-10-21): a tied cloth bundle, or a box
+  out.set('@sprite/bundle/0', glyph(['.t.', 'bbb', 'bbb'], { t: C.creamLo, b: C.roofBlue }));
+  out.set('@sprite/bundle/1', glyph(['ccc', 'cdc', 'ccc'], { c: C.dirtHi, d: C.roofBrown }));
   // protest placards: a cream sign (one with a red word) held up on a pole
   out.set('@sprite/placard/0', glyph(['ccc', 'ccc', '.p.'], { c: C.cream, p: C.roofBrownLo }));
   out.set('@sprite/placard/1', glyph(['ccc', 'crc', '.p.'], { c: C.cream, r: C.signal, p: C.roofBrownLo }));

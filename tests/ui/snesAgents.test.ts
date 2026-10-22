@@ -267,3 +267,15 @@ describe('snes trains + birds — the last flat-shape agents, as pixel art', () 
   });
 });
 
+
+// Evictions you can see (Maddy 2026-10-21): someone put out of their home carries a bundle or a box.
+describe('what the evicted carry', () => {
+  it('a bundle and a box, smaller than a person', () => {
+    for (const v of [0, 1]) {
+      const s = tiles.get(`@sprite/bundle/${v}`)!;
+      expect(s).toBeDefined();
+      expect(s.w).toBeLessThanOrEqual(3);
+      expect(s.h).toBeLessThanOrEqual(3);
+    }
+  });
+});

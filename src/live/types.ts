@@ -74,6 +74,8 @@ export interface Mover {
   shelter?: number;
   /** What an unhoused person's day out is for (live/unhoused.ts): the shops, a meal, warmth, care or rest. */
   errand?: 'shop' | 'meal' | 'warmth' | 'care' | 'rest';
+  /** Someone just put out of their home, walking to a camp with what they carry (live/evictions.ts). */
+  carrying?: boolean;
   /** For a street-parked car: the direction (0=N/1=E/2=S/3=W) toward its curb (the adjacent
    *  non-road tile), so the renderer draws it hugging the kerb instead of in the lane. */
   curbDir?: number;
@@ -268,7 +270,7 @@ export interface ToxicCloud {
 
 /** Something that happened in the city, framed by the tiles it covers (x, y, w, h). */
 export interface LiveEvent {
-  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival' | 'sideshow';
+  kind: 'death' | 'collapse' | 'rescue' | 'walkoff' | 'arrest' | 'fire' | 'spill' | 'flood' | 'crash' | 'protest' | 'uprising' | 'party' | 'fair' | 'festival' | 'sideshow' | 'eviction';
   x: number;
   y: number;
   w: number;
@@ -394,6 +396,13 @@ export interface AmbientState {
   /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
    *  people back from it; it never moves without a cause. */
   unhoused: number;
+  /** Evictions are walked out where they happen (live/evictions.ts) — on once the city is shown, not for the
+   *  opening's inherited crisis. */
+  evictionsShown?: boolean;
+  /** Per home: the people put out of it not yet seen to go (a fraction builds to a person), and the camp they join. */
+  evictDue?: Map<number, { n: number; camp: number }>;
+  /** Walks to show this pass: from a home to a camp, `people` of them. */
+  evictWalks?: { from: number; to: number; people: number }[];
   /** Commercial places the unhoused spent their days at (live/unhoused.ts): tile → visits, fading. */
   unhousedVisits?: Map<number, number>;
   /** Where the unhoused live (live/camps.ts): encampment tile → people. Sums to `unhoused` once settled. */

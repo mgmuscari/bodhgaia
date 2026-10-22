@@ -46,6 +46,7 @@ import { stepGatherings } from './gatherings';
 import { spawnTrains, stepTrain } from './trains';
 import { advanceFlock, flockTile, spawnFlocks } from './birds';
 import { stepOccupancy } from './fields/occupancy';
+import { spawnEvictions } from './evictions';
 import { settleCamps } from './camps';
 import { fadeVisits, spawnUnhoused } from './unhoused';
 import { computeCoverage, recomputeLandValueBand, stepRoadDecay } from './fields/landValue';
@@ -220,6 +221,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.occTick % OCC_CADENCE === 0) {
     stepOccupancy(state, map);
     settleCamps(state, map); // the unhoused go to the camps (and the re-housed leave them)
+    spawnEvictions(state, map); // …and the newly put-out are seen to walk there
     fadeVisits(state);
   }
 
