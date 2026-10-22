@@ -48,6 +48,17 @@ below change game feel and need playtest judgement, so they're Maddy's call.
 
   While a pile stands it drags nearby land value (half a ruin). After a game day it costs its neighbourhood 1
   belonging an hour, at most 3.
+- **Sanitation in a new city** (Maddy: "new cities should have sanitation but underserved"): worldgen sites one depot on
+  the least-redlined frontage, like the fire stations, so its trucks don't reach the redlined streets.
+- **The landfill** (Maddy: "the depots should feed a landfill"; `live/garbage.ts`, worldgen `moses.ts`):
+  - **Sited:** every new city has one 3×3 landfill on the most redlined frontage. The service went to the greenlined
+    districts, the burden to the redlined. Disinvestment never abandons it. It isn't in the build menu.
+  - **Hauling:** after loading a pile, a truck hauls it to the landfill, dumps it, then drives home.
+  - **Fill:** it's a saved stock. A new city's landfill starts with 60 loads of history.
+  - **Diversion:** each compost hub keeps 15% of every load out of it, and each maker space 10%, up to 80% in all.
+  - **Harm:** it poisons its own ground, seeps past its fence and leaches into adjacent water. All of that scales
+    from 1× empty to 2× at 300 loads. It also drags nearby land value.
+  - **Capping:** Rezone: Park caps it. Its fill stops harming, and what's already in the ground heals in time.
 - Not built (Maddy chose to leave it): living in cars.
 
 ## Open questions / next steps (for Maddy)
