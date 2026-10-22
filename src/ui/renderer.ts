@@ -1764,6 +1764,8 @@ export class Renderer {
 
     // Fireworks over a festival's park after dark (fireworksContent.ts): one art pixel per spark, after the lighting
     // pass like the flames, so they glow on the night.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter'; // light on the night, like the headlights
     for (const g of ambient.gatherings ?? []) {
       if (!g.fireworks || g.leaving) continue;
       const ap = camera.tileSize / BASE_TILE;
@@ -1774,6 +1776,7 @@ export class Renderer {
         ctx.fillRect(Math.round(sx), Math.round(sy), Math.ceil(ap), Math.ceil(ap));
       }
     }
+    ctx.restore();
 
     // Vehicle headlights/taillights — NIGHT-GATED (off at midday, ramping on at dusk) and evading shading
     // (drawn here, after the sprite lighting pass), on the art grid with the car body.

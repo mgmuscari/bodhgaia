@@ -618,7 +618,7 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,

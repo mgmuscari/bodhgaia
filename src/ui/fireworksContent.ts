@@ -13,11 +13,18 @@ export const BURST_LIFE_MS = 1900;
 const RISE_MS = 450;
 /** Up to this much later than its slot a burst goes up (ms). */
 const JITTER_MS = 400;
-/** The burst colours: warm gold, red, sky blue, leaf green, white. */
-export const SPARK_COLOURS: readonly RGB[] = [C.flower, C.signal, C.roofBlueHi, C.leafHi, C.petal];
-/** Twelve directions round a circle, ×8 (integer: an octagon-ish ring that reads as round at this size). */
+/** The burst colours, each a spark and its trail: warm gold, red, sky blue, leaf green, white-gold. */
+export const SPARK_COLOURS: readonly (readonly [RGB, RGB])[] = [
+  [C.flower, C.gold],
+  [C.signal, C.roofRed],
+  [C.roofBlueHi, C.roofBlue],
+  [C.leafHi, C.leaf],
+  [C.petal, C.flower],
+];
+/** Sixteen spokes round a circle, ×8 (integer). A first look (Maddy's build, 2026-10-21) had 12 spokes 16 px across
+ *  over the roof — they read as specks on it; the burst is bigger, trailed and higher now. */
 const DIRS: readonly (readonly [number, number])[] = [
-  [8, 0], [7, 4], [4, 7], [0, 8], [-4, 7], [-7, 4], [-8, 0], [-7, -4], [-4, -7], [0, -8], [4, -7], [7, -4],
+  [8, 0], [7, 3], [6, 6], [3, 7], [0, 8], [-3, 7], [-6, 6], [-7, 3], [-8, 0], [-7, -3], [-6, -6], [-3, -7], [0, -8], [3, -7], [6, -6], [7, -3],
 ];
 
 export interface Spark {
@@ -46,8 +53,8 @@ export function fireworkSparks(site: { x: number; y: number; w: number; h: numbe
     const h = hash2(k, 2, seed);
     const gx = X0 + (h % Math.max(1, W)); // launched from the park
     const gy = Y0 + H - 2;
-    const peak = 30 + ((h >>> 8) % 28); // art px above the ground
-    const colour = SPARK_COLOURS[(h >>> 16) % SPARK_COLOURS.length]!;
+    const peak = 48 + ((h >>> 8) % 32); // art px above the ground: it opens in the sky over the place, not on its roof
+    const [colour, trail] = SPARK_COLOURS[(h >>> 16) % SPARK_COLOURS.length]!;
     if (age < RISE_MS) {
       const y = gy - Math.floor((peak * age) / RISE_MS);
       out.push({ x: gx, y, colour: C.flower }, { x: gx, y: y + 2, colour: C.gold }); // the shell and its trail
@@ -55,7 +62,7 @@ export function fireworkSparks(site: { x: number; y: number; w: number; h: numbe
     }
     const a = age - RISE_MS; // ms since it opened
     const span = BURST_LIFE_MS - RISE_MS;
-    const radius = 4 + Math.floor((12 * a) / span) + ((h >>> 20) % 4); // grows to ~16 px
+    const radius = 6 + Math.floor((16 * a) / span) + ((h >>> 20) % 5); // grows to ~26 px
     const sag = Math.floor((6 * a * a) / (span * span)); // falls as it fades
     const cy = gy - peak;
     for (let i = 0; i < DIRS.length; i++) {
@@ -63,6 +70,8 @@ export function fireworkSparks(site: { x: number; y: number; w: number; h: numbe
       if (a > span / 2 && hash2(i, Math.floor(a / 100), h) % span < a - span / 2) continue;
       const [dx, dy] = DIRS[i]!;
       out.push({ x: gx + Math.floor((dx * radius) / 8), y: cy + Math.floor((dy * radius) / 8) + sag, colour });
+      // its trail, a step back toward the centre in the darker shade
+      out.push({ x: gx + Math.floor((dx * (radius - 3)) / 8), y: cy + Math.floor((dy * (radius - 3)) / 8) + sag - 1, colour: trail });
       // an inner ring, half the radius, while it's fresh
       if (a < span / 3 && i % 2 === 0) out.push({ x: gx + Math.floor((dx * radius) / 16), y: cy + Math.floor((dy * radius) / 16) + sag, colour: C.petal });
     }

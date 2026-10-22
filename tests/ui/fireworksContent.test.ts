@@ -14,7 +14,7 @@ describe('fireworks', () => {
         seen++;
         expect(s.x).toBeGreaterThanOrEqual((park.x - 2) * BASE_TILE);
         expect(s.x).toBeLessThanOrEqual((park.x + park.w + 2) * BASE_TILE);
-        expect(s.y).toBeGreaterThanOrEqual((park.y - 5) * BASE_TILE); // up in the sky over it
+        expect(s.y).toBeGreaterThanOrEqual((park.y - 6) * BASE_TILE); // up in the sky over it
         expect(s.y).toBeLessThanOrEqual((park.y + park.h) * BASE_TILE);
         expect(Number.isInteger(s.x) && Number.isInteger(s.y)).toBe(true); // on the art grid
       }

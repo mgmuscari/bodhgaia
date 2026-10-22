@@ -134,11 +134,15 @@ already produces:
 
 ## 6. Festivity
 
-- **Sideshows:** at block parties in healthy neighbourhoods, a busker, an acrobat or a puppet stall. These are tiny
-  people sprites in the party's street, with no new mechanic beyond a small belonging bump.
-- **Fireworks:** at a festival's night, bursts over the park in the light pipeline (one art pixel per spark, coloured
-  after the lighting pass), with a soft crackle on the effects bus. They lift wellbeing for the night and add a whisper
-  of smog, so even joy has a cost.
+- **Sideshows** (built 2026-10-21; Maddy: car sideshows, *"due to community stress"*, *"at intersections, … more likely
+  and bigger in bigger intersections"*, *"leave tire marks"*): at night, in a neighbourhood whose health is low, cars
+  take over its biggest crossing and spin donuts while the neighbours ring it. The crossing is closed to through
+  traffic while it runs. Likelier the harder pressed and the bigger the junction box; a bigger box draws more cars and
+  a bigger crowd. The tire marks are a saved live stock baked with the ground marks, fading over game days; the
+  neighbourhood belongs a little more after. Not tied to block parties.
+- **Fireworks** (built 2026-10-21): a festival still on at 20:00 puts on one show — sparks on the art grid over the
+  place, drawn additively after the lighting pass, a soft pop per burst on screen. The city belongs a little more
+  (so wellbeing rises) and the smoke lays a whisper of smog, so even joy has a cost.
 
 ## 7. Mobility policy
 
@@ -207,7 +211,7 @@ Each step lands on its own and is playable. Dependencies are named.
 | 5 | **Lane pairings** + preview lines | 3 | medium |
 | 6 | **Committees, petitions, council**; **car tax / parking fees / car-free zones** | 2 | large |
 | 7 | **Resident narratives** (cast, events, traits) | 2, 6 | large |
-| 8 | **Sideshows, fireworks** | 2 | small |
+| 8 | **Sideshows, fireworks** — built 2026-10-21 | 2 | small |
 | 9 | **Sandbox + difficulty** | — | small–medium |
 | — | Arcologies | — | backlog |
 

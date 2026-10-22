@@ -23,6 +23,10 @@ of each group. Branch `playtest/overnight-batch` (sequential, one branch).
   protests, uprisings — all emerging from conditions; festivities hang single-pixel prayer-flag strings.
 
 ### 1 — Live-game bugs (playtest loop, do first)
+- **Festivity (Maddy 2026-10-21)** — branch `festivity`: ✅ car sideshows at stressed neighbourhoods' crossings by
+  night (bigger box → likelier, more cars; tire marks that fade); ✅ festival fireworks after dark.
+  - Follow-ups to consider: police response to a sideshow (cruisers, arrests — and what that does to voice/trust);
+    a screech on the effects bus; headlights on the spinning cars at night.
 - **Mobile + zoom-to-event (Maddy 2026-10-21)** — branch `mobile-and-zoom`:
   - ✅ Zoom to event: the centring was exact (measured live); a wide event is now framed whole, the spot is marked
     with a blinking CCTV reticle, and the feed steps aside.
