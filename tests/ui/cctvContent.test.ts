@@ -68,8 +68,46 @@ describe('CctvQueue: one event at a time, deaths before arrests', () => {
 describe('going there (Maddy 2026-10-08: clicking the feed takes you to it)', () => {
   it('the main view centres on the event, at a close zoom', async () => {
     const { cctvGoTo, GO_TO_ZOOM } = await import('../../src/ui/cctvContent');
-    expect(cctvGoTo({ kind: 'fire', x: 10, y: 20, w: 2, h: 2 })).toEqual({ x: 11, y: 21, zoom: GO_TO_ZOOM });
+    expect(cctvGoTo({ kind: 'fire', x: 10, y: 20, w: 2, h: 2 }, 800, 600)).toEqual({ x: 11, y: 21, zoom: GO_TO_ZOOM });
     expect(GO_TO_ZOOM).toBeGreaterThanOrEqual(3);
+  });
+
+  // Maddy 2026-10-21: "zoom to event doesn't seem to clearly zoom to the correct coordinates" — the centring was exact
+  // (measured live), but a wide event overflowed the view, nothing marked the spot, and the feed stayed up over it.
+  it('a wide event is framed whole in the main view, not cropped at the close zoom', async () => {
+    const { cctvGoTo } = await import('../../src/ui/cctvContent');
+    const flood = { kind: 'flood' as const, x: 10, y: 20, w: 30, h: 12 };
+    const g = cctvGoTo(flood, 800, 600);
+    expect(g.zoom).toBeLessThan(3);
+    expect(800 / (16 * g.zoom)).toBeGreaterThanOrEqual(30);
+    expect(cctvGoTo({ kind: 'crash', x: 5, y: 5, w: 1, h: 1 }, 800, 600).zoom).toBe(3); // a small one: close up
+  });
+
+  it('marks the spot: four corner brackets just outside the event, blinking, then gone', async () => {
+    const { reticle, MARK_MS } = await import('../../src/ui/cctvContent');
+    const ev = { kind: 'fire' as const, x: 10, y: 20, w: 2, h: 1 };
+    const r = reticle(ev, 0, 0)!;
+    expect(r).not.toBeNull();
+    expect(r.length).toBe(8); // 4 corners × (one horizontal + one vertical arm), in art pixels
+    const minX = Math.min(...r.map((b) => b.x));
+    const maxX = Math.max(...r.map((b) => b.x + b.w));
+    const minY = Math.min(...r.map((b) => b.y));
+    const maxY = Math.max(...r.map((b) => b.y + b.h));
+    expect(minX).toBeLessThan(10 * 16); // outside the event's tiles on every side
+    expect(maxX).toBeGreaterThan(12 * 16);
+    expect(minY).toBeLessThan(20 * 16);
+    expect(maxY).toBeGreaterThan(21 * 16);
+    const shownAt = Array.from({ length: 16 }, (_, k) => reticle(ev, 0, (k * MARK_MS) / 16) !== null);
+    expect(shownAt.some((on) => !on)).toBe(true); // it blinks
+    expect(reticle(ev, 0, MARK_MS)).toBeNull(); // and goes
+  });
+
+  it('the feed can be dismissed once you have gone there', () => {
+    const q = new CctvQueue();
+    q.push([{ kind: 'fire', x: 1, y: 1, w: 1, h: 1 }], 0);
+    expect(q.current(0)).not.toBeNull();
+    q.dismiss();
+    expect(q.current(1)).toBeNull();
   });
 });
 

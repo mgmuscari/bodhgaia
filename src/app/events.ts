@@ -73,7 +73,7 @@ export interface EventsDeps extends EventCostDeps {
    *  the GPU map + smog when the GPU path is on (the inset then draws as a second GPU viewport). */
   main?: {
     canvas: HTMLCanvasElement;
-    renderer: Pick<Renderer, 'setHole'>;
+    renderer: Pick<Renderer, 'setHole' | 'setMark'>;
     gpu(): GpuRenderer | null;
     smog(): SmogOverlay | null;
   };
@@ -90,10 +90,16 @@ export function createEventsController(deps: EventsDeps): EventsController {
   deps.live.events = []; // start collecting
   const queue = new CctvQueue();
   const cctv = mountCctv(document.body);
+  // Going there: the main view frames the event, marks it with the feed's reticle, and the feed steps aside — it would
+  // otherwise sit over the view of the very thing it showed (Maddy 2026-10-21).
   cctv.onClick(() => {
     if (!shown) return;
-    const g = cctvGoTo(shown);
+    const pane = deps.main?.canvas.getBoundingClientRect();
+    const g = cctvGoTo(shown, pane?.width || window.innerWidth, pane?.height || window.innerHeight);
     deps.goTo?.(g.x, g.y, g.zoom);
+    deps.main?.renderer.setMark(shown, performance.now());
+    queue.dismiss();
+    close();
   });
   let renderer: Renderer | null = null;
   let camera: Camera | null = null;

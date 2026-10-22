@@ -41,7 +41,8 @@ import type { HeadlightBeam } from './gpuRenderer';
 import { CAR_LENGTH, CAR_WIDTH, LANE } from '../live/geometry';
 import { ENCAMPMENT_WEAR, FALL_SUBSTEPS } from '../live/tuning';
 import { gameSec } from './gameTime';
-import type { AmbientState } from '../live/types';
+import type { AmbientState, LiveEvent } from '../live/types';
+import { MARK_MS, reticle } from './cctvContent';
 import { dayNightBrightness, gameClock } from './lighting';
 import { OVERLAY_DIM } from './overlayLegend';
 
@@ -299,6 +300,8 @@ export class Renderer {
   private baseDirty = true;
   private dpr = 1;
   private hole: { x: number; y: number; w: number; h: number } | null = null;
+  // The event the main view just went to from the CCTV feed, marked for a few seconds (setMark).
+  private mark: { ev: LiveEvent; since: number } | null = null;
   private cssWidth = 0;
   private cssHeight = 0;
   private preview: readonly PreviewTile[] | null = null;
@@ -1098,6 +1101,7 @@ export class Renderer {
     this.composite(world, camera, ambient); // ambient → drawBase bakes wear/junk/tents under the agents
     this.drawSprites(world, camera, ambient);
     this.drawOverlays(world, camera, ambient); // the info views over the life layer
+    this.drawMark(camera);
     if (this.hole) {
       // the CCTV inset is drawn by the GPU in this corner of the map: keep this view's sprites out of it
       const h = this.hole;
@@ -1145,6 +1149,36 @@ export class Renderer {
         ctx.fillRect(Math.floor(sx), Math.floor(sy), Math.ceil(ts), Math.ceil(ts));
       }
       ctx.globalAlpha = 1;
+    }
+  }
+
+  /** Mark the event the view just went to from the feed (cctvContent reticle); null clears it. */
+  setMark(ev: LiveEvent | null, since = 0): void {
+    this.mark = ev ? { ev, since } : null;
+  }
+
+  /** The feed's reticle over the event it went to: corner brackets in the REC light's red, snapped to art pixels. */
+  private drawMark(camera: Camera): void {
+    if (!this.mark) return;
+    const now = performance.now();
+    const rects = reticle(this.mark.ev, this.mark.since, now);
+    if (!rects) {
+      if (now - this.mark.since >= MARK_MS) this.mark = null;
+      return;
+    }
+    const ctx = this.ctx;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const px = camera.tileSize / BASE_TILE; // one art pixel, CSS px
+    const thick = Math.max(1, px); // never thinner than a pixel at a far zoom
+    for (const r of rects) {
+      const { sx, sy } = camera.worldToScreen(r.x / BASE_TILE, r.y / BASE_TILE);
+      ctx.fillStyle = '#101018'; // a dark key line so it reads on pale ground
+      ctx.fillRect(sx - thick / 2, sy - thick / 2, Math.max(thick, r.w * px) + thick, Math.max(thick, r.h * px) + thick);
+    }
+    for (const r of rects) {
+      const { sx, sy } = camera.worldToScreen(r.x / BASE_TILE, r.y / BASE_TILE);
+      ctx.fillStyle = '#e04848';
+      ctx.fillRect(sx, sy, Math.max(thick, r.w * px), Math.max(thick, r.h * px));
     }
   }
 
