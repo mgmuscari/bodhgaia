@@ -154,7 +154,8 @@ describe('live layer golden determinism', () => {
     // dropped: the old digest), one more field
     // 2026-10-21: the unhoused's fuller days — each day out draws its errand (a meal, warmth, care, rest, the shops)
     // from the shared stream, so everything after it draws differently: a behaviour change, not a refactor
-    expect(first).toBe('cars=4 peds=172 cruisers=4 trains=5 flocks=13 #60cadb76');
+    // 2026-10-21: new cities have a sanitation depot (underserved, on the greenlined side) — a different city
+    expect(first).toBe('cars=7 peds=179 cruisers=4 trains=5 flocks=12 #1a836ad4');
   });
 });
 

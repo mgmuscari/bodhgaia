@@ -76,6 +76,7 @@ export interface MosesParams {
   era3Precincts: number; // police precincts sited in the redlined districts (the apparatus of control)
   era3Services: number; // fire stations PROVIDED to the greenlined districts (withheld from redlined)
   era3CivicServices: number; // clinics/libraries/schools per kind, also concentrated in greenlined
+  era3Sanitation: number; // sanitation depots — few, provided to the greenlined districts (Maddy 2026-10-21)
   era3MinDemolish: number; // a corridor must cut through at least this many parcels
   corridorTopK: number; // rng jitter among the top-K scored corridors
   era3Projects: number; // tower-in-the-park Projects placed along the corridor
@@ -151,6 +152,7 @@ export const DEFAULT_MOSES_PARAMS: MosesParams = {
   era3Precincts: 4,
   era3Services: 4,
   era3CivicServices: 3,
+  era3Sanitation: 1,
   era3MinDemolish: 5,
   corridorTopK: 3,
   era3Projects: 5,
@@ -1315,10 +1317,22 @@ export function era3Highways(world: WorldState, rng: Rng, p: MosesParams, state:
     }
   }
 
+  // Sanitation (Maddy 2026-10-21: "new cities should have sanitation but underserved"): a depot or two, PROVIDED to
+  // the greenlined districts like the fire stations — its trucks never reach the redlined streets, where the evictions
+  // leave their piles. The player extends the service to repair it (live/garbage.ts). Its own stream: nothing else moves.
+  const sanitationRng = rng.fork('sanitation');
+  let depots = 0;
+  for (const i of greenCands) {
+    if (depots >= p.era3Sanitation) break;
+    const x = i % map.width;
+    const y = (i - x) / map.width;
+    if (placeAdjacent(map, parcels, x, y, 2, 2, BuiltKind.SanitationDepot, sanitationRng, undefined, PLANT_ATTRS) !== -1) depots++;
+  }
+
   world.log.push(
     `era3: urban renewal — ${demolished} parcels demolished, ${projects} projects, ` +
       `${civic} civic, ${power} power, ${precincts} precincts, ${services} services, ` +
-      `${civicServices} civic services`,
+      `${civicServices} civic services, ${depots} sanitation`,
   );
 }
 

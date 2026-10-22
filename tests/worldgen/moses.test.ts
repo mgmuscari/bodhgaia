@@ -929,6 +929,7 @@ describe('era3Highways', () => {
       const precinctsPlaced = Number(/(\d+) precincts/.exec(line)![1]);
       const servicesPlaced = Number(/(\d+) services/.exec(line)![1]);
       const civicServicesPlaced = Number(/(\d+) civic services/.exec(line)![1]);
+      const sanitationPlaced = Number(/(\d+) sanitation/.exec(line)![1]); // the depot (Maddy 2026-10-21)
 
       expect(demolished).toBeGreaterThanOrEqual(5);
       // Chronicle honesty: projects are placed only after carving and none
@@ -946,7 +947,8 @@ describe('era3Highways', () => {
           powerPlaced +
           precinctsPlaced +
           servicesPlaced +
-          civicServicesPlaced,
+          civicServicesPlaced +
+          sanitationPlaced,
       );
     });
 
