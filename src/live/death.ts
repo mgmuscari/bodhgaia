@@ -78,6 +78,9 @@ export function stepDeaths(state: AmbientState): void {
   }
 }
 
+/** How much a meal today cuts the night's exposure risk, for the share of those sleeping out who ate. */
+export const MEAL_PROTECT = 0.5;
+
 /** Expected exposure deaths in one night hour among `unhoused` people. */
 export function exposureDeathsPerHour(unhoused: number): number {
   return unhoused > 0 ? unhoused * EXPOSURE_PER_PERSON_HOUR : 0;
@@ -108,11 +111,14 @@ export function stepExposure(state: AmbientState, map: GameMap, rng: Rng): void 
   const h = state.hour;
   if (h === undefined || h === state.exposureHour) return;
   state.exposureHour = h;
+  if (h === NIGHT_TO) state.mealsToday = 0; // dawn: a new day's meals
   if (!isNight(h) || state.unhoused < 1) return;
   // the cold takes only those sleeping out — not the sheltered (Maddy 2026-10-13: mutual-aid shelters)
   let out = Math.max(0, state.unhoused);
   for (const v of (state.sheltered ?? new Map<number, number>()).values()) out -= v;
-  const expected = exposureDeathsPerHour(Math.max(0, out));
+  // a meal today (a pantry or food bank, live/unhoused.ts) halves the cold's risk for those fed (Maddy 2026-10-21)
+  const fed = out > 0 ? Math.min(1, (state.mealsToday ?? 0) / out) : 0;
+  const expected = exposureDeathsPerHour(Math.max(0, out)) * (fed > 0 ? 1 - MEAL_PROTECT * fed : 1);
   const n = Math.floor(expected) + (rng.next() < expected - Math.floor(expected) ? 1 : 0);
   if (n === 0) return;
   const camps = exposedCamps(state, map);

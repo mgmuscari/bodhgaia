@@ -127,3 +127,45 @@ describe('grief', () => {
     expect(state.buildingHealth.get(map.idx(15, 15))).toBeUndefined();
   });
 });
+
+// Tied into the systems (Maddy 2026-10-21 "Unhoused as people"): a meal at a pantry or food bank today halves the
+// cold's risk tonight for the share of those sleeping out who were fed. The day's meals reset at dawn.
+describe('exposure: a meal today', () => {
+  const nights = (meals: number) => {
+    const map = new GameMap(30, 30);
+    const state = createAmbientState();
+    state.camps = new Map();
+    for (let x = 5; x < 10; x++) state.camps.set(map.idx(x, 5), 120);
+    state.unhoused = 600;
+    const rng = createRng('meal').fork('x');
+    let collapsed = 0;
+    for (let n = 0; n < 60; n++) {
+      // a day: meals by evening, then the night
+      for (let h = 6; h < 22; h++) {
+        state.hour = h;
+        stepExposure(state, map, rng);
+        if (h === 18) state.mealsToday = meals;
+      }
+      for (const h of [22, 23, 0, 1, 2, 3, 4, 5]) {
+        state.hour = h;
+        stepExposure(state, map, rng);
+      }
+      collapsed += state.dying?.length ?? 0;
+      state.dying = [];
+      state.unhoused = 600;
+    }
+    return collapsed;
+  };
+  it('fed, fewer collapse in the cold; the more fed, the fewer', () => {
+    const none = nights(0);
+    expect(nights(300)).toBeLessThan(none);
+    expect(nights(600)).toBeLessThan(nights(300));
+  });
+  it("the day's meals reset at dawn", () => {
+    const state = createAmbientState();
+    state.mealsToday = 40;
+    state.hour = 6;
+    stepExposure(state, new GameMap(4, 4), createRng('m'));
+    expect(state.mealsToday ?? 0).toBe(0);
+  });
+});

@@ -23,6 +23,8 @@ import type { SmogOverlay } from '../ui/smogOverlay';
 
 /** Belonging a neighbourhood loses when one of its people dies on its streets. */
 export const DEATH_BELONGING = 10;
+/** Belonging a neighbourhood loses when a household is put out of a home in it (Maddy 2026-10-21). */
+export const EVICTION_BELONGING = 2;
 
 export interface EventCostDeps {
   map: GameMap;
@@ -44,8 +46,19 @@ export function handleEvents(events: readonly LiveEvent[], deps: EventCostDeps):
   const walkoffs = events.filter((e) => e.kind === 'walkoff').length;
   if (walkoffs > 0) deps.news(walkoffs === 1 ? 'A driver left their car in the jam and walked' : `${walkoffs} drivers left their cars in the jam and walked`);
   // people put out of their homes (rent, a home torn down, a flood) — seen walking to the camps (live/evictions.ts)
-  const evictions = events.filter((e) => e.kind === 'eviction').length;
-  if (evictions > 0) deps.news(evictions === 1 ? 'A household put out of its home' : `${evictions} households put out of their homes`);
+  const evictions = events.filter((e) => e.kind === 'eviction');
+  if (evictions.length > 0) {
+    deps.news(evictions.length === 1 ? 'A household put out of its home' : `${evictions.length} households put out of their homes`);
+    // its neighbourhood belongs a little less: its people are being pushed out
+    const part = deps.partition();
+    for (const e of evictions) {
+      const id = part.tileToNeighborhood[deps.map.idx(e.x, e.y)] ?? 0;
+      if (id > 0 && id <= deps.civic.count()) {
+        const v = deps.civic.getValues(id);
+        deps.civic.setValues(id, { ...v, belonging: Math.max(0, v.belonging - EVICTION_BELONGING) });
+      }
+    }
+  }
   const deaths = events.filter((e) => e.kind === 'death');
   if (deaths.length === 0) return;
   deps.mourn(deaths.length);

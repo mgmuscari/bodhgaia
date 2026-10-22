@@ -396,6 +396,9 @@ export interface AmbientState {
   /** The unhoused: people without a home (docs/design/rehoming.md). Homes lose people into it and win
    *  people back from it; it never moves without a cause. */
   unhoused: number;
+  /** Meals the unhoused had today at a pantry or food bank (live/unhoused.ts errands) — reset at dawn; a meal halves
+   *  the night's exposure risk for those fed (live/death.ts). */
+  mealsToday?: number;
   /** Evictions are walked out where they happen (live/evictions.ts) — on once the city is shown, not for the
    *  opening's inherited crisis. */
   evictionsShown?: boolean;
