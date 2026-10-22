@@ -234,6 +234,18 @@ export interface Van extends Mover {
   wait: number;
 }
 
+/** A garbage truck (live/garbage.ts): out from its depot to a pile on the street, loading it, back. */
+export interface GarbageTruck extends Mover {
+  job: 'out' | 'loading' | 'back';
+  /** The road tile by its depot, to drive back to; the depot's anchor tile. */
+  home: { x: number; y: number };
+  depot: number;
+  /** The pile it's going for. */
+  pile: { x: number; y: number };
+  /** Substeps left loading. */
+  wait: number;
+}
+
 /** An ambulance on a call (Maddy 2026-10-12): out to a collapsed resident, a moment to take them aboard, back to its
  *  clinic — where the patient goes home (rescueResident). */
 export interface Ambulance extends Mover {
@@ -447,6 +459,9 @@ export interface AmbientState {
   foodAccess?: Set<number>;
   foodRuns?: { from: number; to: number; amount: number }[];
   vans?: Van[];
+  /** Garbage trucks on the road (live/garbage.ts), and the substep count their depots dispatch on. */
+  garbageTrucks?: GarbageTruck[];
+  garbageTick?: number;
   /** Delivery drones in the air (live/drones.ts). */
   drones?: import('./drones').Drone[];
   /** Children on their walk to or from school (live/schoolRun.ts), and the hour the last walk set off. */

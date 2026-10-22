@@ -39,6 +39,7 @@ import { stepWanderer } from './wanderer';
 import { stepTrucks } from './trucks';
 import { stepAmbulances } from './ambulances';
 import { spawnVans, stepVans } from './vans';
+import { stepGarbage } from './garbage';
 import { stepDrones } from './drones';
 import { schoolRun, stepPupils } from './schoolRun';
 import { stepClouds, stepToxic } from './spills';
@@ -78,6 +79,7 @@ function substep(state: AmbientState, map: GameMap, rng: Rng): void {
   if (state.foodRuns?.length || state.vans?.length) {
     spawnVans(state, map); // this hour's food-bank runs, made visible
     stepVans(state, map);
+    stepGarbage(state, map); // the depots' trucks clear the piles on the street
   }
   if (state.clouds?.length) stepClouds(state, map, rng); // toxic clouds from a spill (no draws without one)
   if (state.gatherings?.length) stepGatherings(state); // community gatherings: age them, send people home, end them

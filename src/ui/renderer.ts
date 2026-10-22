@@ -1409,6 +1409,16 @@ export class Renderer {
       addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, night, img);
     }
 
+    // Garbage trucks (live/garbage.ts): out from the depot to a pile on the street, loading, back — municipal green.
+    for (const k of ambient.garbageTrucks ?? []) {
+      const pose = movingPose(k, LANE, alpha);
+      const { sx, sy } = camera.worldToScreen(pose.x, pose.y);
+      if (!onScreen(sx, sy)) continue;
+      const img = this.sprites.get(`@sprite/garbage/${heading8(pose.hx, pose.hy)}`);
+      if (img) this.drawArt(ctx, img, pose.x, pose.y, camera);
+      addBody(pose.x, pose.y, pose.hx, pose.hy, CAR_LENGTH, CAR_WIDTH, night, img);
+    }
+
     // Ambulances: drawn like the fire trucks — white with a red stripe, their lights flashing red/white in step.
     for (const am of ambient.ambulances ?? []) {
       const pose = movingPose(am, LANE, alpha);

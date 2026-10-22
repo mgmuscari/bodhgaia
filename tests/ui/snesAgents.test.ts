@@ -292,3 +292,14 @@ describe('an eviction pile', () => {
     }
   });
 });
+
+// Garbage trucks (Maddy 2026-10-21): eight headings, the size of a car.
+describe('garbage trucks', () => {
+  it('eight headings, car-sized', () => {
+    for (let d = 0; d < 8; d++) {
+      const s = tiles.get(`@sprite/garbage/${d}`)!;
+      expect(s, `${d}`).toBeDefined();
+      expect(Math.max(s.w, s.h)).toBeLessThanOrEqual(8);
+    }
+  });
+});
