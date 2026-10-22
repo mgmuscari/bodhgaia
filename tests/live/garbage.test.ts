@@ -61,3 +61,20 @@ describe('garbage trucks', () => {
     expect(t.state.evictedPiles).toHaveLength(1);
   });
 });
+
+// Uncollected piles cost the street (Maddy 2026-10-21): land value nearby falls while they stand.
+import { landValueAt } from '../../src/live/fields/landValue';
+describe('a pile on the street', () => {
+  it('drags the land value of the plots near it, and less the further off', () => {
+    const map = new GameMap(30, 12);
+    for (let x = 0; x < 30; x++) placeTransport(map, x, 5, BuiltKind.RoadStreet);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 10, y: 4, width: 1, height: 1, kind: BuiltKind.HouseSingle });
+    const clean = landValueAt(map, 10, 4);
+    const near = landValueAt(map, 10, 4, undefined, undefined, undefined, undefined, undefined, undefined, new Set([map.idx(10, 5)]));
+    const far = landValueAt(map, 10, 4, undefined, undefined, undefined, undefined, undefined, undefined, new Set([map.idx(13, 5)]));
+    expect(near).toBeLessThan(clean);
+    expect(far).toBeLessThan(clean);
+    expect(far).toBeGreaterThan(near);
+  });
+});

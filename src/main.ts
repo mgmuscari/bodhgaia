@@ -20,6 +20,7 @@ import { createCity } from './app/city';
 import { takePendingMode } from './save/pendingMode';
 import { disasterRatePct, historyPct } from './engine/mode';
 import { createDisasterHours } from './app/disasterHours';
+import { garbageHour } from './app/garbage';
 import { leftHome, settleCamps } from './live/camps';
 import { spawnEvictions } from './live/evictions';
 import { createSettingsController } from './app/settings';
@@ -595,6 +596,16 @@ export function main(save: SaveV1 | null = null): void {
     live.state.foodAccess = r.access;
     live.state.foodRuns = r.deliveries; // this hour's van runs
   };
+  // The piles on the street (Maddy 2026-10-21): once a game hour the neighbours clear some (with Mutual Aid and
+  // belonging) and the ones left a day cost belonging; the depots' trucks run in the live layer (app/garbage.ts).
+  const garbageRng = createRng(seed).fork('garbage');
+  let garbageHourAt = -1;
+  const garbageNow = (): void => {
+    const h = gameClock(gameSec()).hour;
+    if (h === garbageHourAt) return;
+    garbageHourAt = h;
+    garbageHour({ live: live.state, map: world.map, partition: deps.partition, civic, practised: (id) => tech.unlocked.has(id), rng: garbageRng, news: (t) => news.push(t) });
+  };
   const drawSpillsNow = (): void => {
     if (!disastersOn()) return;
     const h = gameClock(gameSec()).hour;
@@ -762,6 +773,7 @@ export function main(save: SaveV1 | null = null): void {
       fire.frame(now);
       drawSpillsNow();
       runFoodNow();
+      garbageNow();
       drawCrashesNow();
       drawCrimeNow();
       events.frame(now);
