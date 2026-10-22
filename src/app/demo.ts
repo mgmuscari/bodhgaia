@@ -12,7 +12,7 @@ import { floodPlain } from '../growth/flood';
 import { crash as crashCar } from '../live/accidents';
 import { createRng } from '../engine/rng';
 
-export type DemoKind = 'fire' | 'spill' | 'flood' | 'crash' | 'party' | 'fair' | 'festival' | 'protest' | 'uprising' | 'sideshow' | 'fireworks' | 'disasters';
+export type DemoKind = 'fire' | 'spill' | 'flood' | 'crash' | 'party' | 'fair' | 'festival' | 'protest' | 'uprising' | 'sideshow' | 'fireworks' | 'eviction' | 'disasters';
 
 type World = { map: GameMap; parcels: ParcelStore };
 
@@ -64,6 +64,8 @@ export interface DemoDeps {
   storm?(heavy: boolean): void;
   /** Hold a community gathering now, and say where (app/community.ts). */
   party?(kind?: 'block-party' | 'craft-fair' | 'festival' | 'protest' | 'uprising' | 'sideshow'): { x: number; y: number } | null;
+  /** Put a household out of a full home near a camp, now, and say where (live/evictions.ts). */
+  evict?(): { x: number; y: number } | null;
   /** Move the clock forward to the start of `hour` (ui/gameTime.ts setGameHour). */
   setHour?(hour: number): void;
 }
@@ -130,6 +132,11 @@ export function createDemo(kind: DemoKind, deps: DemoDeps): { frame(now: number)
     : kind === 'spill' ? [{ at: SETTLE_MS, run: spill }]
     : kind === 'flood' ? [{ at: SETTLE_MS, run: flood }]
     : kind === 'crash' ? [{ at: SETTLE_MS, run: crash }]
+    : kind === 'eviction' ? [0, 1, 2].map((k) => ({ at: SETTLE_MS + k * 15_000, run: () => {
+        // three evictions, 15 s apart, the camera on each
+        const at = deps.evict?.();
+        if (at) deps.view(at.x, at.y);
+      } }))
     : kind === 'fireworks' ? [{ at: SETTLE_MS, run: () => {
         // a festival, then the clock to dusk: it is still on at 20:00, so it puts on its show
         const at = deps.party?.('festival');

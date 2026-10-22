@@ -20,6 +20,8 @@ import { createCity } from './app/city';
 import { takePendingMode } from './save/pendingMode';
 import { disasterRatePct, historyPct } from './engine/mode';
 import { createDisasterHours } from './app/disasterHours';
+import { leftHome, settleCamps } from './live/camps';
+import { spawnEvictions } from './live/evictions';
 import { createSettingsController } from './app/settings';
 import { createView } from './app/view';
 import { createLive } from './app/live';
@@ -658,7 +660,7 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'eviction' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
@@ -670,6 +672,27 @@ export function main(save: SaveV1 | null = null): void {
             return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
           },
           setHour: (h) => setGameHour(h),
+          evict: () => {
+            // the fullest home within a few tiles of a camp: three of its people put out, walking there now
+            const st = live.state;
+            const camps = [...(st.camps ?? new Map<number, number>()).keys()];
+            let best = -1;
+            let most = 0;
+            for (const [t, v] of st.occupancy) {
+              if (v < 3 || v <= most) continue;
+              const x = t % world.map.width;
+              const y = (t - x) / world.map.width;
+              if (!camps.some((c) => Math.abs((c % world.map.width) - x) + Math.abs(Math.floor(c / world.map.width) - y) <= 8)) continue;
+              best = t;
+              most = v;
+            }
+            if (best < 0) return null;
+            st.occupancy.set(best, most - 3);
+            leftHome(st, best, 3);
+            settleCamps(st, world.map);
+            spawnEvictions(st, world.map);
+            return { x: best % world.map.width, y: Math.floor(best / world.map.width) };
+          },
           view: (x, y) => {
             camera.centerOn(x, y, 3);
             markDirty();
