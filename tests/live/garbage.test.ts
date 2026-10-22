@@ -191,3 +191,22 @@ describe("the landfill's harm", () => {
     expect(state.landfill.get(map.idx(8, 4))).toBe(LANDFILL_HISTORY);
   });
 });
+
+// Capping (Maddy 2026-10-21, the full loop): Rezone: Park over a landfill caps it — a park where the dump was. Its
+// fill stops harming; what it already put in the ground heals in time (faster with greens near).
+import { convertParcel } from '../../src/engine/fabric';
+describe('capping the landfill', () => {
+  it('rezoned to a park, it stops poisoning the ground round it', () => {
+    const map = new GameMap(20, 12);
+    const parcels = new ParcelStore();
+    placeParcel(map, parcels, { x: 8, y: 4, width: 3, height: 3, kind: BuiltKind.Landfill });
+    const state = createAmbientState();
+    state.landfill.set(map.idx(8, 4), 300);
+    expect(convertParcel(map, parcels, 9, 5, BuiltKind.Park)).toBe(true);
+    accumulateGroundPollution(state, map);
+    expect(state.landfill.size).toBe(0); // its fill is under the cap now
+    const after = state.groundPollution.get(map.idx(7, 5)) ?? 0;
+    for (let k = 0; k < 50; k++) accumulateGroundPollution(state, map);
+    expect(state.groundPollution.get(map.idx(7, 5)) ?? 0).toBeLessThanOrEqual(after); // only healing from here
+  });
+});

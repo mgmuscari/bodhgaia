@@ -22,6 +22,11 @@ export const LOAD = seconds(2.5);
 export const LANDFILL_HISTORY = 60;
 export const LANDFILL_FULL = 300;
 
+/** Drop the fill of a landfill that is gone — capped (Rezone: Park) or bulldozed: what's buried stops harming. */
+export function pruneLandfills(state: AmbientState, map: GameMap): void {
+  for (const t of [...state.landfill.keys()]) if (map.built[t] !== BuiltKind.Landfill) state.landfill.delete(t);
+}
+
 /** How much worse a landfill's harm is for its fill: 1 when empty, 2 once full. */
 export function landfillHarm(state: AmbientState): number {
   return 1 + Math.min(1, landfillFill(state) / LANDFILL_FULL);

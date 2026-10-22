@@ -43,7 +43,7 @@ import {
 } from '../tuning';
 import { DIR_DX, DIR_DY } from '../geometry';
 import { seedInheritedOccupancy } from './occupancy';
-import { LANDFILL_HISTORY, landfillHarm } from '../garbage';
+import { LANDFILL_HISTORY, landfillHarm, pruneLandfills } from '../garbage';
 import { settleCamps } from '../camps';
 import type { AmbientState } from '../types';
 import { mapEpoch } from '../network';
@@ -192,6 +192,7 @@ export function accumulateGroundPollution(state: AmbientState, map: GameMap): vo
   const reused = makerReused(map); // industry the makers take scrap from poisons half as much
   const W = map.width;
   const H = map.height;
+  pruneLandfills(state, map); // a capped landfill's fill harms no more
   const dumpHarm = landfillHarm(state); // the fuller the landfill, the worse (live/garbage.ts)
   const plants =
     state.plantEmitters && state.plantEmitters.length > 0
