@@ -140,6 +140,14 @@ already produces:
   traffic while it runs. Likelier the harder pressed and the bigger the junction box; a bigger box draws more cars and
   a bigger crowd. The tire marks are a saved live stock baked with the ground marks, fading over game days; the
   neighbourhood belongs a little more after. Not tied to block parties.
+- **Police at sideshows** (built 2026-10-22; Maddy: "we can send police to sideshows … a boost to community stats but
+  also create pollution and can injure residents, also lead to arrests with hurt trust"):
+  - **The response:** a precinct within 30 tiles sends up to 2 cruisers. On the scene the crowd breaks up and they
+    arrest at the full rate, staining police violence.
+  - **The night out:** a sideshow lifts belonging (+4) and voice (+3). Broken up by the police, it also costs trust
+    (−8).
+  - **Its costs:** each hour, each car has a 4% chance of hitting a watcher, who collapses. The tire smoke is heavier.
+  - **The lever:** defunding the precinct ends the response.
 - **Fireworks** (built 2026-10-21): a festival still on at 20:00 puts on one show — sparks on the art grid over the
   place, drawn additively after the lighting pass, a soft pop per burst on screen. The city belongs a little more
   (so wellbeing rises) and the smoke lays a whisper of smog, so even joy has a cost.
