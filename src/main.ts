@@ -618,7 +618,7 @@ export function main(save: SaveV1 | null = null): void {
   // DEV: `?demo=fire|spill|disasters` stages them in this city without waiting (serve on a port of its own).
   const demoKind = params.get('demo');
   const demo =
-    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'disasters')
+    import.meta.env.DEV && (demoKind === 'fire' || demoKind === 'spill' || demoKind === 'flood' || demoKind === 'crash' || demoKind === 'party' || demoKind === 'fair' || demoKind === 'festival' || demoKind === 'protest' || demoKind === 'uprising' || demoKind === 'sideshow' || demoKind === 'fireworks' || demoKind === 'disasters')
       ? createDemo(demoKind as DemoKind, {
           world,
           live: live.state,
@@ -629,6 +629,7 @@ export function main(save: SaveV1 | null = null): void {
             const g = live.state.gatherings!.find((x) => x.kind === kind)!;
             return { x: g.site.x + g.site.w / 2, y: g.site.y + g.site.h / 2 };
           },
+          setHour: (h) => setGameHour(h),
           view: (x, y) => {
             camera.centerOn(x, y, 3);
             markDirty();

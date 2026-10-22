@@ -12,7 +12,7 @@ import { floodPlain } from '../growth/flood';
 import { crash as crashCar } from '../live/accidents';
 import { createRng } from '../engine/rng';
 
-export type DemoKind = 'fire' | 'spill' | 'flood' | 'crash' | 'party' | 'fair' | 'festival' | 'protest' | 'uprising' | 'sideshow' | 'disasters';
+export type DemoKind = 'fire' | 'spill' | 'flood' | 'crash' | 'party' | 'fair' | 'festival' | 'protest' | 'uprising' | 'sideshow' | 'fireworks' | 'disasters';
 
 type World = { map: GameMap; parcels: ParcelStore };
 
@@ -64,6 +64,8 @@ export interface DemoDeps {
   storm?(heavy: boolean): void;
   /** Hold a community gathering now, and say where (app/community.ts). */
   party?(kind?: 'block-party' | 'craft-fair' | 'festival' | 'protest' | 'uprising' | 'sideshow'): { x: number; y: number } | null;
+  /** Move the clock forward to the start of `hour` (ui/gameTime.ts setGameHour). */
+  setHour?(hour: number): void;
 }
 
 /** Ms after the first frame before the first disaster (the city settles), and between a fire and the spill (the
@@ -128,6 +130,13 @@ export function createDemo(kind: DemoKind, deps: DemoDeps): { frame(now: number)
     : kind === 'spill' ? [{ at: SETTLE_MS, run: spill }]
     : kind === 'flood' ? [{ at: SETTLE_MS, run: flood }]
     : kind === 'crash' ? [{ at: SETTLE_MS, run: crash }]
+    : kind === 'fireworks' ? [{ at: SETTLE_MS, run: () => {
+        // a festival, then the clock to dusk: it is still on at 20:00, so it puts on its show
+        const at = deps.party?.('festival');
+        if (!at) return;
+        deps.setHour?.(20);
+        deps.view(at.x, at.y);
+      } }]
     : kind === 'party' || kind === 'fair' || kind === 'festival' || kind === 'protest' || kind === 'uprising' || kind === 'sideshow' ? [{ at: SETTLE_MS, run: () => {
         const at = deps.party?.(kind === 'fair' ? 'craft-fair' : kind === 'party' ? 'block-party' : kind);
         if (at) deps.view(at.x, at.y);
