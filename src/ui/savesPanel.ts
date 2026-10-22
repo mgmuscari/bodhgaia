@@ -5,6 +5,7 @@
 import type { SlotInfo } from '../save/store';
 import { saveSupport, unavailableLine, type SaveSupport } from '../save/support';
 import { panelVisibility, type PanelHandle } from './panelHandle';
+import { DIFFICULTIES, STANDARD_MODE, type CityMode } from '../engine/mode';
 
 export interface SavesPanelDeps {
   list(): Promise<SlotInfo[]>;
@@ -15,7 +16,10 @@ export interface SavesPanelDeps {
   /** Export the city as it is now (no id) or a stored slot. */
   exportSave(id?: string): Promise<void>;
   importFile(file: File): Promise<void>;
-  newCity(): Promise<void>;
+  /** Start a new city with this mode (difficulty, sandbox) — New city's chooser. */
+  newCity(mode: CityMode): Promise<void>;
+  /** The current city's mode, named in the window. Optional. */
+  mode?(): CityMode;
   onToggle?(open: boolean): void;
   /** Can this browser save? Default: the real feature check (save/support.ts). When it can't, the window
    *  says so in one line and disables Save / Import / Export. */
@@ -30,6 +34,9 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): P
   panel.className = 'budget-panel saves-panel'; // the Budget window's frame and type
   container.appendChild(panel);
   let status = '';
+  /** New city's chooser, while it's open: the mode being picked (Maddy 2026-10-21 "Sandbox + difficulty"). */
+  let choosing: CityMode | null = null;
+  const modeName = (m: CityMode): string => `${m.difficulty[0]!.toUpperCase()}${m.difficulty.slice(1)}${m.sandbox ? ' · Sandbox' : ''}`;
   const support = deps.support ?? saveSupport();
   const cantSave = unavailableLine(support); // '' when saving works
 
@@ -96,7 +103,9 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): P
       }),
       storageButton('Export', () => deps.exportSave()),
       storageButton('Import…', async () => file.click()),
-      button('New city', () => deps.newCity()),
+      button('New city', async () => {
+        choosing = { ...STANDARD_MODE };
+      }),
       file,
     );
 
@@ -121,7 +130,51 @@ export function mountSavesPanel(container: HTMLElement, deps: SavesPanelDeps): P
       slots.append(row);
     }
 
-    panel.replaceChildren(head, actions, slots, ...(status ? [div('budget-note', status)] : []));
+    // New city's chooser: how hard the century was on the city, and whether it's a sandbox
+    const chooser: HTMLElement[] = [];
+    if (choosing) {
+      const pick = choosing;
+      const sec = div('budget-section');
+      sec.append(div('budget-heading', 'New city'));
+      const diff = div('saves-row');
+      for (const d of DIFFICULTIES) {
+        const b = button(`${d[0]!.toUpperCase()}${d.slice(1)}`, async () => {
+          choosing = { ...pick, difficulty: d };
+        });
+        if (pick.difficulty === d) b.classList.add('is-selected');
+        b.setAttribute('aria-pressed', String(pick.difficulty === d));
+        diff.append(b);
+      }
+      const sandbox = button('Sandbox', async () => {
+        choosing = { ...pick, sandbox: !pick.sandbox };
+      });
+      if (pick.sandbox) sandbox.classList.add('is-selected');
+      sandbox.setAttribute('aria-pressed', String(pick.sandbox));
+      diff.append(sandbox);
+      sec.append(
+        diff,
+        div(
+          'budget-note',
+          (pick.difficulty === 'gentle' ? 'Gentle: building costs less, disasters are rarer, and the century left less damage.' : pick.difficulty === 'hard' ? 'Hard: building costs more, disasters come oftener, and the century left more damage.' : 'Standard: the city as the century left it.') +
+            (pick.sandbox ? ' Sandbox: every practice open, and money and effort never run short.' : ''),
+        ),
+      );
+      const go = div('saves-row');
+      go.append(
+        button('Start', async () => {
+          choosing = null;
+          await deps.newCity(pick);
+        }),
+        button('Cancel', async () => {
+          choosing = null;
+        }),
+      );
+      sec.append(go);
+      chooser.push(sec);
+    }
+    const current = deps.mode ? [div('budget-note', `This city: ${modeName(deps.mode())}`)] : [];
+
+    panel.replaceChildren(head, ...current, actions, ...chooser, slots, ...(status ? [div('budget-note', status)] : []));
   }
 
   // each open starts with a clean status line and a fresh slot list; refresh re-lists while open

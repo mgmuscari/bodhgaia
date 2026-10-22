@@ -394,6 +394,7 @@ export function main(save: SaveV1 | null = null): void {
     lifecycle: { document, window },
     mountPanel: (actions) => mountSavesPanel(document.body, actions),
     onToggle: () => toolbar.refreshMeta(),
+    mode: () => mode,
   });
   panels.attach({ ...mounted, saves });
   toolbar.refreshMeta();
