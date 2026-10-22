@@ -245,9 +245,10 @@ const landfill: Painter = (W, H, v) => {
       const cx = W / 2 + (v % 3) - 1;
       const cy = H / 2;
       const d = Math.abs(x - cx) * 0.8 + Math.abs(y - cy);
-      const h = hash2(x, y, 7400 + v) % 16;
+      // low-noise (Maddy: ground stays quiet): smooth shaded mounds, a sparse fleck of what was thrown out
+      const h = hash2(x, y, 7400 + v) % 48;
       const base = d < W * 0.22 ? C.dirtHi : d < W * 0.38 ? C.dirt : C.dirtLo;
-      px(p, x, y, h < 2 ? C.slate : h === 2 ? C.roofBlue : h === 3 ? C.signal : h === 4 ? C.cream : base);
+      px(p, x, y, h === 0 ? C.slate : h === 1 ? (hash2(y, x, 7500) & 1 ? C.roofBlue : C.cream) : base);
     }
   }
   rect(p, (W >> 1) + 2, (H >> 1) - 4, 4, 2, C.flower); // a bulldozer on the top
