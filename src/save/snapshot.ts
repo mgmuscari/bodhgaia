@@ -68,6 +68,8 @@ export interface SaveV1 {
     freshHomes?: number[];
     /** Encampments, tile → people (2026-10-08; absent in older saves ⇒ placed by the emptiest homes on settle). */
     camps?: Array<[number, number]>;
+    /** The piles on the street — an eviction's things, there until cleared (2026-10-21; absent in older saves ⇒ none). */
+    piles?: Array<{ x: number; y: number; seed: number; hx?: number; hy?: number; age: number }>;
   };
   /** Energy-node battery charge, anchor → power-hours (2026-10-07; absent in older saves ⇒ empty). */
   power?: { storage: Array<[number, number]> };
@@ -255,6 +257,7 @@ export function captureLive(live: AmbientState): SaveV1['live'] {
     unhoused: live.unhoused,
     freshHomes: [...(live.freshHomes ?? [])],
     camps: [...(live.camps ?? new Map<number, number>()).entries()],
+    piles: (live.evictedPiles ?? []).map((p) => ({ ...p })),
   };
 }
 
@@ -266,6 +269,7 @@ export function restoreLive(live: AmbientState, saved: SaveV1['live'], mapWidth:
   live.occPasses = saved.occPasses;
   live.freshHomes = new Set(saved.freshHomes ?? []);
   live.camps = new Map(saved.camps ?? []);
+  live.evictedPiles = (saved.piles ?? []).map((p) => ({ ...p }));
   live.campIn?.clear();
   live.campOut?.clear();
   if (saved.unhoused !== undefined) {

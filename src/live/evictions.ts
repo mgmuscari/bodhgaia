@@ -14,8 +14,6 @@ import { seconds } from './tuning';
 
 /** At most this many walk out of one home at once (the rest are counted, not drawn). */
 export const EVICTION_WALKERS = 3;
-/** How long a household's things stay piled on the kerb after an eviction (most of a game day, ~157 s). */
-export const PILE_LIFE = seconds(120);
 /** Substeps between one of a household coming out of the door and the next. */
 export const EVICTION_STAGGER = seconds(0.7);
 const EPS = 1e-6;
@@ -66,15 +64,13 @@ export function spawnEvictions(state: AmbientState, map: GameMap): void {
     // their things on the kerb at the door — the mark an eviction leaves (Maddy 2026-10-21: the walk was hard to see)
     const piles = (state.evictedPiles ??= []);
     const at = piles.find((p) => p.x === door.x && p.y === door.y);
-    if (at) at.t = PILE_LIFE;
-    else piles.push({ x: door.x, y: door.y, t: PILE_LIFE, seed: w.from, hx: Math.sign(fx - door.x), hy: Math.sign(fy - door.y) });
+    // they stay until they're cleared — a garbage truck, or the neighbours (Maddy 2026-10-21: "trash cluttering the streets")
+    if (at) at.age = 0;
+    else piles.push({ x: door.x, y: door.y, seed: w.from, hx: Math.sign(fx - door.x), hy: Math.sign(fy - door.y), age: 0 });
   }
 }
 
-/** The piles on the kerb age one substep; gone when their time is up. */
+/** The piles on the kerb age one substep — they stay until cleared (the trucks, the neighbours). */
 export function stepEvictionPiles(state: AmbientState): void {
-  const piles = state.evictedPiles;
-  if (!piles?.length) return;
-  for (const p of piles) p.t--;
-  state.evictedPiles = piles.filter((p) => p.t > 0);
+  for (const p of state.evictedPiles ?? []) p.age++;
 }

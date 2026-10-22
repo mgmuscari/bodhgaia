@@ -212,3 +212,17 @@ describe('encampments are saved (Maddy 2026-10-08)', () => {
     expect(live2.camps?.size ?? 0).toBe(0);
   });
 });
+
+describe('the piles on the street are saved (Maddy 2026-10-21: they stay until cleared)', () => {
+  it('come back where they were, with their age; a save from before them has none', () => {
+    const p = parts();
+    p.live.evictedPiles = [{ x: 4, y: 6, seed: 33, hx: 0, hy: -1, age: 900 }];
+    const save = parseSave(JSON.stringify(captureGame(p)));
+    const live = createAmbientState();
+    restoreLive(live, save.live, p.world.map.width);
+    expect(live.evictedPiles).toEqual([{ x: 4, y: 6, seed: 33, hx: 0, hy: -1, age: 900 }]);
+    const live2 = createAmbientState();
+    restoreLive(live2, { ...save.live, piles: undefined }, p.world.map.width);
+    expect(live2.evictedPiles ?? []).toEqual([]);
+  });
+});

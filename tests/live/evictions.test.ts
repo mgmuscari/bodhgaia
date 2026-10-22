@@ -84,10 +84,12 @@ describe('evictions you can see', () => {
 });
 
 // Hard to see (Maddy 2026-10-21): the walk is a few seconds of small people. An eviction leaves the household's things
-// piled on the kerb at the door — boxes, a mattress, a chair — for most of a game day, then they're gone.
-import { stepEvictionPiles, PILE_LIFE } from '../../src/live/evictions';
+// piled on the kerb at the door — boxes, a mattress, a chair. Then: "moving boxes pile up on the street and don't go
+// away … but i like the idea… trash cluttering the streets" — they stay until they're cleared (garbage trucks, or the
+// neighbours), and are saved with the city.
+import { stepEvictionPiles } from '../../src/live/evictions';
 describe('belongings on the kerb', () => {
-  it('an eviction leaves a pile at the door, which stays a while and then is gone', () => {
+  it('an eviction leaves a pile at the door, on the street in front, which stays until it is cleared', () => {
     const { map, state, home } = block();
     leftHome(state, home, 2);
     settleCamps(state, map);
@@ -96,13 +98,11 @@ describe('belongings on the kerb', () => {
     const pile = state.evictedPiles![0]!;
     expect([pile.x, pile.y]).toEqual([10, 6]); // on the street in front of the home, not in a yard
     expect([pile.hx, pile.hy]).toEqual([0, -1]); // drawn at the kerb's edge, by the home
-    for (let k = 0; k < PILE_LIFE - 1; k++) stepEvictionPiles(state);
+    for (let k = 0; k < 30 * 600; k++) stepEvictionPiles(state); // ten minutes of play
     expect(state.evictedPiles).toHaveLength(1);
-    stepEvictionPiles(state);
-    expect(state.evictedPiles).toHaveLength(0);
-    expect(PILE_LIFE).toBeGreaterThan(60 * 20); // more than a minute of play
+    expect(state.evictedPiles![0]!.age).toBe(30 * 600);
   });
-  it('a second eviction from the same home renews its pile, not a second one', () => {
+  it('a second eviction from the same home adds to its pile, not a second one', () => {
     const { map, state, home } = block();
     for (let k = 0; k < 2; k++) {
       leftHome(state, home, 1);

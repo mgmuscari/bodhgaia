@@ -404,9 +404,10 @@ export interface AmbientState {
   evictionsShown?: boolean;
   /** Per home: the people put out of it not yet seen to go (a fraction builds to a person), and the camp they join. */
   evictDue?: Map<number, { n: number; camp: number }>;
-  /** A household's things piled on the kerb at the door after an eviction, substeps left (live/evictions.ts); (hx, hy)
-   *  points from the kerb tile back to the home, so they're drawn at the kerb's edge, not in the lane. */
-  evictedPiles?: { x: number; y: number; t: number; seed: number; hx?: number; hy?: number }[];
+  /** A household's things piled on the kerb at the door after an eviction (live/evictions.ts), there until cleared — by a
+   *  garbage truck or the neighbours; `age` in substeps. (hx, hy) points from the kerb tile back to the home, so
+   *  they're drawn at the kerb's edge, not in the lane. Saved with the city. */
+  evictedPiles?: { x: number; y: number; seed: number; hx?: number; hy?: number; age: number }[];
   /** Walks to show this pass: from a home to a camp, `people` of them. */
   evictWalks?: { from: number; to: number; people: number }[];
   /** Commercial places the unhoused spent their days at (live/unhoused.ts): tile → visits, fading. */
