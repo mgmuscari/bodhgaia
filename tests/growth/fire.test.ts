@@ -119,3 +119,23 @@ describe('fire: spread, burnout, quenching', () => {
     expect(parcels.conditionAt(a)).toBe(200 - QUENCH_DAMAGE);
   });
 });
+
+// Difficulty (Maddy 2026-10-21): fires catch more often on hard, less on gentle; the standard rate is untouched.
+describe('fire: the city\'s difficulty', () => {
+  it('a rate scales how often buildings catch', () => {
+    const count = (rate?: number): number => {
+      const { world } = block(60, BuiltKind.HouseSingle, 400);
+      const fires = createFireState();
+      const rng = createRng('fire').fork('rate');
+      for (let h = 0; h < 24 * 300; h++) {
+        stepFire(world, fires, rng, { hour: h % 24, ...(rate === undefined ? {} : { rate }) });
+        fires.burning.clear();
+      }
+      return fires.started;
+    };
+    const standard = count();
+    expect(count(100)).toBe(standard);
+    expect(count(50)).toBeLessThan(standard);
+    expect(count(160)).toBeGreaterThan(standard);
+  });
+});

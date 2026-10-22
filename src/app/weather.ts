@@ -24,6 +24,8 @@ export interface WeatherDeps {
   rng: Rng;
   /** Wash the air once (the live layer's applyRain). */
   wash(): void;
+  /** The share of storms that are heavy (default HEAVY_SHARE) — the city's difficulty scales it. */
+  heavyShare?: number;
 }
 
 export interface Weather {
@@ -67,7 +69,7 @@ export function createWeather(deps: WeatherDeps): Weather {
         }
         return;
       }
-      if (t >= next) begin(rng.next() < HEAVY_SHARE);
+      if (t >= next) begin(rng.next() < (deps.heavyShare ?? HEAVY_SHARE));
     },
   };
 }

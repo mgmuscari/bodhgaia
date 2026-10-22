@@ -45,6 +45,8 @@ export interface FireDeps {
   /** The in-game hour (ignition is drawn once per hour); undefined ⇒ no ignition. */
   hour(): number | undefined;
   disastersOn(): boolean;
+  /** Ignition chance, percent of standard (the city's difficulty, engine/mode.ts). Default 100. */
+  rate?: number;
   markDirty(): void;
   refreshHouseholds(): void;
   news(text: string): void;
@@ -99,7 +101,7 @@ export function createFireController(deps: FireDeps): FireController {
       live.quenched = new Set();
       const hour = deps.disastersOn() ? deps.hour() : undefined;
       const vacancy = hour !== undefined && hour !== fires.lastHour ? homeVacancy(live, map) : undefined; // only on the hour's draw
-      const ev = stepFire(world, fires, deps.rng, { hour, quenched, vacancy });
+      const ev = stepFire(world, fires, deps.rng, { hour, quenched, vacancy, ...(deps.rate === undefined ? {} : { rate: deps.rate }) });
 
       // every new fire gets a truck — a spread one too (Maddy 2026-10-08: spreading fires went unanswered)
       for (const i of [...lit.splice(0), ...ev.ignited, ...ev.spread]) {
