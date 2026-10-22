@@ -94,7 +94,7 @@ export function stepFire(
   world: { map: GameMap; parcels: ParcelStore },
   fires: FireState,
   rng: Rng,
-  opts: { hour?: number; quenched?: ReadonlySet<number>; vacancy?: ReadonlyMap<number, number> },
+  opts: { hour?: number; quenched?: ReadonlySet<number>; vacancy?: ReadonlyMap<number, number>; rate?: number },
 ): FireEvents {
   const { map, parcels } = world;
   const ev: FireEvents = { ignited: [], spread: [], burntOut: [], quenched: [] };
@@ -110,7 +110,9 @@ export function stepFire(
     for (const i of parcels.aliveIndices()) {
       if (fires.burning.has(i)) continue;
       const p = parcels.get(i);
-      const chance = igniteChance(p.kind, p.condition, map.redline[map.idx(p.x, p.y)]!, opts.vacancy?.get(i) ?? 0);
+      const base = igniteChance(p.kind, p.condition, map.redline[map.idx(p.x, p.y)]!, opts.vacancy?.get(i) ?? 0);
+      // the city's difficulty (engine/mode.ts disasterRatePct): percent of the standard chance; absent or 100 exactly as ever
+      const chance = opts.rate === undefined || opts.rate === 100 ? base : (base * opts.rate) / 100;
       if (chance > 0 && rng.next() < chance) {
         fires.burning.set(i, { age: 0 });
         ev.ignited.push(i);

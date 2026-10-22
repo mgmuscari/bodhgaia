@@ -10,6 +10,8 @@ import * as browserStore from '../save/store';
 import { CURRENT, type SlotInfo } from '../save/store';
 import type { SavesPanelDeps } from '../ui/savesPanel';
 import type { PanelHandle } from '../ui/panelHandle';
+import { setPendingMode } from '../save/pendingMode';
+import type { CityMode } from '../engine/mode';
 
 /** The storage the wiring drives (save/store.ts in the browser). */
 export interface SaveStore {
@@ -38,6 +40,8 @@ export interface SavesDeps {
   /** Wall-clock ms for savedAt and slot ids (default Date.now). */
   now?: () => number;
   warn?: (...args: unknown[]) => void;
+  /** The current city's mode (named in the Saves window). */
+  mode?: () => CityMode;
 }
 
 /** The Saves window's handle, plus capture and autosave. */
@@ -92,10 +96,12 @@ export function createSaves(deps: SavesDeps): SavesController {
       const snap = await store.importFile(file);
       await store.writeSlot(`slot-${now()}`, { ...snap, savedAt: snap.savedAt || now() });
     },
-    newCity: async () => {
+    newCity: async (mode) => {
       blanked = true;
+      setPendingMode(mode); // the next boot takes it (save/pendingMode.ts)
       await store.newCity();
     },
+    mode: deps.mode,
     onToggle: () => deps.onToggle(),
   });
 

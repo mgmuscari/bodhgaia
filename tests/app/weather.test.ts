@@ -71,3 +71,25 @@ describe('weather', () => {
     expect(soundSnapshot(s.live, { x0: 0, y0: 0, x1: 20, y1: 20 }, false).rain).toBe(true);
   });
 });
+
+// Difficulty (Maddy 2026-10-21): the share of storms heavy enough to flood follows the city's disaster rate.
+describe('weather: the heavy share', () => {
+  const heavies = (heavyShare?: number) => {
+    const live = createAmbientState();
+    const w = createWeather({ live, map: new GameMap(20, 20), rng: createRng('h').fork('weather'), wash: () => {}, ...(heavyShare === undefined ? {} : { heavyShare }) });
+    let n = 0;
+    let was = false;
+    for (let t = 0; t <= 80 * STORM_GAP_MS[1]; t += 1000) {
+      w.frame(t);
+      const heavy = live.rain?.heavy === true;
+      if (heavy && !was) n++;
+      was = heavy;
+    }
+    return n;
+  };
+  it("none heavy at 0, every one at 1; the default is today's", () => {
+    expect(heavies(0)).toBe(0);
+    expect(heavies(1)).toBeGreaterThan(heavies());
+    expect(heavies(1 / 4)).toBe(heavies());
+  });
+});

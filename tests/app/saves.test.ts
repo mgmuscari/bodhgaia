@@ -155,7 +155,7 @@ describe('createSaves', () => {
 
   it('a new city blanks autosave too', async () => {
     const { saves, mem, doc, actions } = setup();
-    await actions().newCity();
+    await actions().newCity({ difficulty: 'standard', sandbox: false });
     doc.hidden = true;
     doc.dispatchEvent(new Event('visibilitychange'));
     saves.autosave();

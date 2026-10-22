@@ -277,3 +277,30 @@ describe('construction sites rise hour by hour (Maddy 2026-10-08)', () => {
     expect(econ.run().projects).toHaveLength(0);
   });
 });
+
+// A sandbox (Maddy 2026-10-21 "Sandbox + difficulty"): no money or effort limits. Prices stand — a site still rises
+// over its hours — but the city never runs short: each hour tops the funds up and fills the effort to capacity.
+import { SANDBOX_FUNDS } from '../../src/app/economy';
+describe('a sandbox economy', () => {
+  it('never runs short of money or effort, however much is spent', () => {
+    const { econ, tech } = setup(null, undefined, { sandbox: true });
+    econ.runHour();
+    econ.wallet.funds = -50_000; // a spree
+    tech.effort = 0;
+    econ.runHour();
+    expect(econ.run().state.funds).toBeGreaterThanOrEqual(SANDBOX_FUNDS);
+    expect(tech.effort).toBe(Math.floor(econ.capacity()));
+  });
+  it('shows ∞ for money and effort', () => {
+    const { econ } = setup(null, undefined, { sandbox: true });
+    econ.runHour();
+    expect(econ.readout()).toMatch(/^∞/);
+    expect(econ.readout()).toMatch(/Effort ∞/);
+  });
+  it('an ordinary city is untouched', () => {
+    const { econ } = setup();
+    econ.runHour();
+    expect(econ.run().state.funds).toBeLessThan(SANDBOX_FUNDS);
+    expect(econ.readout()).not.toMatch(/∞/);
+  });
+});

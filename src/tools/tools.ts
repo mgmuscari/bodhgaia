@@ -56,6 +56,9 @@ export interface ToolDef {
   kind?: BuiltKind;
   /** Building footprint (absent for transport/convert/inspect/bulldoze). */
   footprint?: Footprint;
+  /** Its money price, when it isn't `cost × FUNDS_PER_COST` — the city's difficulty scales it to the dollar
+   *  (engine/mode.ts; a street's 2 cost units would round straight back at 75%). */
+  funds?: number;
 }
 
 /** The minimal world a tool reads/writes: the map and its parcel store. */
@@ -72,7 +75,7 @@ export const BRIDGE_COST_MUL = 3;
 /** What a tool costs under the economy: the commons in communal effort, the built fabric in funds. */
 export function toolPrice(tool: ToolDef): { effort: number; funds: number } {
   if (tool.kind !== undefined && isCommonsKind(tool.kind)) return { effort: tool.cost, funds: 0 };
-  return { effort: 0, funds: tool.cost * FUNDS_PER_COST };
+  return { effort: 0, funds: tool.funds ?? tool.cost * FUNDS_PER_COST };
 }
 
 // ── Ways out of a deficit (Maddy 2026-10-01: "once you run out of funds there's no way to start restoration
@@ -572,7 +575,7 @@ export function applyTool(
     if (isCommonsKind(kind)) return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'effort' } };
     // a civic building is paid from the treasury — unless the city can't cover it, when a community work (clinic,
     // fire station…) rises on volunteer effort instead (the ways out of a deficit, 2026-10-01)
-    const full = tool.cost * FUNDS_PER_COST;
+    const full = tool.funds ?? tool.cost * FUNDS_PER_COST;
     if (wallet && wallet.funds < full && VOLUNTEER_KINDS.has(kind))
       return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'effort', effort: Math.ceil(full / VOLUNTEER_DOLLARS_PER_EFFORT) } };
     return { ok: true, site: { kind, x, y, cost: tool.cost, name: tool.name, pay: 'funds' } };

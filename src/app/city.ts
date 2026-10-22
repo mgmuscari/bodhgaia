@@ -5,7 +5,8 @@
 
 import { runPipeline, type WorldState } from '../worldgen/pipeline';
 import { terrainStage } from '../worldgen/terrain';
-import { mosesCenturyStage } from '../worldgen/moses';
+import { DEFAULT_MOSES_PARAMS, mosesCenturyStage } from '../worldgen/moses';
+import { historyPct, parseMode, STANDARD_MODE, type CityMode } from '../engine/mode';
 import { ecoSeedStage } from '../worldgen/ecoseed';
 import { TECH_TREE } from '../tech/tree';
 import { createTechState, type TechState } from '../tech/state';
@@ -20,6 +21,8 @@ export interface CityDeps {
   /** The settings' world size (a save's own size wins). */
   size: { width: number; height: number };
   save: SaveV1 | null;
+  /** A new city's mode (difficulty, sandbox) — a save's own mode wins. Default standard. */
+  mode?: CityMode;
 }
 
 export interface City {
@@ -27,25 +30,44 @@ export interface City {
   world: WorldState;
   tech: TechState;
   civic: CivicState;
+  /** Its difficulty and whether it's a sandbox (engine/mode.ts). */
+  mode: CityMode;
   /** simTick's deps. simTick refreshes `partition` and remaps the civic state on the civic cadence. */
   sim: SimDeps;
 }
 
-export function createCity({ seed: urlSeed, size, save }: CityDeps): City {
+export function createCity({ seed: urlSeed, size, save, mode: newMode }: CityDeps): City {
   const seed = save?.seed ?? urlSeed;
+  const mode = save ? parseMode(save.mode) : (newMode ?? { ...STANDARD_MODE });
+  // the difficulty scales how hard the history stage was on the city (standard passes nothing: today's world)
+  const pct = historyPct(mode);
+  const history =
+    pct === 100
+      ? {}
+      : {
+          maxDecay: Math.floor((DEFAULT_MOSES_PARAMS.maxDecay * pct) / 100),
+          era4DeclineMin: Math.floor((DEFAULT_MOSES_PARAMS.era4DeclineMin * pct) / 100),
+          era4DeclineMax: Math.floor((DEFAULT_MOSES_PARAMS.era4DeclineMax * pct) / 100),
+        };
   const world = runPipeline(
     { seed, width: save?.width ?? size.width, height: save?.height ?? size.height },
-    [terrainStage(), mosesCenturyStage(), ecoSeedStage()],
+    [terrainStage(), mosesCenturyStage(history), ecoSeedStage()],
   );
   if (save) restoreWorld(world, save.world);
   // communal effort accrues into the tech state each sim tick
   const tech = createTechState(TECH_TREE);
   if (save) restoreTech(tech, save.tech);
+  // a sandbox: the whole tree open (granted in tree order, so every prerequisite is held first)
+  if (mode.sandbox) {
+    for (let pass = 0; pass < TECH_TREE.length && tech.unlocked.size < TECH_TREE.length; pass++) {
+      for (const n of TECH_TREE) if (!tech.unlocked.has(n.id)) tech.grant(n.id);
+    }
+  }
   // the neighborhood partition + per-neighborhood belonging / voice / trust
   const partition = computeNeighborhoods(world.map);
   const civic = createCivicState(partition);
   if (save) restoreCivic(civic, save.civic);
   // communal effort is the economy's perishable stock (src/economy) — simTick never accrues it
   const sim: SimDeps = { world, tech, civic, partition };
-  return { seed, world, tech, civic, sim };
+  return { seed, world, tech, civic, mode, sim };
 }

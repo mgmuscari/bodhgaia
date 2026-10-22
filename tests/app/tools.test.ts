@@ -1,3 +1,4 @@
+import type { CityMode } from '../../src/engine/mode';
 import { describe, it, expect } from 'vitest';
 import { createToolController, type ToolsDeps } from '../../src/app/tools';
 import { GameMap } from '../../src/engine/map';
@@ -13,7 +14,7 @@ import type { CompositeState } from '../../src/ui/overlayRegistry';
 // The tool controller owns the dock's selection state (the picked tool, the open category flyout), mounts the
 // toolbar over it, previews/applies the selected tool on the map, and keeps the sim-gated dock sync (Y5/Y7).
 
-function setup(opts: { funds?: number; effort?: number } = {}) {
+function setup(opts: { funds?: number; effort?: number; mode?: CityMode } = {}) {
   const map = new GameMap(16, 8);
   const parcels = new ParcelStore();
   for (let x = 1; x <= 10; x++) placeTransport(map, x, 2, BuiltKind.RoadStreet);
@@ -64,6 +65,7 @@ function setup(opts: { funds?: number; effort?: number } = {}) {
     inspect: (info, tx, ty) => `${info} @${tx},${ty}`,
     placed: () => log.push('placed'),
     repaired: (tx, ty) => log.push(`repaired:${tx},${ty}`),
+    mode: opts.mode,
   };
   const tools = createToolController(deps);
   return { tools, deps, log, previews, wallet, tech, map, mount: () => mountDeps!, openTech: (o: boolean) => (techOpen = o) };
@@ -340,5 +342,24 @@ describe('createToolController: the sim-gated dock sync', () => {
     h.openTech(true);
     h.tools.syncDock();
     expect(h.log).toEqual(['tech.header']);
+  });
+});
+
+// Difficulty (Maddy 2026-10-21): building costs more on hard, less on gentle — one price everywhere (menu, preview,
+// the charge, a site's bill); standard is unchanged.
+describe('createToolController: prices under the city mode', () => {
+  const spentOnAStreet = (mode?: CityMode) => {
+    const h = setup({ mode });
+    h.mount().onSelect(`build-${BuiltKind.RoadStreet}`);
+    const before = h.wallet.funds;
+    h.tools.applyAt(5, 5);
+    return before - h.wallet.funds;
+  };
+  it('hard costs more than standard, gentle less; standard is today\'s price', () => {
+    const standard = spentOnAStreet();
+    expect(standard).toBeGreaterThan(0);
+    expect(spentOnAStreet({ difficulty: 'standard', sandbox: false })).toBe(standard);
+    expect(spentOnAStreet({ difficulty: 'hard', sandbox: false })).toBeGreaterThan(standard);
+    expect(spentOnAStreet({ difficulty: 'gentle', sandbox: false })).toBeLessThan(standard);
   });
 });

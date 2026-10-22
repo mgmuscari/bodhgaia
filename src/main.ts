@@ -17,6 +17,9 @@ import { wellbeing } from './tech/effort';
 import type { SaveV1 } from './save/snapshot';
 import { CURRENT, readSlot } from './save/store';
 import { createCity } from './app/city';
+import { takePendingMode } from './save/pendingMode';
+import { disasterRatePct, historyPct } from './engine/mode';
+import { createDisasterHours } from './app/disasterHours';
 import { createSettingsController } from './app/settings';
 import { createView } from './app/view';
 import { createLive } from './app/live';
@@ -56,7 +59,7 @@ import { drawCrashes } from './live/accidents';
 import { drawCrime } from './live/crime';
 import { neighborhoodBelonging } from './civic/voice';
 import { NIGHT_FROM, NIGHT_TO } from './live/tuning';
-import { createWeather } from './app/weather';
+import { createWeather, HEAVY_SHARE } from './app/weather';
 import { createFloodController } from './app/flood';
 import { createCommunity } from './app/community';
 import { applyRain } from './live/fields/pollution';
@@ -94,15 +97,17 @@ export function main(save: SaveV1 | null = null): void {
   // A resumed city brings its own seed; `?seed=` pins one; otherwise a new player (or New city) gets a random world
   // — a few draws at most, so a first city is never a hamlet.
   const mapSize = { width: size.mapWidth, height: size.mapHeight };
+  // A new city's mode (difficulty, sandbox): what New city chose, read once (save/pendingMode.ts); a save brings its own.
+  const newMode = save ? undefined : takePendingMode();
   const homesOf = (s: string): number => {
-    const parcels = createCity({ seed: s, size: mapSize, save: null }).world.parcels;
+    const parcels = createCity({ seed: s, size: mapSize, save: null, mode: newMode }).world.parcels;
     let homes = 0;
     for (const i of parcels.aliveIndices()) if (zoneTypeOf(parcels.kindAt(i)) === ZoneType.Residential) homes++;
     return homes;
   };
   const citySeed = params.get('seed') ?? (save ? save.seed : chooseSeed(() => randomSeed(), homesOf));
-  const city = createCity({ seed: citySeed, size: mapSize, save });
-  const { seed, world, tech, civic, sim: deps } = city;
+  const city = createCity({ seed: citySeed, size: mapSize, save, mode: newMode });
+  const { seed, world, tech, civic, mode, sim: deps } = city;
 
   // The opening is up unless `?nointro=1` or a resumed city; while it is, the key table swallows every game key.
   let openingUp = params.get('nointro') !== '1' && !save;
@@ -124,6 +129,7 @@ export function main(save: SaveV1 | null = null): void {
     legacyDisplaced: save?.econ.state.displaced ?? 0,
     practices: () => tech.effects(), // the tech tree's live coefficients (Walkable Streets…)
     hour: () => gameClock(gameSec()).hour, // exposure deaths happen at night
+    historyPct: historyPct(mode), // the difficulty's history: how many were displaced before the player came
   });
   const power = createPowerController({
     map: world.map,
@@ -166,6 +172,7 @@ export function main(save: SaveV1 | null = null): void {
   }
 
   const economy = createEconomyController({
+    sandbox: mode.sandbox, // never short of money or effort
     map: world.map,
     parcels: world.parcels,
     tech,
@@ -265,6 +272,7 @@ export function main(save: SaveV1 | null = null): void {
     world,
     tech,
     wallet: economy.wallet,
+    mode, // the city's difficulty scales every price
     renderer,
     markDirty,
     markPreviewDirty,
@@ -381,10 +389,12 @@ export function main(save: SaveV1 | null = null): void {
       power: { storage: power.grid().storage },
       tick: sim.tick(),
       camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
+      mode,
     }),
     lifecycle: { document, window },
     mountPanel: (actions) => mountSavesPanel(document.body, actions),
     onToggle: () => toolbar.refreshMeta(),
+    mode: () => mode,
   });
   panels.attach({ ...mounted, saves });
   toolbar.refreshMeta();
@@ -541,9 +551,20 @@ export function main(save: SaveV1 | null = null): void {
   const spillRng = createRng(seed).fork('spill');
   // Traffic accidents: drawn once a game hour from the jams under moving cars.
   const crashRng = createRng(seed).fork('crash');
+  // The city's difficulty: each hour's crashes, crime and spills are drawn `draws` times — standard once, gentle in
+  // only some hours, hard twice in many (app/disasterHours.ts). Each draw marks its hour; a repeat clears the mark.
+  const disasterHours = createDisasterHours(mode, createRng(seed).fork('disaster-hours'));
+  const drawsNow = (): number => disasterHours.draws(gameClock(gameSec()).slot);
   const drawCrashesNow = (): void => {
     if (!disastersOn()) return;
-    const n = drawCrashes(live.state, world.map, crashRng, gameClock(gameSec()).hour);
+    const h = gameClock(gameSec()).hour;
+    if (h === live.state.crashHour) return; // this hour is drawn
+    let n = 0;
+    for (let k = 0; k < drawsNow(); k++) {
+      live.state.crashHour = undefined;
+      n += drawCrashes(live.state, world.map, crashRng, h);
+    }
+    live.state.crashHour = h;
     if (n > 0) news.push(n > 1 ? `${n} crashes on jammed roads` : 'A crash on a jammed road');
   };
   // Violent crime (conditions, not cops): drawn once a game hour from the despair on the street — at most one life.
@@ -551,9 +572,15 @@ export function main(save: SaveV1 | null = null): void {
   const drawCrimeNow = (): void => {
     if (!disastersOn()) return;
     const h = gameClock(gameSec()).hour;
-    if (drawCrime(live.state, world, crimeRng, h, h >= NIGHT_FROM || h < NIGHT_TO, (t) => neighborhoodBelonging(civic, deps.partition, t))) {
-      news.push('A life lost to violence on the street');
+    if (h === live.state.crimeHour) return;
+    for (let k = 0; k < drawsNow(); k++) {
+      live.state.crimeHour = undefined;
+      if (drawCrime(live.state, world, crimeRng, h, h >= NIGHT_FROM || h < NIGHT_TO, (t) => neighborhoodBelonging(civic, deps.partition, t))) {
+        news.push('A life lost to violence on the street');
+        break; // at most one life an hour
+      }
     }
+    live.state.crimeHour = h;
   };
   // The food chain (interdependence §2): once a game hour, the harvest flows to pantries and banks, banks send vans,
   // and the homes fed have food access (a part of neighbourhood health).
@@ -568,11 +595,23 @@ export function main(save: SaveV1 | null = null): void {
   };
   const drawSpillsNow = (): void => {
     if (!disastersOn()) return;
-    for (const _ of drawSpills(live.state, world, spillRng, gameClock(gameSec()).hour)) news.push('A toxic spill at the works — a cloud drifts downwind');
+    const h = gameClock(gameSec()).hour;
+    if (h === live.state.spillHour) return;
+    for (let k = 0; k < drawsNow(); k++) {
+      live.state.spillHour = undefined;
+      for (const _ of drawSpills(live.state, world, spillRng, h)) news.push('A toxic spill at the works — a cloud drifts downwind');
+    }
+    live.state.spillHour = h;
   };
 
   // Weather: storms on their own seeded schedule — rain seen and heard, the air washed; heavy ones flood.
-  const weather = createWeather({ live: live.state, map: world.map, rng: createRng(seed).fork('weather'), wash: () => applyRain(live.state, world.map) });
+  const weather = createWeather({
+    live: live.state,
+    map: world.map,
+    rng: createRng(seed).fork('weather'),
+    wash: () => applyRain(live.state, world.map),
+    ...(mode.difficulty === 'standard' ? {} : { heavyShare: (HEAVY_SHARE * disasterRatePct(mode)) / 100 }), // floods follow the difficulty
+  });
 
   // Floods: heavy rain lifts the water over the low land by it; homes under water are evacuated until it goes.
   const flood = createFloodController({ world, live: live.state, hour: () => gameClock(gameSec()).hour, disastersOn, markDirty, news: (t) => news.push(t) });
@@ -602,6 +641,7 @@ export function main(save: SaveV1 | null = null): void {
     rng: createRng(seed).fork('fire'),
     hour: () => gameClock(gameSec()).hour,
     disastersOn,
+    rate: disasterRatePct(mode), // the city's difficulty
     markDirty,
     refreshHouseholds: () => live.refreshHouseholds(),
     news: (t) => news.push(t),

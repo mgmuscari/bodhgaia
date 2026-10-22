@@ -192,10 +192,19 @@ Each civic and commons building belongs to a lane, and **pairs** with neighbours
 
 ## 10. Sandbox and difficulty
 
-- **Sandbox:** no money or effort limits, the whole tech tree open, disasters optional. For play and for screenshots.
-  It is a flag on the city, saved with it.
-- **Difficulty** (gentle / standard / hard) scales three existing knobs: build costs, disaster rates, and how much
-  decay and displacement the history stage leaves. Chosen at New city.
+Built 2026-10-21 (`engine/mode.ts`; chosen in the Saves window's New city, saved with the city; older saves are
+standard, and standard is byte-identical to the game before it).
+
+- **Difficulty** (gentle / standard / hard) scales three existing knobs:
+  - **build costs:** 75 / 100 / 130%. The money price is scaled to the dollar; cost units (effort, a site's bill)
+    are scaled and rounded;
+  - **disaster rates:** crashes, violent crime and spills are drawn in half the hours on gentle, and twice in 60% of
+    hours on hard. Fire's ignition chance and the share of heavy (flooding) storms are 50 / 100 / 160%;
+  - **the history stage's damage:** the decay of the redline era and the inner-city decline, and the inherited
+    displacement (the opening's unhoused), at 60 / 100 / 140%.
+- **Sandbox:** the whole tech tree is granted at the start. Money and effort never run short (topped up each hour,
+  shown as ∞). Prices stand, so a site still takes its hours to rise. Disasters are optional through the existing
+  setting. The sandbox can be set only at New city.
 
 ## Order of work
 
@@ -212,7 +221,7 @@ Each step lands on its own and is playable. Dependencies are named.
 | 6 | **Committees, petitions, council**; **car tax / parking fees / car-free zones** | 2 | large |
 | 7 | **Resident narratives** (cast, events, traits) | 2, 6 | large |
 | 8 | **Sideshows, fireworks** — built 2026-10-21 | 2 | small |
-| 9 | **Sandbox + difficulty** | — | small–medium |
+| 9 | **Sandbox + difficulty** — built 2026-10-21 | — | small–medium |
 | — | Arcologies | — | backlog |
 
 ## Decisions (Maddy, 2026-10-13)

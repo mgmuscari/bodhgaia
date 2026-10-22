@@ -11,13 +11,15 @@ export interface EconomyReadout {
   approval: number;
   goodwill: number;
   burnout: number;
+  /** A sandbox: money and effort have no limit — shown as ∞. */
+  sandbox?: boolean;
 }
 
 export function economyLine(r: EconomyReadout): string {
   const trend = Math.round(r.fundsPerHour);
   const parts = [
-    `${money(r.funds)} (${trend < 0 ? MINUS : '+'}${Math.abs(trend)}/h)`,
-    `Effort ${Math.floor(r.effort)}/${Math.floor(r.capacity)}`,
+    r.sandbox ? '∞' : `${money(r.funds)} (${trend < 0 ? MINUS : '+'}${Math.abs(trend)}/h)`,
+    r.sandbox ? 'Effort ∞' : `Effort ${Math.floor(r.effort)}/${Math.floor(r.capacity)}`,
     `Approval ${Math.round(r.approval)}%`,
     `Trust ${Math.round(r.goodwill)}`,
   ];

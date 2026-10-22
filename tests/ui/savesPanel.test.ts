@@ -58,3 +58,55 @@ describe('Saves window when the browser cannot save', () => {
     for (const els of buttons(panel).values()) for (const el of els) expect(el.disabled).not.toBe(true);
   });
 });
+
+// New city's choice (Maddy 2026-10-21 "Sandbox + difficulty"): New city opens a chooser — Gentle / Standard / Hard,
+// and Sandbox — and Start begins the city with that mode. The window names the current city's mode.
+describe('New city: difficulty and sandbox', () => {
+  let body: FakeEl;
+  beforeEach(() => {
+    body = installFakeDom();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('New city opens the chooser; Start begins a city with what was picked (Standard, no sandbox, by default)', async () => {
+    const started: unknown[] = [];
+    const h = mountSavesPanel(body as unknown as HTMLElement, { ...deps({ ok: true }), newCity: async (mode) => void started.push(mode) });
+    h.open();
+    await flush();
+    const panel = body.find('saves-panel')!;
+    buttons(panel).get('New city')![0]!.click();
+    await flush();
+    let b = buttons(panel);
+    for (const label of ['Gentle', 'Standard', 'Hard', 'Sandbox', 'Start', 'Cancel']) expect(b.get(label)?.length, label).toBeGreaterThan(0);
+    expect(started).toEqual([]); // not yet
+    b.get('Hard')![0]!.click();
+    await flush();
+    b = buttons(panel);
+    b.get('Sandbox')![0]!.click();
+    await flush();
+    buttons(panel).get('Start')![0]!.click();
+    await flush();
+    expect(started).toEqual([{ difficulty: 'hard', sandbox: true }]);
+  });
+
+  it('Cancel closes the chooser and starts nothing', async () => {
+    const started: unknown[] = [];
+    const h = mountSavesPanel(body as unknown as HTMLElement, { ...deps({ ok: true }), newCity: async (mode) => void started.push(mode) });
+    h.open();
+    await flush();
+    const panel = body.find('saves-panel')!;
+    buttons(panel).get('New city')![0]!.click();
+    await flush();
+    buttons(panel).get('Cancel')![0]!.click();
+    await flush();
+    expect(buttons(panel).get('Start')).toBeUndefined();
+    expect(started).toEqual([]);
+  });
+
+  it('names the current city\'s mode', async () => {
+    const h = mountSavesPanel(body as unknown as HTMLElement, { ...deps({ ok: true }), mode: () => ({ difficulty: 'gentle', sandbox: true }) });
+    h.open();
+    await flush();
+    expect(body.find('saves-panel')!.text()).toMatch(/Gentle · Sandbox/);
+  });
+});

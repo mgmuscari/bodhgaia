@@ -57,3 +57,46 @@ describe('createCity', () => {
     expect(b.civic.exportCells()).toEqual(a.civic.exportCells());
   });
 });
+
+// A city's mode (Maddy 2026-10-21 "Sandbox + difficulty"): the difficulty scales how much damage the history stage
+// leaves; a sandbox opens the whole tech tree; standard is today's city exactly; the mode is saved with the city.
+import { STANDARD_MODE, type CityMode } from '../../src/engine/mode';
+describe('createCity: the city mode', () => {
+  const S = { width: 64, height: 64 };
+  const meanCondition = (mode?: CityMode) => {
+    const c = createCity({ seed: 'mode-test', size: S, save: null, mode });
+    const ids = c.world.parcels.aliveIndices();
+    return ids.reduce((a, i) => a + c.world.parcels.conditionAt(i), 0) / ids.length;
+  };
+
+  it('standard is the city it always was', () => {
+    const a = createCity({ seed: 'mode-test', size: S, save: null });
+    const b = createCity({ seed: 'mode-test', size: S, save: null, mode: STANDARD_MODE });
+    expect(Buffer.from(a.world.map.built).equals(Buffer.from(b.world.map.built))).toBe(true);
+    expect(meanCondition()).toBe(meanCondition(STANDARD_MODE));
+    expect(b.mode).toEqual(STANDARD_MODE);
+  });
+
+  it('a gentle history leaves the buildings in better repair, a hard one in worse', () => {
+    const gentle = meanCondition({ difficulty: 'gentle', sandbox: false });
+    const standard = meanCondition(STANDARD_MODE);
+    const hard = meanCondition({ difficulty: 'hard', sandbox: false });
+    expect(gentle).toBeGreaterThan(standard);
+    expect(hard).toBeLessThan(standard);
+  });
+
+  it('a sandbox opens the whole tech tree', () => {
+    const c = createCity({ seed: 'mode-test', size: S, save: null, mode: { difficulty: 'standard', sandbox: true } });
+    expect(c.tech.unlocked.size).toBe(TECH_TREE.length);
+  });
+
+  it('the mode is saved with the city, and a resumed city keeps its own', () => {
+    const hard: CityMode = { difficulty: 'hard', sandbox: true };
+    const a = createCity({ seed: 'mode-test', size: S, save: null, mode: hard });
+    const save = captureGame({ seed: a.seed, world: a.world, tech: a.tech, civic: a.civic, econ: { state: createEconomy(), levers: DEFAULT_LEVERS, projects: [] } as never, live: createAmbientState(createRng('x')), tick: 0, camera: { x: 0, y: 0, zoom: 2 }, mode: a.mode });
+    expect(save.mode).toEqual(hard);
+    const b = createCity({ seed: 'other', size: S, save, mode: STANDARD_MODE });
+    expect(b.mode).toEqual(hard);
+    expect(Buffer.from(b.world.map.built).equals(Buffer.from(a.world.map.built))).toBe(true);
+  });
+});

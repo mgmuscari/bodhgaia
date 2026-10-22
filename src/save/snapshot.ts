@@ -71,6 +71,8 @@ export interface SaveV1 {
   };
   /** Energy-node battery charge, anchor → power-hours (2026-10-07; absent in older saves ⇒ empty). */
   power?: { storage: Array<[number, number]> };
+  /** The city's difficulty and sandbox flag (engine/mode.ts; 2026-10-21 — absent in older saves ⇒ standard). */
+  mode?: { difficulty: string; sandbox: boolean };
 }
 
 /** Everything the save reads, as the running game holds it. */
@@ -87,6 +89,8 @@ export interface GameParts {
   power?: { storage: ReadonlyMap<number, number> };
   tick: number;
   camera: { x: number; y: number; zoom: number };
+  /** The city's mode (absent ⇒ standard, not written). */
+  mode?: { difficulty: string; sandbox: boolean };
 }
 
 // ── base64 (pure: no btoa/atob, which are DOM globals) ──────────────────────────────────────────────────
@@ -152,6 +156,7 @@ export function captureGame(p: GameParts): SaveV1 {
     econ: JSON.parse(JSON.stringify(p.econ)) as EconomyRun,
     live: captureLive(p.live),
     power: { storage: [...(p.power?.storage ?? new Map()).entries()] },
+    ...(p.mode ? { mode: { difficulty: p.mode.difficulty, sandbox: p.mode.sandbox } } : {}),
   };
 }
 
